@@ -1,6 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CompositionEvent as ReactCompositionEvent,
+  type KeyboardEvent,
+  type SyntheticEvent,
+} from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { closeHistory } from '@tiptap/pm/history';
@@ -30,6 +38,7 @@ export function BodyEditor({ card, cards, onChange, onOpenCard }: Props) {
   const [suggestionOpen, setSuggestionOpen] = useState(false);
   const [activeCandidate, setActiveCandidate] = useState(0);
   const triggerPositionRef = useRef<number | undefined>(undefined);
+  const compositionInputRef = useRef(false);
   const candidates = useMemo(() => linkCandidates(cards, card.id), [cards, card.id]);
 
   const editor = useEditor({
@@ -134,16 +143,59 @@ export function BodyEditor({ card, cards, onChange, onOpenCard }: Props) {
         setSuggestionOpen(false);
       }
     }
+  }
 
-    if (event.key !== '#' || event.ctrlKey || event.metaKey || event.altKey) return;
+  function openSuggestionsForInsertedHash() {
+    if (!editor) return;
     const { selection, doc } = editor.state;
     if (!selection.empty) return;
-    const position = selection.from;
-    const previous = position > 1 ? doc.textBetween(position - 1, position, '\n') : '';
+    const to = selection.from;
+    const from = to - 1;
+    if (from < 1 || doc.textBetween(from, to, '\n') !== '#') return;
+    const previous = from > 1 ? doc.textBetween(from - 1, from, '\n') : '';
     if (previous && /[\p{L}\p{N}_]/u.test(previous)) return;
-    triggerPositionRef.current = position;
+    triggerPositionRef.current = from;
     setActiveCandidate(0);
-    queueMicrotask(() => setSuggestionOpen(true));
+    setSuggestionOpen(true);
+  }
+
+  function closeSuggestionsIfTriggerChanged() {
+    if (!editor || triggerPositionRef.current === undefined) return;
+    const { selection, doc } = editor.state;
+    const triggerPosition = triggerPositionRef.current;
+    if (
+      !selection.empty ||
+      doc.textBetween(triggerPosition, selection.from, '\n') !== '#'
+    ) {
+      setSuggestionOpen(false);
+      triggerPositionRef.current = undefined;
+    }
+  }
+
+  function handleInput(event: SyntheticEvent<HTMLDivElement, InputEvent>) {
+    const inputEvent = event.nativeEvent;
+    const insertsTypedText =
+      inputEvent.inputType === 'insertText' ||
+      inputEvent.inputType === 'insertCompositionText';
+
+    if (insertsTypedText && inputEvent.isComposing) {
+      compositionInputRef.current = true;
+      return;
+    }
+    if (insertsTypedText) {
+      queueMicrotask(() => {
+        openSuggestionsForInsertedHash();
+        closeSuggestionsIfTriggerChanged();
+      });
+      return;
+    }
+    queueMicrotask(closeSuggestionsIfTriggerChanged);
+  }
+
+  function handleCompositionEnd(event: ReactCompositionEvent<HTMLDivElement>) {
+    const hadCompositionInput = compositionInputRef.current || event.data.length > 0;
+    compositionInputRef.current = false;
+    if (hadCompositionInput) queueMicrotask(openSuggestionsForInsertedHash);
   }
 
   if (!editor) {
@@ -155,6 +207,8 @@ export function BodyEditor({ card, cards, onChange, onOpenCard }: Props) {
       <EditorContent
         editor={editor}
         onKeyDownCapture={handleKeyDown}
+        onInput={handleInput}
+        onCompositionEnd={handleCompositionEnd}
         onClick={(event) => {
           const element = (event.target as HTMLElement).closest<HTMLElement>('[data-card-link-id]');
           const targetCardId = element?.dataset.cardLinkId;

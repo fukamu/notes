@@ -133,10 +133,18 @@ test('inline card links, Backspace, Undo/Redo, shortcuts and plain hashtag input
 
   const editor = page.getByTestId('body-editor');
   await editor.click();
-  await editor.press('#');
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.evaluate(async () => navigator.clipboard.writeText('#'));
+  await editor.press(process.platform === 'darwin' ? 'Meta+v' : 'Control+v');
+  await expect(page.getByTestId('link-candidates')).toHaveCount(0);
+  await editor.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+
+  const softwareKeyboard = await context.newCDPSession(page);
+  await softwareKeyboard.send('Input.insertText', { text: '#' });
   const targetOption = page.getByTestId('link-candidates').getByRole('button').filter({ hasText: targetTitle });
   await expect(targetOption).toBeVisible();
   await targetOption.click();
+  await softwareKeyboard.detach();
   const capsule = editor.locator('[data-card-link-id]');
   await expect(capsule).toHaveCount(1);
   await expect(capsule).toContainText(targetTitle);
@@ -160,7 +168,6 @@ test('inline card links, Backspace, Undo/Redo, shortcuts and plain hashtag input
 
   await editor.press('End');
   await editor.pressSequentially(' C# #123 ＃ https://example.test/#x [md](#1) 日本語');
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.evaluate(async () => navigator.clipboard.writeText(' 貼り付け #456 C# ＃'));
   await editor.press(process.platform === 'darwin' ? 'Meta+v' : 'Control+v');
   await expect(capsule).toHaveCount(1);
