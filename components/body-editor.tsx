@@ -16,9 +16,11 @@ import { Link2, Redo2, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { linkCandidates } from '@/lib/domain/body';
 import { formatDisplayId } from '@/lib/domain/display-id';
+import type { CardId } from '@/lib/domain/id';
 import type { BodySegment, CardRecord } from '@/lib/domain/types';
 import { visibleTitle } from '@/lib/domain/types';
 import { CardLink } from '@/lib/editor/card-link-extension';
+import { cardLinkTargetId } from '@/lib/editor/card-link-attributes';
 import {
   editorDocumentToSegments,
   segmentsToEditorDocument,
@@ -29,7 +31,7 @@ type Props = {
   card: CardRecord;
   cards: CardRecord[];
   onChange: (body: BodySegment[]) => void;
-  onOpenCard: (cardId: string) => void;
+  onOpenCard: (cardId: CardId) => void;
 };
 
 export function BodyEditor({ card, cards, onChange, onOpenCard }: Props) {
@@ -233,7 +235,9 @@ export function BodyEditor({ card, cards, onChange, onOpenCard }: Props) {
           const element = event.target.closest<HTMLElement>(
             '[data-card-link-id]',
           );
-          const targetCardId = element?.dataset.cardLinkId;
+          const targetCardId = cardLinkTargetId({
+            targetCardId: element?.dataset.cardLinkId,
+          });
           if (targetCardId) onOpenCard(targetCardId);
         }}
       />

@@ -5,6 +5,7 @@ import {
 } from '@/lib/domain/display-id';
 import type { CardRecord } from '@/lib/domain/types';
 import { invariant } from '@/lib/shared/invariant';
+import { fixtureCardId } from '@/tests/fixtures/ids';
 
 function card(
   id: string,
@@ -13,7 +14,7 @@ function card(
   createdAt: number,
 ): CardRecord {
   return {
-    id,
+    id: fixtureCardId(id),
     displayId: { kind, value },
     title: '',
     body: [],
@@ -43,7 +44,8 @@ describe('display ids', () => {
     ];
     const reconciled = reconcileProvisionalDisplayIds(cards);
     expect(
-      reconciled.find((item) => item.id === 'official')?.displayId,
+      reconciled.find((item) => item.id === fixtureCardId('official'))
+        ?.displayId,
     ).toEqual({
       kind: 'official',
       value: 2,
@@ -65,8 +67,10 @@ describe('display ids', () => {
       card('official', 'official', 8, 50),
       card('earlier', 'provisional', 8, 100),
     ]);
-    const earlier = reconciled.find((item) => item.id === 'earlier');
-    const later = reconciled.find((item) => item.id === 'later');
+    const earlier = reconciled.find(
+      (item) => item.id === fixtureCardId('earlier'),
+    );
+    const later = reconciled.find((item) => item.id === fixtureCardId('later'));
     invariant(earlier, 'Earlier provisional card is missing');
     invariant(later, 'Later provisional card is missing');
     expect(earlier.displayId.value).toBeLessThan(later.displayId.value);

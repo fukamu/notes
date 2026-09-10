@@ -1,4 +1,4 @@
-import type { CardRecord, DisplayId } from './types';
+import { positiveSafeInteger, type CardRecord, type DisplayId } from './types';
 import { invariant } from '@/lib/shared/invariant';
 
 export function formatDisplayId(displayId: DisplayId): string {
@@ -8,11 +8,12 @@ export function formatDisplayId(displayId: DisplayId): string {
 }
 
 export function nextProvisionalValue(cards: CardRecord[]): number {
-  return (
+  return positiveSafeInteger(
     cards.reduce(
       (maximum, card) => Math.max(maximum, card.displayId.value),
       0,
-    ) + 1
+    ) + 1,
+    'next provisional display ID',
   );
 }
 
@@ -37,13 +38,21 @@ export function reconcileProvisionalDisplayIds(
       (left, right) =>
         left.createdAt - right.createdAt || left.id.localeCompare(right.id),
     );
-  const firstAvailable =
+  const firstAvailable = positiveSafeInteger(
     official.reduce(
       (maximum, card) => Math.max(maximum, card.displayId.value),
       0,
-    ) + 1;
+    ) + 1,
+    'first provisional display ID',
+  );
   const assigned = new Map(
-    provisional.map((card, index) => [card.id, firstAvailable + index]),
+    provisional.map((card, index) => [
+      card.id,
+      positiveSafeInteger(
+        firstAvailable + index,
+        'reconciled provisional display ID',
+      ),
+    ]),
   );
 
   return cards.map((card) => {

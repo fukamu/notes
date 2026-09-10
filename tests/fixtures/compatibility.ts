@@ -4,13 +4,19 @@ import type {
   PendingMutation,
 } from '@/lib/domain/types';
 import type { SyncRequest, SyncResponse } from '@/lib/sync/protocol';
+import {
+  parseCardId,
+  parseConflictId,
+  parseDeviceId,
+  parseMutationId,
+} from '@/lib/domain/id';
 
 export const compatibilityIds = {
-  cardA: '01991f20-61d2-7000-8000-000000000001',
-  cardB: '01991f20-61d2-7000-8000-000000000002',
-  conflict: '01991f20-61d2-7000-8000-000000000003',
-  device: '01991f20-61d2-7000-8000-000000000004',
-  mutation: '01991f20-61d2-7000-8000-000000000005',
+  cardA: parseCardId('01991f20-61d2-7000-8000-000000000001'),
+  cardB: parseCardId('01991f20-61d2-7000-8000-000000000002'),
+  conflict: parseConflictId('01991f20-61d2-7000-8000-000000000003'),
+  device: parseDeviceId('01991f20-61d2-7000-8000-000000000004'),
+  mutation: parseMutationId('01991f20-61d2-7000-8000-000000000005'),
 } as const;
 
 export function createCompatibilityFixture(): {
@@ -88,6 +94,15 @@ export function createCompatibilityFixture(): {
           createdAt: mutation.createdAt,
           updatedAt: mutation.updatedAt,
           revision: 2,
+        },
+        {
+          id: compatibilityIds.cardB,
+          officialDisplayId: 2,
+          title: cards[1]?.title ?? '',
+          body: cards[1]?.body ?? [],
+          createdAt: cards[1]?.createdAt ?? 0,
+          updatedAt: cards[1]?.updatedAt ?? 0,
+          revision: 1,
         },
       ],
       conflicts: [conflict],

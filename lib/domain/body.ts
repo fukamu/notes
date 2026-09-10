@@ -1,4 +1,5 @@
 import type { BodySegment, CardRecord } from './types';
+import type { CardId } from './id';
 import { formatDisplayId, sortCardsByDisplayId } from './display-id';
 import { visibleTitle } from './types';
 
@@ -38,7 +39,7 @@ export function bodyToPlainText(
     .join('');
 }
 
-export function outgoingCardIds(body: BodySegment[]): string[] {
+export function outgoingCardIds(body: BodySegment[]): CardId[] {
   return body
     .filter(
       (segment): segment is Extract<BodySegment, { type: 'link' }> =>
@@ -49,7 +50,7 @@ export function outgoingCardIds(body: BodySegment[]): string[] {
 
 export function linkCandidates(
   cards: CardRecord[],
-  currentCardId: string,
+  currentCardId: CardId,
 ): CardRecord[] {
   return sortCardsByDisplayId(cards).filter(
     (card) => card.id !== currentCardId,
