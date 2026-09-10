@@ -39,7 +39,10 @@ export function BodyEditor({ card, cards, onChange, onOpenCard }: Props) {
   const [activeCandidate, setActiveCandidate] = useState(0);
   const triggerPositionRef = useRef<number | undefined>(undefined);
   const compositionInputRef = useRef(false);
-  const candidates = useMemo(() => linkCandidates(cards, card.id), [cards, card.id]);
+  const candidates = useMemo(
+    () => linkCandidates(cards, card.id),
+    [cards, card.id],
+  );
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -74,7 +77,8 @@ export function BodyEditor({ card, cards, onChange, onOpenCard }: Props) {
         'aria-multiline': 'true',
         'data-testid': 'body-editor',
       },
-      transformPastedHTML: (html) => html.replace(/<(?!\/?(?:p|br|span)(?:\s|>|\/))[^>]+>/gi, ''),
+      transformPastedHTML: (html) =>
+        html.replace(/<(?!\/?(?:p|br|span)(?:\s|>|\/))[^>]+>/gi, ''),
     },
     onUpdate: ({ editor: currentEditor }) => {
       onChange(editorDocumentToSegments(currentEditor.getJSON()));
@@ -93,7 +97,9 @@ export function BodyEditor({ card, cards, onChange, onOpenCard }: Props) {
     if (!editor) return;
     const editorBody = editorDocumentToSegments(editor.getJSON());
     if (JSON.stringify(editorBody) !== JSON.stringify(card.body)) {
-      editor.commands.setContent(segmentsToEditorDocument(card.body), { emitUpdate: false });
+      editor.commands.setContent(segmentsToEditorDocument(card.body), {
+        emitUpdate: false,
+      });
     }
   }, [editor, card.id, card.body]);
 
@@ -109,7 +115,10 @@ export function BodyEditor({ card, cards, onChange, onOpenCard }: Props) {
       .chain()
       .focus()
       .deleteRange({ from, to })
-      .insertContent({ type: 'cardLink', attrs: { targetCardId: candidate.id } })
+      .insertContent({
+        type: 'cardLink',
+        attrs: { targetCardId: candidate.id },
+      })
       .run();
     editor.view.dispatch(closeHistory(editor.state.tr));
     setSuggestionOpen(false);
@@ -139,7 +148,11 @@ export function BodyEditor({ card, cards, onChange, onOpenCard }: Props) {
         setSuggestionOpen(false);
         return;
       }
-      if (event.key.length === 1 || event.key === 'Backspace' || event.key === 'Delete') {
+      if (
+        event.key.length === 1 ||
+        event.key === 'Backspace' ||
+        event.key === 'Delete'
+      ) {
         setSuggestionOpen(false);
       }
     }
@@ -193,13 +206,19 @@ export function BodyEditor({ card, cards, onChange, onOpenCard }: Props) {
   }
 
   function handleCompositionEnd(event: ReactCompositionEvent<HTMLDivElement>) {
-    const hadCompositionInput = compositionInputRef.current || event.data.length > 0;
+    const hadCompositionInput =
+      compositionInputRef.current || event.data.length > 0;
     compositionInputRef.current = false;
     if (hadCompositionInput) queueMicrotask(openSuggestionsForInsertedHash);
   }
 
   if (!editor) {
-    return <div className="min-h-72 animate-pulse rounded-xl bg-muted/35" aria-label="本文を準備中" />;
+    return (
+      <div
+        className="min-h-72 animate-pulse rounded-xl bg-muted/35"
+        aria-label="本文を準備中"
+      />
+    );
   }
 
   return (
@@ -210,38 +229,51 @@ export function BodyEditor({ card, cards, onChange, onOpenCard }: Props) {
         onInput={handleInput}
         onCompositionEnd={handleCompositionEnd}
         onClick={(event) => {
-          const element = (event.target as HTMLElement).closest<HTMLElement>('[data-card-link-id]');
+          if (!(event.target instanceof Element)) return;
+          const element = event.target.closest<HTMLElement>(
+            '[data-card-link-id]',
+          );
           const targetCardId = element?.dataset.cardLinkId;
           if (targetCardId) onOpenCard(targetCardId);
         }}
       />
 
       {suggestionOpen && (
-        <div
-          className="absolute left-0 top-12 z-20 w-full max-w-sm rounded-xl border bg-popover p-1.5 shadow-xl"
-        >
+        <div className="absolute left-0 top-12 z-20 w-full max-w-sm rounded-xl border bg-popover p-1.5 shadow-xl">
           <p className="px-2 py-1.5 text-xs text-muted-foreground">
             リンクするカードを選択
           </p>
           <div className="max-h-56 overflow-y-auto">
             {candidates.length === 0 ? (
-              <p className="px-2 py-4 text-sm text-muted-foreground">ほかのカードがありません</p>
+              <p className="px-2 py-4 text-sm text-muted-foreground">
+                ほかのカードがありません
+              </p>
             ) : (
-              <ul aria-label="リンクするカードを選ぶ" data-testid="link-candidates">
+              <ul
+                aria-label="リンクするカードを選ぶ"
+                data-testid="link-candidates"
+              >
                 {candidates.map((candidate, index) => (
                   <li key={candidate.id}>
                     <button
                       type="button"
-                      aria-current={index === activeCandidate ? 'true' : undefined}
+                      aria-current={
+                        index === activeCandidate ? 'true' : undefined
+                      }
                       className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-muted aria-[current=true]:bg-muted"
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => insertCandidate(candidate)}
                     >
-                      <Link2 aria-hidden="true" className="size-3.5 shrink-0 text-[color:var(--link-foreground)]" />
+                      <Link2
+                        aria-hidden="true"
+                        className="size-3.5 shrink-0 text-[color:var(--link-foreground)]"
+                      />
                       <span className="font-mono text-xs font-semibold">
                         {formatDisplayId(candidate.displayId)}
                       </span>
-                      <span className="truncate">{visibleTitle(candidate.title)}</span>
+                      <span className="truncate">
+                        {visibleTitle(candidate.title)}
+                      </span>
                     </button>
                   </li>
                 ))}
@@ -251,7 +283,11 @@ export function BodyEditor({ card, cards, onChange, onOpenCard }: Props) {
         </div>
       )}
 
-      <div className="mt-8 flex items-center gap-1 border-t border-border/70 pt-4" role="toolbar" aria-label="編集履歴">
+      <div
+        className="mt-8 flex items-center gap-1 border-t border-border/70 pt-4"
+        role="toolbar"
+        aria-label="編集履歴"
+      >
         <Button
           type="button"
           variant="ghost"

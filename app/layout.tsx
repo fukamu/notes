@@ -7,7 +7,8 @@ export const metadata: Metadata = {
       'https://fukamu-notes-cards.matoruru.chatgpt.site',
   ),
   title: 'FUKAMU Notes',
-  description: '紙のカードをめくるように、考えを書き、つなげるローカルファーストノート',
+  description:
+    '紙のカードをめくるように、考えを書き、つなげるローカルファーストノート',
   applicationName: 'FUKAMU Notes',
   icons: { icon: '/favicon.svg' },
   manifest: '/manifest.webmanifest',
@@ -24,7 +25,11 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="ja">
       <body>{children}</body>

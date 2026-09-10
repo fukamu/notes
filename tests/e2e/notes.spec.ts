@@ -331,7 +331,9 @@ test('inline card links, Backspace, Undo/Redo, shortcuts and plain hashtag input
   await expect(current).toContainText(targetTitle);
   const isAtStartPosition = await current.evaluate((element) => {
     const item = element.getBoundingClientRect();
-    const list = element.parentElement!.getBoundingClientRect();
+    const parent = element.parentElement;
+    if (!parent) return false;
+    const list = parent.getBoundingClientRect();
     return item.top >= list.top && item.bottom <= list.bottom;
   });
   expect(isAtStartPosition).toBe(true);
@@ -426,9 +428,11 @@ test('global directed graph is safe and operable for the reported and cyclic fix
   await expect(currentNode).toHaveAttribute('aria-current', 'true');
   const currentIsInitiallyVisible = await currentNode.evaluate((element) => {
     const node = element.getBoundingClientRect();
-    const viewport = element
-      .closest('[data-testid="connections-graph"]')!
-      .getBoundingClientRect();
+    const viewportElement = element.closest(
+      '[data-testid="connections-graph"]',
+    );
+    if (!viewportElement) return false;
+    const viewport = viewportElement.getBoundingClientRect();
     return (
       node.left >= viewport.left &&
       node.right <= viewport.right &&
@@ -447,7 +451,9 @@ test('global directed graph is safe and operable for the reported and cyclic fix
       .getByTestId('connection-edge-section')
       .evaluateAll((paths) =>
         paths.reduce(
-          (total, path) => total + (path as SVGPathElement).getTotalLength(),
+          (total, path) =>
+            total +
+            (path instanceof SVGPathElement ? path.getTotalLength() : 0),
           0,
         ),
       );

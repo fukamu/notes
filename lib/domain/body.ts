@@ -40,10 +40,18 @@ export function bodyToPlainText(
 
 export function outgoingCardIds(body: BodySegment[]): string[] {
   return body
-    .filter((segment): segment is Extract<BodySegment, { type: 'link' }> => segment.type === 'link')
+    .filter(
+      (segment): segment is Extract<BodySegment, { type: 'link' }> =>
+        segment.type === 'link',
+    )
     .map((segment) => segment.targetCardId);
 }
 
-export function linkCandidates(cards: CardRecord[], currentCardId: string): CardRecord[] {
-  return sortCardsByDisplayId(cards).filter((card) => card.id !== currentCardId);
+export function linkCandidates(
+  cards: CardRecord[],
+  currentCardId: string,
+): CardRecord[] {
+  return sortCardsByDisplayId(cards).filter(
+    (card) => card.id !== currentCardId,
+  );
 }

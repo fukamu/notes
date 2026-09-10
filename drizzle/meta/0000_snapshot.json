@@ -32,9 +32,7 @@
       "indexes": {
         "idx_card_mutations_card_id": {
           "name": "idx_card_mutations_card_id",
-          "columns": [
-            "card_id"
-          ],
+          "columns": ["card_id"],
           "isUnique": false
         }
       },
@@ -106,9 +104,7 @@
       "indexes": {
         "idx_cards_display_id": {
           "name": "idx_cards_display_id",
-          "columns": [
-            "display_id"
-          ],
+          "columns": ["display_id"],
           "isUnique": true
         }
       },
@@ -180,9 +176,7 @@
       "indexes": {
         "idx_conflicts_card_id": {
           "name": "idx_conflicts_card_id",
-          "columns": [
-            "card_id"
-          ],
+          "columns": ["card_id"],
           "isUnique": false
         }
       },

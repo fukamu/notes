@@ -1,4 +1,8 @@
-import type { BodySegment, ConflictRecord, PendingMutation } from '@/lib/domain/types';
+import type {
+  BodySegment,
+  ConflictRecord,
+  PendingMutation,
+} from '@/lib/domain/types';
 import type { ServerCard, SyncResponse } from '@/lib/sync/protocol';
 
 type CardRow = {
@@ -67,10 +71,15 @@ function parseBody(value: string): BodySegment[] {
 }
 
 export async function ensureSyncSchema(database: D1Database): Promise<void> {
-  await database.batch(schemaStatements.map((statement) => database.prepare(statement)));
+  await database.batch(
+    schemaStatements.map((statement) => database.prepare(statement)),
+  );
 }
 
-async function mutationWasApplied(database: D1Database, mutationId: string): Promise<boolean> {
+async function mutationWasApplied(
+  database: D1Database,
+  mutationId: string,
+): Promise<boolean> {
   const existing = await database
     .prepare('SELECT id FROM card_mutations WHERE id = ?')
     .bind(mutationId)
@@ -78,7 +87,10 @@ async function mutationWasApplied(database: D1Database, mutationId: string): Pro
   return Boolean(existing);
 }
 
-async function readCard(database: D1Database, cardId: string): Promise<CardRow | null> {
+async function readCard(
+  database: D1Database,
+  cardId: string,
+): Promise<CardRow | null> {
   return database
     .prepare(
       `SELECT id, display_id, title, body_json, revision, created_at, updated_at
@@ -88,7 +100,10 @@ async function readCard(database: D1Database, cardId: string): Promise<CardRow |
     .first<CardRow>();
 }
 
-async function createCard(database: D1Database, mutation: PendingMutation): Promise<void> {
+async function createCard(
+  database: D1Database,
+  mutation: PendingMutation,
+): Promise<void> {
   await database.batch([
     database
       .prepare(
@@ -108,7 +123,9 @@ async function createCard(database: D1Database, mutation: PendingMutation): Prom
       'UPDATE sync_state SET next_display_id = next_display_id + 1 WHERE singleton = 1',
     ),
     database
-      .prepare('INSERT INTO card_mutations(id, card_id, created_at) VALUES (?, ?, ?)')
+      .prepare(
+        'INSERT INTO card_mutations(id, card_id, created_at) VALUES (?, ?, ?)',
+      )
       .bind(mutation.mutationId, mutation.cardId, Date.now()),
   ]);
 }
@@ -137,7 +154,9 @@ async function updateCard(
           .bind(conflictId, mutation.cardId),
       ),
       database
-        .prepare('INSERT INTO card_mutations(id, card_id, created_at) VALUES (?, ?, ?)')
+        .prepare(
+          'INSERT INTO card_mutations(id, card_id, created_at) VALUES (?, ?, ?)',
+        )
         .bind(mutation.mutationId, mutation.cardId, Date.now()),
     ];
     await database.batch(statements);
@@ -180,12 +199,17 @@ async function updateCard(
         mutation.mutationId,
       ),
     database
-      .prepare('INSERT INTO card_mutations(id, card_id, created_at) VALUES (?, ?, ?)')
+      .prepare(
+        'INSERT INTO card_mutations(id, card_id, created_at) VALUES (?, ?, ?)',
+      )
       .bind(mutation.mutationId, mutation.cardId, Date.now()),
   ]);
 }
 
-async function applyMutation(database: D1Database, mutation: PendingMutation): Promise<void> {
+async function applyMutation(
+  database: D1Database,
+  mutation: PendingMutation,
+): Promise<void> {
   if (await mutationWasApplied(database, mutation.mutationId)) return;
   const current = await readCard(database, mutation.cardId);
   if (current) {
@@ -209,7 +233,9 @@ export async function synchronize(
   await ensureSyncSchema(database);
   const acknowledgedMutationIds: string[] = [];
   const ordered = [...mutations].sort(
-    (left, right) => left.cardId.localeCompare(right.cardId) || left.mutationId.localeCompare(right.mutationId),
+    (left, right) =>
+      left.cardId.localeCompare(right.cardId) ||
+      left.mutationId.localeCompare(right.mutationId),
   );
 
   for (const mutation of ordered) {

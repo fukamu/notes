@@ -9,7 +9,8 @@ function isBody(value: unknown): value is BodySegment[] {
   return (
     Array.isArray(value) &&
     value.every((segment) => {
-      if (!segment || typeof segment !== 'object' || !('type' in segment)) return false;
+      if (!segment || typeof segment !== 'object' || !('type' in segment))
+        return false;
       if (segment.type === 'text') {
         return 'text' in segment && typeof segment.text === 'string';
       }
@@ -33,7 +34,8 @@ function isMutation(value: unknown): value is PendingMutation {
     isUuidV7(mutation.cardId) &&
     (mutation.kind === 'upsert' || mutation.kind === 'resolve') &&
     (mutation.baseServerRevision === null ||
-      (Number.isInteger(mutation.baseServerRevision) && mutation.baseServerRevision! > 0)) &&
+      (Number.isInteger(mutation.baseServerRevision) &&
+        mutation.baseServerRevision! > 0)) &&
     typeof mutation.title === 'string' &&
     isBody(mutation.body) &&
     typeof mutation.createdAt === 'number' &&
@@ -45,7 +47,10 @@ function isMutation(value: unknown): value is PendingMutation {
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const input = (await request.json()) as { deviceId?: unknown; mutations?: unknown };
+    const input = (await request.json()) as {
+      deviceId?: unknown;
+      mutations?: unknown;
+    };
     if (
       typeof input.deviceId !== 'string' ||
       !isUuidV7(input.deviceId) ||
@@ -53,11 +58,16 @@ export async function POST(request: Request): Promise<Response> {
       input.mutations.length > 500 ||
       !input.mutations.every(isMutation)
     ) {
-      return Response.json({ error: '同期データが正しくありません。' }, { status: 400 });
+      return Response.json(
+        { error: '同期データが正しくありません。' },
+        { status: 400 },
+      );
     }
 
     const response = await synchronize(env.DB, input.mutations);
-    return Response.json(response, { headers: { 'Cache-Control': 'no-store' } });
+    return Response.json(response, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
   } catch (error) {
     console.error('sync failed', error);
     return Response.json(

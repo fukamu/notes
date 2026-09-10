@@ -6,7 +6,10 @@ export function segmentsToEditorDocument(segments: BodySegment[]): JSONContent {
   const content: JSONContent[] = [];
   for (const segment of segments) {
     if (segment.type === 'link') {
-      content.push({ type: 'cardLink', attrs: { targetCardId: segment.targetCardId } });
+      content.push({
+        type: 'cardLink',
+        attrs: { targetCardId: segment.targetCardId },
+      });
       continue;
     }
 
@@ -31,7 +34,10 @@ export function editorDocumentToSegments(document: JSONContent): BodySegment[] {
         segments.push({ type: 'text', text: node.text });
       } else if (node.type === 'hardBreak') {
         segments.push({ type: 'text', text: '\n' });
-      } else if (node.type === 'cardLink' && typeof node.attrs?.targetCardId === 'string') {
+      } else if (
+        node.type === 'cardLink' &&
+        typeof node.attrs?.targetCardId === 'string'
+      ) {
         segments.push({ type: 'link', targetCardId: node.attrs.targetCardId });
       }
     }

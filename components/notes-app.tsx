@@ -16,7 +16,11 @@ import { BodyEditor } from '@/components/body-editor';
 import { ConflictNotice } from '@/components/conflict-notice';
 import { ConnectionsView } from '@/components/connections-view';
 import { HistoryView } from '@/components/history-view';
-import { NotesProvider, useNotes, type NotesView } from '@/lib/client/notes-store';
+import {
+  NotesProvider,
+  useNotes,
+  type NotesView,
+} from '@/lib/client/notes-store';
 import { formatDisplayId } from '@/lib/domain/display-id';
 
 function StatusIndicator() {
@@ -30,10 +34,14 @@ function StatusIndicator() {
     icon = <TriangleAlert aria-hidden="true" className="size-3.5" />;
   } else if (saveState === 'saving') {
     label = '保存中';
-    icon = <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" />;
+    icon = (
+      <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" />
+    );
   } else if (syncState === 'syncing') {
     label = '同期中';
-    icon = <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" />;
+    icon = (
+      <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" />
+    );
   } else if (syncState === 'offline') {
     label = 'オフライン・端末に保存済み';
     icon = <CloudOff aria-hidden="true" className="size-3.5" />;
@@ -59,7 +67,11 @@ function StatusIndicator() {
   );
 }
 
-const navigation: { view: NotesView; label: string; icon: typeof NotebookPen }[] = [
+const navigation: {
+  view: NotesView;
+  label: string;
+  icon: typeof NotebookPen;
+}[] = [
   { view: 'card', label: 'カード', icon: NotebookPen },
   { view: 'history', label: '過去のカード', icon: History },
   { view: 'connections', label: 'つながり', icon: Network },
@@ -103,7 +115,11 @@ function EmptyState() {
       <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
         タイトルも本文も空のままで構いません。作成した瞬間から、この端末に保存されます。
       </p>
-      <Button className="mt-6 rounded-full" size="lg" onClick={() => void createCard()}>
+      <Button
+        className="mt-6 rounded-full"
+        size="lg"
+        onClick={() => void createCard()}
+      >
         <Plus aria-hidden="true" /> 新しいカード
       </Button>
     </section>
@@ -111,9 +127,18 @@ function EmptyState() {
 }
 
 function CardView() {
-  const { cards, conflicts, currentCard, selectCard, updateCard, resolveConflict } = useNotes();
+  const {
+    cards,
+    conflicts,
+    currentCard,
+    selectCard,
+    updateCard,
+    resolveConflict,
+  } = useNotes();
   if (!currentCard) return <EmptyState />;
-  const currentConflicts = conflicts.filter((conflict) => conflict.cardId === currentCard.id);
+  const currentConflicts = conflicts.filter(
+    (conflict) => conflict.cardId === currentCard.id,
+  );
 
   return (
     <section className="mx-auto w-full max-w-3xl" aria-label="カード編集">
@@ -140,7 +165,9 @@ function CardView() {
         <input
           aria-label="カードのタイトル"
           value={currentCard.title}
-          onChange={(event) => updateCard(currentCard.id, { title: event.target.value })}
+          onChange={(event) =>
+            updateCard(currentCard.id, { title: event.target.value })
+          }
           className="mb-6 w-full bg-transparent font-heading text-3xl font-semibold tracking-tight outline-none placeholder:text-muted-foreground/55"
           placeholder="Untitled"
           data-testid="card-title"
@@ -172,7 +199,8 @@ function NotesSurface() {
     return (
       <main className="grid min-h-dvh place-items-center text-sm text-muted-foreground">
         <span className="inline-flex items-center gap-2">
-          <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> カードを開いています
+          <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />{' '}
+          カードを開いています
         </span>
       </main>
     );
@@ -183,10 +211,18 @@ function NotesSurface() {
       <header className="sticky top-0 z-30 border-b border-border/80 bg-background/92 px-4 py-3 backdrop-blur sm:px-8">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
           <div>
-            <p className="font-heading text-lg font-semibold tracking-[0.08em]">FUKAMU Notes</p>
-            <p className="hidden text-xs text-muted-foreground sm:block">一枚ずつ、考えを深める</p>
+            <p className="font-heading text-lg font-semibold tracking-[0.08em]">
+              FUKAMU Notes
+            </p>
+            <p className="hidden text-xs text-muted-foreground sm:block">
+              一枚ずつ、考えを深める
+            </p>
           </div>
-          <Button className="rounded-full" onClick={() => void createCard()} data-testid="new-card">
+          <Button
+            className="rounded-full"
+            onClick={() => void createCard()}
+            data-testid="new-card"
+          >
             <Plus aria-hidden="true" /> 新しいカード
           </Button>
         </div>
@@ -196,10 +232,18 @@ function NotesSurface() {
         <div className="min-w-0">
           {view === 'card' && <CardView />}
           {view === 'history' && (
-            <HistoryView cards={cards} currentCardId={currentCardId} onSelect={selectCard} />
+            <HistoryView
+              cards={cards}
+              currentCardId={currentCardId}
+              onSelect={selectCard}
+            />
           )}
           {view === 'connections' && currentCard && (
-            <ConnectionsView cards={cards} currentCardId={currentCard.id} onSelect={selectCard} />
+            <ConnectionsView
+              cards={cards}
+              currentCardId={currentCard.id}
+              onSelect={selectCard}
+            />
           )}
         </div>
         <Navigation />

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["esnext"],
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": [
+    "app/api/**/*.ts",
+    "db/**/*.ts",
+    "lib/domain/**/*.ts",
+    "lib/sync/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}
