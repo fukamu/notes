@@ -4,7 +4,11 @@ export async function prepareOfflineApp(): Promise<void> {
   await navigator.serviceWorker.ready;
   if (!navigator.serviceWorker.controller) {
     await new Promise<void>((resolve) => {
-      navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true });
+      navigator.serviceWorker.addEventListener(
+        'controllerchange',
+        () => resolve(),
+        { once: true },
+      );
     });
   }
 

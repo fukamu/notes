@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildConnectionsGraph } from '@/lib/domain/graph';
 import type { CardRecord } from '@/lib/domain/types';
+import { invariant } from '@/lib/shared/invariant';
 import {
   CONNECTIONS_LAYOUT_OPTIONS,
   layoutConnectionsGraph,
@@ -87,15 +88,19 @@ const fixtures: Fixture[] = [
 
 function fixtureGraph(fixture: Fixture) {
   const outgoing = new Map(fixture.nodes.map((id) => [id, [] as string[]]));
-  for (const [source, target] of fixture.edges)
-    outgoing.get(source)!.push(target);
+  for (const [source, target] of fixture.edges) {
+    const targets = outgoing.get(source);
+    invariant(targets, `Fixture is missing source ${source}`);
+    targets.push(target);
+  }
   const cards: CardRecord[] = fixture.nodes.map((id, index) => ({
     id,
     displayId: { kind: 'official', value: index + 1 },
     title: id,
-    body: outgoing
-      .get(id)!
-      .map((targetCardId) => ({ type: 'link', targetCardId })),
+    body: (outgoing.get(id) ?? []).map((targetCardId) => ({
+      type: 'link',
+      targetCardId,
+    })),
     createdAt: index,
     updatedAt: index,
     localRevision: 1,
@@ -198,10 +203,16 @@ function expectEdgePortsApplied(layout: ConnectionsLayout) {
     ),
   );
   for (const edge of layout.edges) {
-    const sourcePort = ports.get(edge.sourcePortId)!;
-    const targetPort = ports.get(edge.targetPortId)!;
-    const start = edge.sections[0].startPoint;
-    const end = edge.sections.at(-1)!.endPoint;
+    const sourcePort = ports.get(edge.sourcePortId);
+    const targetPort = ports.get(edge.targetPortId);
+    const firstSection = edge.sections[0];
+    const lastSection = edge.sections.at(-1);
+    invariant(sourcePort, `Missing source port ${edge.sourcePortId}`);
+    invariant(targetPort, `Missing target port ${edge.targetPortId}`);
+    invariant(firstSection, `Missing first section for ${edge.id}`);
+    invariant(lastSection, `Missing last section for ${edge.id}`);
+    const start = firstSection.startPoint;
+    const end = lastSection.endPoint;
 
     expect(sourcePort.side).toBe('EAST');
     expect(targetPort.side).toBe('WEST');
@@ -217,7 +228,11 @@ function expectEdgePortsApplied(layout: ConnectionsLayout) {
 function expectNoNodeOrEdgeIntrusions(layout: ConnectionsLayout) {
   for (let left = 0; left < layout.nodes.length; left += 1) {
     for (let right = left + 1; right < layout.nodes.length; right += 1) {
-      expect(overlaps(layout.nodes[left], layout.nodes[right])).toBe(false);
+      const leftNode = layout.nodes[left];
+      const rightNode = layout.nodes[right];
+      invariant(leftNode, `Missing layout node ${left}`);
+      invariant(rightNode, `Missing layout node ${right}`);
+      expect(overlaps(leftNode, rightNode)).toBe(false);
     }
   }
 
@@ -227,10 +242,12 @@ function expectNoNodeOrEdgeIntrusions(layout: ConnectionsLayout) {
     );
     for (const points of sectionPoints(edge)) {
       for (let index = 1; index < points.length; index += 1) {
+        const start = points[index - 1];
+        const end = points[index];
+        invariant(start, `Missing segment start ${index - 1}`);
+        invariant(end, `Missing segment end ${index}`);
         for (const node of otherNodes) {
-          expect(
-            segmentCrossesRectInterior(points[index - 1], points[index], node),
-          ).toBe(false);
+          expect(segmentCrossesRectInterior(start, end, node)).toBe(false);
         }
       }
     }
@@ -262,7 +279,9 @@ describe('ELK connections layout', () => {
       expectNoNodeOrEdgeIntrusions(first);
       expectEdgePortsApplied(first);
       for (const edge of first.edges) {
-        expect(edge.sections[0].incomingShape).toBe(edge.sourcePortId);
+        const firstSection = edge.sections[0];
+        invariant(firstSection, `Missing section for ${edge.id}`);
+        expect(firstSection.incomingShape).toBe(edge.sourcePortId);
         expect(edge.sections.at(-1)?.outgoingShape).toBe(edge.targetPortId);
       }
     });
@@ -281,13 +300,16 @@ describe('ELK connections layout', () => {
     const layout = await layoutConnectionsGraph(graph);
     const self = layout.edges.find(
       (edge) => edge.sourceCardId === 'A' && edge.targetCardId === 'A',
-    )!;
+    );
     const forward = layout.edges.find(
       (edge) => edge.sourceCardId === 'A' && edge.targetCardId === 'B',
-    )!;
+    );
     const backward = layout.edges.find(
       (edge) => edge.sourceCardId === 'B' && edge.targetCardId === 'A',
-    )!;
+    );
+    invariant(self, 'Missing self edge');
+    invariant(forward, 'Missing forward edge');
+    invariant(backward, 'Missing backward edge');
     const signature = (edge: ConnectionsLayoutEdge) =>
       JSON.stringify(sectionPoints(edge));
 

@@ -21,10 +21,16 @@ export function HistoryView({ cards, currentCardId, onSelect }: Props) {
   }, [currentCardId]);
 
   return (
-    <section className="mx-auto w-full max-w-3xl" aria-labelledby="history-heading">
+    <section
+      className="mx-auto w-full max-w-3xl"
+      aria-labelledby="history-heading"
+    >
       <div className="mb-5">
         <p className="eyebrow">CARD STACK</p>
-        <h1 id="history-heading" className="font-heading text-2xl font-semibold">
+        <h1
+          id="history-heading"
+          className="font-heading text-2xl font-semibold"
+        >
           過去のカード
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -37,7 +43,9 @@ export function HistoryView({ cards, currentCardId, onSelect }: Props) {
       >
         {ordered.map((card) => {
           const current = card.id === currentCardId;
-          const preview = bodyToPlainText(card.body, cards).replace(/\s+/g, ' ').trim();
+          const preview = bodyToPlainText(card.body, cards)
+            .replace(/\s+/g, ' ')
+            .trim();
           return (
             <button
               key={card.id}
@@ -60,7 +68,10 @@ export function HistoryView({ cards, currentCardId, onSelect }: Props) {
                   {preview || '本文はまだありません'}
                 </span>
               </span>
-              <ArrowRight aria-hidden="true" className="mt-1 size-4 text-muted-foreground transition group-hover:translate-x-1" />
+              <ArrowRight
+                aria-hidden="true"
+                className="mt-1 size-4 text-muted-foreground transition group-hover:translate-x-1"
+              />
             </button>
           );
         })}

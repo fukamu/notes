@@ -7,7 +7,10 @@ const listeners = new Set<() => void>();
 export function setCardLabels(cards: CardRecord[]): void {
   labels.clear();
   for (const card of cards) {
-    labels.set(card.id, `${formatDisplayId(card.displayId)} ${visibleTitle(card.title)}`);
+    labels.set(
+      card.id,
+      `${formatDisplayId(card.displayId)} ${visibleTitle(card.title)}`,
+    );
   }
   for (const listener of listeners) listener();
 }

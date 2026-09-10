@@ -16,16 +16,24 @@ let databasePromise: Promise<IDBDatabase> | undefined;
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
-    request.addEventListener('success', () => resolve(request.result), { once: true });
-    request.addEventListener('error', () => reject(request.error), { once: true });
+    request.addEventListener('success', () => resolve(request.result), {
+      once: true,
+    });
+    request.addEventListener('error', () => reject(request.error), {
+      once: true,
+    });
   });
 }
 
 function transactionComplete(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     transaction.addEventListener('complete', () => resolve(), { once: true });
-    transaction.addEventListener('abort', () => reject(transaction.error), { once: true });
-    transaction.addEventListener('error', () => reject(transaction.error), { once: true });
+    transaction.addEventListener('abort', () => reject(transaction.error), {
+      once: true,
+    });
+    transaction.addEventListener('error', () => reject(transaction.error), {
+      once: true,
+    });
   });
 }
 
@@ -48,8 +56,12 @@ export function openNotesDatabase(): Promise<IDBDatabase> {
         database.createObjectStore('meta', { keyPath: 'key' });
       }
     });
-    request.addEventListener('success', () => resolve(request.result), { once: true });
-    request.addEventListener('error', () => reject(request.error), { once: true });
+    request.addEventListener('success', () => resolve(request.result), {
+      once: true,
+    });
+    request.addEventListener('error', () => reject(request.error), {
+      once: true,
+    });
   });
   return databasePromise;
 }
@@ -76,7 +88,9 @@ export async function loadOrCreateDeviceId(): Promise<string> {
   const database = await openNotesDatabase();
   const transaction = database.transaction('meta', 'readwrite');
   const store = transaction.objectStore('meta');
-  const existing = (await requestResult(store.get('deviceId'))) as MetaRecord | undefined;
+  const existing = (await requestResult(store.get('deviceId'))) as
+    | MetaRecord
+    | undefined;
   if (existing) return existing.value;
   const value = createInternalId();
   store.put({ key: 'deviceId', value } satisfies MetaRecord);
@@ -125,8 +139,12 @@ export async function applySyncResponse(
     mutationStore.getAll(),
   )) as PendingMutation[];
   const acknowledged = new Set(response.acknowledgedMutationIds);
-  const sentByCard = new Map(sentMutations.map((mutation) => [mutation.cardId, mutation]));
-  const pendingByCard = new Map(currentMutations.map((mutation) => [mutation.cardId, mutation]));
+  const sentByCard = new Map(
+    sentMutations.map((mutation) => [mutation.cardId, mutation]),
+  );
+  const pendingByCard = new Map(
+    currentMutations.map((mutation) => [mutation.cardId, mutation]),
+  );
 
   for (const mutation of currentMutations) {
     if (acknowledged.has(mutation.mutationId)) {
@@ -194,6 +212,8 @@ export async function clearNotesDatabaseForTests(): Promise<void> {
     const request = indexedDB.deleteDatabase(DATABASE_NAME);
     request.addEventListener('success', () => resolve(), { once: true });
     request.addEventListener('blocked', () => resolve(), { once: true });
-    request.addEventListener('error', () => reject(request.error), { once: true });
+    request.addEventListener('error', () => reject(request.error), {
+      once: true,
+    });
   });
 }

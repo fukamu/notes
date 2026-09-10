@@ -1,4 +1,10 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 export const syncState = sqliteTable('sync_state', {
   singleton: integer('singleton').primaryKey(),

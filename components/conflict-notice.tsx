@@ -3,7 +3,11 @@
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { bodyToPlainText } from '@/lib/domain/body';
-import { visibleTitle, type CardRecord, type ConflictRecord } from '@/lib/domain/types';
+import {
+  visibleTitle,
+  type CardRecord,
+  type ConflictRecord,
+} from '@/lib/domain/types';
 
 type Props = {
   conflict: ConflictRecord;
@@ -13,9 +17,15 @@ type Props = {
 
 export function ConflictNotice({ conflict, cards, onResolve }: Props) {
   return (
-    <aside className="mb-5 rounded-xl border border-amber-500/35 bg-amber-50/80 p-4 text-sm text-amber-950" role="alert">
+    <aside
+      className="mb-5 rounded-xl border border-amber-500/35 bg-amber-50/80 p-4 text-sm text-amber-950"
+      role="alert"
+    >
       <div className="flex items-start gap-3">
-        <AlertTriangle aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-amber-700" />
+        <AlertTriangle
+          aria-hidden="true"
+          className="mt-0.5 size-5 shrink-0 text-amber-700"
+        />
         <div className="min-w-0 flex-1">
           <p className="font-semibold">別の端末の編集と重なりました</p>
           <p className="mt-1 text-xs leading-5 text-amber-900/75">

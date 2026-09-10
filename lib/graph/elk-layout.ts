@@ -8,6 +8,7 @@ import type {
   ElkPort,
 } from 'elkjs/lib/elk-api.js';
 import type { ConnectionsGraph, DirectedEdge } from '@/lib/domain/graph';
+import { invariant } from '@/lib/shared/invariant';
 
 export const CONNECTION_NODE_WIDTH = 196;
 export const CONNECTION_NODE_HEIGHT = 72;
@@ -134,24 +135,28 @@ function elkGraph(graph: ConnectionsGraph, inputs: EdgeInput[]): ElkNode {
     graph.nodes.map((node) => [node.card.id, []]),
   );
   for (const edge of inputs) {
-    portsByNode
-      .get(edge.sourceCardId)!
-      .push(elkPort(edge.sourcePortId, 'EAST'));
-    portsByNode
-      .get(edge.targetCardId)!
-      .push(elkPort(edge.targetPortId, 'WEST'));
+    const sourcePorts = portsByNode.get(edge.sourceCardId);
+    const targetPorts = portsByNode.get(edge.targetCardId);
+    invariant(sourcePorts, `Missing source node ${edge.sourceCardId}`);
+    invariant(targetPorts, `Missing target node ${edge.targetCardId}`);
+    sourcePorts.push(elkPort(edge.sourcePortId, 'EAST'));
+    targetPorts.push(elkPort(edge.targetPortId, 'WEST'));
   }
 
   return {
     id: 'connections-root',
     layoutOptions: CONNECTIONS_LAYOUT_OPTIONS,
-    children: graph.nodes.map((node) => ({
-      id: node.card.id,
-      width: CONNECTION_NODE_WIDTH,
-      height: CONNECTION_NODE_HEIGHT,
-      ports: portsByNode.get(node.card.id),
-      layoutOptions: { 'elk.portConstraints': 'FIXED_SIDE' },
-    })),
+    children: graph.nodes.map((node) => {
+      const ports = portsByNode.get(node.card.id);
+      invariant(ports, `Missing ports for node ${node.card.id}`);
+      return {
+        id: node.card.id,
+        width: CONNECTION_NODE_WIDTH,
+        height: CONNECTION_NODE_HEIGHT,
+        ports,
+        layoutOptions: { 'elk.portConstraints': 'FIXED_SIDE' },
+      };
+    }),
     edges: inputs.map(
       (edge): ElkExtendedEdge => ({
         id: edge.id,
@@ -170,8 +175,12 @@ function layoutSection(section: ElkEdgeSection): ConnectionsLayoutSection {
       requiredPoint(point, `${section.id}.bendPoints[${index}]`),
     ),
     endPoint: requiredPoint(section.endPoint, `${section.id}.endPoint`),
-    incomingShape: section.incomingShape,
-    outgoingShape: section.outgoingShape,
+    ...(section.incomingShape === undefined
+      ? {}
+      : { incomingShape: section.incomingShape }),
+    ...(section.outgoingShape === undefined
+      ? {}
+      : { outgoingShape: section.outgoingShape }),
   };
 }
 

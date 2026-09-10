@@ -1,4 +1,5 @@
 import { outgoingCardIds } from './body';
+import { invariant } from '@/lib/shared/invariant';
 import type { CardRecord } from './types';
 
 export type ConnectionsNode = {
@@ -39,9 +40,13 @@ export function buildConnectionsGraph(cards: CardRecord[]): ConnectionsGraph {
         byId.has(targetCardId),
       ),
     );
-    const sortedTargetIds = [...targetIds].sort(
-      (left, right) => cardOrder.get(left)! - cardOrder.get(right)!,
-    );
+    const sortedTargetIds = [...targetIds].sort((left, right) => {
+      const leftOrder = cardOrder.get(left);
+      const rightOrder = cardOrder.get(right);
+      invariant(leftOrder, `Missing graph order for card ${left}`);
+      invariant(rightOrder, `Missing graph order for card ${right}`);
+      return leftOrder - rightOrder;
+    });
     for (const targetCardId of sortedTargetIds) {
       edges.push({ sourceCardId: source.id, targetCardId });
     }

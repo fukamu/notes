@@ -1,4 +1,8 @@
-import type { BodySegment, ConflictRecord, PendingMutation } from '@/lib/domain/types';
+import type {
+  BodySegment,
+  ConflictRecord,
+  PendingMutation,
+} from '@/lib/domain/types';
 
 export type ClientMutation = PendingMutation;
 

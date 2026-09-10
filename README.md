@@ -47,17 +47,19 @@ ChatGPT Site版は [fukamu-notes-cards.matoruru.chatgpt.site](https://fukamu-not
 ## テスト
 
 ```bash
+npm run format:check
 npm run typecheck
 npm run lint
 npm run test
 npm run test:coverage
 npm run build
 npm run test:e2e
+npm run verify
 ```
 
 `npm run test:e2e` は本番ビルド相当のローカルサーバーを自動起動し、デスクトップChromeとPixel 7相当のChromiumで検証します。対象はオフライン作成、自動保存、再読み込み、再接続、別端末同期、仮番号から正式番号への変更、重複仮番号と遅延到着、本文リンク、Undo / Redo、一覧、全カードの一方向リンク可視化、現在カードの初期表示、キーボード／タッチ操作、循環・自己リンク・相互リンク、競合保持です。
 
-`npm run check` では型検査、静的検査、単体テスト、本番ビルドをまとめて実行します。
+`npm run check` では全runtimeの型検査、静的検査、単体テスト、本番ビルドをまとめて実行します。`npm run verify` はCIと共通の入口で、format check、`check`、Desktop Chrome／Pixel 7相当のE2Eを実行します。型検査のruntime分離、trust boundary、assertion方針、段階的なunsafe lint／codec導入は [型安全の境界と検査](docs/type-safety.md) を参照してください。検証はlocal fixture／emulatorのみを使い、本番D1や本番データへ接続しません。
 
 ## オフライン条件
 
@@ -87,8 +89,7 @@ npm run test:e2e
 
 ```ts
 type BodySegment =
-  | { type: 'text'; text: string }
-  | { type: 'link'; targetCardId: string };
+  { type: 'text'; text: string } | { type: 'link'; targetCardId: string };
 ```
 
 空白、改行、リンク前後の順序はテキストセグメントに保持されます。リンクが保存するのは対象カードのUUIDv7内部IDだけです。displayIdやタイトルが変わるとカプセル表示は更新されますが、参照は切れません。

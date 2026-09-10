@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createInternalId, isUuidV7 } from '@/lib/domain/id';
 import type { CardRecord } from '@/lib/domain/types';
+import { invariant } from '@/lib/shared/invariant';
 import {
   applySyncResponse,
   clearNotesDatabaseForTests,
@@ -29,6 +30,7 @@ describe('local persistence', () => {
     };
     await persistCardAndMutation(card);
     const [stored] = await loadCards();
+    invariant(stored, 'Stored card was not loaded');
     expect(stored).toEqual(card);
     expect(isUuidV7(stored.id)).toBe(true);
     expect(await loadPendingMutations()).toHaveLength(1);
@@ -46,9 +48,16 @@ describe('local persistence', () => {
       serverRevision: null,
     };
     await persistCardAndMutation(card);
-    await persistCardAndMutation({ ...card, title: '二回目', localRevision: 2, updatedAt: 2 });
+    await persistCardAndMutation({
+      ...card,
+      title: '二回目',
+      localRevision: 2,
+      updatedAt: 2,
+    });
     expect(await loadCards()).toHaveLength(1);
-    expect((await loadCards())[0].title).toBe('二回目');
+    const [stored] = await loadCards();
+    invariant(stored, 'Stored card was not loaded');
+    expect(stored.title).toBe('二回目');
     expect(await loadPendingMutations()).toHaveLength(1);
   });
 
@@ -84,8 +93,12 @@ describe('local persistence', () => {
       [],
     );
 
-    expect(result.cards[0].title).toBe('端末の新しい編集');
-    expect(result.cards[0].body).toEqual([{ type: 'text', text: '失わない本文' }]);
-    expect((await loadPendingMutations())[0].baseServerRevision).toBe(2);
+    const [storedCard] = result.cards;
+    const [storedMutation] = await loadPendingMutations();
+    invariant(storedCard, 'Synchronized card was not loaded');
+    invariant(storedMutation, 'Pending mutation was not loaded');
+    expect(storedCard.title).toBe('端末の新しい編集');
+    expect(storedCard.body).toEqual([{ type: 'text', text: '失わない本文' }]);
+    expect(storedMutation.baseServerRevision).toBe(2);
   });
 });
