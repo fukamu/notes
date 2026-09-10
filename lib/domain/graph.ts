@@ -1,9 +1,8 @@
 import { outgoingCardIds } from './body';
 import type { CardRecord } from './types';
 
-export type ReachableNode = {
+export type ConnectionsNode = {
   card: CardRecord;
-  depth: number;
 };
 
 export type DirectedEdge = {
@@ -11,42 +10,45 @@ export type DirectedEdge = {
   targetCardId: string;
 };
 
-export type ReachableGraph = {
-  nodes: ReachableNode[];
+export type ConnectionsGraph = {
+  nodes: ConnectionsNode[];
   edges: DirectedEdge[];
 };
 
-export function buildReachableGraph(cards: CardRecord[], rootCardId: string): ReachableGraph {
+function compareGraphCards(left: CardRecord, right: CardRecord): number {
+  return (
+    left.displayId.value - right.displayId.value ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+/**
+ * Builds the displayed graph exclusively from each local card's explicit
+ * outgoing links. currentCardId deliberately is not an input: the current
+ * card affects presentation and initial focus, never graph membership.
+ */
+export function buildConnectionsGraph(cards: CardRecord[]): ConnectionsGraph {
   const byId = new Map(cards.map((card) => [card.id, card]));
-  const root = byId.get(rootCardId);
-  if (!root) return { nodes: [], edges: [] };
-
-  const depths = new Map<string, number>([[root.id, 0]]);
-  const queue = [root.id];
+  const sortedCards = [...byId.values()].sort(compareGraphCards);
+  const cardOrder = new Map(sortedCards.map((card, index) => [card.id, index]));
   const edges: DirectedEdge[] = [];
-  const edgeKeys = new Set<string>();
 
-  for (let cursor = 0; cursor < queue.length; cursor += 1) {
-    const sourceId = queue[cursor];
-    const source = byId.get(sourceId)!;
-    const depth = depths.get(sourceId)!;
-
-    for (const targetId of outgoingCardIds(source.body)) {
-      if (!byId.has(targetId)) continue;
-      const edgeKey = `${sourceId}\u0000${targetId}`;
-      if (!edgeKeys.has(edgeKey)) {
-        edgeKeys.add(edgeKey);
-        edges.push({ sourceCardId: sourceId, targetCardId: targetId });
-      }
-      if (!depths.has(targetId)) {
-        depths.set(targetId, depth + 1);
-        queue.push(targetId);
-      }
+  for (const source of sortedCards) {
+    const targetIds = new Set(
+      outgoingCardIds(source.body).filter((targetCardId) =>
+        byId.has(targetCardId),
+      ),
+    );
+    const sortedTargetIds = [...targetIds].sort(
+      (left, right) => cardOrder.get(left)! - cardOrder.get(right)!,
+    );
+    for (const targetCardId of sortedTargetIds) {
+      edges.push({ sourceCardId: source.id, targetCardId });
     }
   }
 
   return {
-    nodes: queue.map((cardId) => ({ card: byId.get(cardId)!, depth: depths.get(cardId)! })),
+    nodes: sortedCards.map((card) => ({ card })),
     edges,
   };
 }
