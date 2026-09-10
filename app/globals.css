@@ -1,0 +1,171 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-body);
+  --font-heading: var(--font-heading);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+:root {
+  --font-body: "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --font-heading: "Yu Mincho", "Hiragino Mincho ProN", serif;
+  --background: oklch(0.968 0.013 82);
+  --foreground: oklch(0.25 0.02 55);
+  --card: oklch(0.993 0.007 84);
+  --card-foreground: oklch(0.25 0.02 55);
+  --popover: oklch(0.995 0.006 84);
+  --popover-foreground: oklch(0.25 0.02 55);
+  --primary: oklch(0.39 0.08 255);
+  --primary-foreground: oklch(0.985 0.006 84);
+  --secondary: oklch(0.925 0.025 78);
+  --secondary-foreground: oklch(0.31 0.025 55);
+  --muted: oklch(0.93 0.014 78);
+  --muted-foreground: oklch(0.51 0.025 55);
+  --accent: oklch(0.9 0.035 71);
+  --accent-foreground: oklch(0.38 0.05 53);
+  --destructive: oklch(0.56 0.19 28);
+  --border: oklch(0.85 0.025 77);
+  --input: oklch(0.85 0.025 77);
+  --ring: oklch(0.55 0.1 255);
+  --link-bg: oklch(0.92 0.035 252);
+  --link-border: oklch(0.73 0.075 253);
+  --link-foreground: oklch(0.37 0.09 256);
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: oklch(0.2 0.015 55);
+  --foreground: oklch(0.92 0.015 80);
+  --card: oklch(0.24 0.018 58);
+  --card-foreground: oklch(0.92 0.015 80);
+  --popover: oklch(0.24 0.018 58);
+  --popover-foreground: oklch(0.92 0.015 80);
+  --primary: oklch(0.72 0.09 252);
+  --primary-foreground: oklch(0.18 0.02 58);
+  --secondary: oklch(0.29 0.02 58);
+  --secondary-foreground: oklch(0.9 0.015 80);
+  --muted: oklch(0.28 0.017 58);
+  --muted-foreground: oklch(0.68 0.02 80);
+  --accent: oklch(0.34 0.03 65);
+  --accent-foreground: oklch(0.9 0.02 80);
+  --destructive: oklch(0.7 0.16 28);
+  --border: oklch(0.37 0.025 65);
+  --input: oklch(0.37 0.025 65);
+  --ring: oklch(0.67 0.09 252);
+  --link-bg: oklch(0.31 0.06 254);
+  --link-border: oklch(0.51 0.09 253);
+  --link-foreground: oklch(0.84 0.06 250);
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  html { @apply font-sans; }
+  body { @apply bg-background text-foreground; }
+  button { @apply cursor-pointer; }
+  button:disabled { @apply cursor-not-allowed; }
+}
+
+.paper-sheet {
+  background-image: linear-gradient(to bottom, transparent 31px, color-mix(in oklch, var(--border), transparent 58%) 32px);
+  background-size: 100% 32px;
+}
+
+.quiet-button {
+  @apply inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-35;
+}
+
+.nav-button {
+  @apply inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-left text-sm text-muted-foreground transition hover:bg-card hover:text-foreground;
+}
+
+.nav-button-active {
+  @apply bg-card font-medium text-foreground shadow-sm;
+}
+
+.eyebrow {
+  @apply mb-1 text-[10px] font-bold tracking-[0.18em] text-muted-foreground;
+}
+
+.app-navigation {
+  @apply fixed inset-x-3 bottom-3 z-30 grid grid-cols-3 gap-1 rounded-2xl border bg-card/95 p-1.5 shadow-xl backdrop-blur lg:sticky lg:top-28 lg:inset-auto lg:flex lg:h-fit lg:flex-col lg:bg-transparent lg:p-0 lg:shadow-none;
+}
+
+.app-navigation .nav-button {
+  @apply min-w-0 justify-center px-2 text-xs lg:justify-start lg:px-3 lg:text-sm;
+}
+
+.fukamu-editor {
+  @apply min-h-72 text-[1.06rem] leading-8 text-foreground/90 outline-none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.fukamu-editor p {
+  min-height: 2rem;
+}
+
+.fukamu-editor p.is-editor-empty:first-child::before {
+  color: color-mix(in oklch, var(--muted-foreground), transparent 25%);
+  content: 'ここに考えを書く。# でカードをつなぐ。';
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.card-link-capsule {
+  @apply mx-1 inline-flex cursor-pointer select-all items-center rounded-full border px-2.5 py-0.5 align-baseline font-sans text-sm font-semibold shadow-xs transition;
+  border-color: var(--link-border);
+  background: var(--link-bg);
+  color: var(--link-foreground);
+  white-space: nowrap;
+}
+
+.card-link-capsule::before {
+  content: '→';
+  margin-right: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.card-link-capsule:hover,
+.card-link-capsule.ProseMirror-selectednode {
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring), transparent 50%);
+}
+
+.history-stack {
+  scroll-padding-block: 35%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
