@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildConnectionsGraph } from '@/lib/domain/graph';
 import type { CardRecord } from '@/lib/domain/types';
 import { invariant } from '@/lib/shared/invariant';
+import { fixtureCardId } from '@/tests/fixtures/ids';
 import {
   CONNECTIONS_LAYOUT_OPTIONS,
   layoutConnectionsGraph,
@@ -94,12 +95,12 @@ function fixtureGraph(fixture: Fixture) {
     targets.push(target);
   }
   const cards: CardRecord[] = fixture.nodes.map((id, index) => ({
-    id,
+    id: fixtureCardId(id),
     displayId: { kind: 'official', value: index + 1 },
     title: id,
     body: (outgoing.get(id) ?? []).map((targetCardId) => ({
       type: 'link',
-      targetCardId,
+      targetCardId: fixtureCardId(targetCardId),
     })),
     createdAt: index,
     updatedAt: index,
@@ -273,7 +274,9 @@ describe('ELK connections layout', () => {
       const second = await layoutConnectionsGraph(graph);
 
       expect(first).toEqual(second);
-      expect(first.nodes.map((node) => node.id)).toEqual(fixture.nodes);
+      expect(first.nodes.map((node) => node.id)).toEqual(
+        fixture.nodes.map(fixtureCardId),
+      );
       expect(first.edges).toHaveLength(fixture.edges.length);
       expectFiniteLayout(first);
       expectNoNodeOrEdgeIntrusions(first);
@@ -299,13 +302,19 @@ describe('ELK connections layout', () => {
     });
     const layout = await layoutConnectionsGraph(graph);
     const self = layout.edges.find(
-      (edge) => edge.sourceCardId === 'A' && edge.targetCardId === 'A',
+      (edge) =>
+        edge.sourceCardId === fixtureCardId('A') &&
+        edge.targetCardId === fixtureCardId('A'),
     );
     const forward = layout.edges.find(
-      (edge) => edge.sourceCardId === 'A' && edge.targetCardId === 'B',
+      (edge) =>
+        edge.sourceCardId === fixtureCardId('A') &&
+        edge.targetCardId === fixtureCardId('B'),
     );
     const backward = layout.edges.find(
-      (edge) => edge.sourceCardId === 'B' && edge.targetCardId === 'A',
+      (edge) =>
+        edge.sourceCardId === fixtureCardId('B') &&
+        edge.targetCardId === fixtureCardId('A'),
     );
     invariant(self, 'Missing self edge');
     invariant(forward, 'Missing forward edge');

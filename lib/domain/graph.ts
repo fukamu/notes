@@ -1,4 +1,5 @@
 import { outgoingCardIds } from './body';
+import type { CardId } from './id';
 import { invariant } from '@/lib/shared/invariant';
 import type { CardRecord } from './types';
 
@@ -7,8 +8,8 @@ export type ConnectionsNode = {
 };
 
 export type DirectedEdge = {
-  sourceCardId: string;
-  targetCardId: string;
+  sourceCardId: CardId;
+  targetCardId: CardId;
 };
 
 export type ConnectionsGraph = {

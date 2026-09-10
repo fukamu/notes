@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildConnectionsGraph } from '@/lib/domain/graph';
 import type { CardRecord, DisplayId } from '@/lib/domain/types';
+import { fixtureCardId } from '@/tests/fixtures/ids';
 
 function card(
   id: string,
@@ -8,10 +9,13 @@ function card(
   displayId: DisplayId = { kind: 'official', value: id.charCodeAt(0) },
 ): CardRecord {
   return {
-    id,
+    id: fixtureCardId(id),
     displayId,
     title: id,
-    body: targets.map((targetCardId) => ({ type: 'link', targetCardId })),
+    body: targets.map((targetCardId) => ({
+      type: 'link',
+      targetCardId: fixtureCardId(targetCardId),
+    })),
     createdAt: 1,
     updatedAt: 1,
     localRevision: 1,
@@ -29,16 +33,12 @@ describe('all-card outgoing graph', () => {
       card('E', []),
     ]);
 
-    expect(graph.nodes.map((node) => node.card.id)).toEqual([
-      'A',
-      'B',
-      'C',
-      'D',
-      'E',
-    ]);
+    expect(graph.nodes.map((node) => node.card.id)).toEqual(
+      ['A', 'B', 'C', 'D', 'E'].map(fixtureCardId),
+    );
     expect(graph.edges).toEqual([
-      { sourceCardId: 'A', targetCardId: 'B' },
-      { sourceCardId: 'D', targetCardId: 'E' },
+      { sourceCardId: fixtureCardId('A'), targetCardId: fixtureCardId('B') },
+      { sourceCardId: fixtureCardId('D'), targetCardId: fixtureCardId('E') },
     ]);
   });
 
@@ -50,9 +50,9 @@ describe('all-card outgoing graph', () => {
     ]);
 
     expect(graph.edges).toEqual([
-      { sourceCardId: 'A', targetCardId: 'B' },
-      { sourceCardId: 'A', targetCardId: 'C' },
-      { sourceCardId: 'B', targetCardId: 'A' },
+      { sourceCardId: fixtureCardId('A'), targetCardId: fixtureCardId('B') },
+      { sourceCardId: fixtureCardId('A'), targetCardId: fixtureCardId('C') },
+      { sourceCardId: fixtureCardId('B'), targetCardId: fixtureCardId('A') },
     ]);
   });
 
@@ -65,10 +65,10 @@ describe('all-card outgoing graph', () => {
     ]);
 
     expect(graph.edges).toEqual([
-      { sourceCardId: 'A', targetCardId: 'A' },
-      { sourceCardId: 'A', targetCardId: 'B' },
-      { sourceCardId: 'B', targetCardId: 'C' },
-      { sourceCardId: 'C', targetCardId: 'A' },
+      { sourceCardId: fixtureCardId('A'), targetCardId: fixtureCardId('A') },
+      { sourceCardId: fixtureCardId('A'), targetCardId: fixtureCardId('B') },
+      { sourceCardId: fixtureCardId('B'), targetCardId: fixtureCardId('C') },
+      { sourceCardId: fixtureCardId('C'), targetCardId: fixtureCardId('A') },
     ]);
   });
 
@@ -84,16 +84,22 @@ describe('all-card outgoing graph', () => {
     const second = buildConnectionsGraph([...cards].reverse());
 
     expect(first).toEqual(second);
-    expect(first.nodes.map((node) => node.card.id)).toEqual([
-      'uuid-b',
-      'uuid-a',
-      'uuid-c',
-      'uuid-z',
-    ]);
+    expect(first.nodes.map((node) => node.card.id)).toEqual(
+      ['uuid-b', 'uuid-a', 'uuid-c', 'uuid-z'].map(fixtureCardId),
+    );
     expect(first.edges).toEqual([
-      { sourceCardId: 'uuid-a', targetCardId: 'uuid-c' },
-      { sourceCardId: 'uuid-a', targetCardId: 'uuid-z' },
-      { sourceCardId: 'uuid-c', targetCardId: 'uuid-z' },
+      {
+        sourceCardId: fixtureCardId('uuid-a'),
+        targetCardId: fixtureCardId('uuid-c'),
+      },
+      {
+        sourceCardId: fixtureCardId('uuid-a'),
+        targetCardId: fixtureCardId('uuid-z'),
+      },
+      {
+        sourceCardId: fixtureCardId('uuid-c'),
+        targetCardId: fixtureCardId('uuid-z'),
+      },
     ]);
   });
 });

@@ -1,6 +1,7 @@
 import type { JSONContent } from '@tiptap/core';
 import { normalizeBody } from '@/lib/domain/body';
 import type { BodySegment } from '@/lib/domain/types';
+import { cardLinkTargetId } from '@/lib/editor/card-link-attributes';
 
 export function segmentsToEditorDocument(segments: BodySegment[]): JSONContent {
   const content: JSONContent[] = [];
@@ -34,11 +35,9 @@ export function editorDocumentToSegments(document: JSONContent): BodySegment[] {
         segments.push({ type: 'text', text: node.text });
       } else if (node.type === 'hardBreak') {
         segments.push({ type: 'text', text: '\n' });
-      } else if (
-        node.type === 'cardLink' &&
-        typeof node.attrs?.targetCardId === 'string'
-      ) {
-        segments.push({ type: 'link', targetCardId: node.attrs.targetCardId });
+      } else if (node.type === 'cardLink') {
+        const targetCardId = cardLinkTargetId(node.attrs);
+        if (targetCardId) segments.push({ type: 'link', targetCardId });
       }
     }
   });

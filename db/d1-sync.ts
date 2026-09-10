@@ -3,6 +3,7 @@ import type {
   ConflictRecord,
   PendingMutation,
 } from '@/lib/domain/types';
+import { parseCardId, parseConflictId, type MutationId } from '@/lib/domain/id';
 import type { ServerCard, SyncResponse } from '@/lib/sync/protocol';
 
 type CardRow = {
@@ -231,7 +232,7 @@ export async function synchronize(
   mutations: PendingMutation[],
 ): Promise<SyncResponse> {
   await ensureSyncSchema(database);
-  const acknowledgedMutationIds: string[] = [];
+  const acknowledgedMutationIds: MutationId[] = [];
   const ordered = [...mutations].sort(
     (left, right) =>
       left.cardId.localeCompare(right.cardId) ||
@@ -257,7 +258,7 @@ export async function synchronize(
     .all<ConflictRow>();
 
   const cards: ServerCard[] = cardRows.results.map((row) => ({
-    id: row.id,
+    id: parseCardId(row.id),
     officialDisplayId: row.display_id,
     title: row.title,
     body: parseBody(row.body_json),
@@ -266,8 +267,8 @@ export async function synchronize(
     revision: row.revision,
   }));
   const conflicts: ConflictRecord[] = conflictRows.results.map((row) => ({
-    id: row.id,
-    cardId: row.card_id,
+    id: parseConflictId(row.id),
+    cardId: parseCardId(row.card_id),
     serverRevision: row.server_revision,
     localTitle: row.local_title,
     localBody: parseBody(row.local_body_json),

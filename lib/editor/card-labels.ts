@@ -1,7 +1,8 @@
 import { formatDisplayId } from '@/lib/domain/display-id';
 import { visibleTitle, type CardRecord } from '@/lib/domain/types';
+import type { CardId } from '@/lib/domain/id';
 
-const labels = new Map<string, string>();
+const labels = new Map<CardId, string>();
 const listeners = new Set<() => void>();
 
 export function setCardLabels(cards: CardRecord[]): void {
@@ -15,7 +16,7 @@ export function setCardLabels(cards: CardRecord[]): void {
   for (const listener of listeners) listener();
 }
 
-export function getCardLabel(cardId: string): string {
+export function getCardLabel(cardId: CardId): string {
   return labels.get(cardId) ?? 'リンク先なし';
 }
 

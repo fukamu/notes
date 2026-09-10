@@ -8,6 +8,16 @@ import {
   compatibilityIds,
   createCompatibilityFixture,
 } from '@/tests/fixtures/compatibility';
+import {
+  decodeStoredCards,
+  decodeStoredConflicts,
+  decodeStoredMeta,
+  decodeStoredMutations,
+  encodeStoredCard,
+  encodeStoredConflict,
+  encodeStoredMeta,
+  encodeStoredMutation,
+} from '@/lib/storage/records';
 
 describe('synthetic compatibility fixture', () => {
   it('uses fixed UUIDv7 identifiers and the current serialization shapes', () => {
@@ -25,6 +35,18 @@ describe('synthetic compatibility fixture', () => {
     );
     expect(JSON.parse(JSON.stringify(fixture.response))).toEqual(
       fixture.response,
+    );
+    expect(decodeStoredCards(fixture.cards.map(encodeStoredCard))).toEqual(
+      fixture.cards,
+    );
+    expect(
+      decodeStoredMutations([encodeStoredMutation(fixture.mutation)]),
+    ).toEqual([fixture.mutation]);
+    expect(
+      decodeStoredConflicts([encodeStoredConflict(fixture.conflict)]),
+    ).toEqual([fixture.conflict]);
+    expect(decodeStoredMeta(encodeStoredMeta(compatibilityIds.device))).toEqual(
+      { key: 'deviceId', value: compatibilityIds.device },
     );
   });
 });

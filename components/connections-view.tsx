@@ -4,6 +4,7 @@ import { ArrowRight, LoaderCircle, Network, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildConnectionsGraph } from '@/lib/domain/graph';
 import { formatDisplayId } from '@/lib/domain/display-id';
+import type { CardId } from '@/lib/domain/id';
 import { visibleTitle, type CardRecord } from '@/lib/domain/types';
 import {
   layoutConnectionsGraph,
@@ -13,8 +14,8 @@ import {
 
 type Props = {
   cards: CardRecord[];
-  currentCardId: string;
-  onSelect: (cardId: string) => void;
+  currentCardId: CardId;
+  onSelect: (cardId: CardId) => void;
 };
 
 function cardLabel(card: CardRecord, isCurrent: boolean): string {
@@ -39,7 +40,7 @@ export function ConnectionsView({ cards, currentCardId, onSelect }: Props) {
   } | null>(null);
   const layoutRequestRef = useRef(0);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const centeredCardIdRef = useRef<string | null>(null);
+  const centeredCardIdRef = useRef<CardId | null>(null);
   const layout = layoutResult?.key === graphKey ? layoutResult.layout : null;
   const layoutError = layoutResult?.key === graphKey && layoutResult.failed;
 

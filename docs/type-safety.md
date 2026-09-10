@@ -36,19 +36,43 @@ global typeの混在を避けるため、`npm run typecheck` は次の独立し�
 
 内部で「構築処理が必ず作った値」をMapや配列から再取得するときは、`lib/shared/invariant.ts` で明示的に失敗させます。non-null assertionで欠損を隠しません。
 
+## 共通codecと識別子
+
+`lib/codec/core.ts` のdecoder combinatorがruntime schemaの正本です。`objectDecoder`、`arrayDecoder`、`unionDecoder`等から出力型を `InferDecoder` で推論するため、型とvalidatorを別々に手書きしません。失敗は値そのものを含めず、field pathと理由だけを `BoundaryDecodeError` に保持します。利用者向けには既存の安全な保存／同期失敗文言だけを表示します。
+
+外部contract objectは未知fieldを拒否します。Tiptap attributesだけは第三者adapterの拡張fieldを捨てる目的で未知fieldを許可し、検証済みの `targetCardId` だけを取り出します。文字列、配列、同期件数には `CONTRACT_LIMITS` の上限を適用します。ID、revision、display ID、timestampは次を共通policyとします。
+
+- IDはUUIDv7だけを受理する。
+- revisionとdisplay IDは1以上のsafe integerにする。
+- timestampは0以上のsafe integerにする。
+- `NaN`、無限値、小数、safe integer範囲外を拒否する。
+- card、mutation、conflict、正式display ID、acknowledgementの重複を拒否する。
+- sync response内のcard／conflict参照と、送信していないmutationへのackを拒否する。
+
+`CardId`、`MutationId`、`ConflictId`、`DeviceId` は別々のopaque brandです。UUID生成関数または対応するparse／decoderだけがbrandを付けます。`PendingMutation` は `kind` で絞り込めるunionで、`upsert` の `conflictIds` は空tuple、`resolve` は重複のないnon-empty tupleです。分岐の終端には `assertNever` を置き、variant追加をcompile errorにします。
+
+## wire／storage／domain mapping
+
+domain objectをnetworkまたはIndexedDBへ渡すときは、`encodeSyncRequest` と `encodeStored*` がplain DTOへ写します。受信時は `decodeSyncResponse` と `decodeStored*` が `unknown` から全fieldを検証してbrandを復元します。wire DTOとIndexedDB recordをdomain modelのaliasとして扱いません。保存するJSON／IndexedDB objectのfield名と値はv1から変更せず、database versionも1のままです。
+
+同期responseは、全field、重複、参照、ack subsetを検証し終えてからreadwrite transactionを開きます。適用中に例外が起きた場合はtransactionを明示的にabortするため、card put、pending mutation delete、conflict clearの一部だけがcommitされません。不正な2xx responseは同期失敗となり、未送信mutationと画面上の最新編集を保持して同じretry操作から再送できます。
+
+IndexedDBの `get()`／`getAll()` はadapter内でも `unknown` として扱います。壊れたcards、mutations、conflicts、metaを見つけた場合は初期化／同期を失敗させ、raw recordを自動削除・上書きしません。UIは「端末への保存に失敗」または「同期失敗・端末に保存済み」を表示します。device IDを自動生成するのはmeta recordが存在しない場合だけで、存在する不正recordは保持して診断対象にします。自動修復やmigrationは行いません。
+
 ## trust boundary
 
-| 境界                             | 現在の検査                                                            | 担当Phase     |
-| -------------------------------- | --------------------------------------------------------------------- | ------------- |
-| Service Worker `message.data`    | object、message type、URL配列、string、same-origin、内部/API path除外 | Phase 1 (#10) |
-| DOM event target                 | `Element` のruntime guard後にcard-link属性を読む                      | Phase 1 (#10) |
-| Tiptap card-link attrs           | object、string、UUIDv7を小さなadapterで検査                           | Phase 1 (#10) |
-| 合成互換fixture                  | 現行のcard/body/mutation/conflict/sync形と固定UUIDv7                  | Phase 1 (#10) |
-| networkのsync request / response | Phase 1の既存guardを維持し、codecを追加                               | Phase 2 (#11) |
-| IndexedDB record                 | 現行形式を維持し、読出しcodecを追加                                   | Phase 2 (#11) |
-| D1 row / JSON column             | 現行形式を維持し、row codecを追加                                     | Phase 3 (#12) |
+| 境界                          | 現在の検査                                                            | 担当Phase     |
+| ----------------------------- | --------------------------------------------------------------------- | ------------- |
+| Service Worker `message.data` | object、message type、URL配列、string、same-origin、内部/API path除外 | Phase 1 (#10) |
+| DOM event target              | `Element` のruntime guard後にcard-link属性を読む                      | Phase 1 (#10) |
+| Tiptap card-link attrs        | object、string、UUIDv7を小さなadapterで検査                           | Phase 1 (#10) |
+| 合成互換fixture               | 現行のcard/body/mutation/conflict/sync形と固定UUIDv7                  | Phase 1 (#10) |
+| networkのsync response        | 全体codec、重複／参照／ack subset、transaction前検証                  | Phase 2 (#11) |
+| IndexedDB record              | 全storeをunknownからdecodeし、明示encodeでv1形式を維持                | Phase 2 (#11) |
+| APIのsync request             | 共通codecは定義済み。HTTP境界での最終適用とerror分類を完成            | Phase 3 (#12) |
+| D1 row / JSON column          | 現行形式を維持し、row codecを追加                                     | Phase 3 (#12) |
 
-Phase 1では、未修正のnetwork、IndexedDB、D1境界に対するunsafe lintを形だけ無効化していません。全面的なunsafe rule set、残るcodec、APIとD1のatomicityはPhase 2/3で完成させます。
+Phase 2ではclient response／IndexedDBを完成させました。D1 row、`body_json`、environment binding、API requestの最終適用、D1 transactionの意味、unsafe rule全面強制はPhase 3で完成させます。
 
 ## 第三者adapterの追加チェックリスト
 

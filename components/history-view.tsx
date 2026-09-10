@@ -4,12 +4,13 @@ import { useLayoutEffect, useRef } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { bodyToPlainText } from '@/lib/domain/body';
 import { formatDisplayId, sortCardsByDisplayId } from '@/lib/domain/display-id';
+import type { CardId } from '@/lib/domain/id';
 import { visibleTitle, type CardRecord } from '@/lib/domain/types';
 
 type Props = {
   cards: CardRecord[];
-  currentCardId: string | null;
-  onSelect: (cardId: string) => void;
+  currentCardId: CardId | null;
+  onSelect: (cardId: CardId) => void;
 };
 
 export function HistoryView({ cards, currentCardId, onSelect }: Props) {

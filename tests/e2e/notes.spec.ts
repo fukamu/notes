@@ -345,13 +345,13 @@ test('global directed graph is safe and operable for the reported and cyclic fix
 }, testInfo) => {
   const suffix = unique('graph', testInfo.project.name);
   const ids = {
-    reportA: `${suffix}-report-a`,
-    reportB: `${suffix}-report-b`,
-    reportC: `${suffix}-report-c`,
-    cycleA: `${suffix}-cycle-a`,
-    cycleB: `${suffix}-cycle-b`,
-    cycleC: `${suffix}-cycle-c`,
-    isolated: `${suffix}-isolated`,
+    reportA: '01991f20-61d2-7000-8000-000000000101',
+    reportB: '01991f20-61d2-7000-8000-000000000102',
+    reportC: '01991f20-61d2-7000-8000-000000000103',
+    cycleA: '01991f20-61d2-7000-8000-000000000104',
+    cycleB: '01991f20-61d2-7000-8000-000000000105',
+    cycleC: '01991f20-61d2-7000-8000-000000000106',
+    isolated: '01991f20-61d2-7000-8000-000000000107',
   };
   const titles = {
     reportA: `報告例 A ${suffix}`,
@@ -486,6 +486,41 @@ test('global directed graph is safe and operable for the reported and cyclic fix
     await targetNode.press('Enter');
   }
   await expect(page.getByTestId('card-title')).toHaveValue(titles.reportB);
+});
+
+test('malformed 2xx sync response preserves local edits and remains retryable', async ({
+  page,
+}, testInfo) => {
+  const title = unique('不正応答保持', testInfo.project.name);
+  await page.route('**/api/sync', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        cards: null,
+        conflicts: [],
+        acknowledgedMutationIds: [],
+      }),
+    });
+  });
+  await ready(page);
+  await page.getByTestId('new-card').click();
+  await page.getByTestId('card-title').fill(title);
+  await expect(page.getByTestId('save-sync-status')).toContainText(
+    '同期失敗・端末に保存済み',
+    { timeout: 15_000 },
+  );
+
+  await page.reload();
+  await expect(page.getByTestId('card-title')).toHaveValue(title);
+  await page.unroute('**/api/sync');
+  await page.getByTestId('save-sync-status').click();
+  await expect(page.getByTestId('display-id')).toHaveAttribute(
+    'data-kind',
+    'official',
+    { timeout: 15_000 },
+  );
+  await expect(page.getByTestId('card-title')).toHaveValue(title);
 });
 
 test('concurrent device edits preserve both versions for explicit resolution', async ({
