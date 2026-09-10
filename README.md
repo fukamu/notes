@@ -42,7 +42,7 @@ npm run build
 npm start -- --port 3100
 ```
 
-本番へ配置する場合は、Cloudflare D1を `DB` というバインディング名で接続する必要があります。このリポジトリから本番公開や既存環境の置き換えは行っていません。
+ChatGPT Site版は [fukamu-notes-cards.matoruru.chatgpt.site](https://fukamu-notes-cards.matoruru.chatgpt.site) へ配置されています。Cloudflare D1は `DB` というバインディング名で接続します。Siteは初回公開時点では所有者限定で、共有範囲はChatGPT Sites側のアクセス設定で管理します。
 
 ## テスト
 
