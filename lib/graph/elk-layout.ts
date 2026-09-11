@@ -26,6 +26,28 @@ export const CONNECTIONS_LAYOUT_ALGORITHM_OPTIONS = {
   'elk.layered.mergeEdges': 'false',
 } as const;
 
+export type ConnectionsEdgeRouting = 'ORTHOGONAL' | 'SPLINES';
+export type ConnectionsPortPolicy = 'FIXED_SIDE' | 'FIXED_ORDER';
+export type ConnectionsSplineRoutingMode =
+  | 'CONSERVATIVE'
+  | 'CONSERVATIVE_SOFT'
+  | 'SLOPPY';
+
+export type ConnectionsLayoutConfiguration = Readonly<{
+  edgeRouting: ConnectionsEdgeRouting;
+  portPolicy: ConnectionsPortPolicy;
+  splineRoutingMode?: ConnectionsSplineRoutingMode;
+  addUnnecessaryBendpoints?: boolean;
+  favorStraightEdges?: boolean;
+  straightnessPriority?: number;
+  shortnessPriority?: number;
+}>;
+
+export const DEFAULT_CONNECTIONS_LAYOUT_CONFIGURATION = {
+  edgeRouting: 'ORTHOGONAL',
+  portPolicy: 'FIXED_SIDE',
+} as const satisfies ConnectionsLayoutConfiguration;
+
 export type ConnectionsLayoutMetrics = {
   nodeWidth: number;
   nodeHeight: number;
@@ -97,15 +119,18 @@ type EdgeInput = DirectedEdge & {
   targetPortId: string;
 };
 
-let elkInstance: ELK | undefined;
-
-function elkEngine(): ELK {
-  elkInstance ??= new ElkConstructor({ algorithms: ['layered'] });
-  return elkInstance;
-}
-
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function optionalPriority(value: number | undefined, label: string) {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(
+      `Connections layout priority ${label} must be a non-negative integer`,
+    );
+  }
+  return String(value);
 }
 
 function requiredNumber(value: unknown, label: string): number {
@@ -123,10 +148,12 @@ function requiredMetric(value: number, label: string): number {
 
 export function connectionsLayoutOptions(
   metrics: ConnectionsLayoutMetrics,
+  configuration: ConnectionsLayoutConfiguration = DEFAULT_CONNECTIONS_LAYOUT_CONFIGURATION,
 ): Record<string, string> {
   const padding = metrics.padding;
-  return {
+  const options: Record<string, string> = {
     ...CONNECTIONS_LAYOUT_ALGORITHM_OPTIONS,
+    'elk.edgeRouting': configuration.edgeRouting,
     'elk.spacing.componentComponent': String(
       requiredMetric(metrics.componentSpacing, 'componentSpacing'),
     ),
@@ -144,6 +171,21 @@ export function connectionsLayoutOptions(
     ),
     'elk.padding': `[top=${requiredMetric(padding.top, 'padding.top')},left=${requiredMetric(padding.left, 'padding.left')},bottom=${requiredMetric(padding.bottom, 'padding.bottom')},right=${requiredMetric(padding.right, 'padding.right')}]`,
   };
+  if (configuration.splineRoutingMode !== undefined) {
+    options['elk.layered.edgeRouting.splines.mode'] =
+      configuration.splineRoutingMode;
+  }
+  if (configuration.addUnnecessaryBendpoints !== undefined) {
+    options['elk.layered.unnecessaryBendpoints'] = String(
+      configuration.addUnnecessaryBendpoints,
+    );
+  }
+  if (configuration.favorStraightEdges !== undefined) {
+    options['elk.layered.nodePlacement.favorStraightEdges'] = String(
+      configuration.favorStraightEdges,
+    );
+  }
+  return options;
 }
 
 function requiredPoint(
@@ -183,6 +225,7 @@ function elkGraph(
   graph: ConnectionsLayoutGraph,
   inputs: EdgeInput[],
   metrics: ConnectionsLayoutMetrics,
+  configuration: ConnectionsLayoutConfiguration,
 ): ElkNode {
   const portsByNode = new Map<string, ElkPort[]>(
     graph.nodes.map((node) => [node.id, []]),
@@ -198,7 +241,7 @@ function elkGraph(
 
   return {
     id: 'connections-root',
-    layoutOptions: connectionsLayoutOptions(metrics),
+    layoutOptions: connectionsLayoutOptions(metrics, configuration),
     children: graph.nodes.map((node) => {
       const ports = portsByNode.get(node.id);
       invariant(ports, `Missing ports for node ${node.id}`);
@@ -206,17 +249,45 @@ function elkGraph(
         id: node.id,
         width: requiredMetric(metrics.nodeWidth, 'nodeWidth'),
         height: requiredMetric(metrics.nodeHeight, 'nodeHeight'),
-        ports,
-        layoutOptions: { 'elk.portConstraints': 'FIXED_SIDE' },
+        ports: ports.map((port, index) => ({
+          ...port,
+          layoutOptions: {
+            ...port.layoutOptions,
+            ...(configuration.portPolicy === 'FIXED_ORDER'
+              ? { 'elk.port.index': String(index) }
+              : {}),
+          },
+        })),
+        layoutOptions: { 'elk.portConstraints': configuration.portPolicy },
       };
     }),
-    edges: inputs.map(
-      (edge): ElkExtendedEdge => ({
+    edges: inputs.map((edge): ElkExtendedEdge => {
+      const straightness = optionalPriority(
+        configuration.straightnessPriority,
+        'straightness',
+      );
+      const shortness = optionalPriority(
+        configuration.shortnessPriority,
+        'shortness',
+      );
+      return {
         id: edge.id,
         sources: [edge.sourcePortId],
         targets: [edge.targetPortId],
-      }),
-    ),
+        ...(!straightness && !shortness
+          ? {}
+          : {
+              layoutOptions: {
+                ...(straightness
+                  ? { 'elk.layered.priority.straightness': straightness }
+                  : {}),
+                ...(shortness
+                  ? { 'elk.layered.priority.shortness': shortness }
+                  : {}),
+              },
+            }),
+      };
+    }),
   };
 }
 
@@ -237,13 +308,16 @@ function layoutSection(section: ElkEdgeSection): ConnectionsLayoutSection {
   };
 }
 
-export async function layoutConnectionsGraph(
+async function layoutConnectionsGraphWithEngine(
+  elk: ELK,
   graph: ConnectionsLayoutGraph,
   metrics: ConnectionsLayoutMetrics,
+  configuration: ConnectionsLayoutConfiguration,
 ): Promise<ConnectionsLayout> {
   const inputs = edgeInputs(graph);
-  const elk = elkEngine();
-  const result = await elk.layout(elkGraph(graph, inputs, metrics));
+  const result = await elk.layout(
+    elkGraph(graph, inputs, metrics, configuration),
+  );
   const laidOutNodes = new Map(
     (result.children ?? []).map((node) => [node.id, node]),
   );
@@ -292,4 +366,27 @@ export async function layoutConnectionsGraph(
     nodes,
     edges,
   };
+}
+
+export type ConnectionsLayoutFunction = (
+  graph: ConnectionsLayoutGraph,
+  metrics: ConnectionsLayoutMetrics,
+) => Promise<ConnectionsLayout>;
+
+export function createConnectionsLayoutRunner(
+  configuration: ConnectionsLayoutConfiguration = DEFAULT_CONNECTIONS_LAYOUT_CONFIGURATION,
+): ConnectionsLayoutFunction {
+  const elk = new ElkConstructor({ algorithms: ['layered'] });
+  return (graph, metrics) =>
+    layoutConnectionsGraphWithEngine(elk, graph, metrics, configuration);
+}
+
+let defaultLayoutRunner: ConnectionsLayoutFunction | undefined;
+
+export function layoutConnectionsGraph(
+  graph: ConnectionsLayoutGraph,
+  metrics: ConnectionsLayoutMetrics,
+): Promise<ConnectionsLayout> {
+  defaultLayoutRunner ??= createConnectionsLayoutRunner();
+  return defaultLayoutRunner(graph, metrics);
 }

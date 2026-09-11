@@ -1,0 +1,1063 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-11T15:38:20.131Z",
+  "evaluationOrder": [
+    "nodeIntrusions (hard constraint)",
+    "semantic edge and endpoint correctness",
+    "edgeCrossings",
+    "overlappingSegments and overlappingLength",
+    "totalRouteLength",
+    "bendOrControlPointCount",
+    "graphBoundingArea",
+    "cold/warm layout median and p95",
+    "path generation and time-to-ready proxy",
+    "main-thread blocking proxy",
+    "bundle size"
+  ],
+  "environment": {
+    "node": "v26.8.1",
+    "platform": "linux",
+    "release": "7.0.0-31-generic",
+    "cpu": "11th Gen Intel(R) Core(TM) i7-1195G7 @ 2.90GHz",
+    "cpuCount": 8,
+    "elkjs": "0.12.0",
+    "nodeWidth": 232,
+    "nodeHeight": 96,
+    "warmupIterations": 1,
+    "measuredIterations": 5,
+    "curveSamplingSteps": 12
+  },
+  "fixtures": [
+    {
+      "name": "reported C→A / C→B / A→B",
+      "nodes": 3,
+      "edges": 3
+    },
+    {
+      "name": "diamond",
+      "nodes": 4,
+      "edges": 4
+    },
+    {
+      "name": "fan-out",
+      "nodes": 5,
+      "edges": 4
+    },
+    {
+      "name": "fan-in",
+      "nodes": 5,
+      "edges": 4
+    },
+    {
+      "name": "cycle",
+      "nodes": 3,
+      "edges": 3
+    },
+    {
+      "name": "self link",
+      "nodes": 1,
+      "edges": 1
+    },
+    {
+      "name": "mutual links",
+      "nodes": 2,
+      "edges": 2
+    },
+    {
+      "name": "disconnected components",
+      "nodes": 5,
+      "edges": 2
+    },
+    {
+      "name": "dense K3,3",
+      "nodes": 6,
+      "edges": 9
+    },
+    {
+      "name": "synthetic medium seed 0x41c0ffee",
+      "nodes": 24,
+      "edges": 48
+    },
+    {
+      "name": "synthetic large seed 0x41decade",
+      "nodes": 48,
+      "edges": 120
+    }
+  ],
+  "candidates": [
+    {
+      "name": "baseline-orthogonal-fixed-side",
+      "configuration": {
+        "edgeRouting": "ORTHOGONAL",
+        "portPolicy": "FIXED_SIDE"
+      },
+      "interpretation": "orthogonal-polyline",
+      "purpose": "Current ELK route and M/L rendering baseline."
+    },
+    {
+      "name": "orthogonal-safe-rounded",
+      "configuration": {
+        "edgeRouting": "ORTHOGONAL",
+        "portPolicy": "FIXED_SIDE"
+      },
+      "interpretation": "orthogonal-rounded",
+      "purpose": "Current route with quadratic corners clamped by adjacent segments and sampled node clearance."
+    },
+    {
+      "name": "orthogonal-fixed-order-priorities",
+      "configuration": {
+        "edgeRouting": "ORTHOGONAL",
+        "portPolicy": "FIXED_ORDER",
+        "addUnnecessaryBendpoints": false,
+        "favorStraightEdges": true,
+        "straightnessPriority": 8,
+        "shortnessPriority": 8
+      },
+      "interpretation": "orthogonal-polyline",
+      "purpose": "Alternative port order plus explicit straightness, shortness, and unnecessary-bend policy."
+    },
+    {
+      "name": "splines-conservative-fixed-side",
+      "configuration": {
+        "edgeRouting": "SPLINES",
+        "portPolicy": "FIXED_SIDE",
+        "splineRoutingMode": "CONSERVATIVE",
+        "addUnnecessaryBendpoints": false
+      },
+      "interpretation": "spline-cubic",
+      "purpose": "ELK piecewise cubic controls with the node-avoiding conservative routing mode."
+    }
+  ],
+  "quality": [
+    {
+      "candidate": "baseline-orthogonal-fixed-side",
+      "fixture": "reported C→A / C→B / A→B",
+      "nodes": 3,
+      "edges": 3,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 950,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 262080
+    },
+    {
+      "candidate": "baseline-orthogonal-fixed-side",
+      "fixture": "diamond",
+      "nodes": 4,
+      "edges": 4,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 908,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 388752
+    },
+    {
+      "candidate": "baseline-orthogonal-fixed-side",
+      "fixture": "fan-out",
+      "nodes": 5,
+      "edges": 4,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1280,
+      "bendOrControlPointCount": 6,
+      "graphBoundingArea": 520960
+    },
+    {
+      "candidate": "baseline-orthogonal-fixed-side",
+      "fixture": "fan-in",
+      "nodes": 5,
+      "edges": 4,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1280,
+      "bendOrControlPointCount": 6,
+      "graphBoundingArea": 520960
+    },
+    {
+      "candidate": "baseline-orthogonal-fixed-side",
+      "fixture": "cycle",
+      "nodes": 3,
+      "edges": 3,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1720,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 253308
+    },
+    {
+      "candidate": "baseline-orthogonal-fixed-side",
+      "fixture": "self link",
+      "nodes": 1,
+      "edges": 1,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 396,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 59856
+    },
+    {
+      "candidate": "baseline-orthogonal-fixed-side",
+      "fixture": "mutual links",
+      "nodes": 2,
+      "edges": 2,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1184,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 171392
+    },
+    {
+      "candidate": "baseline-orthogonal-fixed-side",
+      "fixture": "disconnected components",
+      "nodes": 5,
+      "edges": 2,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 296,
+      "bendOrControlPointCount": 0,
+      "graphBoundingArea": 430848
+    },
+    {
+      "candidate": "baseline-orthogonal-fixed-side",
+      "fixture": "dense K3,3",
+      "nodes": 6,
+      "edges": 9,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 9,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 2704,
+      "bendOrControlPointCount": 18,
+      "graphBoundingArea": 387984
+    },
+    {
+      "candidate": "baseline-orthogonal-fixed-side",
+      "fixture": "synthetic medium seed 0x41c0ffee",
+      "nodes": 24,
+      "edges": 48,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 49,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 64274,
+      "bendOrControlPointCount": 122,
+      "graphBoundingArea": 5166504
+    },
+    {
+      "candidate": "baseline-orthogonal-fixed-side",
+      "fixture": "synthetic large seed 0x41decade",
+      "nodes": 48,
+      "edges": 120,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 492,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 223479,
+      "bendOrControlPointCount": 418,
+      "graphBoundingArea": 14210834
+    },
+    {
+      "candidate": "orthogonal-safe-rounded",
+      "fixture": "reported C→A / C→B / A→B",
+      "nodes": 3,
+      "edges": 3,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 925.812,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 262080
+    },
+    {
+      "candidate": "orthogonal-safe-rounded",
+      "fixture": "diamond",
+      "nodes": 4,
+      "edges": 4,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 883.812,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 388752
+    },
+    {
+      "candidate": "orthogonal-safe-rounded",
+      "fixture": "fan-out",
+      "nodes": 5,
+      "edges": 4,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1243.718,
+      "bendOrControlPointCount": 6,
+      "graphBoundingArea": 520960
+    },
+    {
+      "candidate": "orthogonal-safe-rounded",
+      "fixture": "fan-in",
+      "nodes": 5,
+      "edges": 4,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1243.718,
+      "bendOrControlPointCount": 6,
+      "graphBoundingArea": 520960
+    },
+    {
+      "candidate": "orthogonal-safe-rounded",
+      "fixture": "cycle",
+      "nodes": 3,
+      "edges": 3,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1695.812,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 253308
+    },
+    {
+      "candidate": "orthogonal-safe-rounded",
+      "fixture": "self link",
+      "nodes": 1,
+      "edges": 1,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 380.127,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 59856
+    },
+    {
+      "candidate": "orthogonal-safe-rounded",
+      "fixture": "mutual links",
+      "nodes": 2,
+      "edges": 2,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1159.812,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 171392
+    },
+    {
+      "candidate": "orthogonal-safe-rounded",
+      "fixture": "disconnected components",
+      "nodes": 5,
+      "edges": 2,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 296,
+      "bendOrControlPointCount": 0,
+      "graphBoundingArea": 430848
+    },
+    {
+      "candidate": "orthogonal-safe-rounded",
+      "fixture": "dense K3,3",
+      "nodes": 6,
+      "edges": 9,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 9,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 2611.029,
+      "bendOrControlPointCount": 18,
+      "graphBoundingArea": 387984
+    },
+    {
+      "candidate": "orthogonal-safe-rounded",
+      "fixture": "synthetic medium seed 0x41c0ffee",
+      "nodes": 24,
+      "edges": 48,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 49,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 63596.366,
+      "bendOrControlPointCount": 122,
+      "graphBoundingArea": 5166504
+    },
+    {
+      "candidate": "orthogonal-safe-rounded",
+      "fixture": "synthetic large seed 0x41decade",
+      "nodes": 48,
+      "edges": 120,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 491,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 221240.126,
+      "bendOrControlPointCount": 418,
+      "graphBoundingArea": 14210834
+    },
+    {
+      "candidate": "orthogonal-fixed-order-priorities",
+      "fixture": "reported C→A / C→B / A→B",
+      "nodes": 3,
+      "edges": 3,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 1,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1018,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 299208
+    },
+    {
+      "candidate": "orthogonal-fixed-order-priorities",
+      "fixture": "diamond",
+      "nodes": 4,
+      "edges": 4,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 1,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 976,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 407316
+    },
+    {
+      "candidate": "orthogonal-fixed-order-priorities",
+      "fixture": "fan-out",
+      "nodes": 5,
+      "edges": 4,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1280,
+      "bendOrControlPointCount": 6,
+      "graphBoundingArea": 520960
+    },
+    {
+      "candidate": "orthogonal-fixed-order-priorities",
+      "fixture": "fan-in",
+      "nodes": 5,
+      "edges": 4,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1280,
+      "bendOrControlPointCount": 6,
+      "graphBoundingArea": 520960
+    },
+    {
+      "candidate": "orthogonal-fixed-order-priorities",
+      "fixture": "cycle",
+      "nodes": 3,
+      "edges": 3,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1720,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 253308
+    },
+    {
+      "candidate": "orthogonal-fixed-order-priorities",
+      "fixture": "self link",
+      "nodes": 1,
+      "edges": 1,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 396,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 59856
+    },
+    {
+      "candidate": "orthogonal-fixed-order-priorities",
+      "fixture": "mutual links",
+      "nodes": 2,
+      "edges": 2,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1184,
+      "bendOrControlPointCount": 4,
+      "graphBoundingArea": 171392
+    },
+    {
+      "candidate": "orthogonal-fixed-order-priorities",
+      "fixture": "disconnected components",
+      "nodes": 5,
+      "edges": 2,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 296,
+      "bendOrControlPointCount": 0,
+      "graphBoundingArea": 430848
+    },
+    {
+      "candidate": "orthogonal-fixed-order-priorities",
+      "fixture": "dense K3,3",
+      "nodes": 6,
+      "edges": 9,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 9,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 2704,
+      "bendOrControlPointCount": 18,
+      "graphBoundingArea": 387984
+    },
+    {
+      "candidate": "orthogonal-fixed-order-priorities",
+      "fixture": "synthetic medium seed 0x41c0ffee",
+      "nodes": 24,
+      "edges": 48,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 80,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 67120,
+      "bendOrControlPointCount": 124,
+      "graphBoundingArea": 5854598
+    },
+    {
+      "candidate": "orthogonal-fixed-order-priorities",
+      "fixture": "synthetic large seed 0x41decade",
+      "nodes": 48,
+      "edges": 120,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 582,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 225527,
+      "bendOrControlPointCount": 390,
+      "graphBoundingArea": 14777370
+    },
+    {
+      "candidate": "splines-conservative-fixed-side",
+      "fixture": "reported C→A / C→B / A→B",
+      "nodes": 3,
+      "edges": 3,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 883.741,
+      "bendOrControlPointCount": 39,
+      "graphBoundingArea": 262080
+    },
+    {
+      "candidate": "splines-conservative-fixed-side",
+      "fixture": "diamond",
+      "nodes": 4,
+      "edges": 4,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 801.105,
+      "bendOrControlPointCount": 38,
+      "graphBoundingArea": 388752
+    },
+    {
+      "candidate": "splines-conservative-fixed-side",
+      "fixture": "fan-out",
+      "nodes": 5,
+      "edges": 4,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1099.358,
+      "bendOrControlPointCount": 47,
+      "graphBoundingArea": 520960
+    },
+    {
+      "candidate": "splines-conservative-fixed-side",
+      "fixture": "fan-in",
+      "nodes": 5,
+      "edges": 4,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1099.358,
+      "bendOrControlPointCount": 47,
+      "graphBoundingArea": 520960
+    },
+    {
+      "candidate": "splines-conservative-fixed-side",
+      "fixture": "cycle",
+      "nodes": 3,
+      "edges": 3,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1645.411,
+      "bendOrControlPointCount": 48,
+      "graphBoundingArea": 253308
+    },
+    {
+      "candidate": "splines-conservative-fixed-side",
+      "fixture": "self link",
+      "nodes": 1,
+      "edges": 1,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 360.447,
+      "bendOrControlPointCount": 17,
+      "graphBoundingArea": 60782.222
+    },
+    {
+      "candidate": "splines-conservative-fixed-side",
+      "fixture": "mutual links",
+      "nodes": 2,
+      "edges": 2,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 1109.176,
+      "bendOrControlPointCount": 37,
+      "graphBoundingArea": 171392
+    },
+    {
+      "candidate": "splines-conservative-fixed-side",
+      "fixture": "disconnected components",
+      "nodes": 5,
+      "edges": 2,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 0,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 296,
+      "bendOrControlPointCount": 10,
+      "graphBoundingArea": 430848
+    },
+    {
+      "candidate": "splines-conservative-fixed-side",
+      "fixture": "dense K3,3",
+      "nodes": 6,
+      "edges": 9,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 7,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 2311.975,
+      "bendOrControlPointCount": 99,
+      "graphBoundingArea": 385792
+    },
+    {
+      "candidate": "splines-conservative-fixed-side",
+      "fixture": "synthetic medium seed 0x41c0ffee",
+      "nodes": 24,
+      "edges": 48,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 51,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 61289.685,
+      "bendOrControlPointCount": 1365,
+      "graphBoundingArea": 5149620
+    },
+    {
+      "candidate": "splines-conservative-fixed-side",
+      "fixture": "synthetic large seed 0x41decade",
+      "nodes": 48,
+      "edges": 120,
+      "nonFiniteValues": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nodeIntrusions": 0,
+      "edgeCrossings": 501,
+      "overlappingSegments": 0,
+      "overlappingLength": 0,
+      "totalRouteLength": 211397.347,
+      "bendOrControlPointCount": 4143,
+      "graphBoundingArea": 14127754
+    }
+  ],
+  "timings": [
+    {
+      "candidate": "baseline-orthogonal-fixed-side",
+      "fixture": "synthetic medium seed 0x41c0ffee",
+      "coldLayout": {
+        "medianMs": 111.173,
+        "p95Ms": 116.354,
+        "minimumMs": 108.602,
+        "maximumMs": 116.354
+      },
+      "warmLayout": {
+        "medianMs": 108.038,
+        "p95Ms": 115.192,
+        "minimumMs": 107.448,
+        "maximumMs": 115.192
+      },
+      "pathGeneration": {
+        "medianMs": 0.059,
+        "p95Ms": 0.109,
+        "minimumMs": 0.053,
+        "maximumMs": 0.6
+      },
+      "timeToReadyProxyMedianMs": 108.097,
+      "blockingProxy": {
+        "samplesOver50Ms": 10,
+        "maximumMs": 116.354,
+        "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
+      }
+    },
+    {
+      "candidate": "baseline-orthogonal-fixed-side",
+      "fixture": "synthetic large seed 0x41decade",
+      "coldLayout": {
+        "medianMs": 644.212,
+        "p95Ms": 656.682,
+        "minimumMs": 620.035,
+        "maximumMs": 656.682
+      },
+      "warmLayout": {
+        "medianMs": 627.342,
+        "p95Ms": 648.43,
+        "minimumMs": 618.69,
+        "maximumMs": 648.43
+      },
+      "pathGeneration": {
+        "medianMs": 0.096,
+        "p95Ms": 0.128,
+        "minimumMs": 0.092,
+        "maximumMs": 0.873
+      },
+      "timeToReadyProxyMedianMs": 627.438,
+      "blockingProxy": {
+        "samplesOver50Ms": 10,
+        "maximumMs": 656.682,
+        "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
+      }
+    },
+    {
+      "candidate": "orthogonal-safe-rounded",
+      "fixture": "synthetic medium seed 0x41c0ffee",
+      "coldLayout": {
+        "medianMs": 109.377,
+        "p95Ms": 110.976,
+        "minimumMs": 104.437,
+        "maximumMs": 110.976
+      },
+      "warmLayout": {
+        "medianMs": 108.439,
+        "p95Ms": 110.026,
+        "minimumMs": 105.421,
+        "maximumMs": 110.026
+      },
+      "pathGeneration": {
+        "medianMs": 0.117,
+        "p95Ms": 0.161,
+        "minimumMs": 0.112,
+        "maximumMs": 0.623
+      },
+      "timeToReadyProxyMedianMs": 108.556,
+      "blockingProxy": {
+        "samplesOver50Ms": 10,
+        "maximumMs": 110.976,
+        "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
+      }
+    },
+    {
+      "candidate": "orthogonal-safe-rounded",
+      "fixture": "synthetic large seed 0x41decade",
+      "coldLayout": {
+        "medianMs": 688.655,
+        "p95Ms": 701.252,
+        "minimumMs": 656.046,
+        "maximumMs": 701.252
+      },
+      "warmLayout": {
+        "medianMs": 697.017,
+        "p95Ms": 703.93,
+        "minimumMs": 664.493,
+        "maximumMs": 703.93
+      },
+      "pathGeneration": {
+        "medianMs": 0.216,
+        "p95Ms": 0.255,
+        "minimumMs": 0.204,
+        "maximumMs": 0.971
+      },
+      "timeToReadyProxyMedianMs": 697.233,
+      "blockingProxy": {
+        "samplesOver50Ms": 10,
+        "maximumMs": 703.93,
+        "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
+      }
+    },
+    {
+      "candidate": "orthogonal-fixed-order-priorities",
+      "fixture": "synthetic medium seed 0x41c0ffee",
+      "coldLayout": {
+        "medianMs": 99.514,
+        "p95Ms": 119.876,
+        "minimumMs": 97.588,
+        "maximumMs": 119.876
+      },
+      "warmLayout": {
+        "medianMs": 100.452,
+        "p95Ms": 102.089,
+        "minimumMs": 99.307,
+        "maximumMs": 102.089
+      },
+      "pathGeneration": {
+        "medianMs": 0.041,
+        "p95Ms": 0.061,
+        "minimumMs": 0.035,
+        "maximumMs": 0.077
+      },
+      "timeToReadyProxyMedianMs": 100.493,
+      "blockingProxy": {
+        "samplesOver50Ms": 10,
+        "maximumMs": 119.876,
+        "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
+      }
+    },
+    {
+      "candidate": "orthogonal-fixed-order-priorities",
+      "fixture": "synthetic large seed 0x41decade",
+      "coldLayout": {
+        "medianMs": 781.595,
+        "p95Ms": 811.361,
+        "minimumMs": 745.839,
+        "maximumMs": 811.361
+      },
+      "warmLayout": {
+        "medianMs": 786.632,
+        "p95Ms": 805.519,
+        "minimumMs": 756.743,
+        "maximumMs": 805.519
+      },
+      "pathGeneration": {
+        "medianMs": 0.103,
+        "p95Ms": 0.148,
+        "minimumMs": 0.094,
+        "maximumMs": 0.789
+      },
+      "timeToReadyProxyMedianMs": 786.735,
+      "blockingProxy": {
+        "samplesOver50Ms": 10,
+        "maximumMs": 811.361,
+        "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
+      }
+    },
+    {
+      "candidate": "splines-conservative-fixed-side",
+      "fixture": "synthetic medium seed 0x41c0ffee",
+      "coldLayout": {
+        "medianMs": 115.902,
+        "p95Ms": 138.571,
+        "minimumMs": 115.165,
+        "maximumMs": 138.571
+      },
+      "warmLayout": {
+        "medianMs": 117.937,
+        "p95Ms": 128.351,
+        "minimumMs": 113.692,
+        "maximumMs": 128.351
+      },
+      "pathGeneration": {
+        "medianMs": 0.417,
+        "p95Ms": 0.609,
+        "minimumMs": 0.376,
+        "maximumMs": 1.391
+      },
+      "timeToReadyProxyMedianMs": 118.354,
+      "blockingProxy": {
+        "samplesOver50Ms": 10,
+        "maximumMs": 138.571,
+        "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
+      }
+    },
+    {
+      "candidate": "splines-conservative-fixed-side",
+      "fixture": "synthetic large seed 0x41decade",
+      "coldLayout": {
+        "medianMs": 675.167,
+        "p95Ms": 702.712,
+        "minimumMs": 650.875,
+        "maximumMs": 702.712
+      },
+      "warmLayout": {
+        "medianMs": 667.759,
+        "p95Ms": 725.172,
+        "minimumMs": 659.111,
+        "maximumMs": 725.172
+      },
+      "pathGeneration": {
+        "medianMs": 1.2,
+        "p95Ms": 1.603,
+        "minimumMs": 1.108,
+        "maximumMs": 1.785
+      },
+      "timeToReadyProxyMedianMs": 668.959,
+      "blockingProxy": {
+        "samplesOver50Ms": 10,
+        "maximumMs": 725.172,
+        "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
+      }
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-12",
+  "command": "npx playwright test --grep 'connections readiness records' --repeat-each 5",
+  "environment": {
+    "browser": "Playwright Chromium",
+    "fixture": {
+      "name": "synthetic large seed 0x41decade",
+      "nodes": 48,
+      "edges": 120
+    },
+    "measuredIterations": 5,
+    "network": "offline after service-worker readiness"
+  },
+  "measurements": [
+    {
+      "project": "chromium",
+      "initial": {
+        "samples": {
+          "timeToReadyMs": [906.8, 876.9, 839.9, 858.5, 948.2],
+          "maximumFrameGapMs": [750.1, 716.7, 683.3, 700, 783.3]
+        },
+        "timeToReadyMs": { "median": 876.9, "p95": 948.2 },
+        "maximumFrameGapMs": { "median": 716.7, "p95": 783.3 },
+        "reportedLongTasks": { "total": 0, "maximumMs": 0 }
+      },
+      "reentry": {
+        "samples": {
+          "timeToReadyMs": [790, 818.1, 808.1, 900.5, 859.4],
+          "maximumFrameGapMs": [616.6, 649.9, 633.3, 716.7, 683.3]
+        },
+        "timeToReadyMs": { "median": 818.1, "p95": 900.5 },
+        "maximumFrameGapMs": { "median": 649.9, "p95": 716.7 },
+        "reportedLongTasks": { "total": 0, "maximumMs": 0 }
+      }
+    },
+    {
+      "project": "mobile-chromium",
+      "initial": {
+        "samples": {
+          "timeToReadyMs": [935, 944.5, 973.6, 900.3, 908.2],
+          "maximumFrameGapMs": [749.9, 766.6, 799.9, 733.2, 733.3]
+        },
+        "timeToReadyMs": { "median": 935, "p95": 973.6 },
+        "maximumFrameGapMs": { "median": 749.9, "p95": 799.9 },
+        "reportedLongTasks": { "total": 0, "maximumMs": 0 }
+      },
+      "reentry": {
+        "samples": {
+          "timeToReadyMs": [904.5, 915.6, 939.5, 848.7, 854.9],
+          "maximumFrameGapMs": [716.7, 733.3, 733.3, 650, 666.6]
+        },
+        "timeToReadyMs": { "median": 904.5, "p95": 939.5 },
+        "maximumFrameGapMs": { "median": 716.7, "p95": 733.3 },
+        "reportedLongTasks": { "total": 0, "maximumMs": 0 }
+      }
+    }
+  ],
+  "interpretation": "Chromium did not expose Long Tasks entries in this run. The synchronized requestAnimationFrame gap monitor independently shows 600–800 ms main-thread stalls while ELK lays out the large graph, so zero reported Long Tasks is not treated as evidence of zero blocking."
+}

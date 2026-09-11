@@ -1,145 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { buildConnectionsGraph } from '@/lib/domain/graph';
-import type { CardRecord } from '@/lib/domain/types';
 import { invariant } from '@/lib/shared/invariant';
+import {
+  compactConnectionsMetrics,
+  connectionsCompatibilityFixtures,
+  connectionsFixtureGraph,
+  spaciousConnectionsMetrics,
+} from '@/tests/fixtures/connections-layout';
 import { fixtureCardId } from '@/tests/fixtures/ids';
 import {
   CONNECTIONS_LAYOUT_ALGORITHM_OPTIONS,
   connectionsLayoutOptions,
+  createConnectionsLayoutRunner,
   layoutConnectionsGraph,
   type ConnectionsLayout,
   type ConnectionsLayoutEdge,
-  type ConnectionsLayoutGraph,
-  type ConnectionsLayoutMetrics,
   type ConnectionsLayoutNode,
   type LayoutPoint,
 } from '@/lib/graph/elk-layout';
-
-type Fixture = {
-  name: string;
-  nodes: string[];
-  edges: [string, string][];
-};
-
-const fixtures: Fixture[] = [
-  {
-    name: 'reported C→A / C→B / A→B',
-    nodes: ['A', 'B', 'C'],
-    edges: [
-      ['C', 'A'],
-      ['C', 'B'],
-      ['A', 'B'],
-    ],
-  },
-  {
-    name: 'diamond',
-    nodes: ['A', 'B', 'C', 'D'],
-    edges: [
-      ['A', 'B'],
-      ['A', 'C'],
-      ['B', 'D'],
-      ['C', 'D'],
-    ],
-  },
-  {
-    name: 'fan-out and fan-in',
-    nodes: ['A', 'B', 'C', 'D', 'E', 'Z'],
-    edges: [
-      ['A', 'B'],
-      ['A', 'C'],
-      ['A', 'D'],
-      ['A', 'E'],
-      ['B', 'Z'],
-      ['C', 'Z'],
-      ['D', 'Z'],
-      ['E', 'Z'],
-    ],
-  },
-  {
-    name: 'cycle',
-    nodes: ['A', 'B', 'C'],
-    edges: [
-      ['A', 'B'],
-      ['B', 'C'],
-      ['C', 'A'],
-    ],
-  },
-  { name: 'self link', nodes: ['A'], edges: [['A', 'A']] },
-  {
-    name: 'mutual links',
-    nodes: ['A', 'B'],
-    edges: [
-      ['A', 'B'],
-      ['B', 'A'],
-    ],
-  },
-  {
-    name: 'disconnected components',
-    nodes: ['A', 'B', 'C', 'D', 'E'],
-    edges: [
-      ['A', 'B'],
-      ['C', 'D'],
-    ],
-  },
-  {
-    name: 'dense K3,3',
-    nodes: ['A', 'B', 'C', 'X', 'Y', 'Z'],
-    edges: ['A', 'B', 'C'].flatMap((source) =>
-      ['X', 'Y', 'Z'].map((target): [string, string] => [source, target]),
-    ),
-  },
-];
-
-function fixtureGraph(fixture: Fixture): ConnectionsLayoutGraph {
-  const outgoing = new Map(fixture.nodes.map((id) => [id, [] as string[]]));
-  for (const [source, target] of fixture.edges) {
-    const targets = outgoing.get(source);
-    invariant(targets, `Fixture is missing source ${source}`);
-    targets.push(target);
-  }
-  const cards: CardRecord[] = fixture.nodes.map((id, index) => ({
-    id: fixtureCardId(id),
-    displayId: { kind: 'official', value: index + 1 },
-    title: id,
-    body: (outgoing.get(id) ?? []).map((targetCardId) => ({
-      type: 'link',
-      targetCardId: fixtureCardId(targetCardId),
-    })),
-    createdAt: index,
-    updatedAt: index,
-    localRevision: 1,
-    serverRevision: 1,
-  }));
-  const graph = buildConnectionsGraph(cards);
-  return {
-    nodes: graph.nodes.map(({ card }) => ({ id: card.id })),
-    edges: graph.edges,
-  };
-}
-
-const compactMetrics: ConnectionsLayoutMetrics = {
-  nodeWidth: 148,
-  nodeHeight: 56,
-  portSize: 2,
-  componentSpacing: 64,
-  nodeSpacing: 48,
-  edgeNodeSpacing: 24,
-  layerSpacing: 80,
-  edgeLayerSpacing: 28,
-  padding: { top: 16, right: 16, bottom: 16, left: 16 },
-};
-
-const spaciousMetrics: ConnectionsLayoutMetrics = {
-  nodeWidth: 232,
-  nodeHeight: 96,
-  portSize: 4,
-  componentSpacing: 128,
-  nodeSpacing: 96,
-  edgeNodeSpacing: 44,
-  layerSpacing: 148,
-  edgeLayerSpacing: 56,
-  padding: { top: 32, right: 40, bottom: 36, left: 44 },
-};
 
 function overlaps(
   left: ConnectionsLayoutNode,
@@ -299,7 +176,7 @@ describe('ELK connections layout', () => {
       'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
       'elk.separateConnectedComponents': 'true',
     });
-    expect(connectionsLayoutOptions(spaciousMetrics)).toMatchObject({
+    expect(connectionsLayoutOptions(spaciousConnectionsMetrics)).toMatchObject({
       'elk.spacing.componentComponent': '128',
       'elk.spacing.nodeNode': '96',
       'elk.layered.spacing.nodeNodeBetweenLayers': '148',
@@ -307,19 +184,57 @@ describe('ELK connections layout', () => {
     });
   });
 
-  for (const fixture of fixtures) {
+  it('exposes explicit benchmark options without changing the production default', () => {
+    const options = connectionsLayoutOptions(spaciousConnectionsMetrics, {
+      edgeRouting: 'SPLINES',
+      portPolicy: 'FIXED_ORDER',
+      splineRoutingMode: 'CONSERVATIVE',
+      addUnnecessaryBendpoints: false,
+      favorStraightEdges: true,
+      straightnessPriority: 8,
+      shortnessPriority: 8,
+    });
+
+    expect(options).toMatchObject({
+      'elk.edgeRouting': 'SPLINES',
+      'elk.layered.edgeRouting.splines.mode': 'CONSERVATIVE',
+      'elk.layered.unnecessaryBendpoints': 'false',
+      'elk.layered.nodePlacement.favorStraightEdges': 'true',
+    });
+    expect(connectionsLayoutOptions(spaciousConnectionsMetrics)).toMatchObject({
+      'elk.edgeRouting': 'ORTHOGONAL',
+    });
+  });
+
+  it('rejects invalid candidate priorities at the layout boundary', async () => {
+    const fixture = connectionsCompatibilityFixtures[0];
+    invariant(fixture, 'Missing reported fixture');
+    const runner = createConnectionsLayoutRunner({
+      edgeRouting: 'ORTHOGONAL',
+      portPolicy: 'FIXED_SIDE',
+      straightnessPriority: -1,
+    });
+
+    await expect(
+      runner(connectionsFixtureGraph(fixture), spaciousConnectionsMetrics),
+    ).rejects.toThrow('priority straightness must be a non-negative integer');
+  });
+
+  for (const fixture of connectionsCompatibilityFixtures) {
     for (const [density, metrics] of [
-      ['compact', compactMetrics],
-      ['spacious', spaciousMetrics],
+      ['compact', compactConnectionsMetrics],
+      ['spacious', spaciousConnectionsMetrics],
     ] as const) {
       it(`returns deterministic, finite, node-safe ${density} geometry for ${fixture.name}`, async () => {
-        const graph = fixtureGraph(fixture);
+        const graph = connectionsFixtureGraph(fixture);
+        const inputSnapshot = structuredClone(graph);
         const first = await layoutConnectionsGraph(graph, metrics);
         const second = await layoutConnectionsGraph(graph, metrics);
 
+        expect(graph).toEqual(inputSnapshot);
         expect(first).toEqual(second);
         expect(first.nodes.map((node) => node.id)).toEqual(
-          fixture.nodes.map(fixtureCardId),
+          graph.nodes.map((node) => node.id),
         );
         expect(first.edges).toHaveLength(fixture.edges.length);
         expect(
@@ -351,30 +266,34 @@ describe('ELK connections layout', () => {
   }
 
   it('keeps self and mutual routes non-degenerate and visually distinct', async () => {
-    const graph = fixtureGraph({
+    const combinedFixture = {
       name: 'combined loops',
       nodes: ['A', 'B'],
       edges: [
         ['A', 'A'],
         ['A', 'B'],
         ['B', 'A'],
-      ],
-    });
-    const layout = await layoutConnectionsGraph(graph, compactMetrics);
+      ] as [string, string][],
+    };
+    const graph = connectionsFixtureGraph(combinedFixture);
+    const layout = await layoutConnectionsGraph(
+      graph,
+      compactConnectionsMetrics,
+    );
     const self = layout.edges.find(
       (edge) =>
-        edge.sourceCardId === fixtureCardId('A') &&
-        edge.targetCardId === fixtureCardId('A'),
+        edge.sourceCardId === fixtureCardId(`${combinedFixture.name}-A`) &&
+        edge.targetCardId === fixtureCardId(`${combinedFixture.name}-A`),
     );
     const forward = layout.edges.find(
       (edge) =>
-        edge.sourceCardId === fixtureCardId('A') &&
-        edge.targetCardId === fixtureCardId('B'),
+        edge.sourceCardId === fixtureCardId(`${combinedFixture.name}-A`) &&
+        edge.targetCardId === fixtureCardId(`${combinedFixture.name}-B`),
     );
     const backward = layout.edges.find(
       (edge) =>
-        edge.sourceCardId === fixtureCardId('B') &&
-        edge.targetCardId === fixtureCardId('A'),
+        edge.sourceCardId === fixtureCardId(`${combinedFixture.name}-B`) &&
+        edge.targetCardId === fixtureCardId(`${combinedFixture.name}-A`),
     );
     invariant(self, 'Missing self edge');
     invariant(forward, 'Missing forward edge');
