@@ -6,7 +6,13 @@ import {
   selectHistoryViewModel,
   selectNotesStatus,
 } from '@/lib/application/view-models';
-import type { CardRecord, ConflictRecord } from '@/lib/domain/types';
+import type {
+  CardRecord,
+  ConflictRecord,
+  SaveState,
+  SyncState,
+} from '@/lib/domain/types';
+import type { NotesStatusViewModel } from '@/lib/application/presentation';
 import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
 
 function card(label: string, options: Partial<CardRecord> = {}): CardRecord {
@@ -24,24 +30,65 @@ function card(label: string, options: Partial<CardRecord> = {}): CardRecord {
 }
 
 describe('notes status view model', () => {
-  it('applies save-before-sync priority and exposes retry semantics', () => {
-    expect(selectNotesStatus('failed', 'syncing')).toEqual({
-      kind: 'save-failed',
-      label: '端末への保存に失敗',
-      retryable: false,
-    });
-    expect(selectNotesStatus('saving', 'failed').kind).toBe('saving');
-    expect(selectNotesStatus('saved', 'syncing').kind).toBe('syncing');
-    expect(selectNotesStatus('saved', 'offline').label).toBe(
-      'オフライン・端末に保存済み',
-    );
-    expect(selectNotesStatus('saved', 'failed')).toEqual({
-      kind: 'sync-failed',
-      label: '同期失敗・端末に保存済み',
-      retryable: true,
-    });
-    expect(selectNotesStatus('saved', 'idle').kind).toBe('saved');
-  });
+  const saveFailed: NotesStatusViewModel = {
+    kind: 'save-failed',
+    label: '端末への保存に失敗',
+    retryable: false,
+  };
+  const saving: NotesStatusViewModel = {
+    kind: 'saving',
+    label: '保存中',
+    retryable: false,
+  };
+  const cases = [
+    { saveState: 'failed', syncState: 'idle', expected: saveFailed },
+    { saveState: 'failed', syncState: 'syncing', expected: saveFailed },
+    { saveState: 'failed', syncState: 'offline', expected: saveFailed },
+    { saveState: 'failed', syncState: 'failed', expected: saveFailed },
+    { saveState: 'saving', syncState: 'idle', expected: saving },
+    { saveState: 'saving', syncState: 'syncing', expected: saving },
+    { saveState: 'saving', syncState: 'offline', expected: saving },
+    { saveState: 'saving', syncState: 'failed', expected: saving },
+    {
+      saveState: 'saved',
+      syncState: 'idle',
+      expected: { kind: 'saved', label: '保存済み', retryable: false },
+    },
+    {
+      saveState: 'saved',
+      syncState: 'syncing',
+      expected: { kind: 'syncing', label: '同期中', retryable: false },
+    },
+    {
+      saveState: 'saved',
+      syncState: 'offline',
+      expected: {
+        kind: 'offline',
+        label: 'オフライン・端末に保存済み',
+        retryable: false,
+      },
+    },
+    {
+      saveState: 'saved',
+      syncState: 'failed',
+      expected: {
+        kind: 'sync-failed',
+        label: '同期失敗・端末に保存済み',
+        retryable: true,
+      },
+    },
+  ] satisfies ReadonlyArray<{
+    saveState: SaveState;
+    syncState: SyncState;
+    expected: NotesStatusViewModel;
+  }>;
+
+  it.each(cases)(
+    'maps $saveState/$syncState with save-before-sync priority',
+    ({ saveState, syncState, expected }) => {
+      expect(selectNotesStatus(saveState, syncState)).toEqual(expected);
+    },
+  );
 });
 
 describe('card editor input view model', () => {

@@ -9,6 +9,10 @@ import {
   EMPTY_NOTES_LOCATION,
   notesLocationCardId,
 } from '@/lib/application/navigation';
+import {
+  isInitialSyncComplete,
+  isNotesInitialized,
+} from '@/lib/application/initialization-lifecycle';
 import { createBrowserNotesNavigator } from '@/lib/client/browser-notes-navigator';
 import type {
   NotesPresentationActions,
@@ -31,14 +35,16 @@ export function useNotesApplication(store: NotesDataStore): {
     [navigator, store],
   );
   const locationCardId = notesLocationCardId(location);
+  const initialized = isNotesInitialized(store.initialization);
+  const initialSyncComplete = isInitialSyncComplete(store.initialization);
   const awaitingInitialCardResolution =
-    store.initialized &&
+    initialized &&
     locationCardId !== null &&
     !store.hasCard(locationCardId) &&
-    !store.initialSyncComplete;
+    !initialSyncComplete;
 
   useEffect(() => {
-    if (!store.initialized || awaitingInitialCardResolution) return;
+    if (!initialized || awaitingInitialCardResolution) return;
     if (navigator.getLocation().kind === 'empty') {
       controller.initializeNavigation();
     } else {
@@ -50,7 +56,7 @@ export function useNotesApplication(store: NotesDataStore): {
     location,
     navigator,
     store.cards,
-    store.initialized,
+    initialized,
   ]);
 
   const model = useMemo(

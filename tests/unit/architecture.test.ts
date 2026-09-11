@@ -139,6 +139,25 @@ describe('pure-core dependency direction', () => {
 });
 
 describe('application and presentation architecture', () => {
+  it('uses one typed lifecycle as the initialization source of truth', async () => {
+    const lifecycle = await readFile(
+      'lib/application/initialization-lifecycle.ts',
+      'utf8',
+    );
+    const store = await readFile('lib/client/notes-store.tsx', 'utf8');
+    const connector = await readFile(
+      'lib/client/use-notes-application.ts',
+      'utf8',
+    );
+
+    expect(lifecycle).toContain('NotesInitializationLifecycle');
+    expect(lifecycle).toContain('transitionNotesInitialization');
+    expect(lifecycle).toContain('assertNever');
+    expect(store).toContain('useState<NotesInitializationLifecycle>');
+    expect(store).not.toMatch(/setInitialized|setInitialSyncComplete/);
+    expect(connector).toContain('isInitialSyncComplete(store.initialization)');
+  });
+
   it('keeps location and view selection out of the data store', async () => {
     const source = await readFile('lib/client/notes-store.tsx', 'utf8');
     for (const forbidden of [

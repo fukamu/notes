@@ -125,4 +125,6 @@ Phase 1〜3でcompiler、codec／brand、client／IndexedDB、API／D1／environ
 
 同期応答のack、送信中に生じた編集のrebase、server cardとの統合、conflict置換順序は `lib/sync/client-reconciliation.ts` がI/Oなしの適用計画として決定します。IndexedDB adapterは検証済み応答と同一transaction内で読んだsnapshotを渡し、返された操作を順番どおり実行します。要求後の画面編集との再統合も同moduleのpure functionが担当し、network待機中の内容を失わずserver側の正式IDとrevisionだけを取り込みます。transactionの開始位置、read/write順序、abort条件は変更しません。
 
+初期化は `lib/application/initialization-lifecycle.ts` の `loading`、`awaiting-initial-sync`、`ready` からなる状態機械を正本とします。storage loadの成功／失敗とinitial sync完了はeventとしてpure reducerへ渡し、React adapterは独立したbooleanを保持しません。load失敗でも従来どおり初期化後の同期を試み、deep linkのfallbackはinitial sync試行完了まで待機します。表示境界の `initialized` はlifecycleから派生して既存contractを維持します。status modelはkindごとにretryableのliteral型を固定し、保存状態を同期状態より優先する全組合せをunit testします。
+
 Issue分割、integration/work branch、PR base、merge gate、検査設定変更の扱い、main/production境界の正本は [Issue-based type-safe development workflow](development-workflow.md) です。利用者が対象を特定して直接許可するまではmainへ反映しません。

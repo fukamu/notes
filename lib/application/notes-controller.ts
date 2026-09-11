@@ -1,10 +1,12 @@
-import type {
-  NotesNavigator,
-  NotesLocation,
-} from '@/lib/application/navigation';
+import {
+  isNotesInitialized,
+  type NotesInitializationLifecycle,
+} from '@/lib/application/initialization-lifecycle';
 import {
   notesLocationCardId,
+  type NotesLocation,
   type NotesNavigationIntent,
+  type NotesNavigator,
 } from '@/lib/application/navigation';
 import type {
   ConflictChoice,
@@ -32,7 +34,7 @@ import type {
 export type NotesStorePort = {
   cards: CardRecord[];
   conflicts: ConflictRecord[];
-  initialized: boolean;
+  initialization: NotesInitializationLifecycle;
   saveState: SaveState;
   syncState: SyncState;
   createCard: () => Promise<CardRecord>;
@@ -129,7 +131,7 @@ export function createNotesPresentationModel(
   const hasCurrentCard = currentCard !== null;
 
   return {
-    initialized: store.initialized,
+    initialized: isNotesInitialized(store.initialization),
     location,
     activeView: view,
     availableViews: {
