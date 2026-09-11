@@ -123,4 +123,6 @@ Phase 1〜3でcompiler、codec／brand、client／IndexedDB、API／D1／environ
 
 カード作成・編集・競合解決・pending mutation構築は `lib/domain/card-transitions.ts` のpure functionが担当します。時刻とbranded IDは外側で一度生成して入力し、UUIDv7生成は `lib/client/id-generator.ts` に限定します。編集とmutation mode、予期可能なresolve失敗はdiscriminated unionで区別し、IndexedDB adapterだけが既存の例外へ変換します。
 
+同期応答のack、送信中に生じた編集のrebase、server cardとの統合、conflict置換順序は `lib/sync/client-reconciliation.ts` がI/Oなしの適用計画として決定します。IndexedDB adapterは検証済み応答と同一transaction内で読んだsnapshotを渡し、返された操作を順番どおり実行します。要求後の画面編集との再統合も同moduleのpure functionが担当し、network待機中の内容を失わずserver側の正式IDとrevisionだけを取り込みます。transactionの開始位置、read/write順序、abort条件は変更しません。
+
 Issue分割、integration/work branch、PR base、merge gate、検査設定変更の扱い、main/production境界の正本は [Issue-based type-safe development workflow](development-workflow.md) です。利用者が対象を特定して直接許可するまではmainへ反映しません。
