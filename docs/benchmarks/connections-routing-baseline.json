@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-11T15:38:20.131Z",
+  "generatedAt": "2026-09-11T17:31:36.338Z",
   "evaluationOrder": [
     "nodeIntrusions (hard constraint)",
     "semantic edge and endpoint correctness",
@@ -839,27 +839,27 @@
       "candidate": "baseline-orthogonal-fixed-side",
       "fixture": "synthetic medium seed 0x41c0ffee",
       "coldLayout": {
-        "medianMs": 111.173,
-        "p95Ms": 116.354,
-        "minimumMs": 108.602,
-        "maximumMs": 116.354
+        "medianMs": 110.816,
+        "p95Ms": 112.007,
+        "minimumMs": 108.282,
+        "maximumMs": 112.007
       },
       "warmLayout": {
-        "medianMs": 108.038,
-        "p95Ms": 115.192,
-        "minimumMs": 107.448,
-        "maximumMs": 115.192
+        "medianMs": 109.307,
+        "p95Ms": 111.576,
+        "minimumMs": 106.997,
+        "maximumMs": 111.576
       },
       "pathGeneration": {
-        "medianMs": 0.059,
-        "p95Ms": 0.109,
-        "minimumMs": 0.053,
-        "maximumMs": 0.6
+        "medianMs": 0.054,
+        "p95Ms": 0.093,
+        "minimumMs": 0.05,
+        "maximumMs": 0.176
       },
-      "timeToReadyProxyMedianMs": 108.097,
+      "timeToReadyProxyMedianMs": 109.36,
       "blockingProxy": {
         "samplesOver50Ms": 10,
-        "maximumMs": 116.354,
+        "maximumMs": 112.007,
         "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
       }
     },
@@ -867,27 +867,27 @@
       "candidate": "baseline-orthogonal-fixed-side",
       "fixture": "synthetic large seed 0x41decade",
       "coldLayout": {
-        "medianMs": 644.212,
-        "p95Ms": 656.682,
-        "minimumMs": 620.035,
-        "maximumMs": 656.682
+        "medianMs": 654.502,
+        "p95Ms": 665.991,
+        "minimumMs": 631.036,
+        "maximumMs": 665.991
       },
       "warmLayout": {
-        "medianMs": 627.342,
-        "p95Ms": 648.43,
-        "minimumMs": 618.69,
-        "maximumMs": 648.43
+        "medianMs": 636.742,
+        "p95Ms": 670.585,
+        "minimumMs": 628.115,
+        "maximumMs": 670.585
       },
       "pathGeneration": {
-        "medianMs": 0.096,
-        "p95Ms": 0.128,
-        "minimumMs": 0.092,
-        "maximumMs": 0.873
+        "medianMs": 0.098,
+        "p95Ms": 0.207,
+        "minimumMs": 0.091,
+        "maximumMs": 0.831
       },
-      "timeToReadyProxyMedianMs": 627.438,
+      "timeToReadyProxyMedianMs": 636.84,
       "blockingProxy": {
         "samplesOver50Ms": 10,
-        "maximumMs": 656.682,
+        "maximumMs": 670.585,
         "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
       }
     },
@@ -895,27 +895,27 @@
       "candidate": "orthogonal-safe-rounded",
       "fixture": "synthetic medium seed 0x41c0ffee",
       "coldLayout": {
-        "medianMs": 109.377,
-        "p95Ms": 110.976,
-        "minimumMs": 104.437,
-        "maximumMs": 110.976
+        "medianMs": 110.73,
+        "p95Ms": 118.597,
+        "minimumMs": 105.86,
+        "maximumMs": 118.597
       },
       "warmLayout": {
-        "medianMs": 108.439,
-        "p95Ms": 110.026,
-        "minimumMs": 105.421,
-        "maximumMs": 110.026
+        "medianMs": 109.468,
+        "p95Ms": 112.249,
+        "minimumMs": 107.006,
+        "maximumMs": 112.249
       },
       "pathGeneration": {
-        "medianMs": 0.117,
-        "p95Ms": 0.161,
-        "minimumMs": 0.112,
-        "maximumMs": 0.623
+        "medianMs": 0.116,
+        "p95Ms": 0.236,
+        "minimumMs": 0.103,
+        "maximumMs": 0.829
       },
-      "timeToReadyProxyMedianMs": 108.556,
+      "timeToReadyProxyMedianMs": 109.584,
       "blockingProxy": {
         "samplesOver50Ms": 10,
-        "maximumMs": 110.976,
+        "maximumMs": 118.597,
         "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
       }
     },
@@ -923,27 +923,27 @@
       "candidate": "orthogonal-safe-rounded",
       "fixture": "synthetic large seed 0x41decade",
       "coldLayout": {
-        "medianMs": 688.655,
-        "p95Ms": 701.252,
-        "minimumMs": 656.046,
-        "maximumMs": 701.252
+        "medianMs": 648.999,
+        "p95Ms": 677.454,
+        "minimumMs": 633.059,
+        "maximumMs": 677.454
       },
       "warmLayout": {
-        "medianMs": 697.017,
-        "p95Ms": 703.93,
-        "minimumMs": 664.493,
-        "maximumMs": 703.93
+        "medianMs": 664.058,
+        "p95Ms": 704.378,
+        "minimumMs": 649.479,
+        "maximumMs": 704.378
       },
       "pathGeneration": {
-        "medianMs": 0.216,
-        "p95Ms": 0.255,
-        "minimumMs": 0.204,
-        "maximumMs": 0.971
+        "medianMs": 0.218,
+        "p95Ms": 0.268,
+        "minimumMs": 0.205,
+        "maximumMs": 0.882
       },
-      "timeToReadyProxyMedianMs": 697.233,
+      "timeToReadyProxyMedianMs": 664.276,
       "blockingProxy": {
         "samplesOver50Ms": 10,
-        "maximumMs": 703.93,
+        "maximumMs": 704.378,
         "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
       }
     },
@@ -951,27 +951,27 @@
       "candidate": "orthogonal-fixed-order-priorities",
       "fixture": "synthetic medium seed 0x41c0ffee",
       "coldLayout": {
-        "medianMs": 99.514,
-        "p95Ms": 119.876,
-        "minimumMs": 97.588,
-        "maximumMs": 119.876
+        "medianMs": 101.281,
+        "p95Ms": 123.022,
+        "minimumMs": 98.13,
+        "maximumMs": 123.022
       },
       "warmLayout": {
-        "medianMs": 100.452,
-        "p95Ms": 102.089,
-        "minimumMs": 99.307,
-        "maximumMs": 102.089
+        "medianMs": 97.831,
+        "p95Ms": 99.543,
+        "minimumMs": 97.19,
+        "maximumMs": 99.543
       },
       "pathGeneration": {
-        "medianMs": 0.041,
-        "p95Ms": 0.061,
-        "minimumMs": 0.035,
-        "maximumMs": 0.077
+        "medianMs": 0.043,
+        "p95Ms": 0.079,
+        "minimumMs": 0.037,
+        "maximumMs": 0.265
       },
-      "timeToReadyProxyMedianMs": 100.493,
+      "timeToReadyProxyMedianMs": 97.874,
       "blockingProxy": {
         "samplesOver50Ms": 10,
-        "maximumMs": 119.876,
+        "maximumMs": 123.022,
         "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
       }
     },
@@ -979,27 +979,27 @@
       "candidate": "orthogonal-fixed-order-priorities",
       "fixture": "synthetic large seed 0x41decade",
       "coldLayout": {
-        "medianMs": 781.595,
-        "p95Ms": 811.361,
-        "minimumMs": 745.839,
-        "maximumMs": 811.361
+        "medianMs": 769.05,
+        "p95Ms": 818.413,
+        "minimumMs": 760.241,
+        "maximumMs": 818.413
       },
       "warmLayout": {
-        "medianMs": 786.632,
-        "p95Ms": 805.519,
-        "minimumMs": 756.743,
-        "maximumMs": 805.519
+        "medianMs": 801.53,
+        "p95Ms": 812.368,
+        "minimumMs": 748.384,
+        "maximumMs": 812.368
       },
       "pathGeneration": {
-        "medianMs": 0.103,
-        "p95Ms": 0.148,
-        "minimumMs": 0.094,
-        "maximumMs": 0.789
+        "medianMs": 0.098,
+        "p95Ms": 0.124,
+        "minimumMs": 0.093,
+        "maximumMs": 0.865
       },
-      "timeToReadyProxyMedianMs": 786.735,
+      "timeToReadyProxyMedianMs": 801.629,
       "blockingProxy": {
         "samplesOver50Ms": 10,
-        "maximumMs": 811.361,
+        "maximumMs": 818.413,
         "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
       }
     },
@@ -1007,27 +1007,27 @@
       "candidate": "splines-conservative-fixed-side",
       "fixture": "synthetic medium seed 0x41c0ffee",
       "coldLayout": {
-        "medianMs": 115.902,
-        "p95Ms": 138.571,
-        "minimumMs": 115.165,
-        "maximumMs": 138.571
+        "medianMs": 114.254,
+        "p95Ms": 135.346,
+        "minimumMs": 111.527,
+        "maximumMs": 135.346
       },
       "warmLayout": {
-        "medianMs": 117.937,
-        "p95Ms": 128.351,
-        "minimumMs": 113.692,
-        "maximumMs": 128.351
+        "medianMs": 116.443,
+        "p95Ms": 118.59,
+        "minimumMs": 112.06,
+        "maximumMs": 118.59
       },
       "pathGeneration": {
-        "medianMs": 0.417,
-        "p95Ms": 0.609,
-        "minimumMs": 0.376,
-        "maximumMs": 1.391
+        "medianMs": 0.384,
+        "p95Ms": 0.661,
+        "minimumMs": 0.363,
+        "maximumMs": 1.274
       },
-      "timeToReadyProxyMedianMs": 118.354,
+      "timeToReadyProxyMedianMs": 116.827,
       "blockingProxy": {
         "samplesOver50Ms": 10,
-        "maximumMs": 138.571,
+        "maximumMs": 135.346,
         "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
       }
     },
@@ -1035,27 +1035,27 @@
       "candidate": "splines-conservative-fixed-side",
       "fixture": "synthetic large seed 0x41decade",
       "coldLayout": {
-        "medianMs": 675.167,
-        "p95Ms": 702.712,
-        "minimumMs": 650.875,
-        "maximumMs": 702.712
+        "medianMs": 680.066,
+        "p95Ms": 717.24,
+        "minimumMs": 658.744,
+        "maximumMs": 717.24
       },
       "warmLayout": {
-        "medianMs": 667.759,
-        "p95Ms": 725.172,
-        "minimumMs": 659.111,
-        "maximumMs": 725.172
+        "medianMs": 697.581,
+        "p95Ms": 727.151,
+        "minimumMs": 652.025,
+        "maximumMs": 727.151
       },
       "pathGeneration": {
-        "medianMs": 1.2,
-        "p95Ms": 1.603,
-        "minimumMs": 1.108,
-        "maximumMs": 1.785
+        "medianMs": 1.178,
+        "p95Ms": 1.619,
+        "minimumMs": 1.056,
+        "maximumMs": 1.929
       },
-      "timeToReadyProxyMedianMs": 668.959,
+      "timeToReadyProxyMedianMs": 698.76,
       "blockingProxy": {
         "samplesOver50Ms": 10,
-        "maximumMs": 725.172,
+        "maximumMs": 727.151,
         "note": "Single-call Node main-thread proxy; browser long-task and gesture measurements are recorded with the viewport implementation."
       }
     }

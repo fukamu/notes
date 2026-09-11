@@ -1,4 +1,3 @@
-import ElkConstructor from 'elkjs/lib/elk.bundled.js';
 import type {
   ELK,
   ElkEdgeSection,
@@ -308,8 +307,10 @@ function layoutSection(section: ElkEdgeSection): ConnectionsLayoutSection {
   };
 }
 
+export type ConnectionsLayoutEngine = Pick<ELK, 'layout'>;
+
 async function layoutConnectionsGraphWithEngine(
-  elk: ELK,
+  elk: ConnectionsLayoutEngine,
   graph: ConnectionsLayoutGraph,
   metrics: ConnectionsLayoutMetrics,
   configuration: ConnectionsLayoutConfiguration,
@@ -374,19 +375,9 @@ export type ConnectionsLayoutFunction = (
 ) => Promise<ConnectionsLayout>;
 
 export function createConnectionsLayoutRunner(
+  elk: ConnectionsLayoutEngine,
   configuration: ConnectionsLayoutConfiguration = DEFAULT_CONNECTIONS_LAYOUT_CONFIGURATION,
 ): ConnectionsLayoutFunction {
-  const elk = new ElkConstructor({ algorithms: ['layered'] });
   return (graph, metrics) =>
     layoutConnectionsGraphWithEngine(elk, graph, metrics, configuration);
-}
-
-let defaultLayoutRunner: ConnectionsLayoutFunction | undefined;
-
-export function layoutConnectionsGraph(
-  graph: ConnectionsLayoutGraph,
-  metrics: ConnectionsLayoutMetrics,
-): Promise<ConnectionsLayout> {
-  defaultLayoutRunner ??= createConnectionsLayoutRunner();
-  return defaultLayoutRunner(graph, metrics);
 }

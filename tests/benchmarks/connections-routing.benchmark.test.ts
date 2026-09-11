@@ -2,8 +2,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { cpus, platform, release } from 'node:os';
 import { performance } from 'node:perf_hooks';
 import { describe, expect, it } from 'vitest';
+import { createMainThreadConnectionsLayoutRunner } from '@/lib/client/connections-layout-main-thread';
 import {
-  createConnectionsLayoutRunner,
   type ConnectionsLayout,
   type ConnectionsLayoutConfiguration,
 } from '@/lib/graph/elk-layout';
@@ -102,10 +102,12 @@ async function timedLayout(
   );
   invariant(fixture, `Missing timing fixture ${fixtureName}`);
   const graph = connectionsFixtureGraph(fixture);
-  const warmRunner = createConnectionsLayoutRunner(candidate.configuration);
+  const warmRunner = createMainThreadConnectionsLayoutRunner(
+    candidate.configuration,
+  );
   const runOnce = () =>
     lifecycle === 'cold-runner'
-      ? createConnectionsLayoutRunner(candidate.configuration)(
+      ? createMainThreadConnectionsLayoutRunner(candidate.configuration)(
           graph,
           spaciousConnectionsMetrics,
         )
@@ -142,7 +144,9 @@ describe('connections routing benchmark artifact', () => {
   it('measures the fixed corpus and writes reproducible comparison data', async () => {
     const quality = [];
     for (const candidate of candidates) {
-      const runner = createConnectionsLayoutRunner(candidate.configuration);
+      const runner = createMainThreadConnectionsLayoutRunner(
+        candidate.configuration,
+      );
       for (const fixture of connectionsBenchmarkFixtures) {
         console.info(`quality ${candidate.name}: ${fixture.name}`);
         const graph = connectionsFixtureGraph(fixture);

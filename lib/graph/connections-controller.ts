@@ -5,7 +5,6 @@ import type {
   ConnectionsReadyNode,
 } from '@/lib/graph/connections-contract';
 import {
-  layoutConnectionsGraph,
   type ConnectionsLayout,
   type ConnectionsLayoutGraph,
   type ConnectionsLayoutMetrics,
@@ -120,7 +119,7 @@ function readyState(
 export function createConnectionsController(
   initialInput: ConnectionsInputModel,
   initialMetrics: ConnectionsLayoutMetrics,
-  runner: ConnectionsLayoutRunner = layoutConnectionsGraph,
+  runner: ConnectionsLayoutRunner,
 ): ConnectionsController {
   let state: ConnectionsControllerState = loadingState(
     initialInput,
