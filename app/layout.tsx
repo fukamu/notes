@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   metadataBase: resolveSiteUrl(process.env.NEXT_PUBLIC_SITE_URL),
   title: 'FUKAMU Notes',
   description:
-    '紙のカードをめくるように、考えを書き、つなげるローカルファーストノート',
+    '紙のカードをめくるように、考えを書き、つなげるローカルファーストWebアプリ',
   applicationName: 'FUKAMU Notes',
   icons: { icon: '/favicon.svg' },
   manifest: '/manifest.webmanifest',

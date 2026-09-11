@@ -295,7 +295,7 @@ describe('swappable presentation architecture', () => {
     expect(audit).toContain(
       '#6 adds the URL/History API implementation of `NotesNavigator`',
     );
-    expect(audit).toContain('#7 must audit `FUKAMU Notes`/`Notes*`');
+    expect(audit).toContain('#7 audits `FUKAMU Notes`/`Notes*`');
 
     const contracts = await readFile(
       'docs/application-presentation.md',

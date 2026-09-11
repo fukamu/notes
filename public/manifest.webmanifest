@@ -1,7 +1,7 @@
 {
   "name": "FUKAMU Notes",
   "short_name": "FUKAMU",
-  "description": "紙のカードをめくるように、考えを書き、つなげるローカルファーストノート",
+  "description": "紙のカードをめくるように、考えを書き、つなげるローカルファーストWebアプリ",
   "lang": "ja",
   "start_url": "/",
   "display": "standalone",

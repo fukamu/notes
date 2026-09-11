@@ -182,7 +182,7 @@ remain unchanged.
 URL/History API implementation at the connector boundary. `NotesLocation`,
 named intents, controllers, models, actions, renderers, and the
 `NotesProvider` lifetime remain unchanged; route transitions use History API
-state observation rather than mounting another provider tree. #7 should audit
+state observation rather than mounting another provider tree. #7 audits
 product-wide names as `FUKAMU Notes`/`Notes*` and user-created artifacts as
-`Card`/`Card*`, including filenames, exported types, UI copy, tests, and
-documents, without conflating the two concepts.
+`Card`/`Card*` without conflating the two concepts. Product/application names,
+URLs, cache and database identifiers remain intentionally unchanged.
