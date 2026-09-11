@@ -116,3 +116,9 @@ Phase 1〜3でcompiler、codec／brand、client／IndexedDB、API／D1／environ
 `npm run verify` がlocalとCIの共通入口です。format check、全runtime typecheck、全面unsafe lint、unit／Miniflare D1 integration／architecture test、production build、Desktop ChromeとPixel 7相当のE2Eを順に実行します。production build後は `dist/client/sw.js` のmessage guardと、Sites／型宣言／runtime／WranglerのD1 binding一致も検査します。
 
 個別調査には `npm run test:integration`、`npm run test:architecture`、`npm run check:environment` を使えます。CIとtestはlocal fixture／Miniflareだけを使い、本番D1、本番データ、デプロイを使用しません。
+
+## Issue／branch／PRの実行管理
+
+この文書の型安全、純粋なdomain/applicationロジック、副作用adapter、trust boundary、検査非弱体化を、各変更のmerge gateとして扱います。Issueの分割、統合／作業branch、PR base、統合後検証、完了状態、およびmainへの反映制限の正本は [Issue-based development workflow](development-workflow.md) です。
+
+実装Issueは保護testと文書を同じPRに含め、統合branch上の再検証が完了するまでcloseしません。利用者が対象PRまたは変更範囲を特定して直接許可するまでは、mainへのcommit、push、merge、cherry-pick、参照更新、main更新workflow、およびauto-mergeを行いません。
