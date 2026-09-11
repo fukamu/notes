@@ -9,7 +9,8 @@ type Props = {
 };
 
 export function HistoryView({ model, onOpenCard }: Props) {
-  const registerCurrentItem = useCurrentHistoryItem(model.currentCardId);
+  const { registerScrollContainer, registerCurrentItem } =
+    useCurrentHistoryItem(model.currentCardId);
 
   return (
     <section
@@ -29,7 +30,8 @@ export function HistoryView({ model, onOpenCard }: Props) {
         </p>
       </div>
       <div
-        className="history-stack max-h-[calc(100dvh-14rem)] space-y-3 overflow-y-auto rounded-2xl border bg-card/45 p-3 sm:p-5"
+        ref={registerScrollContainer}
+        className="history-stack max-h-[calc(100dvh-18.25rem)] space-y-3 overflow-y-auto rounded-2xl border bg-card/45 p-3 sm:p-5 lg:max-h-[calc(100dvh-14rem)]"
         data-testid="history-list"
       >
         {model.items.map((item) => {
