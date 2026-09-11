@@ -1,4 +1,5 @@
 import type { CardId, ConflictId } from '@/lib/domain/id';
+import type { ConflictResolutionChoice } from '@/lib/domain/card-transitions';
 import type { BodySegment, CardRecord } from '@/lib/domain/types';
 import type { NotesLocation } from '@/lib/application/navigation';
 import type { ConnectionsInputModel } from '@/lib/graph/connections-contract';
@@ -33,7 +34,7 @@ export type HistoryViewModel = {
   items: HistoryItemViewModel[];
 };
 
-export type ConflictChoice = 'local' | 'server';
+export type ConflictChoice = ConflictResolutionChoice;
 
 export type ConflictOptionViewModel = {
   choice: ConflictChoice;

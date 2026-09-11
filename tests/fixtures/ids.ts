@@ -1,8 +1,10 @@
 import {
   parseCardId,
   parseConflictId,
+  parseMutationId,
   type CardId,
   type ConflictId,
+  type MutationId,
 } from '@/lib/domain/id';
 
 export function fixtureCardId(label: string): CardId {
@@ -18,4 +20,9 @@ export function fixtureCardId(label: string): CardId {
 export function fixtureConflictId(label: string): ConflictId {
   const cardId = fixtureCardId(`conflict-${label}`);
   return parseConflictId(cardId);
+}
+
+export function fixtureMutationId(label: string): MutationId {
+  const cardId = fixtureCardId(`mutation-${label}`);
+  return parseMutationId(cardId);
 }

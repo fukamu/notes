@@ -1,8 +1,4 @@
-import {
-  v7 as uuidv7,
-  validate as validateUuid,
-  version as uuidVersion,
-} from 'uuid';
+import { validate as validateUuid, version as uuidVersion } from 'uuid';
 import {
   decodeOrThrow,
   refineDecoder,
@@ -59,16 +55,4 @@ export function parseConflictId(input: unknown): ConflictId {
 
 export function parseDeviceId(input: unknown): DeviceId {
   return decodeOrThrow(deviceIdDecoder, input, 'DeviceId');
-}
-
-export function createCardId(): CardId {
-  return parseCardId(uuidv7());
-}
-
-export function createMutationId(): MutationId {
-  return parseMutationId(uuidv7());
-}
-
-export function createDeviceId(): DeviceId {
-  return parseDeviceId(uuidv7());
 }

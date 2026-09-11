@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createCardId, isUuidV7 } from '@/lib/domain/id';
+import { createCardId } from '@/lib/client/id-generator';
+import { isUuidV7 } from '@/lib/domain/id';
 import type { CardRecord } from '@/lib/domain/types';
 import { invariant } from '@/lib/shared/invariant';
 import {

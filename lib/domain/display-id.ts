@@ -7,7 +7,7 @@ export function formatDisplayId(displayId: DisplayId): string {
     : `#${displayId.value}`;
 }
 
-export function nextProvisionalValue(cards: CardRecord[]): number {
+export function nextProvisionalValue(cards: readonly CardRecord[]): number {
   return positiveSafeInteger(
     cards.reduce(
       (maximum, card) => Math.max(maximum, card.displayId.value),
@@ -17,7 +17,9 @@ export function nextProvisionalValue(cards: CardRecord[]): number {
   );
 }
 
-export function sortCardsByDisplayId(cards: CardRecord[]): CardRecord[] {
+export function sortCardsByDisplayId(
+  cards: readonly CardRecord[],
+): CardRecord[] {
   return [...cards].sort((left, right) => {
     const byNumber = left.displayId.value - right.displayId.value;
     if (byNumber !== 0) return byNumber;
@@ -29,7 +31,7 @@ export function sortCardsByDisplayId(cards: CardRecord[]): CardRecord[] {
 }
 
 export function reconcileProvisionalDisplayIds(
-  cards: CardRecord[],
+  cards: readonly CardRecord[],
 ): CardRecord[] {
   const official = cards.filter((card) => card.displayId.kind === 'official');
   const provisional = cards

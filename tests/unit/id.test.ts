@@ -3,8 +3,8 @@ import {
   createCardId,
   createDeviceId,
   createMutationId,
-  isUuidV7,
-} from '@/lib/domain/id';
+} from '@/lib/client/id-generator';
+import { isUuidV7 } from '@/lib/domain/id';
 
 describe('internal ids', () => {
   it('creates standards-compliant UUIDv7 values', () => {
