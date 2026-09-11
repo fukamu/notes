@@ -41,6 +41,8 @@ function fakeStore(initialCards: CardRecord[] = []): NotesStorePort & {
       store.calls.push(`create:${created.id}`);
       return created;
     },
+    hasCard: (cardId) =>
+      store.cards.some((candidate) => candidate.id === cardId),
     updateCard: (cardId, patch) => {
       store.calls.push(`update:${cardId}`);
       store.cards = store.cards.map((candidate) =>

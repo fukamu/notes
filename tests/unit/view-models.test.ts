@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  selectCardEditorInputModel,
   selectConflictViewModel,
   selectHistoryViewModel,
   selectNotesStatus,
@@ -39,6 +40,45 @@ describe('notes status view model', () => {
       retryable: true,
     });
     expect(selectNotesStatus('saved', 'idle').kind).toBe('saved');
+  });
+});
+
+describe('card editor input view model', () => {
+  it('derives sorted candidates and instance label inputs without raw store access', () => {
+    const current = card('editor-current', {
+      displayId: { kind: 'official', value: 4 },
+      body: [{ type: 'text', text: 'Current body' }],
+    });
+    const earlier = card('editor-earlier', {
+      displayId: { kind: 'official', value: 1 },
+      title: '',
+    });
+    const provisional = card('editor-provisional', {
+      displayId: { kind: 'provisional', value: 2 },
+    });
+
+    expect(
+      selectCardEditorInputModel([current, provisional, earlier], current),
+    ).toEqual({
+      cardId: current.id,
+      body: current.body,
+      labels: [
+        { cardId: current.id, label: '#4 editor-current' },
+        {
+          cardId: provisional.id,
+          label: '仮 #2 editor-provisional',
+        },
+        { cardId: earlier.id, label: '#1 Untitled' },
+      ],
+      candidates: [
+        { cardId: earlier.id, displayLabel: '#1', title: 'Untitled' },
+        {
+          cardId: provisional.id,
+          displayLabel: '仮 #2',
+          title: 'editor-provisional',
+        },
+      ],
+    });
   });
 });
 

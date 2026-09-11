@@ -134,14 +134,18 @@
   @apply min-w-0 justify-center px-2 text-xs lg:justify-start lg:px-3 lg:text-sm;
 }
 
-.fukamu-editor {
-  @apply min-h-72 text-[1.06rem] leading-8 text-foreground/90 outline-none;
+.card-editor-structure {
+  @apply min-h-72 outline-none;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.fukamu-editor p {
+.card-editor-structure p {
   min-height: 2rem;
+}
+
+.fukamu-editor {
+  @apply text-[1.06rem] leading-8 text-foreground/90;
 }
 
 .fukamu-editor p.is-editor-empty:first-child::before {
@@ -152,12 +156,16 @@
   pointer-events: none;
 }
 
+.card-link-structure {
+  @apply inline-flex select-all items-center align-baseline;
+  white-space: nowrap;
+}
+
 .card-link-capsule {
-  @apply mx-1 inline-flex cursor-pointer select-all items-center rounded-full border px-2.5 py-0.5 align-baseline font-sans text-sm font-semibold shadow-xs transition;
+  @apply mx-1 cursor-pointer rounded-full border px-2.5 py-0.5 font-sans text-sm font-semibold shadow-xs transition;
   border-color: var(--link-border);
   background: var(--link-bg);
   color: var(--link-foreground);
-  white-space: nowrap;
 }
 
 .card-link-capsule::before {

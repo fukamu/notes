@@ -1,4 +1,4 @@
-import { bodyToPlainText } from '@/lib/domain/body';
+import { bodyToPlainText, linkCandidates } from '@/lib/domain/body';
 import { formatDisplayId } from '@/lib/domain/display-id';
 import { buildConnectionsGraph } from '@/lib/domain/graph';
 import type { CardId } from '@/lib/domain/id';
@@ -10,6 +10,7 @@ import {
   type SyncState,
 } from '@/lib/domain/types';
 import type {
+  CardEditorInputModel,
   ConflictChoice,
   ConflictOptionViewModel,
   ConflictViewModel,
@@ -17,6 +18,25 @@ import type {
   HistoryViewModel,
   NotesStatusViewModel,
 } from '@/lib/application/presentation';
+
+export function selectCardEditorInputModel(
+  cards: CardRecord[],
+  currentCard: CardRecord,
+): CardEditorInputModel {
+  return {
+    cardId: currentCard.id,
+    body: currentCard.body,
+    labels: cards.map((card) => ({
+      cardId: card.id,
+      label: `${formatDisplayId(card.displayId)} ${visibleTitle(card.title)}`,
+    })),
+    candidates: linkCandidates(cards, currentCard.id).map((card) => ({
+      cardId: card.id,
+      displayLabel: formatDisplayId(card.displayId),
+      title: visibleTitle(card.title),
+    })),
+  };
+}
 
 export function selectNotesStatus(
   saveState: SaveState,

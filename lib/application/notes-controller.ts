@@ -13,6 +13,7 @@ import type {
   NotesViewName,
 } from '@/lib/application/presentation';
 import {
+  selectCardEditorInputModel,
   selectConflictViewModel,
   selectConnectionsViewModel,
   selectHistoryViewModel,
@@ -35,6 +36,7 @@ export type NotesStorePort = {
   saveState: SaveState;
   syncState: SyncState;
   createCard: () => Promise<CardRecord>;
+  hasCard: (cardId: CardId) => boolean;
   updateCard: (
     cardId: CardId,
     patch: { title?: string; body?: BodySegment[] },
@@ -87,7 +89,7 @@ export function createNotesApplicationController(
       navigate(navigator, { type: 'open-card', cardId: card.id });
     },
     openCard: (cardId) => {
-      if (!store.cards.some((card) => card.id === cardId)) return;
+      if (!store.hasCard(cardId)) return;
       navigate(navigator, { type: 'open-card', cardId });
     },
     showCurrentCard: () => {
@@ -142,6 +144,9 @@ export function createNotesPresentationModel(
     currentCard,
     currentCardDisplayLabel: currentCard
       ? formatDisplayId(currentCard.displayId)
+      : null,
+    cardEditor: currentCard
+      ? selectCardEditorInputModel(store.cards, currentCard)
       : null,
     history: selectHistoryViewModel(store.cards, currentCardId),
     conflicts: currentCard

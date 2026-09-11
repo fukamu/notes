@@ -47,6 +47,7 @@ export type NotesDataStore = {
   saveState: SaveState;
   syncState: SyncState;
   createCard: () => Promise<CardRecord>;
+  hasCard: (cardId: CardId) => boolean;
   updateCard: (
     cardId: CardId,
     patch: { title?: string; body?: BodySegment[] },
@@ -277,6 +278,11 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     [queueSave],
   );
 
+  const hasCard = useCallback(
+    (cardId: CardId) => cardsRef.current.some((card) => card.id === cardId),
+    [],
+  );
+
   const resolveConflict = useCallback(
     (conflict: ConflictRecord, choice: 'local' | 'server') => {
       const existing = cardsRef.current.find(
@@ -316,6 +322,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       saveState,
       syncState,
       createCard,
+      hasCard,
       updateCard,
       synchronizeNow,
       resolveConflict,
@@ -327,6 +334,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       saveState,
       syncState,
       createCard,
+      hasCard,
       updateCard,
       synchronizeNow,
       resolveConflict,

@@ -12,7 +12,7 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react';
-import { BodyEditor } from '@/components/body-editor';
+import { BodyEditorAdapter } from '@/components/body-editor-adapter';
 import { ConflictNotice } from '@/components/conflict-notice';
 import { ConnectionsView } from '@/components/connections-view';
 import { HistoryView } from '@/components/history-view';
@@ -176,13 +176,9 @@ function CardView({ model, actions }: PresentationProps) {
           placeholder="Untitled"
           data-testid="card-title"
         />
-        <BodyEditor
-          key={card.id}
-          card={card}
-          cards={model.cards}
-          onChange={actions.updateBody}
-          onOpenCard={actions.openCard}
-        />
+        {model.cardEditor && (
+          <BodyEditorAdapter model={model.cardEditor} actions={actions} />
+        )}
       </article>
     </section>
   );
