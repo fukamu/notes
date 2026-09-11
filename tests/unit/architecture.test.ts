@@ -95,6 +95,54 @@ describe('trust-boundary architecture', () => {
   });
 });
 
+describe('pure-core dependency direction', () => {
+  const coreRoots = ['lib/domain', 'lib/sync', 'lib/application'];
+  const temporaryEffectExceptions = new Map([
+    [
+      'lib/domain/id.ts',
+      'UUIDv7 generation is moved to a client adapter by #31',
+    ],
+  ]);
+
+  it('keeps core imports independent of concrete effect adapters', async () => {
+    const files = (await Promise.all(coreRoots.map(sourceFiles))).flat();
+    const concreteEffectDependency =
+      /from ['"]@\/(?:app|components|db|service-worker)\/|from ['"]@\/lib\/(?:client|storage)\//;
+    const violations: string[] = [];
+
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (concreteEffectDependency.test(source)) violations.push(file);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps direct runtime effects out of core except for the tracked UUID adapter debt', async () => {
+    const files = (await Promise.all(coreRoots.map(sourceFiles))).flat();
+    const directEffect =
+      /\b(?:fetch|indexedDB)\s*\(|\b(?:window|document|localStorage|sessionStorage)\.|\bnavigator\.(?:onLine|serviceWorker)|\b(?:Date\.now|Math\.random|crypto\.)|\bprocess\.env\b|\bconsole\.|from ['"]uuid['"]/;
+    const violations: string[] = [];
+
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (!directEffect.test(source)) continue;
+      if (!temporaryEffectExceptions.has(file)) violations.push(file);
+    }
+
+    expect(violations).toEqual([]);
+    expect([...temporaryEffectExceptions]).toEqual([
+      [
+        'lib/domain/id.ts',
+        'UUIDv7 generation is moved to a client adapter by #31',
+      ],
+    ]);
+    await expect(
+      readFile('docs/development-workflow.md', 'utf8'),
+    ).resolves.toContain('`lib/domain/id.ts`');
+  });
+});
+
 describe('application and presentation architecture', () => {
   it('keeps location and view selection out of the data store', async () => {
     const source = await readFile('lib/client/notes-store.tsx', 'utf8');
