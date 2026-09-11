@@ -17,9 +17,10 @@ export const CardLink = Node.create({
       targetCardId: {
         default: null,
         parseHTML: (element) => element.getAttribute('data-card-link-id'),
-        renderHTML: (attributes) => ({
-          'data-card-link-id': attributes.targetCardId,
-        }),
+        renderHTML: (attributes) => {
+          const targetCardId = cardLinkTargetId(attributes);
+          return targetCardId ? { 'data-card-link-id': targetCardId } : {};
+        },
       },
     };
   },
@@ -29,9 +30,7 @@ export const CardLink = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    const targetCardId = cardLinkTargetId({
-      targetCardId: HTMLAttributes['data-card-link-id'],
-    });
+    const targetCardId = cardLinkTargetId(HTMLAttributes);
     return [
       'span',
       mergeAttributes(HTMLAttributes, {

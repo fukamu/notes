@@ -3,6 +3,7 @@ import {
   BoundaryDecodeError,
   decodeOrThrow,
   objectDecoder,
+  refineDecoder,
   stringDecoder,
   type DecodeIssue,
   type InferDecoder,
@@ -33,15 +34,19 @@ export const syncRequestDecoder = objectDecoder({
   }),
 });
 
-export const serverCardDecoder = objectDecoder({
-  id: cardIdDecoder,
-  officialDisplayId: positiveSafeIntegerDecoder,
-  title: stringDecoder({ maxLength: CONTRACT_LIMITS.title }),
-  body: bodyDecoder,
-  createdAt: nonNegativeSafeIntegerDecoder,
-  updatedAt: nonNegativeSafeIntegerDecoder,
-  revision: positiveSafeIntegerDecoder,
-});
+export const serverCardDecoder = refineDecoder(
+  objectDecoder({
+    id: cardIdDecoder,
+    officialDisplayId: positiveSafeIntegerDecoder,
+    title: stringDecoder({ maxLength: CONTRACT_LIMITS.title }),
+    body: bodyDecoder,
+    createdAt: nonNegativeSafeIntegerDecoder,
+    updatedAt: nonNegativeSafeIntegerDecoder,
+    revision: positiveSafeIntegerDecoder,
+  }),
+  (card) => card.createdAt <= card.updatedAt,
+  'expected createdAt <= updatedAt',
+);
 
 export const syncResponseDecoder = objectDecoder({
   cards: arrayDecoder(serverCardDecoder, {

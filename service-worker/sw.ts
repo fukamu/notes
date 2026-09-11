@@ -1,16 +1,51 @@
 const CACHE_NAME = 'fukamu-notes-v2';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg'];
-const globalScope = globalThis;
+
+type ExtendableWorkerEvent = {
+  waitUntil(promise: Promise<unknown>): void;
+};
+
+type FetchWorkerEvent = ExtendableWorkerEvent & {
+  request: Request;
+  respondWith(response: Promise<Response> | Response): void;
+};
+
+type MessageWorkerEvent = ExtendableWorkerEvent & {
+  data: unknown;
+  ports: { postMessage(message: unknown): void }[];
+};
+
+type ServiceWorkerScope = {
+  addEventListener(
+    type: 'install' | 'activate',
+    listener: (event: ExtendableWorkerEvent) => void,
+  ): void;
+  addEventListener(
+    type: 'fetch',
+    listener: (event: FetchWorkerEvent) => void,
+  ): void;
+  addEventListener(
+    type: 'message',
+    listener: (event: MessageWorkerEvent) => void,
+  ): void;
+  clients: { claim(): Promise<void> };
+  location: { origin: string };
+  skipWaiting(): Promise<void>;
+};
+
+const globalScope: unknown = globalThis;
 if (!isServiceWorkerScope(globalScope)) {
   throw new Error('Service Worker loaded outside a ServiceWorkerGlobalScope');
 }
 const worker = globalScope;
+
 worker.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)),
   );
   void worker.skipWaiting();
 });
+
 worker.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
@@ -25,12 +60,14 @@ worker.addEventListener('activate', (event) => {
   );
   void worker.clients.claim();
 });
+
 worker.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== worker.location.origin || url.pathname.startsWith('/api/'))
     return;
+
   event.respondWith(
     fetch(request)
       .then(async (response) => {
@@ -52,6 +89,7 @@ worker.addEventListener('fetch', (event) => {
       }),
   );
 });
+
 worker.addEventListener('message', (event) => {
   const urls = cacheUrlsFromMessage(event.data);
   if (!urls) return;
@@ -63,14 +101,16 @@ worker.addEventListener('message', (event) => {
       .then(() => replyPort?.postMessage({ ready: true })),
   );
 });
+
 /**
  * Treats cross-context message data as untrusted. Only the documented message
  * shape and string URLs from this origin can reach CacheStorage.
  */
-function cacheUrlsFromMessage(data) {
+function cacheUrlsFromMessage(data: unknown): string[] | undefined {
   if (!isRecord(data) || data.type !== 'CACHE_URLS') return undefined;
   if (!isUnknownArray(data.urls)) return undefined;
-  const urls = [];
+
+  const urls: string[] = [];
   for (const value of data.urls) {
     if (typeof value !== 'string') continue;
     try {
@@ -88,13 +128,16 @@ function cacheUrlsFromMessage(data) {
   }
   return urls;
 }
-function isRecord(value) {
+
+function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
-function isUnknownArray(value) {
+
+function isUnknownArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
 }
-function isServiceWorkerScope(scope) {
+
+function isServiceWorkerScope(scope: unknown): scope is ServiceWorkerScope {
   return (
     scope !== null &&
     typeof scope === 'object' &&

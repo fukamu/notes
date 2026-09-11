@@ -278,7 +278,9 @@ describe('local persistence', () => {
         if (!(request instanceof IDBRequest)) {
           throw new Error('IDBObjectStore.put returned an invalid request');
         }
-        return request;
+        // fake-indexeddb erases the overload result to `any`; the runtime class
+        // guard above and IDBObjectStore.put contract establish this key result.
+        return request as IDBRequest<IDBValidKey>;
       });
 
     try {

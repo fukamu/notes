@@ -124,10 +124,10 @@ export async function persistCardAndMutation(
   },
 ): Promise<PendingMutation> {
   const database = await openNotesDatabase();
+  const baseServerRevision = card.serverRevision;
   const base = {
     mutationId: createMutationId(),
     cardId: card.id,
-    baseServerRevision: card.serverRevision,
     title: card.title,
     body: card.body,
     createdAt: card.createdAt,
@@ -135,12 +135,25 @@ export async function persistCardAndMutation(
   };
   const mutation: PendingMutation =
     options.kind === 'resolve'
-      ? {
+      ? (() => {
+          if (baseServerRevision === null) {
+            throw new Error(
+              'Cannot resolve a conflict without a server revision',
+            );
+          }
+          return {
+            ...base,
+            kind: options.kind,
+            baseServerRevision,
+            conflictIds: options.conflictIds,
+          };
+        })()
+      : {
           ...base,
           kind: options.kind,
-          conflictIds: options.conflictIds,
-        }
-      : { ...base, kind: options.kind, conflictIds: [] };
+          baseServerRevision,
+          conflictIds: [],
+        };
   const transaction = database.transaction(['cards', 'mutations'], 'readwrite');
   transaction.objectStore('cards').put(encodeStoredCard(card));
   transaction.objectStore('mutations').put(encodeStoredMutation(mutation));
