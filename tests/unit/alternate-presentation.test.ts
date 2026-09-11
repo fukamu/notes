@@ -309,5 +309,8 @@ describe('alternate presentation contract', () => {
     expect(
       alternateNotesAppConfiguration.connectionsPresentation.layoutMetrics,
     ).toMatchObject({ nodeWidth: 148, nodeHeight: 56, layerSpacing: 80 });
+    expect(
+      alternateNotesAppConfiguration.connectionsPresentation.edgeMaximumRadius,
+    ).toBe(7);
   });
 });

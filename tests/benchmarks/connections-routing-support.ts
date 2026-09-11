@@ -6,6 +6,11 @@ import type {
   ConnectionsLayoutSection,
   LayoutPoint,
 } from '@/lib/graph/elk-layout';
+import {
+  createConnectionsSvgPath,
+  normalizeConnectionsOrthogonalPoints,
+  sampleConnectionsSvgPath,
+} from '@/lib/graph/connections-path';
 import { invariant } from '@/lib/shared/invariant';
 
 export type RouteInterpretation =
@@ -39,20 +44,6 @@ function distance(left: LayoutPoint, right: LayoutPoint): number {
   return Math.hypot(right.x - left.x, right.y - left.y);
 }
 
-function pointToward(
-  origin: LayoutPoint,
-  target: LayoutPoint,
-  amount: number,
-): LayoutPoint {
-  const length = distance(origin, target);
-  if (length < epsilon) return { ...origin };
-  const ratio = amount / length;
-  return {
-    x: origin.x + (target.x - origin.x) * ratio,
-    y: origin.y + (target.y - origin.y) * ratio,
-  };
-}
-
 function cubicPoint(
   start: LayoutPoint,
   firstControl: LayoutPoint,
@@ -73,45 +64,6 @@ function cubicPoint(
       3 * remaining * progress ** 2 * secondControl.y +
       progress ** 3 * end.y,
   };
-}
-
-function quadraticPoint(
-  start: LayoutPoint,
-  control: LayoutPoint,
-  end: LayoutPoint,
-  progress: number,
-): LayoutPoint {
-  const remaining = 1 - progress;
-  return {
-    x:
-      remaining ** 2 * start.x +
-      2 * remaining * progress * control.x +
-      progress ** 2 * end.x,
-    y:
-      remaining ** 2 * start.y +
-      2 * remaining * progress * control.y +
-      progress ** 2 * end.y,
-  };
-}
-
-function normalizedOrthogonalPoints(
-  section: ConnectionsLayoutSection,
-): LayoutPoint[] {
-  const points = [section.startPoint, ...section.bendPoints, section.endPoint];
-  const distinct = points.filter(
-    (point, index) =>
-      index === 0 || !samePoint(point, points[index - 1] ?? point),
-  );
-  return distinct.filter((point, index) => {
-    const previous = distinct[index - 1];
-    const next = distinct[index + 1];
-    if (!previous || !next) return true;
-    const firstX = point.x - previous.x;
-    const firstY = point.y - previous.y;
-    const secondX = next.x - point.x;
-    const secondY = next.y - point.y;
-    return Math.abs(firstX * secondY - firstY * secondX) >= epsilon;
-  });
 }
 
 function splinePolyline(section: ConnectionsLayoutSection): LayoutPoint[] {
@@ -170,76 +122,6 @@ function segmentCrossesRectInterior(
   return maximum >= 0 && minimum <= 1;
 }
 
-type RoundedCorner = {
-  entry: LayoutPoint;
-  control: LayoutPoint;
-  exit: LayoutPoint;
-};
-
-function roundedCorner(
-  previous: LayoutPoint,
-  corner: LayoutPoint,
-  next: LayoutPoint,
-): RoundedCorner | null {
-  const radius = Math.min(
-    16,
-    44 / 2,
-    distance(previous, corner) / 2,
-    distance(corner, next) / 2,
-  );
-  if (radius < 0.05) return null;
-  return {
-    entry: pointToward(corner, previous, radius),
-    control: corner,
-    exit: pointToward(corner, next, radius),
-  };
-}
-
-function roundedSection(section: ConnectionsLayoutSection): {
-  path: string;
-  points: LayoutPoint[];
-} {
-  const raw = normalizedOrthogonalPoints(section);
-  const first = raw[0];
-  invariant(first, `Section ${section.id} has no start`);
-  const points = [{ ...first }];
-  const commands = [`M ${first.x} ${first.y}`];
-  for (let index = 1; index < raw.length - 1; index += 1) {
-    const previous = raw[index - 1];
-    const corner = raw[index];
-    const next = raw[index + 1];
-    invariant(previous, `Missing previous point ${index - 1}`);
-    invariant(corner, `Missing corner ${index}`);
-    invariant(next, `Missing next point ${index + 1}`);
-    const rounded = roundedCorner(previous, corner, next);
-    if (!rounded) {
-      commands.push(`L ${corner.x} ${corner.y}`);
-      points.push({ ...corner });
-      continue;
-    }
-    commands.push(`L ${rounded.entry.x} ${rounded.entry.y}`);
-    commands.push(
-      `Q ${rounded.control.x} ${rounded.control.y} ${rounded.exit.x} ${rounded.exit.y}`,
-    );
-    points.push(rounded.entry);
-    for (let step = 1; step <= curveSteps; step += 1) {
-      points.push(
-        quadraticPoint(
-          rounded.entry,
-          rounded.control,
-          rounded.exit,
-          step / curveSteps,
-        ),
-      );
-    }
-  }
-  const last = raw.at(-1);
-  invariant(last, `Section ${section.id} has no end`);
-  commands.push(`L ${last.x} ${last.y}`);
-  points.push({ ...last });
-  return { path: commands.join(' '), points };
-}
-
 function splineSectionPath(section: ConnectionsLayoutSection): string {
   const controls = [...section.bendPoints, section.endPoint];
   if (controls.length % 3 !== 0) {
@@ -272,22 +154,29 @@ function edgeGeometry(
     };
   }
   if (interpretation === 'orthogonal-rounded') {
-    const rounded = edge.sections.map((section) => roundedSection(section));
+    const rounded = edge.sections.map((section) =>
+      createConnectionsSvgPath(section, {
+        maximumRadius: 16,
+        nodeClearance: 44,
+      }),
+    );
     return {
-      paths: rounded.map(({ path }) => path),
-      polylines: rounded.map(({ points }) => points),
+      paths: rounded.map(({ d }) => d),
+      polylines: rounded.map((path) =>
+        sampleConnectionsSvgPath(path, curveSteps),
+      ),
     };
   }
   return {
     paths: edge.sections.map((section) => {
-      const points = normalizedOrthogonalPoints(section);
+      const points = normalizeConnectionsOrthogonalPoints(section);
       return points
         .map(
           (point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`,
         )
         .join(' ');
     }),
-    polylines: edge.sections.map(normalizedOrthogonalPoints),
+    polylines: edge.sections.map(normalizeConnectionsOrthogonalPoints),
   };
 }
 
