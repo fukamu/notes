@@ -98,10 +98,10 @@ connector boundary. Pure parsing stays in `lib/application`, browser effects
 stay in `lib/client`, and no URL state moves into the store, controllers, or
 renderers. The model/actions and feature contracts are unchanged.
 
-#7 must audit `FUKAMU Notes`/`Notes*` for the product/application and
-`Card`/`Card*` for user-created artifacts across filenames, exports, UI copy,
-tests, and docs. It must not rename storage/schema/API concepts without their
-compatibility requirements.
+#7 audits `FUKAMU Notes`/`Notes*` for the product/application and `Card`/`Card*`
+for user-created artifacts across filenames, exports, UI copy, tests, and docs.
+The two inconsistent public descriptions use “Webアプリ”; storage, schema,
+API, cache, URL, package, and product identifiers remain unchanged.
 
 No DB, D1 API, IndexedDB, sync protocol, numbering rule, editor/graph library,
 deployment, or production data is changed by this boundary work.
