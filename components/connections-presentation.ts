@@ -4,6 +4,7 @@ import type { ConnectionsViewportPadding } from '@/lib/graph/connections-viewpor
 export type ConnectionsPresentationAdapter = {
   layoutMetrics: ConnectionsLayoutMetrics;
   viewportPadding: ConnectionsViewportPadding;
+  edgeMaximumRadius: number;
 };
 
 export const defaultConnectionsPresentation: ConnectionsPresentationAdapter = {
@@ -19,4 +20,5 @@ export const defaultConnectionsPresentation: ConnectionsPresentationAdapter = {
     padding: { top: 24, right: 24, bottom: 24, left: 24 },
   },
   viewportPadding: { top: 24, right: 24, bottom: 24, left: 24 },
+  edgeMaximumRadius: 16,
 };

@@ -91,9 +91,10 @@ also does not qualify. No result is claimed to be a global optimum.
 The safe-corner prototype retains the node-safe orthogonal route, removes duplicate
 and collinear points, and clamps each quadratic radius to 16 px, half of each
 adjacent segment, and half of the configured 44 px edge/node clearance. Its large
-path generation median/p95 was 0.218/0.268 ms in this run and is linear in total
-route points. Production Issue #46 must re-check actual SVG endpoints, arrow
-tangents, self/mutual links, short segments, and node clearance.
+path generation median/p95 was 0.218/0.268 ms in the research run and is linear in
+total route points. Issue #46 reuses the same production function in the benchmark
+and adds actual SVG endpoint, arrow tangent, section continuity, self/mutual link,
+short/duplicate/collinear segment, and sampled clearance contracts.
 
 ## Camera decision
 
@@ -155,6 +156,37 @@ transfer 27,937 gzip bytes larger. This is accepted because it removes the
 measured blocking without a new dependency or route change and retains offline
 operation.
 
+## Curve implementation and final evidence
+
+Issue #46 implements the selected presentation as a typed pure route-to-SVG core.
+Stack normalization removes only duplicates and forward-collinear points, thereby
+preserving a collinear U-turn. Each non-collinear corner emits a real quadratic
+`Q`; its radius is clamped by the presentation maximum, half of both adjacent
+segments, and half of the configured edge/node clearance. The first and last
+points are unchanged and a final straight segment preserves the marker tangent.
+The renderer retains the 8 px card-color halo and marker only on the final section.
+Its memo comparator keys geometry on the controller's graph-and-metrics layout key
+plus both curve settings, so semantic label updates remain outside the SVG while
+pan/zoom never regenerates paths.
+
+The regenerated fixed corpus remains at zero node intrusions, endpoint mismatches,
+section discontinuities, and non-finite values. All aggregate quality values are
+identical to the research safe-rounded candidate: 549 sampled crossings,
+295,276.332 sampled route length, 590 bends/controls, and 22,373,478 area. The
+48-node/120-edge production path function measured 0.300 ms median / 0.426 ms p95.
+Contemporaneous cached re-entry comparisons were 1.071/0.996 desktop and
+1.031/1.016 mobile for median/p95, within the 1.10/1.20 curve-only bounds. Initial
+worker timing on the shared host was non-stationary; the unchanged layout runtime's
+stable accepted measurement remains the Issue #45 result, and both the diagnostic
+and consecutive batches are retained rather than hidden. The application/combined
+JavaScript delta against a same-host branch-point build is +2,375 raw / +810 gzip
+bytes; the worker is byte-identical and there is no new runtime dependency.
+
+Full values and their attribution limits are in
+[`connections-curve-final.json`](../benchmarks/connections-curve-final.json).
+Desktop/mobile × light/dark visual evidence and its review checklist are in
+[`screenshots/connections-map`](../screenshots/connections-map/README.md).
+
 ## Consequences
 
 - Keep ORTHOGONAL + FIXED_SIDE as the production route because no candidate beats
@@ -164,7 +196,7 @@ operation.
 - Investigate worker/cache evidence in Issue #45 while preserving the selected
   route and all graph semantics. The measured worker plus bounded cache is now the
   accepted ELK runtime adapter.
-- Implement safe SVG quadratic rounding separately in Issue #46. It smooths the
-  selected route but is not labeled a routing improvement.
+- Use the Issue #46 safe SVG quadratic rounding as presentation over the retained
+  route. It smooths corners but is not labeled a routing improvement.
 - Keep the benchmark artifact and fixed fixtures as reproducible compatibility
   evidence. Raw timing remains informational rather than a flaky CI threshold.

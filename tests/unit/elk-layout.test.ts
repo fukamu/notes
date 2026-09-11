@@ -16,6 +16,11 @@ import {
   type ConnectionsLayoutNode,
   type LayoutPoint,
 } from '@/lib/graph/elk-layout';
+import {
+  createConnectionsSvgPath,
+  normalizeConnectionsOrthogonalPoints,
+  sampleConnectionsSvgPath,
+} from '@/lib/graph/connections-path';
 
 const layoutConnectionsGraph = createMainThreadConnectionsLayoutRunner();
 
@@ -167,6 +172,63 @@ function expectNoNodeOrEdgeIntrusions(layout: ConnectionsLayout) {
   }
 }
 
+function expectCurvedPathsNodeSafe(
+  layout: ConnectionsLayout,
+  nodeClearance: number,
+) {
+  for (const edge of layout.edges) {
+    const otherNodes = layout.nodes
+      .filter(
+        (node) =>
+          node.id !== edge.sourceCardId && node.id !== edge.targetCardId,
+      )
+      .map((node) => ({
+        ...node,
+        x: node.x - nodeClearance / 2,
+        y: node.y - nodeClearance / 2,
+        width: node.width + nodeClearance,
+        height: node.height + nodeClearance,
+      }));
+    let previousEnd: LayoutPoint | null = null;
+    for (const section of edge.sections) {
+      const path = createConnectionsSvgPath(section, {
+        maximumRadius: 16,
+        nodeClearance,
+      });
+      expect(path.d).not.toMatch(/NaN|Infinity/);
+      expect(path.startPoint).toEqual(section.startPoint);
+      expect(path.endPoint).toEqual(section.endPoint);
+      if (previousEnd) expect(path.startPoint).toEqual(previousEnd);
+      previousEnd = path.endPoint;
+
+      const raw = normalizeConnectionsOrthogonalPoints(section);
+      const rawTangentStart = raw.at(-2);
+      const lastSegment = path.segments.at(-1);
+      invariant(rawTangentStart, `Missing raw end tangent for ${section.id}`);
+      invariant(lastSegment, `Missing curve end tangent for ${section.id}`);
+      const curvedTangentStart =
+        lastSegment.kind === 'line' ? lastSegment.start : lastSegment.control;
+      const rawX = path.endPoint.x - rawTangentStart.x;
+      const rawY = path.endPoint.y - rawTangentStart.y;
+      const curvedX = path.endPoint.x - curvedTangentStart.x;
+      const curvedY = path.endPoint.y - curvedTangentStart.y;
+      expect(Math.abs(rawX * curvedY - rawY * curvedX)).toBeLessThan(1e-7);
+      expect(rawX * curvedX + rawY * curvedY).toBeGreaterThan(0);
+
+      const sampled = sampleConnectionsSvgPath(path, 12);
+      for (let index = 1; index < sampled.length; index += 1) {
+        const start = sampled[index - 1];
+        const end = sampled[index];
+        invariant(start, `Missing sampled start ${index - 1}`);
+        invariant(end, `Missing sampled end ${index}`);
+        for (const node of otherNodes) {
+          expect(segmentCrossesRectInterior(start, end, node)).toBe(false);
+        }
+      }
+    }
+  }
+}
+
 describe('ELK connections layout', () => {
   it('uses the layered orthogonal algorithm and explicit spacing/crossing settings', () => {
     expect(CONNECTIONS_LAYOUT_ALGORITHM_OPTIONS).toMatchObject({
@@ -262,6 +324,7 @@ describe('ELK connections layout', () => {
         expectFiniteLayout(first);
         expectNoNodeOrEdgeIntrusions(first);
         expectEdgePortsApplied(first);
+        expectCurvedPathsNodeSafe(first, metrics.edgeNodeSpacing);
         for (const edge of first.edges) {
           const firstSection = edge.sections[0];
           invariant(firstSection, `Missing section for ${edge.id}`);
@@ -314,6 +377,16 @@ describe('ELK connections layout', () => {
     invariant(backward, 'Missing backward edge');
     const signature = (edge: ConnectionsLayoutEdge) =>
       JSON.stringify(sectionPoints(edge));
+    const curvedSignature = (edge: ConnectionsLayoutEdge) =>
+      JSON.stringify(
+        edge.sections.map(
+          (section) =>
+            createConnectionsSvgPath(section, {
+              maximumRadius: 16,
+              nodeClearance: compactConnectionsMetrics.edgeNodeSpacing,
+            }).d,
+        ),
+      );
 
     expect(sectionPoints(self).flat()).toHaveLength(6);
     expect(
@@ -326,5 +399,9 @@ describe('ELK connections layout', () => {
     expect(signature(forward)).not.toBe(signature(backward));
     expect(signature(forward)).not.toBe(signature(self));
     expect(signature(backward)).not.toBe(signature(self));
+    expect(curvedSignature(forward)).not.toBe(curvedSignature(backward));
+    expect(curvedSignature(forward)).not.toBe(curvedSignature(self));
+    expect(curvedSignature(backward)).not.toBe(curvedSignature(self));
+    expect(curvedSignature(self)).toContain('Q');
   });
 });

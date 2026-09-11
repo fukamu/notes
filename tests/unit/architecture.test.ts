@@ -285,6 +285,23 @@ describe('swappable presentation architecture', () => {
     expect(hook).not.toMatch(/useState|setCamera/);
   });
 
+  it('keeps curve math pure and recomputes SVG paths only with layout geometry', async () => {
+    const path = await readFile('lib/graph/connections-path.ts', 'utf8');
+    const renderer = await readFile('components/connections-view.tsx', 'utf8');
+
+    expect(path).toContain('normalizeConnectionsOrthogonalPoints');
+    expect(path).toContain('createConnectionsSvgPath');
+    expect(path).toContain('`Q ${coordinate');
+    expect(path).not.toMatch(
+      /(?:react|window\.|document\.|PointerEvent|HTMLElement|SVGPathElement|--primary|--card)/,
+    );
+    expect(renderer).toContain('const ConnectionsEdgeLayer = memo(');
+    expect(renderer).toContain('previous.layoutKey === next.layoutKey');
+    expect(renderer).toContain('strokeWidth="8"');
+    expect(renderer).toContain("'url(#connection-edge-arrow)'");
+    expect(renderer).toContain('aria-label="カード間の一方向リンク一覧"');
+  });
+
   it('isolates the ELK Web Worker and keeps the main-thread engine out of production', async () => {
     const layout = await readFile('lib/graph/elk-layout.ts', 'utf8');
     const controller = await readFile(

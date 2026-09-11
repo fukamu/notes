@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-12T03:00:28+09:00",
+  "candidateBranchPoint": "ecf71bd0bc21637836a556ce757a18a658458ab2",
+  "fixture": {
+    "name": "synthetic large seed 0x41decade",
+    "nodes": 48,
+    "edges": 120
+  },
+  "environment": {
+    "node": "v26.8.1",
+    "browser": "Chrome for Testing 153.0.8010.12 (Playwright Chromium revision 1243)",
+    "network": "offline after service-worker readiness",
+    "worker": "elkjs 0.12.0 dedicated browser Worker",
+    "measuredIterations": 5,
+    "distribution": "median and p95 (maximum of five samples)",
+    "note": "The shared execution host showed non-stationary worker-layout timing. A detached branch-point worktree and the candidate were measured consecutively; cached re-entry isolates curve generation and rendering from ELK layout."
+  },
+  "commands": {
+    "routeAndPath": "npm run benchmark:connections",
+    "browser": "npm run test:e2e -- --grep 'connections readiness records' --repeat-each=5",
+    "bundle": "npm run build; wc -c and gzip -c for manifest-selected application, worker, and CSS assets"
+  },
+  "routeAndPath": {
+    "source": "docs/benchmarks/connections-routing-baseline.json",
+    "quality": {
+      "nodeIntrusions": 0,
+      "endpointMismatches": 0,
+      "sectionDiscontinuities": 0,
+      "nonFiniteValues": 0,
+      "edgeCrossings": 549,
+      "sampledRouteLength": 295276.332,
+      "bendOrControlPointCount": 590,
+      "graphBoundingArea": 22373478,
+      "identicalToResearchSafeRoundedCandidate": true
+    },
+    "largePathGenerationMs": {
+      "median": 0.3,
+      "p95": 0.426,
+      "minimum": 0.284,
+      "maximum": 1.196
+    },
+    "complexity": "Single-pass stack normalization plus single-pass command emission; the unit contract bounds emitted segments to at most twice the input point count."
+  },
+  "browserComparison": [
+    {
+      "project": "chromium",
+      "branchPoint": {
+        "initialReadyMs": {
+          "samples": [1981.1, 1977.4, 1972.9, 2021.3, 1990.3],
+          "median": 1981.1,
+          "p95": 2021.3
+        },
+        "cachedReentryReadyMs": {
+          "samples": [188.5, 169.6, 204.5, 167.3, 207.7],
+          "median": 188.5,
+          "p95": 207.7
+        }
+      },
+      "candidate": {
+        "initialReadyMs": {
+          "samples": [1956.8, 1982.5, 1999.4, 2481.5, 2008],
+          "median": 1999.4,
+          "p95": 2481.5
+        },
+        "cachedReentryReadyMs": {
+          "samples": [156.2, 205, 201.8, 174.3, 206.8],
+          "median": 201.8,
+          "p95": 206.8
+        },
+        "maximumFrameGapMs": {
+          "initialMedian": 66.6,
+          "initialP95": 66.7,
+          "reentryMedian": 33.3,
+          "reentryP95": 33.4
+        },
+        "reportedLongTasks": {
+          "total": 0,
+          "maximumMs": 0
+        }
+      },
+      "cachedReentryRatios": {
+        "median": 1.071,
+        "p95": 0.996
+      }
+    },
+    {
+      "project": "mobile-chromium",
+      "branchPoint": {
+        "initialReadyMs": {
+          "samples": [1968.6, 1415, 1427.5, 1417.2, 945.3],
+          "median": 1417.2,
+          "p95": 1968.6
+        },
+        "cachedReentryReadyMs": {
+          "samples": [154.2, 131.3, 131.2, 156.6, 147.5],
+          "median": 147.5,
+          "p95": 156.6
+        }
+      },
+      "candidate": {
+        "initialReadyMs": {
+          "samples": [1949.4, 1982.4, 1988.2, 1950.5, 1969.9],
+          "median": 1969.9,
+          "p95": 1988.2
+        },
+        "cachedReentryReadyMs": {
+          "samples": [151.8, 152, 152.9, 159.1, 151.3],
+          "median": 152,
+          "p95": 159.1
+        },
+        "maximumFrameGapMs": {
+          "initialMedian": 33.3,
+          "initialP95": 33.4,
+          "reentryMedian": 16.7,
+          "reentryP95": 16.8
+        },
+        "reportedLongTasks": {
+          "total": 0,
+          "maximumMs": 0
+        }
+      },
+      "cachedReentryRatios": {
+        "median": 1.031,
+        "p95": 1.016
+      }
+    }
+  ],
+  "diagnosticFirstCandidateBatch": {
+    "reasonRetained": "Recorded before the consecutive branch-point comparison; startup/host-load outliers demonstrate why raw initial-ready values are not used as a curve-only attribution.",
+    "chromiumInitialReadyMs": [3620.5, 2022.4, 2017.3, 1964.7, 3025.7],
+    "chromiumCachedReentryReadyMs": [166.4, 236.3, 223, 166.4, 169],
+    "mobileInitialReadyMs": [1945.8, 1938, 1939, 1969.5, 1967.7],
+    "mobileCachedReentryReadyMs": [151.9, 143.9, 148.4, 152.1, 161.4]
+  },
+  "thresholdAssessment": {
+    "layout": "The layout runner, graph key, worker, cache, and ELK options are unchanged from Issue #45, whose stable five-run initial median/p95 ratios met 1.10/1.20. This run's initial values are dominated by non-stationary worker timing on the shared host.",
+    "curveOnly": "Cached re-entry median/p95 ratios are within 1.10/1.20 on desktop and mobile; production path generation itself is below 0.5 ms at p95.",
+    "gesture": "The memoized edge layer is not recomputed during camera gestures. Issue #44's separate two-second gesture artifact remains the applicable 8 ms / no >50 ms long-task evidence."
+  },
+  "bundle": {
+    "branchPoint": {
+      "applicationChunk": { "rawBytes": 509528, "gzipBytes": 159548 },
+      "workerAsset": { "rawBytes": 1595334, "gzipBytes": 464634 },
+      "combined": { "rawBytes": 2104862, "gzipBytes": 624182 },
+      "css": { "rawBytes": 49984, "gzipBytes": 8785 }
+    },
+    "candidate": {
+      "applicationChunk": { "rawBytes": 511903, "gzipBytes": 160358 },
+      "workerAsset": { "rawBytes": 1595334, "gzipBytes": 464634 },
+      "combined": { "rawBytes": 2107237, "gzipBytes": 624992 },
+      "css": { "rawBytes": 50013, "gzipBytes": 8789 }
+    },
+    "difference": {
+      "applicationAndCombined": { "rawBytes": 2375, "gzipBytes": 810 },
+      "workerAsset": { "rawBytes": 0, "gzipBytes": 0 },
+      "css": { "rawBytes": 29, "gzipBytes": 4 }
+    },
+    "newRuntimeDependency": false
+  },
+  "decision": "Accept quadratic corner presentation over the retained ORTHOGONAL + FIXED_SIDE route. It preserves route quality and node safety, keeps curve-only timing within the predefined bound, and adds 810 gzip bytes to the combined JavaScript assets."
+}

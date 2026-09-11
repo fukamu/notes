@@ -147,8 +147,15 @@ edge spacing, layer spacing, and four-sided padding explicit. The default
 presentation supplies the former `196 × 72` geometry and spacing values;
 alternate presentations can supply compact or spacious metrics without
 changing graph/layout code. ELK returns finite node, port, section, and bend
-point geometry. SVG paths, arrows, halo, colors, decoration, and path layering
-exist only in the default renderer.
+point geometry. The deterministic `connections-path` presentation core validates
+finite orthogonal sections, removes duplicate and forward-collinear points, and
+turns real corners into quadratic SVG commands without reading the DOM. Radius is
+bounded by the presentation adapter, half of both adjacent segments, and half of
+the configured edge/node clearance; endpoints and the final straight tangent are
+unchanged. The memoized default edge layer recomputes these paths only when the
+layout key or curve settings change. SVG elements, arrows, halo, colors,
+decoration, and path layering remain in the default renderer, while the semantic
+edge list remains renderer-independent input.
 
 `useConnectionsViewport` is the browser interaction adapter. It owns Pointer
 Events, pointer capture/cancellation, wheel and keyboard input, ResizeObserver,

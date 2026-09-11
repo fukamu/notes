@@ -1,5 +1,6 @@
 'use client';
 
+import { memo, useMemo } from 'react';
 import {
   ArrowRight,
   LocateFixed,
@@ -13,14 +14,75 @@ import {
 } from 'lucide-react';
 import type { ConnectionsRendererProps } from '@/components/presentation-contract';
 import { useConnectionsViewport } from '@/hooks/use-connections-viewport';
-import type { ConnectionsLayoutSection } from '@/lib/graph/elk-layout';
+import type { ConnectionsReadyEdge } from '@/lib/graph/connections-contract';
+import { createConnectionsSvgPath } from '@/lib/graph/connections-path';
 
-function sectionPath(section: ConnectionsLayoutSection): string {
-  const points = [section.startPoint, ...section.bendPoints, section.endPoint];
-  return points
-    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
-    .join(' ');
-}
+type ConnectionsEdgeLayerProps = {
+  layoutKey: string;
+  edges: ConnectionsReadyEdge[];
+  maximumRadius: number;
+  nodeClearance: number;
+};
+
+const ConnectionsEdgeLayer = memo(
+  function ConnectionsEdgeLayer({
+    edges,
+    maximumRadius,
+    nodeClearance,
+  }: ConnectionsEdgeLayerProps) {
+    const paths = useMemo(
+      () =>
+        edges.map((edge) =>
+          edge.sections.map(
+            (section) =>
+              createConnectionsSvgPath(section, {
+                maximumRadius,
+                nodeClearance,
+              }).d,
+          ),
+        ),
+      [edges, maximumRadius, nodeClearance],
+    );
+    return edges.map((edge, edgeIndex) => (
+      <g key={edge.id}>
+        {edge.sections.map((section, sectionIndex) => {
+          const path = paths[edgeIndex]?.[sectionIndex];
+          if (!path) return null;
+          const isLastSection = sectionIndex === edge.sections.length - 1;
+          return (
+            <g key={section.id}>
+              <path
+                d={path}
+                fill="none"
+                stroke="var(--card)"
+                strokeWidth="8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              />
+              <path
+                d={path}
+                fill="none"
+                stroke="var(--primary)"
+                strokeOpacity="0.72"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                markerEnd={
+                  isLastSection ? 'url(#connection-edge-arrow)' : undefined
+                }
+              />
+            </g>
+          );
+        })}
+      </g>
+    ));
+  },
+  (previous, next) =>
+    previous.layoutKey === next.layoutKey &&
+    previous.maximumRadius === next.maximumRadius &&
+    previous.nodeClearance === next.nodeClearance,
+);
 
 export function ConnectionsView({
   model,
@@ -212,43 +274,12 @@ export function ConnectionsView({
                 </marker>
               </defs>
 
-              {model.edges.map((edge) => (
-                <g key={edge.id}>
-                  <title>{edge.accessibleName}</title>
-                  {edge.sections.map((section, sectionIndex) => {
-                    const path = sectionPath(section);
-                    const isLastSection =
-                      sectionIndex === edge.sections.length - 1;
-                    return (
-                      <g key={section.id}>
-                        <path
-                          d={path}
-                          fill="none"
-                          stroke="var(--card)"
-                          strokeWidth="8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        />
-                        <path
-                          d={path}
-                          fill="none"
-                          stroke="var(--primary)"
-                          strokeOpacity="0.72"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          markerEnd={
-                            isLastSection
-                              ? 'url(#connection-edge-arrow)'
-                              : undefined
-                          }
-                        />
-                      </g>
-                    );
-                  })}
-                </g>
-              ))}
+              <ConnectionsEdgeLayer
+                layoutKey={model.layoutKey}
+                edges={model.edges}
+                maximumRadius={presentation.edgeMaximumRadius}
+                nodeClearance={presentation.layoutMetrics.edgeNodeSpacing}
+              />
             </svg>
 
             <ul className="sr-only" aria-label="カード間の一方向リンク一覧">
