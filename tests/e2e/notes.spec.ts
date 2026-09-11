@@ -528,6 +528,74 @@ test('malformed 2xx sync response preserves local edits and remains retryable', 
   await expect(page.getByTestId('card-title')).toHaveValue(title);
 });
 
+test('semantic navigation preserves availability, current context and accessible state', async ({
+  page,
+  context,
+}, testInfo) => {
+  const title = unique('画面契約', testInfo.project.name);
+  await ready(page);
+  await page.locator('html[data-offline-ready=true]').waitFor({
+    state: 'attached',
+    timeout: 15_000,
+  });
+  await context.setOffline(true);
+  await replaceLocalCards(page, []);
+  await page.reload();
+
+  const cardNavigation = page.getByRole('button', {
+    name: 'カード',
+    exact: true,
+  });
+  const historyNavigation = page.getByRole('button', {
+    name: '過去のカード',
+    exact: true,
+  });
+  const connectionsNavigation = page.getByRole('button', {
+    name: 'つながり',
+    exact: true,
+  });
+  await expect(cardNavigation).toBeDisabled();
+  await expect(connectionsNavigation).toBeDisabled();
+  await expect(historyNavigation).toBeEnabled();
+
+  await historyNavigation.click();
+  await expect(historyNavigation).toHaveAttribute('aria-current', 'page');
+  await expect(
+    page.getByRole('heading', { name: '過去のカード' }),
+  ).toBeVisible();
+
+  await page.getByTestId('new-card').click();
+  await expect(cardNavigation).toHaveAttribute('aria-current', 'page');
+  await page.getByTestId('card-title').fill(title);
+
+  await historyNavigation.click();
+  const currentHistoryItem = page
+    .getByTestId('history-list')
+    .getByRole('button', { name: new RegExp(title) });
+  await expect(currentHistoryItem).toHaveAttribute('aria-current', 'page');
+  if (testInfo.project.name === 'mobile-chromium') {
+    await currentHistoryItem.tap();
+  } else {
+    await currentHistoryItem.focus();
+    await currentHistoryItem.press('Enter');
+  }
+  await expect(cardNavigation).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('card-title')).toHaveValue(title);
+
+  await connectionsNavigation.click();
+  await expect(connectionsNavigation).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('connections-graph')).toHaveAttribute(
+    'data-layout-status',
+    'ready',
+    { timeout: 15_000 },
+  );
+  await expect(
+    page.getByTestId('connections-graph').getByRole('button', {
+      name: new RegExp(`${title}、現在のカード`),
+    }),
+  ).toHaveAttribute('aria-current', 'true');
+});
+
 test('concurrent device edits preserve both versions for explicit resolution', async ({
   browser,
 }, testInfo) => {

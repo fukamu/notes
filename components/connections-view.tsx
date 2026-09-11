@@ -2,10 +2,10 @@
 
 import { ArrowRight, LoaderCircle, Network, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { buildConnectionsGraph } from '@/lib/domain/graph';
 import { formatDisplayId } from '@/lib/domain/display-id';
 import type { CardId } from '@/lib/domain/id';
 import { visibleTitle, type CardRecord } from '@/lib/domain/types';
+import type { ConnectionsViewModel } from '@/lib/application/presentation';
 import {
   layoutConnectionsGraph,
   sectionPath,
@@ -13,9 +13,8 @@ import {
 } from '@/lib/graph/elk-layout';
 
 type Props = {
-  cards: CardRecord[];
-  currentCardId: CardId;
-  onSelect: (cardId: CardId) => void;
+  model: ConnectionsViewModel;
+  onOpenCard: (cardId: CardId) => void;
 };
 
 function cardLabel(card: CardRecord, isCurrent: boolean): string {
@@ -23,8 +22,8 @@ function cardLabel(card: CardRecord, isCurrent: boolean): string {
   return isCurrent ? `${base}、現在のカード` : base;
 }
 
-export function ConnectionsView({ cards, currentCardId, onSelect }: Props) {
-  const graph = useMemo(() => buildConnectionsGraph(cards), [cards]);
+export function ConnectionsView({ model, onOpenCard }: Props) {
+  const { cards, currentCardId, graph } = model;
   const graphKey = useMemo(
     () =>
       JSON.stringify({
@@ -150,7 +149,7 @@ export function ConnectionsView({ cards, currentCardId, onSelect }: Props) {
                   <button
                     key={card.id}
                     type="button"
-                    onClick={() => onSelect(card.id)}
+                    onClick={() => onOpenCard(card.id)}
                     aria-current={isCurrent ? 'true' : undefined}
                     className="rounded-xl border bg-card px-4 py-3 text-left shadow-sm focus-visible:ring-2 focus-visible:ring-ring"
                   >
@@ -285,7 +284,7 @@ export function ConnectionsView({ cards, currentCardId, onSelect }: Props) {
                 <button
                   key={card.id}
                   type="button"
-                  onClick={() => onSelect(card.id)}
+                  onClick={() => onOpenCard(card.id)}
                   aria-current={isCurrent ? 'true' : undefined}
                   aria-label={cardLabel(card, isCurrent)}
                   className="absolute z-10 flex flex-col justify-center rounded-xl border bg-card px-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring aria-[current=true]:border-primary aria-[current=true]:shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary),transparent_72%)]"

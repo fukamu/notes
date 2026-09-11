@@ -1,25 +1,15 @@
-'use client';
-
-import { useLayoutEffect, useRef } from 'react';
 import { ArrowRight } from 'lucide-react';
-import { bodyToPlainText } from '@/lib/domain/body';
-import { formatDisplayId, sortCardsByDisplayId } from '@/lib/domain/display-id';
 import type { CardId } from '@/lib/domain/id';
-import { visibleTitle, type CardRecord } from '@/lib/domain/types';
+import type { HistoryViewModel } from '@/lib/application/presentation';
+import { useCurrentHistoryItem } from '@/components/use-current-history-item';
 
 type Props = {
-  cards: CardRecord[];
-  currentCardId: CardId | null;
-  onSelect: (cardId: CardId) => void;
+  model: HistoryViewModel;
+  onOpenCard: (cardId: CardId) => void;
 };
 
-export function HistoryView({ cards, currentCardId, onSelect }: Props) {
-  const currentRef = useRef<HTMLButtonElement>(null);
-  const ordered = sortCardsByDisplayId(cards);
-
-  useLayoutEffect(() => {
-    currentRef.current?.scrollIntoView({ block: 'center' });
-  }, [currentCardId]);
+export function HistoryView({ model, onOpenCard }: Props) {
+  const registerCurrentItem = useCurrentHistoryItem(model.currentCardId);
 
   return (
     <section
@@ -42,31 +32,28 @@ export function HistoryView({ cards, currentCardId, onSelect }: Props) {
         className="history-stack max-h-[calc(100dvh-14rem)] space-y-3 overflow-y-auto rounded-2xl border bg-card/45 p-3 sm:p-5"
         data-testid="history-list"
       >
-        {ordered.map((card) => {
-          const current = card.id === currentCardId;
-          const preview = bodyToPlainText(card.body, cards)
-            .replace(/\s+/g, ' ')
-            .trim();
+        {model.items.map((item) => {
           return (
             <button
-              key={card.id}
-              ref={current ? currentRef : undefined}
+              key={item.cardId}
+              ref={item.current ? registerCurrentItem : undefined}
               type="button"
-              data-card-id={card.id}
-              data-display-value={card.displayId.value}
-              data-current={current ? 'true' : 'false'}
-              onClick={() => onSelect(card.id)}
+              aria-current={item.current ? 'page' : undefined}
+              data-card-id={item.cardId}
+              data-display-value={item.displayValue}
+              data-current={item.current ? 'true' : 'false'}
+              onClick={() => onOpenCard(item.cardId)}
               className="group grid w-full grid-cols-[auto_1fr_auto] items-start gap-4 rounded-xl border bg-card px-4 py-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring sm:px-5"
             >
               <span className="pt-0.5 font-mono text-xs font-semibold text-accent-foreground">
-                {formatDisplayId(card.displayId)}
+                {item.displayLabel}
               </span>
               <span className="min-w-0">
                 <span className="block truncate font-heading text-lg font-semibold">
-                  {visibleTitle(card.title)}
+                  {item.title}
                 </span>
                 <span className="mt-1 block line-clamp-2 text-sm leading-6 text-muted-foreground">
-                  {preview || '本文はまだありません'}
+                  {item.preview}
                 </span>
               </span>
               <ArrowRight

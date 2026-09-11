@@ -2,20 +2,17 @@
 
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { bodyToPlainText } from '@/lib/domain/body';
-import {
-  visibleTitle,
-  type CardRecord,
-  type ConflictRecord,
-} from '@/lib/domain/types';
+import type {
+  ConflictChoice,
+  ConflictViewModel,
+} from '@/lib/application/presentation';
 
 type Props = {
-  conflict: ConflictRecord;
-  cards: CardRecord[];
-  onResolve: (choice: 'local' | 'server') => void;
+  model: ConflictViewModel;
+  onResolve: (choice: ConflictChoice) => void;
 };
 
-export function ConflictNotice({ conflict, cards, onResolve }: Props) {
+export function ConflictNotice({ model, onResolve }: Props) {
   return (
     <aside
       className="mb-5 rounded-xl border border-amber-500/35 bg-amber-50/80 p-4 text-sm text-amber-950"
@@ -32,41 +29,26 @@ export function ConflictNotice({ conflict, cards, onResolve }: Props) {
             どちらも保持されています。残したい内容を選んでください。
           </p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <div className="rounded-lg bg-white/70 p-3">
-              <p className="text-xs font-semibold">編集案 A</p>
-              <p className="mt-1 truncate font-heading font-semibold">
-                {visibleTitle(conflict.localTitle)}
-              </p>
-              <p className="mt-1 line-clamp-2 text-xs text-amber-950/70">
-                {bodyToPlainText(conflict.localBody, cards) || '本文なし'}
-              </p>
-              <Button
-                className="mt-3"
-                size="sm"
-                aria-label={`編集案「${visibleTitle(conflict.localTitle)}」を使う`}
-                onClick={() => onResolve('local')}
-              >
-                この案を使う
-              </Button>
-            </div>
-            <div className="rounded-lg bg-white/70 p-3">
-              <p className="text-xs font-semibold">編集案 B</p>
-              <p className="mt-1 truncate font-heading font-semibold">
-                {visibleTitle(conflict.serverTitle)}
-              </p>
-              <p className="mt-1 line-clamp-2 text-xs text-amber-950/70">
-                {bodyToPlainText(conflict.serverBody, cards) || '本文なし'}
-              </p>
-              <Button
-                className="mt-3"
-                size="sm"
-                variant="outline"
-                aria-label={`編集案「${visibleTitle(conflict.serverTitle)}」を使う`}
-                onClick={() => onResolve('server')}
-              >
-                この案を使う
-              </Button>
-            </div>
+            {model.options.map((option) => (
+              <div key={option.choice} className="rounded-lg bg-white/70 p-3">
+                <p className="text-xs font-semibold">{option.heading}</p>
+                <p className="mt-1 truncate font-heading font-semibold">
+                  {option.title}
+                </p>
+                <p className="mt-1 line-clamp-2 text-xs text-amber-950/70">
+                  {option.preview}
+                </p>
+                <Button
+                  className="mt-3"
+                  size="sm"
+                  variant={option.choice === 'server' ? 'outline' : 'default'}
+                  aria-label={option.accessibleName}
+                  onClick={() => onResolve(option.choice)}
+                >
+                  この案を使う
+                </Button>
+              </div>
+            ))}
           </div>
         </div>
       </div>
