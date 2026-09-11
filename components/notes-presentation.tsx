@@ -223,7 +223,13 @@ export function NotesPresentation({
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 pb-28 pt-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_180px] lg:pb-12 lg:pt-12">
+      <div
+        className={`grid w-full px-4 pb-28 pt-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_180px] lg:pb-12 ${
+          model.activeView === 'connections'
+            ? 'max-w-none gap-4 lg:gap-6 lg:pt-8'
+            : 'mx-auto max-w-6xl gap-8 lg:pt-12'
+        }`}
+      >
         <div className="min-w-0">
           {model.activeView === 'card' && (
             <CardView model={model} actions={actions} features={features} />

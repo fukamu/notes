@@ -150,22 +150,32 @@ changing graph/layout code. ELK returns finite node, port, section, and bend
 point geometry. SVG paths, arrows, halo, colors, decoration, and path layering
 exist only in the default renderer.
 
-`useConnectionsViewport` is the browser interaction adapter. It receives the
-current laid-out node and presentation padding, reads the viewport ref, and
-centers on current changes and `ResizeObserver` notifications. Its pure center
-calculation safely returns no action for a missing node/viewport, a zero-sized
-viewport, loading, or layout error. Both a ready node and every error fallback
-item dispatch the same typed `openCard(CardId)` action.
+`useConnectionsViewport` is the browser interaction adapter. It owns Pointer
+Events, pointer capture/cancellation, wheel and keyboard input, ResizeObserver,
+and requestAnimationFrame scheduling. Typed pure functions own fit, pan, zoom,
+pinch anchoring, centering, visibility recovery, resize preservation, and finite
+camera clamps. Raw moves update only one world-wrapper CSS transform at most once
+per animation frame; they do not rerender the React node/edge tree or rerun ELK.
+The initial camera fits the padded graph and recovers the current card when the
+minimum zoom cannot fit everything. A focus event minimally reveals the whole
+node and its focus ring. Both a ready node and every error fallback item dispatch
+the same typed `openCard(CardId)` action.
+
+The reproducible desktop/mobile continuous-gesture measurements live in
+`docs/benchmarks/connections-camera-gesture.json`. Timing values are recorded as
+evidence rather than unstable CI gates; deterministic one-write-per-frame
+coalescing is asserted in unit and browser tests.
 
 ## Style and interaction boundary
 
 Structural styles are named separately from the default visual theme:
 `.card-editor-structure`, `.card-link-structure`,
-`.connections-viewport-structure`, `.connections-canvas-structure`, and
-`.connections-node-structure` define browser behavior or geometry. Visual
-classes such as `.fukamu-editor`, `.card-link-capsule`,
-`.connections-viewport`, and `.connections-node` are replaceable theme choices.
-`.history-stack` only supplies functional scroll padding.
+`.connections-viewport-structure`, `.connections-canvas-structure`,
+`.connections-world`, and `.connections-node-structure` define browser behavior
+or geometry. Visual classes such as `.fukamu-editor`, `.card-link-capsule`,
+`.connections-viewport`, `.connections-map-toolbar`, and `.connections-node` are
+replaceable theme choices. `.history-stack` only supplies functional scroll
+padding.
 
 Conflict visuals use light/dark semantic `--warning-*` tokens and the shared
 button primitive; no feature component embeds an amber or white palette.

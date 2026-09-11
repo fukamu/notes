@@ -18,5 +18,5 @@ export const defaultConnectionsPresentation: ConnectionsPresentationAdapter = {
     edgeLayerSpacing: 40,
     padding: { top: 24, right: 24, bottom: 24, left: 24 },
   },
-  viewportPadding: { top: 0, right: 0, bottom: 0, left: 0 },
+  viewportPadding: { top: 24, right: 24, bottom: 24, left: 24 },
 };

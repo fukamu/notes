@@ -194,15 +194,54 @@
 }
 
 .connections-viewport-structure {
-  @apply relative h-[60dvh] min-h-80 touch-pan-x touch-pan-y overflow-auto overscroll-contain p-4 sm:h-[min(70dvh,640px)] sm:min-h-96;
+  @apply relative min-h-80 touch-none overflow-clip overscroll-contain outline-none sm:min-h-96;
+  height: max(20rem, calc(100dvh - 22rem - env(safe-area-inset-bottom, 0px)));
+  cursor: grab;
 }
 
 .connections-viewport {
-  @apply rounded-2xl border bg-card/55 shadow-sm;
+  @apply rounded-2xl border bg-card/55 shadow-sm focus-visible:ring-2 focus-visible:ring-ring;
+  background-image:
+    linear-gradient(
+      color-mix(in oklch, var(--border), transparent 72%) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in oklch, var(--border), transparent 72%) 1px,
+      transparent 1px
+    );
+  background-size: 24px 24px;
 }
 
 .connections-canvas-structure {
-  @apply relative min-h-full min-w-full;
+  @apply absolute left-0 top-0;
+}
+
+.connections-world {
+  contain: layout style paint;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.connections-viewport-structure[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+.connections-map-heading {
+  @apply flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between;
+}
+
+.connections-map-toolbar {
+  @apply flex min-h-11 shrink-0 items-center gap-1 self-start rounded-xl border bg-card/92 p-1 shadow-sm backdrop-blur sm:self-auto;
+}
+
+.connections-map-control {
+  @apply inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35 sm:px-3;
+}
+
+.connections-map-control-square {
+  @apply min-w-11 px-0;
 }
 
 .connections-node-structure {
@@ -210,7 +249,14 @@
 }
 
 .connections-node {
-  @apply rounded-xl border bg-card shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring aria-[current=true]:border-primary aria-[current=true]:shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary),transparent_72%)];
+  @apply rounded-xl border bg-card shadow-sm transition hover:border-primary/40 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring aria-[current=true]:border-primary aria-[current=true]:shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary),transparent_72%)];
+}
+
+@media (min-width: 64rem) {
+  .connections-viewport-structure {
+    min-height: 28rem;
+    height: max(28rem, calc(100dvh - 14.75rem));
+  }
 }
 
 .conflict-notice {
