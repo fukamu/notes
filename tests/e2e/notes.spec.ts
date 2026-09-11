@@ -1,4 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
+import { connectionsBenchmarkFixtures } from '@/tests/fixtures/connections-layout';
+import { fixtureCardId } from '@/tests/fixtures/ids';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -42,7 +44,7 @@ async function forceConnectionsLayoutFailure(page: Page) {
     const response = await route.fetch();
     const source = await response.text();
     const layoutInvocation =
-      /let ([\w$]+)=([\w$]+)\(([\w$]+)\),([\w$]+)=await ([\w$]+)\(\)\.layout\(([\w$]+)\(\3,\1,([\w$]+)\)\)/;
+      /let ([\w$]+)=([\w$]+)\(([\w$]+)\),([\w$]+)=await ([\w$]+)\.layout\(([\w$]+)\(\3,\1,([\w$]+),([\w$]+)\)\)/;
     const transformed = source.replace(
       layoutInvocation,
       'throw Error("forced connections layout failure");let $1=[],$4={}',
@@ -73,6 +75,32 @@ type LocalFixtureCard = {
   localRevision: number;
   serverRevision: number;
 };
+
+function largeConnectionsBenchmarkCards(): LocalFixtureCard[] {
+  const fixture = connectionsBenchmarkFixtures.find(
+    ({ name }) => name === 'synthetic large seed 0x41decade',
+  );
+  if (!fixture) throw new Error('Missing large connections benchmark fixture');
+  const outgoing = new Map(fixture.nodes.map((node) => [node, [] as string[]]));
+  for (const [source, target] of fixture.edges) {
+    const targets = outgoing.get(source);
+    if (!targets) throw new Error(`Missing benchmark source ${source}`);
+    targets.push(target);
+  }
+  return fixture.nodes.map((node, index) => ({
+    id: fixtureCardId(`${fixture.name}-${node}`),
+    displayId: { kind: 'official', value: index + 1 },
+    title: `性能fixture ${node}`,
+    body: (outgoing.get(node) ?? []).map((target) => ({
+      type: 'link',
+      targetCardId: fixtureCardId(`${fixture.name}-${target}`),
+    })),
+    createdAt: index + 1,
+    updatedAt: index + 1,
+    localRevision: 1,
+    serverRevision: 1,
+  }));
+}
 
 async function replaceLocalCards(page: Page, cards: LocalFixtureCard[]) {
   await page.evaluate(async (fixtureCards) => {
@@ -626,6 +654,109 @@ test('global directed graph is safe and operable for the reported and cyclic fix
     await targetNode.press('Enter');
   }
   await expect(page.getByTestId('card-title')).toHaveValue(titles.reportB);
+});
+
+test('connections readiness records reproducible large-fixture browser timing', async ({
+  page,
+  context,
+}, testInfo) => {
+  await page.addInitScript(() => {
+    const root = document.documentElement;
+    root.dataset.connectionsLongTaskCount = '0';
+    root.dataset.connectionsLongTaskMax = '0';
+    if (typeof PerformanceObserver === 'undefined') return;
+    const observer = new PerformanceObserver((list) => {
+      let count = Number(root.dataset.connectionsLongTaskCount ?? '0');
+      let maximum = Number(root.dataset.connectionsLongTaskMax ?? '0');
+      for (const entry of list.getEntries()) {
+        count += 1;
+        maximum = Math.max(maximum, entry.duration);
+      }
+      root.dataset.connectionsLongTaskCount = String(count);
+      root.dataset.connectionsLongTaskMax = String(maximum);
+    });
+    observer.observe({ type: 'longtask', buffered: true });
+  });
+  const cards = largeConnectionsBenchmarkCards();
+  const current = cards[0];
+  if (!current) throw new Error('Large benchmark fixture is empty');
+  await ready(page);
+  await page.locator('html[data-offline-ready=true]').waitFor({
+    state: 'attached',
+    timeout: 15_000,
+  });
+  await context.setOffline(true);
+  await replaceLocalCards(page, cards);
+  await page.reload();
+  await openFromHistory(page, current.title);
+
+  const measureReady = async () => {
+    await page.evaluate(async () => {
+      const root = document.documentElement;
+      root.dataset.connectionsLongTaskCount = '0';
+      root.dataset.connectionsLongTaskMax = '0';
+      root.dataset.connectionsFrameGapMax = '0';
+      root.dataset.connectionsFrameMonitoring = 'true';
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame((firstTimestamp) => {
+          let previousFrame = firstTimestamp;
+          const observeFrameGap = (timestamp: number) => {
+            if (root.dataset.connectionsFrameMonitoring !== 'true') return;
+            const previousMaximum = Number(
+              root.dataset.connectionsFrameGapMax ?? '0',
+            );
+            root.dataset.connectionsFrameGapMax = String(
+              Math.max(previousMaximum, timestamp - previousFrame),
+            );
+            previousFrame = timestamp;
+            requestAnimationFrame(observeFrameGap);
+          };
+          requestAnimationFrame(observeFrameGap);
+          resolve();
+        });
+      });
+    });
+    const started = await page.evaluate(() => performance.now());
+    await page.getByRole('button', { name: 'つながり', exact: true }).click();
+    await expect(page.getByTestId('connections-graph')).toHaveAttribute(
+      'data-layout-status',
+      'ready',
+      { timeout: 30_000 },
+    );
+    await page.waitForTimeout(50);
+    return page.evaluate((start) => {
+      const root = document.documentElement;
+      root.dataset.connectionsFrameMonitoring = 'false';
+      return {
+        timeToReadyMs: performance.now() - start,
+        longTaskCount: Number(root.dataset.connectionsLongTaskCount ?? '0'),
+        longestTaskMs: Number(root.dataset.connectionsLongTaskMax ?? '0'),
+        maximumFrameGapMs: Number(root.dataset.connectionsFrameGapMax ?? '0'),
+      };
+    }, started);
+  };
+
+  const initial = await measureReady();
+  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  const reentry = await measureReady();
+  for (const measurement of [initial, reentry]) {
+    expect(Number.isFinite(measurement.timeToReadyMs)).toBe(true);
+    expect(measurement.timeToReadyMs).toBeGreaterThan(0);
+    expect(measurement.longTaskCount).toBeGreaterThanOrEqual(0);
+    expect(measurement.longestTaskMs).toBeGreaterThanOrEqual(0);
+    expect(measurement.maximumFrameGapMs).toBeGreaterThanOrEqual(0);
+  }
+  const artifact = {
+    project: testInfo.project.name,
+    fixture: { nodes: cards.length, edges: 120, seed: '0x41decade' },
+    initial,
+    reentry,
+  };
+  console.info(`connections-browser-benchmark ${JSON.stringify(artifact)}`);
+  await testInfo.attach('connections-browser-benchmark.json', {
+    body: Buffer.from(`${JSON.stringify(artifact, null, 2)}\n`),
+    contentType: 'application/json',
+  });
 });
 
 test('malformed 2xx sync response preserves local edits and remains retryable', async ({
