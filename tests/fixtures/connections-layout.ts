@@ -62,6 +62,63 @@ export const connectionsCompatibilityFixtures: ConnectionsLayoutFixture[] = [
     ],
   },
   {
+    name: 'mutual links with horizontal peer',
+    nodes: ['A', 'B', 'C'],
+    edges: [
+      ['A', 'B'],
+      ['B', 'A'],
+      ['B', 'C'],
+    ],
+  },
+  {
+    name: 'mutual links with vertical pressure',
+    nodes: ['A', 'B', 'C', 'D'],
+    edges: [
+      ['A', 'B'],
+      ['B', 'A'],
+      ['C', 'A'],
+      ['C', 'B'],
+      ['A', 'D'],
+      ['B', 'D'],
+    ],
+  },
+  {
+    name: 'mutual links with diagonal pressure',
+    nodes: ['A', 'B', 'C'],
+    edges: [
+      ['A', 'C'],
+      ['C', 'A'],
+      ['A', 'B'],
+      ['B', 'C'],
+    ],
+  },
+  {
+    name: 'bidirectional five-node cycle',
+    nodes: ['A', 'B', 'C', 'D', 'E'],
+    edges: [
+      ['A', 'B'],
+      ['B', 'A'],
+      ['B', 'C'],
+      ['C', 'B'],
+      ['C', 'D'],
+      ['D', 'C'],
+      ['D', 'E'],
+      ['E', 'D'],
+      ['E', 'A'],
+      ['A', 'E'],
+    ],
+  },
+  {
+    name: 'reverse edge beside obstacle',
+    nodes: ['A', 'B', 'C'],
+    edges: [
+      ['A', 'B'],
+      ['B', 'A'],
+      ['C', 'A'],
+      ['C', 'B'],
+    ],
+  },
+  {
     name: 'disconnected components',
     nodes: ['A', 'B', 'C', 'D', 'E'],
     edges: [
