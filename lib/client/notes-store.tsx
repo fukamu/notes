@@ -10,6 +10,12 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import {
+  INITIAL_NOTES_INITIALIZATION,
+  isNotesInitialized,
+  transitionNotesInitialization,
+  type NotesInitializationLifecycle,
+} from '@/lib/application/initialization-lifecycle';
 import { type CardId, type ConflictId, type DeviceId } from '@/lib/domain/id';
 import { createCardId } from '@/lib/client/id-generator';
 import { reconcileProvisionalDisplayIds } from '@/lib/domain/display-id';
@@ -41,8 +47,7 @@ import { prepareOfflineApp } from '@/lib/client/offline';
 export type NotesDataStore = {
   cards: CardRecord[];
   conflicts: ConflictRecord[];
-  initialized: boolean;
-  initialSyncComplete: boolean;
+  initialization: NotesInitializationLifecycle;
   saveState: SaveState;
   syncState: SyncState;
   createCard: () => Promise<CardRecord>;
@@ -60,8 +65,8 @@ const NotesDataContext = createContext<NotesDataStore | null>(null);
 export function NotesProvider({ children }: { children: ReactNode }) {
   const [cards, setCards] = useState<CardRecord[]>([]);
   const [conflicts, setConflicts] = useState<ConflictRecord[]>([]);
-  const [initialized, setInitialized] = useState(false);
-  const [initialSyncComplete, setInitialSyncComplete] = useState(false);
+  const [initialization, setInitialization] =
+    useState<NotesInitializationLifecycle>(INITIAL_NOTES_INITIALIZATION);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [syncState, setSyncState] = useState<SyncState>('idle');
   const cardsRef = useRef(cards);
@@ -71,6 +76,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const syncTimerRef = useRef<number | undefined>(undefined);
   const saveSequenceRef = useRef(0);
   const saveQueueRef = useRef(Promise.resolve());
+  const initialized = isNotesInitialized(initialization);
 
   useEffect(() => {
     cardsRef.current = cards;
@@ -136,13 +142,23 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         setCards(reconciled);
         setConflicts(storedConflicts);
         setSyncState(navigator.onLine ? 'idle' : 'offline');
-        setInitialized(true);
+        setInitialization((lifecycle) =>
+          transitionNotesInitialization(lifecycle, {
+            type: 'load-completed',
+            outcome: 'succeeded',
+          }),
+        );
       })
       .catch((error) => {
         console.error(error);
         if (active) {
           setSaveState('failed');
-          setInitialized(true);
+          setInitialization((lifecycle) =>
+            transitionNotesInitialization(lifecycle, {
+              type: 'load-completed',
+              outcome: 'failed',
+            }),
+          );
         }
       });
     return () => {
@@ -155,7 +171,13 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     let active = true;
     const initialSync = window.setTimeout(() => {
       void synchronizeNow().finally(() => {
-        if (active) setInitialSyncComplete(true);
+        if (active) {
+          setInitialization((lifecycle) =>
+            transitionNotesInitialization(lifecycle, {
+              type: 'initial-sync-completed',
+            }),
+          );
+        }
       });
     }, 0);
     const onOnline = () => void synchronizeNow();
@@ -279,8 +301,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     () => ({
       cards,
       conflicts,
-      initialized,
-      initialSyncComplete,
+      initialization,
       saveState,
       syncState,
       createCard,
@@ -292,8 +313,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     [
       cards,
       conflicts,
-      initialized,
-      initialSyncComplete,
+      initialization,
       saveState,
       syncState,
       createCard,

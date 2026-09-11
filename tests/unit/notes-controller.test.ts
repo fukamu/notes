@@ -28,7 +28,7 @@ function fakeStore(initialCards: CardRecord[] = []): NotesStorePort & {
   const store: NotesStorePort & { calls: string[] } = {
     cards: [...initialCards],
     conflicts: [],
-    initialized: true,
+    initialization: { stage: 'ready', loadOutcome: 'succeeded' },
     saveState: 'saved',
     syncState: 'idle',
     calls: [],
