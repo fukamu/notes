@@ -94,3 +94,51 @@ describe('trust-boundary architecture', () => {
     }
   });
 });
+
+describe('application and presentation architecture', () => {
+  it('keeps location and view selection out of the data store', async () => {
+    const source = await readFile('lib/client/notes-store.tsx', 'utf8');
+    for (const forbidden of [
+      'currentCardId',
+      'currentCard:',
+      'selectCard',
+      'setView',
+      'NotesView',
+    ]) {
+      expect(source).not.toContain(forbidden);
+    }
+  });
+
+  it('limits store consumption to the composition connector', async () => {
+    const files = await sourceFiles('components');
+    const violations: string[] = [];
+    for (const file of files) {
+      if (file === 'components/notes-app.tsx') continue;
+      const source = await readFile(file, 'utf8');
+      if (/notes-store|useNotesDataStore/.test(source)) violations.push(file);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps application selectors and controllers independent of renderers', async () => {
+    const files = await sourceFiles('lib/application');
+    const violations: string[] = [];
+    const rendererDependency =
+      /(?:react|lucide|tailwind|className|components\/|document\.|window\.|HTMLElement|SVG)/;
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (rendererDependency.test(source)) violations.push(file);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps the default presentation behind model/actions props', async () => {
+    const source = await readFile('components/notes-presentation.tsx', 'utf8');
+    expect(source).toContain('model: NotesPresentationModel');
+    expect(source).toContain('actions: NotesPresentationActions');
+    expect(source).not.toMatch(/notes-store|indexed-db|fetch\(|\/api\//);
+    expect(source).toContain('aria-label="表示切り替え"');
+    expect(source).toContain('aria-current=');
+    expect(source).toContain('aria-label="カード編集"');
+  });
+});
