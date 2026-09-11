@@ -2,7 +2,7 @@
 
 - Status: accepted for parent Issue #41
 - Date: 2026-09-12
-- Decision owners: implementation Issue #43
+- Decision owners: implementation Issue #43 and follow-up research Issue #57
 - Baseline commit: `7f925fa3b51dc546b32cebbf10550dbd2807560f`
 
 ## Context
@@ -95,6 +95,90 @@ path generation median/p95 was 0.218/0.268 ms in the research run and is linear 
 total route points. Issue #46 reuses the same production function in the benchmark
 and adds actual SVG endpoint, arrow tangent, section continuity, self/mutual link,
 short/duplicate/collinear segment, and sampled clearance contracts.
+
+## Post-deployment routing follow-up
+
+Issue #57 reruns routing research from checkpoint
+`checkpoint/pre-review-fixes-a012ec9` without changing the production default.
+The generated fixture-by-fixture values and all timing samples are in
+[`connections-routing-follow-up.json`](../benchmarks/connections-routing-follow-up.json).
+The evaluation keeps the previously defined large seeded graph (48 nodes/120
+edges, seed `0x41decade`) as the representative performance fixture; the medium
+seed is retained as a diagnostic. One warm-up and five measured samples are kept
+verbatim, with no outlier removed. Timings are evidence rather than a CI gate.
+
+The observed long reverse route is a constraint result, not a renderer defect.
+The production ELK input creates a distinct port for every semantic endpoint,
+sets every source port to EAST and every target port to WEST, applies
+`FIXED_SIDE` to every node, and lays layers toward `RIGHT`. Cycle breaking may
+reverse an edge for layering, but it cannot change either fixed endpoint side;
+the returned orthogonal edge section therefore has to leave and re-enter around
+the node exterior. The SVG layer consumes that section and does not choose the
+route.
+
+ELK Layered documents orthogonal routing and arbitrary port constraints. `FREE`
+leaves port placement to the layout algorithm; `FIXED_SIDE` fixes only the side;
+`FIXED_ORDER` additionally depends on each port's index. The follow-up therefore
+tests the installed elkjs 0.12.0 behavior rather than assuming that “four ports”
+alone changes routing. Sources:
+[ELK Layered](https://eclipse.dev/elk/reference/algorithms/org-eclipse-elk-layered.html),
+[port constraints](https://eclipse.dev/elk/reference/options/org-eclipse-elk-portConstraints.html),
+[port index](https://eclipse.dev/elk/reference/options/org-eclipse-elk-port-index2.html),
+and [edge routing](https://eclipse.dev/elk/reference/options/org-eclipse-elk-edgeRouting.html).
+
+All aggregate values below cover 16 fixtures, including the earlier corpus plus
+horizontal/vertical/diagonal mutual pressure, a bidirectional five-node cycle,
+an obstacle-near reverse edge, and both deterministic seeds. “Hard” is the count
+with zero semantic, endpoint/side/tangent/section, degeneracy, node/halo,
+indistinguishable-mutual, and finite errors; every candidate is also deterministic
+and leaves its input byte-for-byte unchanged.
+
+| Candidate                                   |  Hard | Total length | Mutual excess | Crossings | Overlap segments | Bends/controls |           Area | Decision                        |
+| ------------------------------------------- | ----: | -----------: | ------------: | --------: | ---------------: | -------------: | -------------: | ------------------------------- |
+| ORTHOGONAL + FIXED_SIDE + EAST/WEST         | 16/16 |      315,097 |        10,828 |       555 |                0 |            656 |     24,416,772 | baseline                        |
+| ORTHOGONAL + FREE, ELK side choice          | 16/16 |  264,627.667 |           806 |       407 |                0 |            586 |     24,136,576 | adopt in a separate Issue       |
+| Relative side + FIXED_SIDE, two ELK passes  | 16/16 |  275,646.667 |         1,056 |       461 |                0 |            615 |     23,864,702 | reject: performance             |
+| Relative side + FIXED_ORDER, two ELK passes | 16/16 |      283,334 |         2,134 |       681 |                0 |            607 |     25,149,156 | reject: performance/crossings   |
+| Relative side + visibility post-route       | 11/16 |      269,461 |            72 |       496 |              781 |            617 |     24,416,772 | reject: hard/performance        |
+| CONSERVATIVE SPLINES + FIXED_SIDE           | 15/16 |  297,679.223 |     8,708.814 |       566 |                0 |          6,436 | 24,315,542.222 | reject: self tangent/complexity |
+
+The FREE candidate cuts aggregate route length by 16.0%, mutual reverse excess
+by 92.6%, crossings by 26.7%, and bends by 10.7%. It makes the two-node mutual
+route 296 px rather than 1,184 px, reduces the five-node bidirectional fixture
+from 7,688 px/2,120 px excess to 3,094 px/18 px, and leaves reported, diamond,
+fan, disconnected, and K3,3 fixtures unchanged. Its large-graph area grows 5.1%
+even though aggregate area falls 1.1%; that lower-priority regression is retained
+in the artifact rather than hidden.
+
+On the representative large fixture, FREE cold median/p95 ratios are
+0.917x/0.896x and warm ratios are 0.960x/0.897x, satisfying 1.10x/1.20x. Its
+medium cold ratios are 0.886x/0.925x; one non-interleaved warm batch trends upward
+to 1.140x/1.118x and is retained as host/runtime variability. Large path creation
+is 0.164/0.330 ms versus baseline 0.081/0.141 ms, still below one millisecond.
+Production continues to execute ELK in the existing worker, so these Node
+single-call samples are not main-thread blocking measurements and camera events
+do not invoke either layout or path generation.
+
+The visibility prototype explicitly uses inflated node rectangles as obstacles
+and a deterministic rectilinear shortest-path graph. It demonstrates where
+post-routing can reduce length, but makes reverse pairs indistinguishable in five
+fixtures, creates 781 overlapping segment pairs, and takes 2.79x/2.51x the
+baseline large warm median/p95. A production version would also require a second
+route phase, new worker work, cache-version/config inputs, and overlap/lane
+allocation. The two-pass relative candidates have a position/side feedback loop:
+the first layout chooses positions, the derived sides cause a second layout to
+choose new positions, and no fixed point is guaranteed. They cost 1.70x–6.33x on
+the representative large warm measurements. These approaches remain future
+options only if lane separation and bounded incremental routing are designed and
+remeasured.
+
+No candidate adds a package. Research-only relative and visibility functions are
+excluded from the application graph. The production decoding seam adds 855 raw /
+284 gzip bytes to the application chunk at the Issue #57 branch point; CSS and
+the 1,595,334 raw / 464,634 gzip ELK worker are byte-identical. elkjs retains its
+existing `EPL-2.0 OR GPL-3.0-or-later` declaration. The adopted configuration uses
+the same single offline worker and cache lifecycle; changing its default creates
+a normally versioned worker asset without a network runtime dependency.
 
 ## Camera decision
 
@@ -207,8 +291,10 @@ Desktop/mobile × light/dark visual evidence and its review checklist are in
 
 ## Consequences
 
-- Keep ORTHOGONAL + FIXED_SIDE as the production route because no candidate beats
-  its primary route-quality result while satisfying the performance constraints.
+- The original study retained ORTHOGONAL + FIXED_SIDE. The expanded Issue #57
+  corpus supersedes that routing choice and recommends ORTHOGONAL + FREE with ELK
+  side selection for a separate implementation Issue; Issue #57 itself leaves the
+  production default unchanged.
 - Implement native pan/zoom in Issue #44 with one CSS transform and pure camera
   geometry; ELK is not rerun by camera changes.
 - Investigate worker/cache evidence in Issue #45 while preserving the selected
