@@ -44,6 +44,7 @@ export type NotesDataStore = {
   cards: CardRecord[];
   conflicts: ConflictRecord[];
   initialized: boolean;
+  initialSyncComplete: boolean;
   saveState: SaveState;
   syncState: SyncState;
   createCard: () => Promise<CardRecord>;
@@ -65,6 +66,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const [cards, setCards] = useState<CardRecord[]>([]);
   const [conflicts, setConflicts] = useState<ConflictRecord[]>([]);
   const [initialized, setInitialized] = useState(false);
+  const [initialSyncComplete, setInitialSyncComplete] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [syncState, setSyncState] = useState<SyncState>('idle');
   const cardsRef = useRef(cards);
@@ -175,13 +177,19 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!initialized) return;
-    const initialSync = window.setTimeout(() => void synchronizeNow(), 0);
+    let active = true;
+    const initialSync = window.setTimeout(() => {
+      void synchronizeNow().finally(() => {
+        if (active) setInitialSyncComplete(true);
+      });
+    }, 0);
     const onOnline = () => void synchronizeNow();
     const onOffline = () => setSyncState('offline');
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
     const timer = window.setInterval(() => void synchronizeNow(), 15_000);
     return () => {
+      active = false;
       window.clearTimeout(initialSync);
       if (syncTimerRef.current !== undefined)
         window.clearTimeout(syncTimerRef.current);
@@ -319,6 +327,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       cards,
       conflicts,
       initialized,
+      initialSyncComplete,
       saveState,
       syncState,
       createCard,
@@ -331,6 +340,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       cards,
       conflicts,
       initialized,
+      initialSyncComplete,
       saveState,
       syncState,
       createCard,

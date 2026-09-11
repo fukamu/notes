@@ -26,7 +26,10 @@ export function notesLocationCardId(location: NotesLocation): CardId | null {
   return location.kind === 'empty' ? null : location.cardId;
 }
 
-function sameLocation(left: NotesLocation, right: NotesLocation): boolean {
+export function areNotesLocationsEqual(
+  left: NotesLocation,
+  right: NotesLocation,
+): boolean {
   return (
     left.kind === right.kind &&
     notesLocationCardId(left) === notesLocationCardId(right)
@@ -93,7 +96,7 @@ export function reduceNotesLocation(
     }
   }
 
-  return sameLocation(current, next) ? current : next;
+  return areNotesLocationsEqual(current, next) ? current : next;
 }
 
 export function createInMemoryNotesNavigator(

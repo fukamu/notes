@@ -65,7 +65,7 @@ changes.
 | 2   | location/current/view transitions are outside the store                                     | architecture tests                                  |
 | 3   | discriminated `NotesLocation` represents only valid contexts                                | navigation type/unit tests                          |
 | 4   | navigation and features reuse validated branded `CardId`                                    | type-contract + codec tests                         |
-| 5   | named intents and in-memory `NotesNavigator` preserve behavior                              | navigation tests                                    |
+| 5   | named intents and URL-backed `NotesNavigator` preserve behavior                             | navigation + URL/history tests                      |
 | 6   | application controller coordinates data operations and navigation                           | notes-controller tests                              |
 | 7   | initialization, same/missing card, reconcile, and conflict rules are explicit               | navigation + controller tests                       |
 | 8   | stable `NotesPresentationModel` / `NotesPresentationActions`                                | presentation contract tests                         |
@@ -93,9 +93,10 @@ changes.
 
 ## Follow-on boundaries
 
-#6 must add a URL/History API implementation of `NotesNavigator` at the
-connector boundary. It may not move URL parsing into store, controllers, or
-renderers, and must not change the model/actions or feature contracts.
+#6 adds the URL/History API implementation of `NotesNavigator` at the
+connector boundary. Pure parsing stays in `lib/application`, browser effects
+stay in `lib/client`, and no URL state moves into the store, controllers, or
+renderers. The model/actions and feature contracts are unchanged.
 
 #7 must audit `FUKAMU Notes`/`Notes*` for the product/application and
 `Card`/`Card*` for user-created artifacts across filenames, exports, UI copy,

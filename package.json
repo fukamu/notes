@@ -11,7 +11,7 @@
     "build:service-worker": "node scripts/build-service-worker.mjs",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "npm run lint:app && npm run lint:api && npm run lint:service-worker && npm run lint:tooling && npm run lint:test",
-    "lint:app": "oxlint --tsconfig=tsconfig.json app/layout.tsx app/page.tsx components hooks lib",
+    "lint:app": "oxlint --tsconfig=tsconfig.json app/layout.tsx 'app/(notes)' components hooks lib",
     "lint:api": "oxlint --tsconfig=tsconfig.api.json app/api db",
     "lint:service-worker": "oxlint --tsconfig=tsconfig.service-worker.json service-worker",
     "lint:tooling": "oxlint --tsconfig=tsconfig.tooling.json drizzle.config.ts next.config.ts playwright.config.ts scripts vite.config.ts vitest.config.ts",

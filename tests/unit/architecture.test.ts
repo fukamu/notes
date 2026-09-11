@@ -132,6 +132,44 @@ describe('application and presentation architecture', () => {
     expect(violations).toEqual([]);
   });
 
+  it('isolates URL semantics from the browser History API adapter', async () => {
+    const codec = await readFile('lib/application/url-navigation.ts', 'utf8');
+    const browser = await readFile(
+      'lib/client/browser-notes-navigator.ts',
+      'utf8',
+    );
+    const connector = await readFile(
+      'lib/client/use-notes-application.ts',
+      'utf8',
+    );
+    const store = await readFile('lib/client/notes-store.tsx', 'utf8');
+
+    expect(codec).toContain('parseNotesPathname');
+    expect(codec).toContain('notesLocationPathname');
+    expect(codec).not.toMatch(/window\.|history\.|popstate|react/);
+    expect(browser).toContain('window.history.pushState');
+    expect(browser).toContain('window.history.replaceState');
+    expect(browser).toContain("window.addEventListener('popstate'");
+    expect(browser).not.toMatch(/notes-store|indexed-db|fetch\(|react/);
+    expect(connector).toContain('createBrowserNotesNavigator');
+    expect(store).not.toMatch(/pushState|replaceState|popstate|pathname/);
+  });
+
+  it('exposes only the documented deep application routes', async () => {
+    await expect(readFile('app/(notes)/layout.tsx', 'utf8')).resolves.toContain(
+      '<NotesApp />',
+    );
+    for (const route of [
+      'app/(notes)/page.tsx',
+      'app/(notes)/history/page.tsx',
+      'app/(notes)/cards/[cardId]/page.tsx',
+      'app/(notes)/cards/[cardId]/history/page.tsx',
+      'app/(notes)/cards/[cardId]/connections/page.tsx',
+    ]) {
+      await expect(readFile(route, 'utf8')).resolves.toContain('return null');
+    }
+  });
+
   it('keeps the default presentation behind model/actions props', async () => {
     const source = await readFile('components/notes-presentation.tsx', 'utf8');
     expect(source).toContain('NotesPresentationProps');
@@ -254,7 +292,9 @@ describe('swappable presentation architecture', () => {
     for (let requirement = 1; requirement <= 29; requirement += 1) {
       expect(audit).toMatch(new RegExp(`\\|\\s+${requirement}\\s+\\|`));
     }
-    expect(audit).toContain('#6 must add a URL/History API implementation');
+    expect(audit).toContain(
+      '#6 adds the URL/History API implementation of `NotesNavigator`',
+    );
     expect(audit).toContain('#7 must audit `FUKAMU Notes`/`Notes*`');
 
     const contracts = await readFile(

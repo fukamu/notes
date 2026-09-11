@@ -6,9 +6,10 @@ import {
   createNotesPresentationModel,
 } from '@/lib/application/notes-controller';
 import {
-  createInMemoryNotesNavigator,
   EMPTY_NOTES_LOCATION,
+  notesLocationCardId,
 } from '@/lib/application/navigation';
+import { createBrowserNotesNavigator } from '@/lib/client/browser-notes-navigator';
 import type {
   NotesPresentationActions,
   NotesPresentationModel,
@@ -19,7 +20,7 @@ export function useNotesApplication(store: NotesDataStore): {
   model: NotesPresentationModel;
   actions: NotesPresentationActions;
 } {
-  const [navigator] = useState(createInMemoryNotesNavigator);
+  const [navigator] = useState(createBrowserNotesNavigator);
   const location = useSyncExternalStore(
     navigator.subscribe,
     navigator.getLocation,
@@ -29,21 +30,38 @@ export function useNotesApplication(store: NotesDataStore): {
     () => createNotesApplicationController(store, navigator),
     [navigator, store],
   );
+  const locationCardId = notesLocationCardId(location);
+  const awaitingInitialCardResolution =
+    store.initialized &&
+    locationCardId !== null &&
+    !store.hasCard(locationCardId) &&
+    !store.initialSyncComplete;
 
   useEffect(() => {
-    if (!store.initialized) return;
+    if (!store.initialized || awaitingInitialCardResolution) return;
     if (navigator.getLocation().kind === 'empty') {
       controller.initializeNavigation();
     } else {
       controller.reconcileNavigation();
     }
-  }, [controller, navigator, store.cards, store.initialized]);
+  }, [
+    awaitingInitialCardResolution,
+    controller,
+    location,
+    navigator,
+    store.cards,
+    store.initialized,
+  ]);
+
+  const model = useMemo(
+    () => createNotesPresentationModel(store, location),
+    [location, store],
+  );
 
   return {
-    model: useMemo(
-      () => createNotesPresentationModel(store, location),
-      [location, store],
-    ),
+    model: awaitingInitialCardResolution
+      ? { ...model, initialized: false }
+      : model,
     actions: controller,
   };
 }
