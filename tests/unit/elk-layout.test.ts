@@ -1,22 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { invariant } from '@/lib/shared/invariant';
 import {
+  connectionsBenchmarkFixtures,
   compactConnectionsMetrics,
-  connectionsCompatibilityFixtures,
   connectionsFixtureGraph,
   spaciousConnectionsMetrics,
 } from '@/tests/fixtures/connections-layout';
 import { fixtureCardId } from '@/tests/fixtures/ids';
+import { createMainThreadConnectionsLayoutRunner } from '@/lib/client/connections-layout-main-thread';
 import {
   CONNECTIONS_LAYOUT_ALGORITHM_OPTIONS,
   connectionsLayoutOptions,
-  createConnectionsLayoutRunner,
-  layoutConnectionsGraph,
   type ConnectionsLayout,
   type ConnectionsLayoutEdge,
   type ConnectionsLayoutNode,
   type LayoutPoint,
 } from '@/lib/graph/elk-layout';
+
+const layoutConnectionsGraph = createMainThreadConnectionsLayoutRunner();
 
 function overlaps(
   left: ConnectionsLayoutNode,
@@ -207,9 +208,9 @@ describe('ELK connections layout', () => {
   });
 
   it('rejects invalid candidate priorities at the layout boundary', async () => {
-    const fixture = connectionsCompatibilityFixtures[0];
+    const fixture = connectionsBenchmarkFixtures[0];
     invariant(fixture, 'Missing reported fixture');
-    const runner = createConnectionsLayoutRunner({
+    const runner = createMainThreadConnectionsLayoutRunner({
       edgeRouting: 'ORTHOGONAL',
       portPolicy: 'FIXED_SIDE',
       straightnessPriority: -1,
@@ -220,7 +221,7 @@ describe('ELK connections layout', () => {
     ).rejects.toThrow('priority straightness must be a non-negative integer');
   });
 
-  for (const fixture of connectionsCompatibilityFixtures) {
+  for (const fixture of connectionsBenchmarkFixtures) {
     for (const [density, metrics] of [
       ['compact', compactConnectionsMetrics],
       ['spacious', spaciousConnectionsMetrics],
@@ -237,6 +238,12 @@ describe('ELK connections layout', () => {
           graph.nodes.map((node) => node.id),
         );
         expect(first.edges).toHaveLength(fixture.edges.length);
+        expect(
+          first.edges.map(({ sourceCardId, targetCardId }) => ({
+            sourceCardId,
+            targetCardId,
+          })),
+        ).toEqual(graph.edges);
         expect(
           first.nodes.every((node) => node.width === metrics.nodeWidth),
         ).toBe(true);
@@ -260,6 +267,13 @@ describe('ELK connections layout', () => {
           invariant(firstSection, `Missing section for ${edge.id}`);
           expect(firstSection.incomingShape).toBe(edge.sourcePortId);
           expect(edge.sections.at(-1)?.outgoingShape).toBe(edge.targetPortId);
+          for (let index = 1; index < edge.sections.length; index += 1) {
+            const previous = edge.sections[index - 1];
+            const current = edge.sections[index];
+            invariant(previous, `Missing previous section ${index - 1}`);
+            invariant(current, `Missing current section ${index}`);
+            expect(current.startPoint).toEqual(previous.endPoint);
+          }
         }
       });
     }

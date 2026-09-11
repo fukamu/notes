@@ -166,6 +166,16 @@ The reproducible desktop/mobile continuous-gesture measurements live in
 evidence rather than unstable CI gates; deterministic one-write-per-frame
 coalescing is asserted in unit and browser tests.
 
+The production layout runner uses the installed ELK build through a dedicated
+browser Web Worker. Offline preparation caches and prewarms the hashed worker
+asset before declaring the app offline-ready. A four-entry bounded cache shares
+in-flight and settled immutable layouts across view re-entry, evicts failures for
+retry, and keys only on semantic graph structure plus layout metrics. The
+controller still owns stale-result rejection and reruns layout only when that key
+changes. Node tests and reproducible route benchmarks use a separate main-thread
+ELK adapter that production modules do not import. Measurements and bundle impact
+are recorded in `docs/benchmarks/connections-worker-cache.json`.
+
 ## Style and interaction boundary
 
 Structural styles are named separately from the default visual theme:

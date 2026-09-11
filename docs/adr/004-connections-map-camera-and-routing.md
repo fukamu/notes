@@ -80,9 +80,9 @@ results matter more than the one-crossing aggregate difference produced by curve
 sampling: rounded corners use exactly the baseline ELK route and are not reported
 as a routing improvement.
 
-Large warm-layout median/p95 values in milliseconds were baseline 627.342/648.430,
-fixed-order 786.632/805.519, and spline 667.759/725.172. Fixed-order is 1.254x/
-1.242x and fails both thresholds. Conservative spline is within the time thresholds
+Large warm-layout median/p95 values in milliseconds were baseline 636.742/670.585,
+fixed-order 801.530/812.368, and spline 697.581/727.151. Fixed-order is 1.259x/
+1.211x and fails both thresholds. Conservative spline is within the time thresholds
 but worsens the primary crossing metric and increases control/sample complexity by
 roughly 10x. A supplementary fixed-side priority experiment reduced route points
 about 3.4% but did not improve crossings and increased route length and area, so it
@@ -91,7 +91,7 @@ also does not qualify. No result is claimed to be a global optimum.
 The safe-corner prototype retains the node-safe orthogonal route, removes duplicate
 and collinear points, and clamps each quadratic radius to 16 px, half of each
 adjacent segment, and half of the configured 44 px edge/node clearance. Its large
-path generation median/p95 was 0.216/0.255 ms in this run and is linear in total
+path generation median/p95 was 0.218/0.268 ms in this run and is linear in total
 route points. Production Issue #46 must re-check actual SVG endpoints, arrow
 tangents, self/mutual links, short segments, and node clearance.
 
@@ -136,6 +136,25 @@ The baseline application chunk was 1,927,985 bytes raw / 592,384 gzip and CSS wa
 +30 / +6 CSS, with no new runtime package. This is a research-branch measurement,
 not a promise about the later UI bundle.
 
+Issue #45 retained the exact selected route and moved the installed ELK worker
+behind a browser adapter. The worker's hashed build asset is cached before the
+application reports offline readiness and is prewarmed without performing a
+layout. A four-entry least-recently-used cache shares in-flight and settled
+layouts across controller re-entry; graph or layout-metric changes still create a
+new key, and rejected work is evicted for retry. The full five-run comparison is
+in
+[`connections-worker-cache.json`](../benchmarks/connections-worker-cache.json).
+
+For the same offline 48-node/120-edge fixture, desktop/mobile initial ready median
+ratios were 1.046x/0.978x baseline, inside the predefined 1.10x bound, while p95
+ratios were 0.971x/0.940x. Initial maximum frame-gap medians fell from
+716.7/749.9 ms to 16.8/16.8 ms. Cached re-entry ready medians fell from
+818.1/904.5 ms to 131.3/127.1 ms. The render-critical application chunk fell by
+436,697 gzip bytes; the separately cached existing ELK worker makes combined
+transfer 27,937 gzip bytes larger. This is accepted because it removes the
+measured blocking without a new dependency or route change and retains offline
+operation.
+
 ## Consequences
 
 - Keep ORTHOGONAL + FIXED_SIDE as the production route because no candidate beats
@@ -143,7 +162,8 @@ not a promise about the later UI bundle.
 - Implement native pan/zoom in Issue #44 with one CSS transform and pure camera
   geometry; ELK is not rerun by camera changes.
 - Investigate worker/cache evidence in Issue #45 while preserving the selected
-  route and all graph semantics.
+  route and all graph semantics. The measured worker plus bounded cache is now the
+  accepted ELK runtime adapter.
 - Implement safe SVG quadratic rounding separately in Issue #46. It smooths the
   selected route but is not labeled a routing improvement.
 - Keep the benchmark artifact and fixed fixtures as reproducible compatibility
