@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-12T07:38:44+09:00",
+  "branchPoint": "2401fcb4ce9b9775814ecef7c0a9f635ca9cd374",
+  "command": "npm run test:e2e -- --grep 'connections map supports controls' --repeat-each=3",
+  "environment": {
+    "os": "Linux 7.0.0-31-generic x86_64",
+    "node": "26.8.1",
+    "playwright": "1.63.0",
+    "browser": "Chrome for Testing 153.0.8010.12 (Playwright Chromium revision 1243)",
+    "projects": {
+      "chromium": {
+        "viewport": { "width": 1280, "height": 720 },
+        "deviceScaleFactor": 1
+      },
+      "mobile-chromium": {
+        "device": "Pixel 7",
+        "viewport": { "width": 412, "height": 839 },
+        "deviceScaleFactor": 2.625
+      }
+    },
+    "fixture": {
+      "name": "synthetic large seed 0x41decade",
+      "nodes": 48,
+      "edges": 120
+    },
+    "network": "offline after service-worker readiness",
+    "warmup": "Every measured loop follows fit, button/keyboard/wheel/pinch boundary checks, resize preservation, ten incremental one-finger moves, capture transfer, pointercancel/lost-capture, pen where available, and drag-click suppression; no sample was discarded.",
+    "measuredIterations": 3,
+    "outliers": "none removed",
+    "loop": {
+      "frames": 120,
+      "eventsPerFrame": 4,
+      "event": "modified WheelEvent through the same pure camera and rAF adapter used by pointer gestures"
+    }
+  },
+  "pointerEvidence": {
+    "before": "A touch pointer is implicitly captured by its hit-test descendant. Once the 6 px drag threshold transfers capture to the viewport, the descendant emits a bubbling lostpointercapture. The old viewport listener treated that descendant event as loss of its own capture and removed the active pointer, so later moves were ignored.",
+    "after": "The viewport ignores only bubbling lostpointercapture whose event target is a descendant. It still clears state when the viewport itself loses capture. Ten 2 px/1.2 px incremental moves produced no camera write for the first two sub-threshold moves and one coalesced camera write for every subsequent move in both projects.",
+    "representativeSequence": [
+      "pointerdown:touch:2:free:descendant",
+      "gotpointercapture:touch:2:free:descendant",
+      "pointermove:touch:2:free:descendant",
+      "pointermove:touch:2:free:descendant",
+      "pointermove:touch:2:free:descendant",
+      "lostpointercapture:touch:2:captured:descendant",
+      "gotpointercapture:touch:2:captured:self",
+      "pointermove:touch:2:captured:self",
+      "pointermove:touch:2:captured:self",
+      "pointermove:touch:2:captured:self",
+      "pointermove:touch:2:captured:self",
+      "pointermove:touch:2:captured:self",
+      "pointermove:touch:2:captured:self",
+      "pointermove:touch:2:captured:self",
+      "pointerup:touch:2:captured:self",
+      "lostpointercapture:touch:2:free:self"
+    ],
+    "cameraWritesForTenMoves": {
+      "chromium": [0, 0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "mobile-chromium": [0, 0, 1, 2, 3, 4, 5, 6, 7, 8]
+    }
+  },
+  "zoomEvidence": {
+    "range": { "minimum": 0.1, "maximum": 2 },
+    "paths": [
+      "plus/minus buttons",
+      "keyboard plus/minus",
+      "modified wheel",
+      "pinch",
+      "fit-to-bounds",
+      "current-card recovery",
+      "resize preservation",
+      "programmatic camera core"
+    ],
+    "browserAssertions": [
+      "10% synchronizes output and native disabled zoom-out",
+      "200% synchronizes output and native disabled zoom-in",
+      "disabled controls compute pointer-events none and opacity 0.35",
+      "current card remains fully visible when minimum zoom cannot fit the full graph"
+    ]
+  },
+  "measurements": [
+    {
+      "project": "chromium",
+      "samples": {
+        "durationMs": [2025, 2026.1000000014901, 2017.7999999970198],
+        "handlerP95Ms": [
+          0.29999999701976776, 0.30000000447034836, 0.29999999701976776
+        ],
+        "longTaskCount": [0, 0, 0],
+        "longestTaskMs": [0, 0, 0],
+        "transformWrites": [120, 120, 120]
+      },
+      "summary": {
+        "durationMs": { "median": 2025, "p95": 2026.1000000014901 },
+        "handlerP95Ms": { "median": 0.3, "p95": 0.30000000447034836 },
+        "reportedLongTasks": { "total": 0, "maximumMs": 0 },
+        "transformWrites": { "median": 120, "maximum": 120 }
+      }
+    },
+    {
+      "project": "mobile-chromium",
+      "samples": {
+        "durationMs": [
+          2030.2000000029802, 2032.1000000014901, 2028.7000000029802
+        ],
+        "handlerP95Ms": [
+          0.30000000447034836, 0.3999999985098839, 0.30000000447034836
+        ],
+        "longTaskCount": [0, 0, 0],
+        "longestTaskMs": [0, 0, 0],
+        "transformWrites": [120, 120, 120]
+      },
+      "summary": {
+        "durationMs": {
+          "median": 2030.2000000029802,
+          "p95": 2032.1000000014901
+        },
+        "handlerP95Ms": { "median": 0.3, "p95": 0.3999999985098839 },
+        "reportedLongTasks": { "total": 0, "maximumMs": 0 },
+        "transformWrites": { "median": 120, "maximum": 120 }
+      }
+    }
+  ],
+  "bundleComparison": {
+    "method": "Same-host production builds at the branch point and working tree, using the same node_modules and gzip -c.",
+    "applicationChunk": {
+      "branchPoint": { "rawBytes": 513132, "gzipBytes": 160832 },
+      "candidate": { "rawBytes": 513668, "gzipBytes": 160980 },
+      "delta": { "rawBytes": 536, "gzipBytes": 148 }
+    },
+    "css": {
+      "branchPoint": { "rawBytes": 51478, "gzipBytes": 8933 },
+      "candidate": { "rawBytes": 51478, "gzipBytes": 8933 },
+      "delta": { "rawBytes": 0, "gzipBytes": 0 }
+    },
+    "elkWorker": {
+      "branchPoint": { "rawBytes": 1595334, "gzipBytes": 464634 },
+      "candidate": { "rawBytes": 1595334, "gzipBytes": 464634 },
+      "delta": { "rawBytes": 0, "gzipBytes": 0 }
+    },
+    "newRuntimeDependencies": 0
+  },
+  "thresholds": {
+    "minimumContinuousDurationMs": 1500,
+    "handlerP95Ms": 8,
+    "longTaskBoundaryMs": 50,
+    "maximumTransformWrites": 122,
+    "policy": "Timing is recorded evidence rather than a flaky CI gate. Deterministic bounds, cleanup, tree stability, and transform-write coalescing remain asserted in tests."
+  },
+  "result": "pass: continuous one-finger pan survives capture transfer, all cleanup paths end with zero active pointers, both zoom boundaries and native control state synchronize, every p95 is below 8 ms, no >50 ms Long Task was reported, and the node/edge geometry remained byte-for-byte unchanged during gestures."
+}

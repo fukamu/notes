@@ -9,6 +9,7 @@ import {
   centerConnectionsCameraOnRect,
   connectionsCameraContainsRect,
   connectionsCameraTransform,
+  connectionsCameraZoomState,
   createConnectionsCameraFrameAdapter,
   DEFAULT_CONNECTIONS_CAMERA_LIMITS,
   ensureConnectionsRectVisible,
@@ -34,6 +35,8 @@ export type ConnectionsViewportController = {
   viewportRef: React.RefObject<HTMLDivElement | null>;
   worldRef: React.RefObject<HTMLDivElement | null>;
   zoomOutputRef: React.RefObject<HTMLOutputElement | null>;
+  zoomInRef: React.RefObject<HTMLButtonElement | null>;
+  zoomOutRef: React.RefObject<HTMLButtonElement | null>;
   keyboardRef: React.RefObject<HTMLButtonElement | null>;
   zoomIn: () => void;
   zoomOut: () => void;
@@ -59,6 +62,8 @@ export function useConnectionsViewport(
   const viewportRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
   const zoomOutputRef = useRef<HTMLOutputElement>(null);
+  const zoomInRef = useRef<HTMLButtonElement>(null);
+  const zoomOutRef = useRef<HTMLButtonElement>(null);
   const keyboardRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef(model);
   const paddingRef = useRef(padding);
@@ -127,8 +132,18 @@ export function useConnectionsViewport(
         viewport.dataset.cameraRenderCount = String(
           Number(viewport.dataset.cameraRenderCount ?? '0') + 1,
         );
-        if (zoomOutputRef.current) {
-          zoomOutputRef.current.textContent = `${Math.round(camera.scale * 100)}%`;
+        const zoomState = connectionsCameraZoomState(
+          camera,
+          geometryRef.current?.limits ?? DEFAULT_CONNECTIONS_CAMERA_LIMITS,
+        );
+        if (zoomState && zoomOutputRef.current) {
+          zoomOutputRef.current.textContent = `${zoomState.percent}%`;
+        }
+        if (zoomState && zoomInRef.current) {
+          zoomInRef.current.disabled = zoomState.zoomInDisabled;
+        }
+        if (zoomState && zoomOutRef.current) {
+          zoomOutRef.current.disabled = zoomState.zoomOutDisabled;
         }
       },
     });
@@ -354,6 +369,7 @@ export function useConnectionsViewport(
       event.preventDefault();
     };
     const handleLostPointerCapture = (event: PointerEvent) => {
+      if (event.target !== viewport) return;
       if (pointers.has(event.pointerId)) finishPointer(event);
     };
     const handleClick = (event: MouseEvent) => {
@@ -456,6 +472,8 @@ export function useConnectionsViewport(
     viewportRef,
     worldRef,
     zoomOutputRef,
+    zoomInRef,
+    zoomOutRef,
     keyboardRef,
     zoomIn: () => zoomAtViewportCenter(1.25),
     zoomOut: () => zoomAtViewportCenter(0.8),

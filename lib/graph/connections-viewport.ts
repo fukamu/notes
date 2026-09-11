@@ -42,12 +42,18 @@ export type ConnectionsCameraGeometry = Readonly<{
 }>;
 
 export const DEFAULT_CONNECTIONS_CAMERA_LIMITS: ConnectionsCameraLimits = {
-  minimumScale: 0.625,
-  maximumScale: 3,
+  minimumScale: 0.1,
+  maximumScale: 2,
   maximumFitScale: 1,
 };
 
 const epsilon = 1e-7;
+
+export type ConnectionsCameraZoomState = Readonly<{
+  percent: number;
+  zoomInDisabled: boolean;
+  zoomOutDisabled: boolean;
+}>;
 
 function finite(value: number): boolean {
   return Number.isFinite(value);
@@ -75,6 +81,27 @@ function finiteCamera(camera: ConnectionsCamera): boolean {
     finite(camera.scale) &&
     camera.scale > 0
   );
+}
+
+export function connectionsCameraZoomState(
+  camera: ConnectionsCamera,
+  limits: ConnectionsCameraLimits,
+): ConnectionsCameraZoomState | null {
+  if (
+    !finiteCamera(camera) ||
+    !finite(limits.minimumScale) ||
+    !finite(limits.maximumScale) ||
+    limits.minimumScale <= 0 ||
+    limits.maximumScale < limits.minimumScale
+  ) {
+    return null;
+  }
+  const scale = clamp(camera.scale, limits.minimumScale, limits.maximumScale);
+  return {
+    percent: Math.round(scale * 100),
+    zoomInDisabled: scale >= limits.maximumScale - epsilon,
+    zoomOutDisabled: scale <= limits.minimumScale + epsilon,
+  };
 }
 
 function usableViewport(geometry: ConnectionsCameraGeometry) {
