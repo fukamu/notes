@@ -5,6 +5,7 @@ import {
   connectionsCameraContainsRect,
   connectionsCameraTransform,
   connectionsCameraWorldPoint,
+  connectionsCameraZoomState,
   createConnectionsCameraFrameAdapter,
   DEFAULT_CONNECTIONS_CAMERA_LIMITS,
   ensureConnectionsRectVisible,
@@ -36,10 +37,51 @@ function expectCameraClose(
 }
 
 describe('connections map camera geometry', () => {
-  it('keeps the default 72 px node at a touch-safe minimum size', () => {
+  it('uses the shared 10–200% camera range', () => {
+    expect(DEFAULT_CONNECTIONS_CAMERA_LIMITS).toEqual({
+      minimumScale: 0.1,
+      maximumScale: 2,
+      maximumFitScale: 1,
+    });
+  });
+
+  it('derives stable native control state and displayed percent at both limits', () => {
     expect(
-      DEFAULT_CONNECTIONS_CAMERA_LIMITS.minimumScale * 72,
-    ).toBeGreaterThanOrEqual(44);
+      connectionsCameraZoomState(
+        { x: 0, y: 0, scale: 0.1 + 5e-8 },
+        DEFAULT_CONNECTIONS_CAMERA_LIMITS,
+      ),
+    ).toEqual({
+      percent: 10,
+      zoomInDisabled: false,
+      zoomOutDisabled: true,
+    });
+    expect(
+      connectionsCameraZoomState(
+        { x: 0, y: 0, scale: 2 - 5e-8 },
+        DEFAULT_CONNECTIONS_CAMERA_LIMITS,
+      ),
+    ).toEqual({
+      percent: 200,
+      zoomInDisabled: true,
+      zoomOutDisabled: false,
+    });
+    expect(
+      connectionsCameraZoomState(
+        { x: 0, y: 0, scale: 1.234 },
+        DEFAULT_CONNECTIONS_CAMERA_LIMITS,
+      ),
+    ).toEqual({
+      percent: 123,
+      zoomInDisabled: false,
+      zoomOutDisabled: false,
+    });
+    expect(
+      connectionsCameraZoomState(
+        { x: 0, y: 0, scale: Number.NaN },
+        DEFAULT_CONNECTIONS_CAMERA_LIMITS,
+      ),
+    ).toBeNull();
   });
 
   it('fits the whole world into explicit viewport padding', () => {
@@ -162,6 +204,47 @@ describe('connections map camera geometry', () => {
       camera &&
         connectionsCameraContainsRect(camera, current, wideGeometry, 12),
     ).toBe(true);
+  });
+
+  it('clamps fit, zoom, pinch, resize and programmatic cameras to 10–200%', () => {
+    const boundedGeometry: ConnectionsCameraGeometry = {
+      ...geometry,
+      world: { x: 0, y: 0, width: 20_000, height: 20_000 },
+      limits: DEFAULT_CONNECTIONS_CAMERA_LIMITS,
+    };
+    expect(fitConnectionsCamera(boundedGeometry)?.scale).toBe(0.1);
+    expect(
+      clampConnectionsCamera({ x: 0, y: 0, scale: 20 }, boundedGeometry)?.scale,
+    ).toBe(2);
+    expect(
+      zoomConnectionsCamera(
+        { x: -1_000, y: -1_000, scale: 1 },
+        100,
+        { x: 400, y: 300 },
+        boundedGeometry,
+      )?.scale,
+    ).toBe(2);
+    expect(
+      pinchConnectionsCamera(
+        { x: -1_000, y: -1_000, scale: 1 },
+        [
+          { x: 399, y: 300 },
+          { x: 401, y: 300 },
+        ],
+        [
+          { x: -600, y: 300 },
+          { x: 1_400, y: 300 },
+        ],
+        boundedGeometry,
+      )?.scale,
+    ).toBe(2);
+    expect(
+      resizeConnectionsCamera(
+        { x: -500, y: -500, scale: 0.01 },
+        boundedGeometry,
+        boundedGeometry,
+      )?.scale,
+    ).toBe(0.1);
   });
 
   it('rejects invalid geometry and never serializes non-finite transforms', () => {

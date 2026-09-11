@@ -94,6 +94,8 @@ export function ConnectionsView({
     viewportRef,
     worldRef,
     zoomOutputRef,
+    zoomInRef,
+    zoomOutRef,
     keyboardRef,
     zoomIn,
     zoomOut,
@@ -157,6 +159,7 @@ export function ConnectionsView({
             <span>操作</span>
           </button>
           <button
+            ref={zoomOutRef}
             type="button"
             className="connections-map-control connections-map-control-square"
             onClick={zoomOut}
@@ -174,6 +177,7 @@ export function ConnectionsView({
             --
           </output>
           <button
+            ref={zoomInRef}
             type="button"
             className="connections-map-control connections-map-control-square"
             onClick={zoomIn}

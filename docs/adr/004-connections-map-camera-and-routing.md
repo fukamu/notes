@@ -108,6 +108,24 @@ capture behavior; CSS transforms establish the camera coordinate system.
 Sources: [W3C Pointer Events](https://www.w3.org/TR/pointerevents/) and
 [CSS Transforms](https://www.w3.org/TR/css-transforms-1/).
 
+The post-deployment follow-up keeps that architecture and fixes a target-identity
+error in the capture cleanup. Touch starts with implicit capture on the hit-tested
+node/canvas descendant. At the 6 px drag threshold, explicit capture moves to the
+viewport and the descendant emits a bubbling `lostpointercapture`. Treating that
+bubbled event as if the viewport itself had lost capture removed the only active
+pointer, which explains the observed short shift followed by stopped one-finger
+pan. The adapter now ignores descendant-targeted loss while retaining cleanup for
+viewport-targeted loss, `pointercancel`, and window `pointerup`. Capture is not
+moved on `pointerdown`, so a sub-threshold node tap retains its click target.
+
+The same follow-up fixes every camera operation to 0.10–2.00 scale. A pure camera
+projection produces both the rounded 10–200% output and epsilon-stable boundary
+booleans; the rAF adapter applies these to native zoom-button `disabled`
+properties in the same camera commit. The three-run Pixel 7/Desktop Chrome trace,
+timing, bounds, and +536 raw/+148 gzip application-chunk delta are recorded in
+[`connections-camera-follow-up.json`](../benchmarks/connections-camera-follow-up.json).
+There is no CSS, ELK worker, offline-cache, or dependency delta.
+
 [Panzoom 4.6.2](https://github.com/timmywil/panzoom) was the external comparison.
 It is MIT-licensed, uses Pointer Events/CSS transforms/requestAnimationFrame, and
 advertises about 3.7 kB gzip. Its published 4.6.2 package was 161,576 unpacked
