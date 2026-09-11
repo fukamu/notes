@@ -44,13 +44,15 @@ describe('issue-based delivery contract', () => {
     }
   });
 
-  it('runs read-only verification for the integration branch without deployment', async () => {
+  it('runs read-only verification for main and the integration branch without deployment', async () => {
     const quality = await readFile('.github/workflows/quality.yml', 'utf8');
     const branchFilters = quality.match(
       new RegExp(`- ${integrationBranch.replaceAll('/', '\\/')}`, 'g'),
     );
+    const mainBranchFilters = quality.match(/- main/g);
 
     expect(branchFilters).toHaveLength(2);
+    expect(mainBranchFilters).toHaveLength(2);
     expect(quality).toContain('permissions:\n  contents: read');
     expect(quality).toContain('run: npm run verify');
     expect(quality).not.toMatch(/\b(?:deploy|publish)\b|wrangler\s+deploy/i);
