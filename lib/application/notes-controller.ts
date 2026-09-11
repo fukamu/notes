@@ -21,8 +21,8 @@ import {
 } from '@/lib/application/view-models';
 import { formatDisplayId } from '@/lib/domain/display-id';
 import type { CardId, ConflictId } from '@/lib/domain/id';
+import type { CardEdit } from '@/lib/domain/card-transitions';
 import type {
-  BodySegment,
   CardRecord,
   ConflictRecord,
   SaveState,
@@ -37,10 +37,7 @@ export type NotesStorePort = {
   syncState: SyncState;
   createCard: () => Promise<CardRecord>;
   hasCard: (cardId: CardId) => boolean;
-  updateCard: (
-    cardId: CardId,
-    patch: { title?: string; body?: BodySegment[] },
-  ) => void;
+  updateCard: (cardId: CardId, edit: CardEdit) => void;
   synchronizeNow: () => Promise<void>;
   resolveConflict: (
     conflict: ConflictRecord,
@@ -103,11 +100,11 @@ export function createNotesApplicationController(
     },
     updateTitle: (title) => {
       const card = currentCard();
-      if (card) store.updateCard(card.id, { title });
+      if (card) store.updateCard(card.id, { type: 'title', title });
     },
     updateBody: (body) => {
       const card = currentCard();
-      if (card) store.updateCard(card.id, { body });
+      if (card) store.updateCard(card.id, { type: 'body', body });
     },
     retrySync: () => store.synchronizeNow(),
     resolveConflict: (conflictId: ConflictId, choice: ConflictChoice) => {

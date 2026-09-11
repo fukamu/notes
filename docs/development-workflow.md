@@ -19,8 +19,6 @@ effect adapters
 
 React、browser API、`fetch`、IndexedDB、Service Worker、D1、environment、clock、UUID生成、第三者runtime accessはadapterに置きます。adapterが外部値を `unknown` または実際に保証された最小型として受け、境界で一度decode/guardしてからcoreへ渡します。coreはconcrete adapterをimportしません。
 
-現mainから引き継いだ一時例外として `lib/domain/id.ts` がUUIDv7の検証/brandと生成effectを同居させています。生成関数の呼出しはclient/IndexedDB adapterに限定されていますが、配置上の逆流は親 #29 の子 #31 でadapterへ抽出します。それまではarchitecture testがこの1ファイルだけを理由・撤去Issue付きで許容し、例外の追加や別I/Oの流入を拒否します。
-
 重要な状態、成功/予期可能な失敗、検証前後の値、状態固有dataはdiscriminated union、brand、refined value等の言語に自然な型で区別します。switchは網羅的に扱います。文字列や数値を無差別にwrapせず、取り違えや不正状態を防ぐ具体的価値がある箇所へ限定します。
 
 assertionが避けられない第三者境界では、範囲を最小化し、直前のruntime guard、必要理由、focused test、撤去条件を同じ変更に残します。`any`、double assertion、non-null assertion、blanket disable、test skip、広い除外で契約を回避しません。

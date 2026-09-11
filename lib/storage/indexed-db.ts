@@ -1,9 +1,9 @@
+import { createDeviceId, createMutationId } from '@/lib/client/id-generator';
 import {
-  createDeviceId,
-  createMutationId,
-  type ConflictId,
-  type DeviceId,
-} from '@/lib/domain/id';
+  createPendingMutation,
+  type PendingMutationMode,
+} from '@/lib/domain/card-transitions';
+import type { DeviceId } from '@/lib/domain/id';
 import { reconcileProvisionalDisplayIds } from '@/lib/domain/display-id';
 import type {
   CardRecord,
@@ -117,43 +117,16 @@ export async function loadOrCreateDeviceId(): Promise<DeviceId> {
 
 export async function persistCardAndMutation(
   card: CardRecord,
-  options:
-    | { kind: 'upsert' }
-    | { kind: 'resolve'; conflictIds: [ConflictId, ...ConflictId[]] } = {
+  options: PendingMutationMode = {
     kind: 'upsert',
   },
 ): Promise<PendingMutation> {
   const database = await openNotesDatabase();
-  const baseServerRevision = card.serverRevision;
-  const base = {
-    mutationId: createMutationId(),
-    cardId: card.id,
-    title: card.title,
-    body: card.body,
-    createdAt: card.createdAt,
-    updatedAt: card.updatedAt,
-  };
-  const mutation: PendingMutation =
-    options.kind === 'resolve'
-      ? (() => {
-          if (baseServerRevision === null) {
-            throw new Error(
-              'Cannot resolve a conflict without a server revision',
-            );
-          }
-          return {
-            ...base,
-            kind: options.kind,
-            baseServerRevision,
-            conflictIds: options.conflictIds,
-          };
-        })()
-      : {
-          ...base,
-          kind: options.kind,
-          baseServerRevision,
-          conflictIds: [],
-        };
+  const result = createPendingMutation(card, createMutationId(), options);
+  if (!result.ok) {
+    throw new Error('Cannot resolve a conflict without a server revision');
+  }
+  const mutation = result.mutation;
   const transaction = database.transaction(['cards', 'mutations'], 'readwrite');
   transaction.objectStore('cards').put(encodeStoredCard(card));
   transaction.objectStore('mutations').put(encodeStoredMutation(mutation));

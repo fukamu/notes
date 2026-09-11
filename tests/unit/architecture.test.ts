@@ -97,12 +97,6 @@ describe('trust-boundary architecture', () => {
 
 describe('pure-core dependency direction', () => {
   const coreRoots = ['lib/domain', 'lib/sync', 'lib/application'];
-  const temporaryEffectExceptions = new Map([
-    [
-      'lib/domain/id.ts',
-      'UUIDv7 generation is moved to a client adapter by #31',
-    ],
-  ]);
 
   it('keeps core imports independent of concrete effect adapters', async () => {
     const files = (await Promise.all(coreRoots.map(sourceFiles))).flat();
@@ -118,28 +112,27 @@ describe('pure-core dependency direction', () => {
     expect(violations).toEqual([]);
   });
 
-  it('keeps direct runtime effects out of core except for the tracked UUID adapter debt', async () => {
+  it('keeps direct runtime effects out of core', async () => {
     const files = (await Promise.all(coreRoots.map(sourceFiles))).flat();
     const directEffect =
-      /\b(?:fetch|indexedDB)\s*\(|\b(?:window|document|localStorage|sessionStorage)\.|\bnavigator\.(?:onLine|serviceWorker)|\b(?:Date\.now|Math\.random|crypto\.)|\bprocess\.env\b|\bconsole\.|from ['"]uuid['"]/;
+      /\b(?:fetch|indexedDB)\s*\(|\b(?:window|document|localStorage|sessionStorage)\.|\bnavigator\.(?:onLine|serviceWorker)|\b(?:Date\.now|Math\.random|crypto\.|uuidv7\s*\()|\bprocess\.env\b|\bconsole\./;
     const violations: string[] = [];
 
     for (const file of files) {
       const source = await readFile(file, 'utf8');
-      if (!directEffect.test(source)) continue;
-      if (!temporaryEffectExceptions.has(file)) violations.push(file);
+      if (directEffect.test(source)) violations.push(file);
     }
 
     expect(violations).toEqual([]);
-    expect([...temporaryEffectExceptions]).toEqual([
-      [
-        'lib/domain/id.ts',
-        'UUIDv7 generation is moved to a client adapter by #31',
-      ],
-    ]);
-    await expect(
-      readFile('docs/development-workflow.md', 'utf8'),
-    ).resolves.toContain('`lib/domain/id.ts`');
+  });
+
+  it('keeps UUID generation in the outer client adapter', async () => {
+    const domainIds = await readFile('lib/domain/id.ts', 'utf8');
+    const generator = await readFile('lib/client/id-generator.ts', 'utf8');
+
+    expect(domainIds).not.toMatch(/uuidv7|create(?:Card|Mutation|Device)Id/);
+    expect(generator).toContain('v7 as uuidv7');
+    expect(generator).toContain('parseCardId(uuidv7())');
   });
 });
 

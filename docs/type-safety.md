@@ -121,4 +121,6 @@ Phase 1〜3でcompiler、codec／brand、client／IndexedDB、API／D1／environ
 
 業務判断、変換、状態遷移はtyped pure coreへ置き、React、clock、UUID、network、IndexedDB、D1、DOM等はadapterから検証・生成済み値を渡します。core→concrete effectの逆依存はarchitecture testで機械検査し、意味論的な純粋性と入力非変更はunit test/reviewで補います。
 
+カード作成・編集・競合解決・pending mutation構築は `lib/domain/card-transitions.ts` のpure functionが担当します。時刻とbranded IDは外側で一度生成して入力し、UUIDv7生成は `lib/client/id-generator.ts` に限定します。編集とmutation mode、予期可能なresolve失敗はdiscriminated unionで区別し、IndexedDB adapterだけが既存の例外へ変換します。
+
 Issue分割、integration/work branch、PR base、merge gate、検査設定変更の扱い、main/production境界の正本は [Issue-based type-safe development workflow](development-workflow.md) です。利用者が対象を特定して直接許可するまではmainへ反映しません。

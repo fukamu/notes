@@ -10,20 +10,17 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { type CardId, type ConflictId, type DeviceId } from '@/lib/domain/id';
+import { createCardId } from '@/lib/client/id-generator';
+import { reconcileProvisionalDisplayIds } from '@/lib/domain/display-id';
 import {
-  createCardId,
-  type CardId,
-  type ConflictId,
-  type DeviceId,
-} from '@/lib/domain/id';
+  applyCardEdit,
+  createLocalCard,
+  resolveCardConflict,
+  type CardEdit,
+  type ConflictResolutionChoice,
+} from '@/lib/domain/card-transitions';
 import {
-  nextProvisionalValue,
-  reconcileProvisionalDisplayIds,
-} from '@/lib/domain/display-id';
-import {
-  nonNegativeSafeInteger,
-  positiveSafeInteger,
-  type BodySegment,
   type CardRecord,
   type ConflictRecord,
   type SaveState,
@@ -49,14 +46,11 @@ export type NotesDataStore = {
   syncState: SyncState;
   createCard: () => Promise<CardRecord>;
   hasCard: (cardId: CardId) => boolean;
-  updateCard: (
-    cardId: CardId,
-    patch: { title?: string; body?: BodySegment[] },
-  ) => void;
+  updateCard: (cardId: CardId, edit: CardEdit) => void;
   synchronizeNow: () => Promise<void>;
   resolveConflict: (
     conflict: ConflictRecord,
-    choice: 'local' | 'server',
+    choice: ConflictResolutionChoice,
   ) => CardRecord | undefined;
 };
 
@@ -239,23 +233,12 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   );
 
   const createCard = useCallback(async () => {
-    const now = nonNegativeSafeInteger(Date.now(), 'card timestamp');
-    const card: CardRecord = {
-      id: createCardId(),
-      displayId: {
-        kind: 'provisional',
-        value: positiveSafeInteger(
-          nextProvisionalValue(cardsRef.current),
-          'provisional display ID',
-        ),
-      },
-      title: '',
-      body: [],
-      createdAt: now,
-      updatedAt: now,
-      localRevision: positiveSafeInteger(1, 'initial local revision'),
-      serverRevision: null,
-    };
+    const now = Date.now();
+    const card = createLocalCard({
+      cards: cardsRef.current,
+      cardId: createCardId(),
+      now,
+    });
     const nextCards = [...cardsRef.current, card];
     cardsRef.current = nextCards;
     setCards(nextCards);
@@ -264,18 +247,10 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   }, [queueSave]);
 
   const updateCard = useCallback(
-    (cardId: CardId, patch: { title?: string; body?: BodySegment[] }) => {
+    (cardId: CardId, edit: CardEdit) => {
       const existing = cardsRef.current.find((card) => card.id === cardId);
       if (!existing) return;
-      const updated: CardRecord = {
-        ...existing,
-        ...patch,
-        updatedAt: nonNegativeSafeInteger(Date.now(), 'card timestamp'),
-        localRevision: positiveSafeInteger(
-          existing.localRevision + 1,
-          'local revision',
-        ),
-      };
+      const updated = applyCardEdit(existing, edit, Date.now());
       const nextCards = cardsRef.current.map((card) =>
         card.id === cardId ? updated : card,
       );
@@ -297,17 +272,14 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         (card) => card.id === conflict.cardId,
       );
       if (!existing) return undefined;
-      const updated: CardRecord = {
-        ...existing,
-        title: choice === 'local' ? conflict.localTitle : conflict.serverTitle,
-        body: choice === 'local' ? conflict.localBody : conflict.serverBody,
-        serverRevision: conflict.serverRevision,
-        updatedAt: nonNegativeSafeInteger(Date.now(), 'card timestamp'),
-        localRevision: positiveSafeInteger(
-          existing.localRevision + 1,
-          'local revision',
-        ),
-      };
+      const result = resolveCardConflict(
+        existing,
+        conflict,
+        choice,
+        Date.now(),
+      );
+      if (!result.ok) return undefined;
+      const updated = result.card;
       const nextCards = cardsRef.current.map((card) =>
         card.id === conflict.cardId ? updated : card,
       );
