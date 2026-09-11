@@ -19,6 +19,7 @@ describe('default body editor renderer contract', () => {
         {
           cardId: fixtureCardId('renderer-candidate'),
           displayLabel: '#1',
+          displayValue: 1,
           title: 'Candidate',
         },
       ],

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { EditorContent } from '@tiptap/react';
 import { Link2, Redo2, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,13 @@ export const defaultCardEditorPresentation: CardEditorPresentationAdapter = {
 };
 
 export function BodyEditor({ model, commands }: CardEditorRendererProps) {
+  const activeCandidateRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (model.suggestionOpen) {
+      activeCandidateRef.current?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [model.activeCandidate, model.suggestionOpen]);
+
   if (!model.ready || !model.editor) {
     return (
       <div
@@ -47,10 +55,14 @@ export function BodyEditor({ model, commands }: CardEditorRendererProps) {
           <p className="px-2 py-1.5 text-xs text-muted-foreground">
             リンクするカードを選択
           </p>
-          <div className="max-h-56 overflow-y-auto">
+          <div
+            className="overflow-y-auto"
+            style={{ maxHeight: 'min(14rem, calc(100dvh - 12rem))' }}
+            data-testid="link-candidate-scroll"
+          >
             {model.candidates.length === 0 ? (
               <p className="px-2 py-4 text-sm text-muted-foreground">
-                ほかのカードがありません
+                該当するカードがありません
               </p>
             ) : (
               <ul
@@ -60,12 +72,17 @@ export function BodyEditor({ model, commands }: CardEditorRendererProps) {
                 {model.candidates.map((candidate, index) => (
                   <li key={candidate.cardId}>
                     <button
+                      ref={
+                        index === model.activeCandidate
+                          ? activeCandidateRef
+                          : undefined
+                      }
                       type="button"
                       aria-current={
                         index === model.activeCandidate ? 'true' : undefined
                       }
                       className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-muted aria-[current=true]:bg-muted"
-                      onMouseDown={commands.preserveEditorFocus}
+                      onPointerDown={commands.preserveEditorFocus}
                       onClick={() => commands.selectCandidate(candidate.cardId)}
                     >
                       <Link2
