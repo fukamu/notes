@@ -653,6 +653,10 @@ test('malformed 2xx sync response preserves local edits and remains retryable', 
 
   await page.reload();
   await expect(page.getByTestId('card-title')).toHaveValue(title);
+  await expect(page.getByTestId('save-sync-status')).toContainText(
+    '同期失敗・端末に保存済み',
+    { timeout: 15_000 },
+  );
   await page.unroute('**/api/sync');
   await page.getByTestId('save-sync-status').click();
   await expect(page.getByTestId('display-id')).toHaveAttribute(
