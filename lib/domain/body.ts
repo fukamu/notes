@@ -1,4 +1,5 @@
 import type { BodySegment, CardRecord } from './types';
+import type { CardId } from './id';
 import { formatDisplayId, sortCardsByDisplayId } from './display-id';
 import { visibleTitle } from './types';
 
@@ -38,12 +39,20 @@ export function bodyToPlainText(
     .join('');
 }
 
-export function outgoingCardIds(body: BodySegment[]): string[] {
+export function outgoingCardIds(body: BodySegment[]): CardId[] {
   return body
-    .filter((segment): segment is Extract<BodySegment, { type: 'link' }> => segment.type === 'link')
+    .filter(
+      (segment): segment is Extract<BodySegment, { type: 'link' }> =>
+        segment.type === 'link',
+    )
     .map((segment) => segment.targetCardId);
 }
 
-export function linkCandidates(cards: CardRecord[], currentCardId: string): CardRecord[] {
-  return sortCardsByDisplayId(cards).filter((card) => card.id !== currentCardId);
+export function linkCandidates(
+  cards: CardRecord[],
+  currentCardId: CardId,
+): CardRecord[] {
+  return sortCardsByDisplayId(cards).filter(
+    (card) => card.id !== currentCardId,
+  );
 }

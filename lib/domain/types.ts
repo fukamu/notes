@@ -1,52 +1,168 @@
-export type DisplayId =
-  | { kind: 'provisional'; value: number }
-  | { kind: 'official'; value: number };
+import {
+  arrayDecoder,
+  decodeOrThrow,
+  literalDecoder,
+  nullableDecoder,
+  objectDecoder,
+  refineDecoder,
+  safeIntegerDecoder,
+  stringDecoder,
+  transformDecoder,
+  unionDecoder,
+  type InferDecoder,
+} from '@/lib/codec/core';
+import {
+  cardIdDecoder,
+  conflictIdDecoder,
+  mutationIdDecoder,
+  type ConflictId,
+} from '@/lib/domain/id';
+import { invariant } from '@/lib/shared/invariant';
 
-export type TextSegment = {
-  type: 'text';
-  text: string;
-};
+export const CONTRACT_LIMITS = {
+  bodySegments: 10_000,
+  cards: 100_000,
+  conflictIds: 500,
+  conflicts: 100_000,
+  mutations: 500,
+  payloadBytes: 4_000_000,
+  serializedBody: 2_000_000,
+  text: 100_000,
+  title: 10_000,
+} as const;
 
-export type CardLinkSegment = {
-  type: 'link';
-  targetCardId: string;
-};
+export const positiveSafeIntegerDecoder = safeIntegerDecoder({ minimum: 1 });
+export const nonNegativeSafeIntegerDecoder = safeIntegerDecoder({ minimum: 0 });
 
-export type BodySegment = TextSegment | CardLinkSegment;
+const provisionalDisplayIdDecoder = objectDecoder({
+  kind: literalDecoder('provisional'),
+  value: positiveSafeIntegerDecoder,
+});
+const officialDisplayIdDecoder = objectDecoder({
+  kind: literalDecoder('official'),
+  value: positiveSafeIntegerDecoder,
+});
+export const displayIdDecoder = unionDecoder(
+  provisionalDisplayIdDecoder,
+  officialDisplayIdDecoder,
+);
 
-export type CardRecord = {
-  id: string;
-  displayId: DisplayId;
-  title: string;
-  body: BodySegment[];
-  createdAt: number;
-  updatedAt: number;
-  localRevision: number;
-  serverRevision: number | null;
-};
+const textSegmentDecoder = objectDecoder({
+  type: literalDecoder('text'),
+  text: stringDecoder({ maxLength: CONTRACT_LIMITS.text }),
+});
+const cardLinkSegmentDecoder = objectDecoder({
+  type: literalDecoder('link'),
+  targetCardId: cardIdDecoder,
+});
+export const bodySegmentDecoder = unionDecoder(
+  textSegmentDecoder,
+  cardLinkSegmentDecoder,
+);
+export const bodyDecoder = arrayDecoder(bodySegmentDecoder, {
+  maxLength: CONTRACT_LIMITS.bodySegments,
+});
 
-export type ConflictRecord = {
-  id: string;
-  cardId: string;
-  serverRevision: number;
-  localTitle: string;
-  localBody: BodySegment[];
-  serverTitle: string;
-  serverBody: BodySegment[];
-  createdAt: number;
-};
+export const cardRecordDecoder = objectDecoder({
+  id: cardIdDecoder,
+  displayId: displayIdDecoder,
+  title: stringDecoder({ maxLength: CONTRACT_LIMITS.title }),
+  body: bodyDecoder,
+  createdAt: nonNegativeSafeIntegerDecoder,
+  updatedAt: nonNegativeSafeIntegerDecoder,
+  localRevision: positiveSafeIntegerDecoder,
+  serverRevision: nullableDecoder(positiveSafeIntegerDecoder),
+});
 
-export type PendingMutation = {
-  mutationId: string;
-  cardId: string;
-  kind: 'upsert' | 'resolve';
-  baseServerRevision: number | null;
-  title: string;
-  body: BodySegment[];
-  createdAt: number;
-  updatedAt: number;
-  conflictIds: string[];
-};
+export const conflictRecordDecoder = objectDecoder({
+  id: conflictIdDecoder,
+  cardId: cardIdDecoder,
+  serverRevision: positiveSafeIntegerDecoder,
+  localTitle: stringDecoder({ maxLength: CONTRACT_LIMITS.title }),
+  localBody: bodyDecoder,
+  serverTitle: stringDecoder({ maxLength: CONTRACT_LIMITS.title }),
+  serverBody: bodyDecoder,
+  createdAt: nonNegativeSafeIntegerDecoder,
+});
+
+const emptyConflictIdsDecoder = transformDecoder(
+  arrayDecoder(conflictIdDecoder, { maxLength: 0 }),
+  (): [] => [],
+);
+const nonEmptyConflictIdsDecoder = transformDecoder(
+  arrayDecoder(conflictIdDecoder, {
+    minLength: 1,
+    maxLength: CONTRACT_LIMITS.conflictIds,
+    uniqueBy: (id) => id,
+  }),
+  (ids): [ConflictId, ...ConflictId[]] => {
+    const [first, ...rest] = ids;
+    invariant(first, 'Non-empty conflict ID decoder returned no values');
+    return [first, ...rest];
+  },
+);
+
+const mutationBase = {
+  mutationId: mutationIdDecoder,
+  cardId: cardIdDecoder,
+  title: stringDecoder({ maxLength: CONTRACT_LIMITS.title }),
+  body: bodyDecoder,
+  createdAt: nonNegativeSafeIntegerDecoder,
+  updatedAt: nonNegativeSafeIntegerDecoder,
+} as const;
+
+const upsertMutationDecoder = objectDecoder({
+  ...mutationBase,
+  kind: literalDecoder('upsert'),
+  baseServerRevision: nullableDecoder(positiveSafeIntegerDecoder),
+  conflictIds: emptyConflictIdsDecoder,
+});
+const resolveMutationDecoder = objectDecoder({
+  ...mutationBase,
+  kind: literalDecoder('resolve'),
+  baseServerRevision: positiveSafeIntegerDecoder,
+  conflictIds: nonEmptyConflictIdsDecoder,
+});
+export const pendingMutationDecoder = refineDecoder(
+  unionDecoder(upsertMutationDecoder, resolveMutationDecoder),
+  (mutation) => mutation.createdAt <= mutation.updatedAt,
+  'expected createdAt <= updatedAt',
+);
+
+export type DisplayId = InferDecoder<typeof displayIdDecoder>;
+export type TextSegment = InferDecoder<typeof textSegmentDecoder>;
+export type CardLinkSegment = InferDecoder<typeof cardLinkSegmentDecoder>;
+export type BodySegment = InferDecoder<typeof bodySegmentDecoder>;
+export type CardRecord = InferDecoder<typeof cardRecordDecoder>;
+export type ConflictRecord = InferDecoder<typeof conflictRecordDecoder>;
+export type PendingMutation = InferDecoder<typeof pendingMutationDecoder>;
+
+export function decodeBody(input: unknown): BodySegment[] {
+  return decodeOrThrow(bodyDecoder, input, 'Body');
+}
+
+export function decodeCardRecord(input: unknown): CardRecord {
+  return decodeOrThrow(cardRecordDecoder, input, 'CardRecord');
+}
+
+export function decodeConflictRecord(input: unknown): ConflictRecord {
+  return decodeOrThrow(conflictRecordDecoder, input, 'ConflictRecord');
+}
+
+export function decodePendingMutation(input: unknown): PendingMutation {
+  return decodeOrThrow(pendingMutationDecoder, input, 'PendingMutation');
+}
+
+export function positiveSafeInteger(input: unknown, context: string): number {
+  return decodeOrThrow(positiveSafeIntegerDecoder, input, context);
+}
+
+export function nonNegativeSafeInteger(
+  input: unknown,
+  context: string,
+): number {
+  return decodeOrThrow(nonNegativeSafeIntegerDecoder, input, context);
+}
 
 export type SaveState = 'saved' | 'saving' | 'failed';
 export type SyncState = 'idle' | 'syncing' | 'offline' | 'failed';

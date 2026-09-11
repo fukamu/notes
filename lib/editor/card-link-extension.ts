@@ -1,88 +1,153 @@
-import { mergeAttributes, Node } from '@tiptap/core';
-import { getCardLabel, subscribeToCardLabels } from './card-labels';
+import { mergeAttributes, Node, type Editor } from '@tiptap/core';
+import type { CardId } from '@/lib/domain/id';
+import { cardLinkTargetId } from '@/lib/editor/card-link-attributes';
+import type { CardLabelResolver } from '@/lib/editor/card-labels';
 
-export const CardLink = Node.create({
-  name: 'cardLink',
-  group: 'inline',
-  inline: true,
-  atom: true,
-  selectable: true,
-  draggable: true,
+const INVALID_CARD_LINK_LABEL = '無効なカードリンク';
 
-  addAttributes() {
-    return {
-      targetCardId: {
-        default: null,
-        parseHTML: (element) => element.getAttribute('data-card-link-id'),
-        renderHTML: (attributes) => ({ 'data-card-link-id': attributes.targetCardId }),
-      },
-    };
-  },
+export type CardLinkNodeViewAdapter = {
+  className: string;
+};
 
-  parseHTML() {
-    return [{ tag: 'span[data-card-link-id]' }];
-  },
+export type CardLinkExtensionOptions = {
+  labels: CardLabelResolver;
+  nodeView: CardLinkNodeViewAdapter;
+  openCard: (cardId: CardId) => void;
+};
 
-  renderHTML({ HTMLAttributes }) {
-    return [
-      'span',
-      mergeAttributes(HTMLAttributes, {
-        class: 'card-link-capsule',
-        contenteditable: 'false',
-      }),
-      getCardLabel(String(HTMLAttributes['data-card-link-id'])),
-    ];
-  },
+export function activateCardLink(
+  attributes: unknown,
+  openCard: (cardId: CardId) => void,
+): boolean {
+  const targetCardId = cardLinkTargetId(attributes);
+  if (!targetCardId) return false;
+  openCard(targetCardId);
+  return true;
+}
 
-  addNodeView() {
-    return ({ node }) => {
-      let targetCardId = String(node.attrs.targetCardId);
-      const dom = document.createElement('span');
-      dom.className = 'card-link-capsule';
-      dom.contentEditable = 'false';
-      dom.tabIndex = 0;
-      dom.setAttribute('role', 'link');
-      dom.setAttribute('data-card-link-id', targetCardId);
+export function createCardLinkExtension({
+  labels,
+  nodeView,
+  openCard,
+}: CardLinkExtensionOptions) {
+  return Node.create({
+    name: 'cardLink',
+    group: 'inline',
+    inline: true,
+    atom: true,
+    selectable: true,
+    draggable: true,
 
-      const render = () => {
-        dom.textContent = getCardLabel(targetCardId);
-        dom.setAttribute('aria-label', `${getCardLabel(targetCardId)}を開く`);
-      };
-      render();
-      const unsubscribe = subscribeToCardLabels(render);
-
-      dom.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          dom.click();
-        }
-      });
-
+    addAttributes() {
       return {
-        dom,
-        update(updatedNode) {
-          if (updatedNode.type.name !== 'cardLink') return false;
-          targetCardId = String(updatedNode.attrs.targetCardId);
-          dom.setAttribute('data-card-link-id', targetCardId);
-          render();
-          return true;
+        targetCardId: {
+          default: null,
+          parseHTML: (element) => element.getAttribute('data-card-link-id'),
+          renderHTML: (attributes) => {
+            const targetCardId = cardLinkTargetId(attributes);
+            return targetCardId ? { 'data-card-link-id': targetCardId } : {};
+          },
         },
-        destroy: unsubscribe,
       };
-    };
-  },
+    },
 
-  addKeyboardShortcuts() {
-    return {
-      Backspace: ({ editor }) => {
+    parseHTML() {
+      return [{ tag: 'span[data-card-link-id]' }];
+    },
+
+    renderHTML({ HTMLAttributes }) {
+      const targetCardId = cardLinkTargetId(HTMLAttributes);
+      return [
+        'span',
+        mergeAttributes(HTMLAttributes, {
+          class: nodeView.className,
+          contenteditable: 'false',
+        }),
+        targetCardId ? labels.labelFor(targetCardId) : INVALID_CARD_LINK_LABEL,
+      ];
+    },
+
+    addNodeView() {
+      return ({ node }) => {
+        let targetCardId = cardLinkTargetId(node.attrs);
+        const dom = document.createElement('span');
+        dom.className = nodeView.className;
+        dom.contentEditable = 'false';
+        dom.tabIndex = 0;
+        dom.setAttribute('role', 'link');
+
+        const render = () => {
+          if (!targetCardId) {
+            dom.removeAttribute('data-card-link-id');
+            dom.textContent = INVALID_CARD_LINK_LABEL;
+            dom.setAttribute('aria-label', INVALID_CARD_LINK_LABEL);
+            return;
+          }
+          dom.setAttribute('data-card-link-id', targetCardId);
+          const label = labels.labelFor(targetCardId);
+          dom.textContent = label;
+          dom.setAttribute('aria-label', `${label}を開く`);
+        };
+        const activate = () => {
+          activateCardLink({ targetCardId }, openCard);
+        };
+        const onClick = () => activate();
+        const onKeyDown = (event: KeyboardEvent) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          activate();
+        };
+
+        render();
+        const unsubscribe = labels.subscribe(render);
+        dom.addEventListener('click', onClick);
+        dom.addEventListener('keydown', onKeyDown);
+
+        return {
+          dom,
+          stopEvent: (event) =>
+            event.type === 'click' || event.type === 'keydown',
+          update(updatedNode) {
+            if (updatedNode.type.name !== 'cardLink') return false;
+            targetCardId = cardLinkTargetId(updatedNode.attrs);
+            render();
+            return true;
+          },
+          destroy() {
+            unsubscribe();
+            dom.removeEventListener('click', onClick);
+            dom.removeEventListener('keydown', onKeyDown);
+          },
+        };
+      };
+    },
+
+    addKeyboardShortcuts() {
+      const deleteAdjacent = (
+        direction: 'before' | 'after',
+        editor: Editor,
+      ) => {
         const { selection } = editor.state;
         if (!selection.empty) return false;
-        const nodeBefore = selection.$anchor.nodeBefore;
-        if (nodeBefore?.type.name !== this.name) return false;
-        const end = selection.$anchor.pos;
-        editor.view.dispatch(editor.state.tr.delete(end - nodeBefore.nodeSize, end));
+        const adjacent =
+          direction === 'before'
+            ? selection.$anchor.nodeBefore
+            : selection.$anchor.nodeAfter;
+        if (adjacent?.type.name !== this.name) return false;
+        const from =
+          direction === 'before'
+            ? selection.$anchor.pos - adjacent.nodeSize
+            : selection.$anchor.pos;
+        editor.view.dispatch(
+          editor.state.tr.delete(from, from + adjacent.nodeSize),
+        );
         return true;
-      },
-    };
-  },
-});
+      };
+
+      return {
+        Backspace: ({ editor }) => deleteAdjacent('before', editor),
+        Delete: ({ editor }) => deleteAdjacent('after', editor),
+      };
+    },
+  });
+}

@@ -10,14 +10,24 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { createInternalId } from '@/lib/domain/id';
-import { nextProvisionalValue, reconcileProvisionalDisplayIds } from '@/lib/domain/display-id';
-import type {
-  BodySegment,
-  CardRecord,
-  ConflictRecord,
-  SaveState,
-  SyncState,
+import {
+  createCardId,
+  type CardId,
+  type ConflictId,
+  type DeviceId,
+} from '@/lib/domain/id';
+import {
+  nextProvisionalValue,
+  reconcileProvisionalDisplayIds,
+} from '@/lib/domain/display-id';
+import {
+  nonNegativeSafeInteger,
+  positiveSafeInteger,
+  type BodySegment,
+  type CardRecord,
+  type ConflictRecord,
+  type SaveState,
+  type SyncState,
 } from '@/lib/domain/types';
 import {
   applySyncResponse,
@@ -27,40 +37,40 @@ import {
   loadPendingMutations,
   persistCardAndMutation,
 } from '@/lib/storage/indexed-db';
-import type { SyncRequest, SyncResponse } from '@/lib/sync/protocol';
+import { encodeSyncRequest } from '@/lib/sync/protocol';
 import { prepareOfflineApp } from '@/lib/client/offline';
 
-export type NotesView = 'card' | 'history' | 'connections';
-
-type NotesContextValue = {
+export type NotesDataStore = {
   cards: CardRecord[];
   conflicts: ConflictRecord[];
-  currentCard: CardRecord | undefined;
-  currentCardId: string | null;
   initialized: boolean;
+  initialSyncComplete: boolean;
   saveState: SaveState;
   syncState: SyncState;
-  view: NotesView;
   createCard: () => Promise<CardRecord>;
-  updateCard: (cardId: string, patch: { title?: string; body?: BodySegment[] }) => void;
-  selectCard: (cardId: string) => void;
-  setView: (view: NotesView) => void;
+  hasCard: (cardId: CardId) => boolean;
+  updateCard: (
+    cardId: CardId,
+    patch: { title?: string; body?: BodySegment[] },
+  ) => void;
   synchronizeNow: () => Promise<void>;
-  resolveConflict: (conflict: ConflictRecord, choice: 'local' | 'server') => void;
+  resolveConflict: (
+    conflict: ConflictRecord,
+    choice: 'local' | 'server',
+  ) => CardRecord | undefined;
 };
 
-const NotesContext = createContext<NotesContextValue | null>(null);
+const NotesDataContext = createContext<NotesDataStore | null>(null);
 
 export function NotesProvider({ children }: { children: ReactNode }) {
   const [cards, setCards] = useState<CardRecord[]>([]);
   const [conflicts, setConflicts] = useState<ConflictRecord[]>([]);
-  const [currentCardId, setCurrentCardId] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
+  const [initialSyncComplete, setInitialSyncComplete] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [syncState, setSyncState] = useState<SyncState>('idle');
-  const [view, setView] = useState<NotesView>('card');
   const cardsRef = useRef(cards);
-  const deviceIdRef = useRef<string | undefined>(undefined);
+  const deviceIdRef = useRef<DeviceId | undefined>(undefined);
   const syncRunningRef = useRef(false);
   const syncRequestedRef = useRef(false);
   const syncTimerRef = useRef<number | undefined>(undefined);
@@ -93,16 +103,18 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         const revisionsAtRequest = new Map(
           cardsRef.current.map((card) => [card.id, card.localRevision]),
         );
-        const requestBody: SyncRequest = { deviceId, mutations };
+        const requestBody = encodeSyncRequest({ deviceId, mutations });
         const response = await fetch('/api/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody),
         });
         if (!response.ok) throw new Error(`sync returned ${response.status}`);
-        const result = (await response.json()) as SyncResponse;
+        const result: unknown = await response.json();
         const merged = await applySyncResponse(result, mutations);
-        const latestLocalCards = new Map(cardsRef.current.map((card) => [card.id, card]));
+        const latestLocalCards = new Map(
+          cardsRef.current.map((card) => [card.id, card]),
+        );
         const visibleCards = merged.cards.map((mergedCard) => {
           const latestLocal = latestLocalCards.get(mergedCard.id);
           const revisionAtRequest = revisionsAtRequest.get(mergedCard.id);
@@ -128,7 +140,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         cardsRef.current = visibleCards;
         setCards(visibleCards);
         setConflicts(merged.conflicts);
-        setCurrentCardId((current) => current ?? visibleCards[0]?.id ?? null);
       } while (syncRequestedRef.current && navigator.onLine);
       setSyncState('idle');
     } catch (error) {
@@ -149,7 +160,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         deviceIdRef.current = deviceId;
         setCards(reconciled);
         setConflicts(storedConflicts);
-        setCurrentCardId(reconciled.at(-1)?.id ?? null);
         setSyncState(navigator.onLine ? 'idle' : 'offline');
         setInitialized(true);
       })
@@ -167,15 +177,22 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!initialized) return;
-    const initialSync = window.setTimeout(() => void synchronizeNow(), 0);
+    let active = true;
+    const initialSync = window.setTimeout(() => {
+      void synchronizeNow().finally(() => {
+        if (active) setInitialSyncComplete(true);
+      });
+    }, 0);
     const onOnline = () => void synchronizeNow();
     const onOffline = () => setSyncState('offline');
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
     const timer = window.setInterval(() => void synchronizeNow(), 15_000);
     return () => {
+      active = false;
       window.clearTimeout(initialSync);
-      if (syncTimerRef.current !== undefined) window.clearTimeout(syncTimerRef.current);
+      if (syncTimerRef.current !== undefined)
+        window.clearTimeout(syncTimerRef.current);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
       window.clearInterval(timer);
@@ -187,18 +204,31 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const queueSave = useCallback(
-    (card: CardRecord, kind: 'upsert' | 'resolve' = 'upsert', conflictIds: string[] = []) => {
+    (
+      card: CardRecord,
+      options:
+        | { kind: 'upsert' }
+        | { kind: 'resolve'; conflictIds: [ConflictId, ...ConflictId[]] } = {
+        kind: 'upsert',
+      },
+    ) => {
       const sequence = ++saveSequenceRef.current;
       setSaveState('saving');
       saveQueueRef.current = saveQueueRef.current
         .then(() => {
-          const latestCard = cardsRef.current.find((candidate) => candidate.id === card.id);
-          return persistCardAndMutation(latestCard ?? card, kind, conflictIds);
+          const latestCard = cardsRef.current.find(
+            (candidate) => candidate.id === card.id,
+          );
+          return persistCardAndMutation(latestCard ?? card, options);
         })
         .then(() => {
           if (sequence === saveSequenceRef.current) setSaveState('saved');
-          if (syncTimerRef.current !== undefined) window.clearTimeout(syncTimerRef.current);
-          syncTimerRef.current = window.setTimeout(() => void synchronizeNow(), 250);
+          if (syncTimerRef.current !== undefined)
+            window.clearTimeout(syncTimerRef.current);
+          syncTimerRef.current = window.setTimeout(
+            () => void synchronizeNow(),
+            250,
+          );
         })
         .catch((error) => {
           console.error(error);
@@ -209,37 +239,46 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   );
 
   const createCard = useCallback(async () => {
-    const now = Date.now();
+    const now = nonNegativeSafeInteger(Date.now(), 'card timestamp');
     const card: CardRecord = {
-      id: createInternalId(),
-      displayId: { kind: 'provisional', value: nextProvisionalValue(cardsRef.current) },
+      id: createCardId(),
+      displayId: {
+        kind: 'provisional',
+        value: positiveSafeInteger(
+          nextProvisionalValue(cardsRef.current),
+          'provisional display ID',
+        ),
+      },
       title: '',
       body: [],
       createdAt: now,
       updatedAt: now,
-      localRevision: 1,
+      localRevision: positiveSafeInteger(1, 'initial local revision'),
       serverRevision: null,
     };
     const nextCards = [...cardsRef.current, card];
     cardsRef.current = nextCards;
     setCards(nextCards);
-    setCurrentCardId(card.id);
-    setView('card');
     queueSave(card);
     return card;
   }, [queueSave]);
 
   const updateCard = useCallback(
-    (cardId: string, patch: { title?: string; body?: BodySegment[] }) => {
+    (cardId: CardId, patch: { title?: string; body?: BodySegment[] }) => {
       const existing = cardsRef.current.find((card) => card.id === cardId);
       if (!existing) return;
       const updated: CardRecord = {
         ...existing,
         ...patch,
-        updatedAt: Date.now(),
-        localRevision: existing.localRevision + 1,
+        updatedAt: nonNegativeSafeInteger(Date.now(), 'card timestamp'),
+        localRevision: positiveSafeInteger(
+          existing.localRevision + 1,
+          'local revision',
+        ),
       };
-      const nextCards = cardsRef.current.map((card) => (card.id === cardId ? updated : card));
+      const nextCards = cardsRef.current.map((card) =>
+        card.id === cardId ? updated : card,
+      );
       cardsRef.current = nextCards;
       setCards(nextCards);
       queueSave(updated);
@@ -247,76 +286,82 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     [queueSave],
   );
 
-  const selectCard = useCallback((cardId: string) => {
-    if (!cardsRef.current.some((card) => card.id === cardId)) return;
-    setCurrentCardId(cardId);
-    setView('card');
-  }, []);
+  const hasCard = useCallback(
+    (cardId: CardId) => cardsRef.current.some((card) => card.id === cardId),
+    [],
+  );
 
   const resolveConflict = useCallback(
     (conflict: ConflictRecord, choice: 'local' | 'server') => {
-      const existing = cardsRef.current.find((card) => card.id === conflict.cardId);
-      if (!existing) return;
+      const existing = cardsRef.current.find(
+        (card) => card.id === conflict.cardId,
+      );
+      if (!existing) return undefined;
       const updated: CardRecord = {
         ...existing,
         title: choice === 'local' ? conflict.localTitle : conflict.serverTitle,
         body: choice === 'local' ? conflict.localBody : conflict.serverBody,
         serverRevision: conflict.serverRevision,
-        updatedAt: Date.now(),
-        localRevision: existing.localRevision + 1,
+        updatedAt: nonNegativeSafeInteger(Date.now(), 'card timestamp'),
+        localRevision: positiveSafeInteger(
+          existing.localRevision + 1,
+          'local revision',
+        ),
       };
       const nextCards = cardsRef.current.map((card) =>
         card.id === conflict.cardId ? updated : card,
       );
       cardsRef.current = nextCards;
       setCards(nextCards);
-      setCurrentCardId(updated.id);
-      setView('card');
-      queueSave(updated, 'resolve', [conflict.id]);
+      queueSave(updated, {
+        kind: 'resolve',
+        conflictIds: [conflict.id],
+      });
+      return updated;
     },
     [queueSave],
   );
 
-  const currentCard = cards.find((card) => card.id === currentCardId);
-  const value = useMemo<NotesContextValue>(
+  const value = useMemo<NotesDataStore>(
     () => ({
       cards,
       conflicts,
-      currentCard,
-      currentCardId,
       initialized,
+      initialSyncComplete,
       saveState,
       syncState,
-      view,
       createCard,
+      hasCard,
       updateCard,
-      selectCard,
-      setView,
       synchronizeNow,
       resolveConflict,
     }),
     [
       cards,
       conflicts,
-      currentCard,
-      currentCardId,
       initialized,
+      initialSyncComplete,
       saveState,
       syncState,
-      view,
       createCard,
+      hasCard,
       updateCard,
-      selectCard,
       synchronizeNow,
       resolveConflict,
     ],
   );
 
-  return <NotesContext.Provider value={value}>{children}</NotesContext.Provider>;
+  return (
+    <NotesDataContext.Provider value={value}>
+      {children}
+    </NotesDataContext.Provider>
+  );
 }
 
-export function useNotes(): NotesContextValue {
-  const value = useContext(NotesContext);
-  if (!value) throw new Error('useNotes must be used inside NotesProvider');
+export function useNotesDataStore(): NotesDataStore {
+  const value = useContext(NotesDataContext);
+  if (!value) {
+    throw new Error('useNotesDataStore must be used inside NotesProvider');
+  }
   return value;
 }

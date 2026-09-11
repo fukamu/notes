@@ -13,6 +13,7 @@
 - 端末内の全カードと全ての明示的な一方向リンクを俯瞰する「つながり」
 - Cloudflare D1を使った冪等同期と、競合内容を両方残す明示的な解決UI
 - Service Workerによる初期設定後のオフライン動作
+- canonical pathnameとブラウザの戻る／進むに連動するカード・ビュー遷移
 
 Undo / Redoの目的と受け入れ条件は [GitHub Issue #1](https://github.com/fukamu/notes/issues/1) で追跡しています。
 
@@ -47,23 +48,43 @@ ChatGPT Site版は [fukamu-notes-cards.matoruru.chatgpt.site](https://fukamu-not
 ## テスト
 
 ```bash
+npm run format:check
 npm run typecheck
 npm run lint
 npm run test
 npm run test:coverage
 npm run build
 npm run test:e2e
+npm run verify
 ```
 
-`npm run test:e2e` は本番ビルド相当のローカルサーバーを自動起動し、デスクトップChromeとPixel 7相当のChromiumで検証します。対象はオフライン作成、自動保存、再読み込み、再接続、別端末同期、仮番号から正式番号への変更、重複仮番号と遅延到着、本文リンク、Undo / Redo、一覧、全カードの一方向リンク可視化、現在カードの初期表示、キーボード／タッチ操作、循環・自己リンク・相互リンク、競合保持です。
+`npm run test:e2e` は本番ビルド相当のローカルサーバーを自動起動し、デスクトップChromeとPixel 7相当のChromiumで検証します。対象はオフライン作成、自動保存、再読み込み、再接続、別端末同期、仮番号から正式番号への変更、重複仮番号と遅延到着、本文リンク、Undo / Redo、一覧、全カードの一方向リンク可視化、現在カードの初期表示、キーボード／タッチ操作、循環・自己リンク・相互リンク、競合保持、deep link、戻る／進むです。
 
-`npm run check` では型検査、静的検査、単体テスト、本番ビルドをまとめて実行します。
+`npm run check` では全runtimeの型検査、静的検査、単体テスト、本番ビルドをまとめて実行します。`npm run verify` はCIと共通の入口で、format check、`check`、Desktop Chrome／Pixel 7相当のE2Eを実行します。型検査のruntime分離、trust boundary、assertion方針、段階的なunsafe lint／codec導入は [型安全の境界と検査](docs/type-safety.md)、データストア・ナビゲーション・描画の依存方向と交換契約は [Application / presentation contracts](docs/application-presentation.md)、本文editorのheadless操作・Tiptap adapter・renderer・structural DOM契約は [Card editor contracts](docs/card-editor.md)、全UI境界・raw interaction・親 #8 要件1–29の対応は [Presentation boundary audit](docs/presentation-boundary-audit.md) を参照してください。検証はlocal fixture／emulatorのみを使い、本番D1や本番データへ接続しません。
 
 ## オフライン条件
 
 初回だけはオンラインでアプリを開き、画面と実行資源をService Workerへ保存してください。以後は通信がなくても、カードの作成・編集・自動保存・リンク・一覧・つながりを、この端末のIndexedDBだけで利用できます。
 
 開発サーバーは差し替え用の仮想モジュールを使うため、オフライン再読み込みの確認には `npm run build` と `npm start -- --port 3100`、または `npm run test:e2e` を使ってください。ブラウザのサイトデータを消すと、その端末の未同期データとオフライン用キャッシュも消えます。
+
+## URLとブラウザ履歴
+
+現在のビューとカード文脈は、次のcanonical pathnameだけから復元できます。
+
+| 状態                           | pathname                     |
+| ------------------------------ | ---------------------------- |
+| カードがない初期画面           | `/`                          |
+| カード編集                     | `/cards/:cardId`             |
+| カードを現在位置とする履歴     | `/cards/:cardId/history`     |
+| カードを現在位置とするつながり | `/cards/:cardId/connections` |
+| カード文脈がない履歴           | `/history`                   |
+
+`:cardId` は小文字のUUIDv7内部IDです。仮番号から正式番号へ変わるdisplayId、query、hash、`history.state`は状態の識別に使いません。対応するdeep linkは直接開いて再読み込みでき、初回同期でカードを取得する間は別カードを表示せず待機します。構文が不正なURL、またはローカル読込と初回同期を終えても解決できないカードは、端末内の末尾カードか `/` へ履歴を増やさず補正します。オフライン時は初回同期の試行を終えた時点のIndexedDBだけで同じ補正を行います。
+
+カード／ビューの選択、新規カード、本文リンク、つながりのカード選択はブラウザ履歴を追加します。同じ移動先の再選択、初期表示、URL補正、戻る／進む、編集、自動保存、同期、displayIdの確定は追加しません。カードがない `/` から最初のカードを作る場合だけは現在の履歴項目を置換し、既存カードからの新規作成は元の画面へ戻れる履歴を残します。
+
+一度オンラインでService Workerの準備を完了した同じ端末では、deep linkのままオフライン再読み込みできます。初回アクセスから完全にオフラインの新しい端末は対象外です。
 
 ## 自動保存と同期
 
@@ -87,8 +108,7 @@ npm run test:e2e
 
 ```ts
 type BodySegment =
-  | { type: 'text'; text: string }
-  | { type: 'link'; targetCardId: string };
+  { type: 'text'; text: string } | { type: 'link'; targetCardId: string };
 ```
 
 空白、改行、リンク前後の順序はテキストセグメントに保持されます。リンクが保存するのは対象カードのUUIDv7内部IDだけです。displayIdやタイトルが変わるとカプセル表示は更新されますが、参照は切れません。

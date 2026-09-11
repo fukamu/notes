@@ -1,0 +1,307 @@
+import { describe, expect, it, vi } from 'vitest';
+import type {
+  CardEditorRendererProps,
+  ConnectionsRendererProps,
+  NotesPresentationProps,
+} from '@/components/presentation-contract';
+import type {
+  NotesPresentationActions,
+  NotesPresentationModel,
+} from '@/lib/application/presentation';
+import type { ConnectionsControllerState } from '@/lib/graph/connections-contract';
+import { invariant } from '@/lib/shared/invariant';
+import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
+import {
+  alternateNotesAppConfiguration,
+  createAlternateCardEditorProbe,
+  createAlternateConnectionsProbe,
+  createAlternatePresentationProbe,
+} from '@/tests/fixtures/alternate-presentation';
+
+const firstId = fixtureCardId('alternate-first');
+const secondId = fixtureCardId('alternate-second');
+const conflictId = fixtureConflictId('alternate');
+
+function actions(): NotesPresentationActions {
+  return {
+    createCard: vi.fn(async () => undefined),
+    openCard: vi.fn(),
+    showCurrentCard: vi.fn(),
+    showHistory: vi.fn(),
+    showConnections: vi.fn(),
+    updateTitle: vi.fn(),
+    updateBody: vi.fn(),
+    retrySync: vi.fn(async () => undefined),
+    resolveConflict: vi.fn(),
+  };
+}
+
+function model(
+  location: NotesPresentationModel['location'],
+): NotesPresentationModel {
+  const currentCard = {
+    id: firstId,
+    displayId: { kind: 'official' as const, value: 1 },
+    title: 'First',
+    body: [],
+    createdAt: 1,
+    updatedAt: 1,
+    localRevision: 1,
+    serverRevision: 1,
+  };
+  const activeView = location.kind === 'empty' ? 'card' : location.kind;
+  return {
+    initialized: true,
+    location,
+    activeView,
+    availableViews: { card: true, history: true, connections: true },
+    currentCard,
+    currentCardDisplayLabel: '#1',
+    cardEditor: {
+      cardId: firstId,
+      body: [],
+      labels: [{ cardId: firstId, label: '#1 First' }],
+      candidates: [{ cardId: secondId, displayLabel: '#2', title: 'Second' }],
+    },
+    history: {
+      currentCardId: firstId,
+      items: [
+        {
+          cardId: firstId,
+          displayLabel: '#1',
+          displayValue: 1,
+          title: 'First',
+          preview: 'Body',
+          current: true,
+        },
+      ],
+    },
+    conflicts: [
+      {
+        conflictId,
+        cardId: firstId,
+        options: [
+          {
+            choice: 'local',
+            heading: '編集案 A',
+            title: 'Local',
+            preview: 'Local body',
+            accessibleName: 'Localを使う',
+          },
+          {
+            choice: 'server',
+            heading: '編集案 B',
+            title: 'Server',
+            preview: 'Server body',
+            accessibleName: 'Serverを使う',
+          },
+        ],
+      },
+    ],
+    connections: {
+      currentCardId: firstId,
+      nodes: [
+        {
+          cardId: firstId,
+          displayLabel: '#1',
+          title: 'First',
+          accessibleName: '#1 First、現在のカード',
+          current: true,
+        },
+      ],
+      edges: [],
+    },
+    status: { kind: 'sync-failed', label: 'Sync failed', retryable: true },
+  };
+}
+
+function presentationProps(
+  location: NotesPresentationModel['location'],
+): NotesPresentationProps {
+  return {
+    model: model(location),
+    actions: actions(),
+    features: {
+      renderCardEditor: vi.fn(() => 'alternate editor feature'),
+      renderConnections: vi.fn(() => 'alternate connections feature'),
+    },
+  };
+}
+
+function controllerState(
+  status: ConnectionsControllerState['status'],
+): ConnectionsControllerState {
+  const connections = model({ kind: 'card', cardId: firstId }).connections;
+  invariant(connections, 'Alternate fixture requires connections');
+  const fallbackItems = connections.nodes;
+  const firstItem = fallbackItems[0];
+  invariant(firstItem, 'Alternate fixture requires one connection node');
+  const base = {
+    layoutKey: 'alternate-layout',
+    currentCardId: firstId,
+    fallbackItems,
+  };
+  if (status !== 'ready') return { ...base, status };
+  const node = {
+    ...firstItem,
+    x: 10,
+    y: 20,
+    width: 148,
+    height: 56,
+    ports: [],
+  };
+  return {
+    ...base,
+    status,
+    width: 200,
+    height: 120,
+    nodes: [node],
+    edges: [
+      {
+        sourceCardId: firstId,
+        targetCardId: firstId,
+        accessibleName: 'First から First へのリンク',
+        id: 'edge-0',
+        sourcePortId: 'source-0',
+        targetPortId: 'target-0',
+        sections: [],
+      },
+    ],
+    currentNode: node,
+  };
+}
+
+describe('alternate presentation contract', () => {
+  it('consumes every location and application state and invokes every action', async () => {
+    const locations: NotesPresentationModel['location'][] = [
+      { kind: 'empty' },
+      { kind: 'card', cardId: firstId },
+      { kind: 'history', cardId: firstId },
+      { kind: 'connections', cardId: firstId },
+    ];
+    const summaries = locations.map((location) => {
+      const props = presentationProps(location);
+      return createAlternatePresentationProbe(props).summary;
+    });
+    expect(summaries).toEqual([
+      expect.stringContaining('empty;card;sync-failed'),
+      expect.stringContaining(`card:${firstId};card;sync-failed`),
+      expect.stringContaining(`history:${firstId};history;sync-failed`),
+      expect.stringContaining(`connections:${firstId};connections;sync-failed`),
+    ]);
+
+    const props = presentationProps({ kind: 'card', cardId: firstId });
+    const probe = createAlternatePresentationProbe(props);
+    await probe.createCard();
+    probe.openFirstHistory();
+    probe.showCurrentCard();
+    probe.showHistory();
+    probe.showConnections();
+    probe.updateTitle('Changed');
+    probe.updateBody([{ type: 'text', text: 'Changed body' }]);
+    await probe.retrySync();
+    probe.resolveFirstConflict();
+    expect(props.actions.createCard).toHaveBeenCalled();
+    expect(props.actions.openCard).toHaveBeenCalledWith(firstId);
+    expect(props.actions.showCurrentCard).toHaveBeenCalled();
+    expect(props.actions.showHistory).toHaveBeenCalled();
+    expect(props.actions.showConnections).toHaveBeenCalled();
+    expect(props.actions.updateTitle).toHaveBeenCalledWith('Changed');
+    expect(props.actions.updateBody).toHaveBeenCalledWith([
+      { type: 'text', text: 'Changed body' },
+    ]);
+    expect(props.actions.retrySync).toHaveBeenCalled();
+    expect(props.actions.resolveConflict).toHaveBeenCalledWith(
+      conflictId,
+      'local',
+    );
+    expect(props.features.renderCardEditor).toHaveBeenCalled();
+    expect(props.features.renderConnections).toHaveBeenCalled();
+
+    const statuses: NotesPresentationModel['status'][] = [
+      { kind: 'saved', label: 'Saved', retryable: false },
+      { kind: 'saving', label: 'Saving', retryable: false },
+      { kind: 'save-failed', label: 'Save failed', retryable: false },
+      { kind: 'syncing', label: 'Syncing', retryable: false },
+      { kind: 'offline', label: 'Offline', retryable: false },
+      { kind: 'sync-failed', label: 'Sync failed', retryable: true },
+    ];
+    for (const status of statuses) {
+      const statusProps = presentationProps({
+        kind: 'card',
+        cardId: firstId,
+      });
+      statusProps.model.status = status;
+      expect(createAlternatePresentationProbe(statusProps).summary).toContain(
+        `${status.kind};${status.label}`,
+      );
+    }
+  });
+
+  it('consumes editor state, candidate link, undo and redo commands', () => {
+    const commands: CardEditorRendererProps['commands'] = {
+      handleKeyDown: vi.fn(),
+      handleInput: vi.fn(),
+      handleCompositionEnd: vi.fn(),
+      preserveEditorFocus: vi.fn(),
+      selectCandidate: vi.fn(),
+      undo: vi.fn(),
+      redo: vi.fn(),
+    };
+    const props: CardEditorRendererProps = {
+      model: {
+        editor: null,
+        ready: true,
+        focused: true,
+        selectionEmpty: false,
+        canUndo: true,
+        canRedo: true,
+        candidates: [{ cardId: secondId, displayLabel: '#2', title: 'Second' }],
+        suggestionOpen: true,
+        activeCandidate: 0,
+      },
+      commands,
+    };
+    const probe = createAlternateCardEditorProbe(props);
+    expect(probe.summary).toBe(
+      'ready;focused;range-selection;candidates-open;can-undo;can-redo;Second',
+    );
+    probe.undo();
+    probe.redo();
+    probe.insertCandidateLink();
+    expect(commands.undo).toHaveBeenCalled();
+    expect(commands.redo).toHaveBeenCalled();
+    expect(commands.selectCandidate).toHaveBeenCalledWith(secondId);
+  });
+
+  it('consumes loading, error and ready connections with one open action', () => {
+    const openCard = vi.fn();
+    for (const status of ['loading', 'error', 'ready'] as const) {
+      const props: ConnectionsRendererProps = {
+        model: controllerState(status),
+        actions: { openCard },
+        presentation: alternateNotesAppConfiguration.connectionsPresentation,
+      };
+      const probe = createAlternateConnectionsProbe(props);
+      expect(probe.summary).toContain(status);
+      if (status === 'ready') {
+        expect(probe.summary).toContain('200x120:10,20');
+      }
+      probe.openFirst();
+    }
+    expect(openCard).toHaveBeenCalledTimes(3);
+    expect(openCard).toHaveBeenNthCalledWith(1, firstId);
+    expect(openCard).toHaveBeenNthCalledWith(2, firstId);
+    expect(openCard).toHaveBeenNthCalledWith(3, firstId);
+  });
+
+  it('provides a complete alternate composition-root configuration', () => {
+    expect(typeof alternateNotesAppConfiguration.Presentation).toBe('function');
+    expect(typeof alternateNotesAppConfiguration.CardEditorRenderer).toBe(
+      'function',
+    );
+    expect(typeof alternateNotesAppConfiguration.ConnectionsRenderer).toBe(
+      'function',
+    );
+  });
+});

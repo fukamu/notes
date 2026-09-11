@@ -1,13 +1,12 @@
 import type { Metadata } from 'next';
+import { resolveSiteUrl } from '@/lib/environment/site-url';
 import './globals.css';
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL ??
-      'https://fukamu-notes-cards.matoruru.chatgpt.site',
-  ),
+  metadataBase: resolveSiteUrl(process.env.NEXT_PUBLIC_SITE_URL),
   title: 'FUKAMU Notes',
-  description: '紙のカードをめくるように、考えを書き、つなげるローカルファーストノート',
+  description:
+    '紙のカードをめくるように、考えを書き、つなげるローカルファーストWebアプリ',
   applicationName: 'FUKAMU Notes',
   icons: { icon: '/favicon.svg' },
   manifest: '/manifest.webmanifest',
@@ -24,7 +23,11 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="ja">
       <body>{children}</body>

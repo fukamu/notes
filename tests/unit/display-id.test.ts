@@ -4,6 +4,8 @@ import {
   sortCardsByDisplayId,
 } from '@/lib/domain/display-id';
 import type { CardRecord } from '@/lib/domain/types';
+import { invariant } from '@/lib/shared/invariant';
+import { fixtureCardId } from '@/tests/fixtures/ids';
 
 function card(
   id: string,
@@ -12,7 +14,7 @@ function card(
   createdAt: number,
 ): CardRecord {
   return {
-    id,
+    id: fixtureCardId(id),
     displayId: { kind, value },
     title: '',
     body: [],
@@ -25,8 +27,13 @@ function card(
 
 describe('display ids', () => {
   it('sorts by displayed number even when internal id order differs', () => {
-    const cards = [card('0000', 'official', 20, 1), card('ffff', 'official', 3, 2)];
-    expect(sortCardsByDisplayId(cards).map((item) => item.displayId.value)).toEqual([3, 20]);
+    const cards = [
+      card('0000', 'official', 20, 1),
+      card('ffff', 'official', 3, 2),
+    ];
+    expect(
+      sortCardsByDisplayId(cards).map((item) => item.displayId.value),
+    ).toEqual([3, 20]);
   });
 
   it('keeps official ids and renumbers only provisional collisions', () => {
@@ -36,7 +43,10 @@ describe('display ids', () => {
       card('newer', 'provisional', 3, 20),
     ];
     const reconciled = reconcileProvisionalDisplayIds(cards);
-    expect(reconciled.find((item) => item.id === 'official')?.displayId).toEqual({
+    expect(
+      reconciled.find((item) => item.id === fixtureCardId('official'))
+        ?.displayId,
+    ).toEqual({
       kind: 'official',
       value: 2,
     });
@@ -46,7 +56,9 @@ describe('display ids', () => {
         .sort((left, right) => left.createdAt - right.createdAt)
         .map((item) => item.displayId.value),
     ).toEqual([3, 4]);
-    expect(new Set(reconciled.map((item) => item.displayId.value)).size).toBe(3);
+    expect(new Set(reconciled.map((item) => item.displayId.value)).size).toBe(
+      3,
+    );
   });
 
   it('preserves provisional creation order after a later official id arrives', () => {
@@ -55,8 +67,12 @@ describe('display ids', () => {
       card('official', 'official', 8, 50),
       card('earlier', 'provisional', 8, 100),
     ]);
-    const earlier = reconciled.find((item) => item.id === 'earlier')!;
-    const later = reconciled.find((item) => item.id === 'later')!;
+    const earlier = reconciled.find(
+      (item) => item.id === fixtureCardId('earlier'),
+    );
+    const later = reconciled.find((item) => item.id === fixtureCardId('later'));
+    invariant(earlier, 'Earlier provisional card is missing');
+    invariant(later, 'Later provisional card is missing');
     expect(earlier.displayId.value).toBeLessThan(later.displayId.value);
     expect(earlier.displayId.value).toBe(9);
     expect(later.displayId.value).toBe(10);

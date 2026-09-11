@@ -33,8 +33,8 @@
 }
 
 :root {
-  --font-body: "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
-  --font-heading: "Yu Mincho", "Hiragino Mincho ProN", serif;
+  --font-body: 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+  --font-heading: 'Yu Mincho', 'Hiragino Mincho ProN', serif;
   --background: oklch(0.968 0.013 82);
   --foreground: oklch(0.25 0.02 55);
   --card: oklch(0.993 0.007 84);
@@ -56,6 +56,13 @@
   --link-bg: oklch(0.92 0.035 252);
   --link-border: oklch(0.73 0.075 253);
   --link-foreground: oklch(0.37 0.09 256);
+  --warning-bg: oklch(0.987 0.022 95.277 / 80%);
+  --warning-surface: oklch(1 0 0 / 70%);
+  --warning-border: oklch(0.769 0.188 70.08 / 35%);
+  --warning-foreground: oklch(0.279 0.077 45.635);
+  --warning-muted-foreground: oklch(0.414 0.112 45.904 / 75%);
+  --warning-preview-foreground: oklch(0.279 0.077 45.635 / 70%);
+  --warning-icon: oklch(0.555 0.163 48.998);
   --radius: 0.75rem;
 }
 
@@ -81,23 +88,40 @@
   --link-bg: oklch(0.31 0.06 254);
   --link-border: oklch(0.51 0.09 253);
   --link-foreground: oklch(0.84 0.06 250);
+  --warning-bg: oklch(0.987 0.022 95.277 / 80%);
+  --warning-surface: oklch(1 0 0 / 70%);
+  --warning-border: oklch(0.769 0.188 70.08 / 35%);
+  --warning-foreground: oklch(0.279 0.077 45.635);
+  --warning-muted-foreground: oklch(0.414 0.112 45.904 / 75%);
+  --warning-preview-foreground: oklch(0.279 0.077 45.635 / 70%);
+  --warning-icon: oklch(0.555 0.163 48.998);
 }
 
 @layer base {
-  * { @apply border-border outline-ring/50; }
-  html { @apply font-sans; }
-  body { @apply bg-background text-foreground; }
-  button { @apply cursor-pointer; }
-  button:disabled { @apply cursor-not-allowed; }
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button {
+    @apply cursor-pointer;
+  }
+  button:disabled {
+    @apply cursor-not-allowed;
+  }
 }
 
 .paper-sheet {
-  background-image: linear-gradient(to bottom, transparent 31px, color-mix(in oklch, var(--border), transparent 58%) 32px);
+  background-image: linear-gradient(
+    to bottom,
+    transparent 31px,
+    color-mix(in oklch, var(--border), transparent 58%) 32px
+  );
   background-size: 100% 32px;
-}
-
-.quiet-button {
-  @apply inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-35;
 }
 
 .nav-button {
@@ -120,14 +144,18 @@
   @apply min-w-0 justify-center px-2 text-xs lg:justify-start lg:px-3 lg:text-sm;
 }
 
-.fukamu-editor {
-  @apply min-h-72 text-[1.06rem] leading-8 text-foreground/90 outline-none;
+.card-editor-structure {
+  @apply min-h-72 outline-none;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.fukamu-editor p {
+.card-editor-structure p {
   min-height: 2rem;
+}
+
+.fukamu-editor {
+  @apply text-[1.06rem] leading-8 text-foreground/90;
 }
 
 .fukamu-editor p.is-editor-empty:first-child::before {
@@ -138,12 +166,16 @@
   pointer-events: none;
 }
 
+.card-link-structure {
+  @apply inline-flex select-all items-center align-baseline;
+  white-space: nowrap;
+}
+
 .card-link-capsule {
-  @apply mx-1 inline-flex cursor-pointer select-all items-center rounded-full border px-2.5 py-0.5 align-baseline font-sans text-sm font-semibold shadow-xs transition;
+  @apply mx-1 cursor-pointer rounded-full border px-2.5 py-0.5 font-sans text-sm font-semibold shadow-xs transition;
   border-color: var(--link-border);
   background: var(--link-bg);
   color: var(--link-foreground);
-  white-space: nowrap;
 }
 
 .card-link-capsule::before {
@@ -161,8 +193,52 @@
   scroll-padding-block: 35%;
 }
 
+.connections-viewport-structure {
+  @apply relative h-[60dvh] min-h-80 touch-pan-x touch-pan-y overflow-auto overscroll-contain p-4 sm:h-[min(70dvh,640px)] sm:min-h-96;
+}
+
+.connections-viewport {
+  @apply rounded-2xl border bg-card/55 shadow-sm;
+}
+
+.connections-canvas-structure {
+  @apply relative min-h-full min-w-full;
+}
+
+.connections-node-structure {
+  @apply absolute z-10 flex flex-col justify-center px-4 text-left;
+}
+
+.connections-node {
+  @apply rounded-xl border bg-card shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring aria-[current=true]:border-primary aria-[current=true]:shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary),transparent_72%)];
+}
+
+.conflict-notice {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning-foreground);
+}
+
+.conflict-notice-icon {
+  color: var(--warning-icon);
+}
+
+.conflict-notice-muted {
+  color: var(--warning-muted-foreground);
+}
+
+.conflict-notice-preview {
+  color: var(--warning-preview-foreground);
+}
+
+.conflict-notice-option {
+  background: var(--warning-surface);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;

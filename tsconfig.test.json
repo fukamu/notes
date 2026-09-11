@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "types": ["node", "@cloudflare/workers-types"],
+    "jsx": "react-jsx"
+  },
+  "include": ["tests/**/*.ts"],
+  "exclude": ["node_modules"]
+}

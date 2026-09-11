@@ -1,94 +1,67 @@
-import type { BodySegment, ConflictRecord, PendingMutation } from '@/lib/domain/types';
-import type { ServerCard, SyncResponse } from '@/lib/sync/protocol';
+import {
+  cardRowDecoder,
+  conflictRowDecoder,
+  decodeD1Results,
+  decodeMutationMarker,
+  mapCardRow,
+  mapConflictRow,
+} from '@/db/d1-records';
+import { syncSchemaStatements } from '@/db/schema';
+import { BoundaryDecodeError } from '@/lib/codec/core';
+import type { MutationId } from '@/lib/domain/id';
+import { CONTRACT_LIMITS, type PendingMutation } from '@/lib/domain/types';
+import { decodeSyncResponse, type SyncResponse } from '@/lib/sync/protocol';
 
-type CardRow = {
-  id: string;
-  display_id: number;
-  title: string;
-  body_json: string;
-  revision: number;
-  created_at: number;
-  updated_at: number;
-};
-
-type ConflictRow = {
-  id: string;
-  card_id: string;
-  server_revision: number;
-  local_title: string;
-  local_body_json: string;
-  server_title: string;
-  server_body_json: string;
-  created_at: number;
-};
-
-const schemaStatements = [
-  `CREATE TABLE IF NOT EXISTS sync_state (
-    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-    next_display_id INTEGER NOT NULL CHECK (next_display_id > 0)
-  )`,
-  `CREATE TABLE IF NOT EXISTS cards (
-    id TEXT PRIMARY KEY,
-    display_id INTEGER NOT NULL UNIQUE CHECK (display_id > 0),
-    title TEXT NOT NULL,
-    body_json TEXT NOT NULL,
-    revision INTEGER NOT NULL CHECK (revision > 0),
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    last_mutation_id TEXT NOT NULL
-  )`,
-  `CREATE TABLE IF NOT EXISTS card_mutations (
-    id TEXT PRIMARY KEY,
-    card_id TEXT NOT NULL,
-    created_at INTEGER NOT NULL
-  )`,
-  `CREATE TABLE IF NOT EXISTS conflicts (
-    id TEXT PRIMARY KEY,
-    card_id TEXT NOT NULL,
-    server_revision INTEGER NOT NULL,
-    local_title TEXT NOT NULL,
-    local_body_json TEXT NOT NULL,
-    server_title TEXT NOT NULL,
-    server_body_json TEXT NOT NULL,
-    created_at INTEGER NOT NULL
-  )`,
-  'CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_display_id ON cards(display_id)',
-  'CREATE INDEX IF NOT EXISTS idx_card_mutations_card_id ON card_mutations(card_id)',
-  'CREATE INDEX IF NOT EXISTS idx_conflicts_card_id ON conflicts(card_id)',
-  'INSERT OR IGNORE INTO sync_state(singleton, next_display_id) VALUES (1, 1)',
-] as const;
-
-function bodyJson(body: BodySegment[]): string {
-  return JSON.stringify(body);
+export class InvalidResolveError extends Error {
+  constructor() {
+    super('Resolve preconditions were not satisfied');
+    this.name = 'InvalidResolveError';
+  }
 }
 
-function parseBody(value: string): BodySegment[] {
-  return JSON.parse(value) as BodySegment[];
+function bodyJson(mutation: PendingMutation): string {
+  const value = JSON.stringify(mutation.body);
+  if (value.length > CONTRACT_LIMITS.serializedBody) {
+    throw new BoundaryDecodeError('D1 body JSON', [
+      { path: ['body'], reason: 'serialized body exceeds storage limit' },
+    ]);
+  }
+  return value;
 }
 
 export async function ensureSyncSchema(database: D1Database): Promise<void> {
-  await database.batch(schemaStatements.map((statement) => database.prepare(statement)));
+  await database.batch(
+    syncSchemaStatements.map((statement) => database.prepare(statement)),
+  );
 }
 
-async function mutationWasApplied(database: D1Database, mutationId: string): Promise<boolean> {
-  const existing = await database
+async function mutationWasApplied(
+  database: D1Database,
+  mutationId: MutationId,
+): Promise<boolean> {
+  const input: unknown = await database
     .prepare('SELECT id FROM card_mutations WHERE id = ?')
     .bind(mutationId)
-    .first<{ id: string }>();
-  return Boolean(existing);
+    .first();
+  return decodeMutationMarker(input) !== null;
 }
 
-async function readCard(database: D1Database, cardId: string): Promise<CardRow | null> {
-  return database
+async function readCard(database: D1Database, mutation: PendingMutation) {
+  const input: unknown = await database
     .prepare(
-      `SELECT id, display_id, title, body_json, revision, created_at, updated_at
-       FROM cards WHERE id = ?`,
+      `SELECT id, display_id, title, body_json, revision, created_at, updated_at,
+       last_mutation_id FROM cards WHERE id = ?`,
     )
-    .bind(cardId)
-    .first<CardRow>();
+    .bind(mutation.cardId)
+    .first();
+  if (input === null) return null;
+  return mapCardRow(input);
 }
 
-async function createCard(database: D1Database, mutation: PendingMutation): Promise<void> {
+async function createCard(
+  database: D1Database,
+  mutation: PendingMutation,
+): Promise<void> {
   await database.batch([
     database
       .prepare(
@@ -99,7 +72,7 @@ async function createCard(database: D1Database, mutation: PendingMutation): Prom
       .bind(
         mutation.cardId,
         mutation.title,
-        bodyJson(mutation.body),
+        bodyJson(mutation),
         mutation.createdAt,
         mutation.updatedAt,
         mutation.mutationId,
@@ -108,9 +81,68 @@ async function createCard(database: D1Database, mutation: PendingMutation): Prom
       'UPDATE sync_state SET next_display_id = next_display_id + 1 WHERE singleton = 1',
     ),
     database
-      .prepare('INSERT INTO card_mutations(id, card_id, created_at) VALUES (?, ?, ?)')
-      .bind(mutation.mutationId, mutation.cardId, Date.now()),
+      .prepare(
+        'INSERT INTO card_mutations(id, card_id, created_at) VALUES (?, ?, ?)',
+      )
+      .bind(mutation.mutationId, mutation.cardId, mutation.updatedAt),
   ]);
+}
+
+async function resolveCard(
+  database: D1Database,
+  mutation: Extract<PendingMutation, { kind: 'resolve' }>,
+): Promise<void> {
+  const placeholders = mutation.conflictIds.map(() => '?').join(', ');
+  const result = await database.batch([
+    database
+      .prepare(
+        `UPDATE cards SET title = ?, body_json = ?, revision = revision + 1,
+         updated_at = ?, last_mutation_id = ?
+         WHERE id = ? AND revision = ?
+         AND (SELECT COUNT(*) FROM conflicts
+              WHERE card_id = ? AND id IN (${placeholders})) = ?`,
+      )
+      .bind(
+        mutation.title,
+        bodyJson(mutation),
+        mutation.updatedAt,
+        mutation.mutationId,
+        mutation.cardId,
+        mutation.baseServerRevision,
+        mutation.cardId,
+        ...mutation.conflictIds,
+        mutation.conflictIds.length,
+      ),
+    database
+      .prepare(
+        `DELETE FROM conflicts WHERE card_id = ? AND id IN (${placeholders})
+         AND EXISTS (
+           SELECT 1 FROM cards WHERE id = ? AND last_mutation_id = ?
+         )`,
+      )
+      .bind(
+        mutation.cardId,
+        ...mutation.conflictIds,
+        mutation.cardId,
+        mutation.mutationId,
+      ),
+    database
+      .prepare(
+        `INSERT INTO card_mutations(id, card_id, created_at)
+         SELECT ?, ?, ? WHERE EXISTS (
+           SELECT 1 FROM cards WHERE id = ? AND last_mutation_id = ?
+         )`,
+      )
+      .bind(
+        mutation.mutationId,
+        mutation.cardId,
+        mutation.updatedAt,
+        mutation.cardId,
+        mutation.mutationId,
+      ),
+  ]);
+
+  if (result[0]?.meta.changes !== 1) throw new InvalidResolveError();
 }
 
 async function updateCard(
@@ -118,33 +150,11 @@ async function updateCard(
   mutation: PendingMutation,
 ): Promise<void> {
   if (mutation.kind === 'resolve') {
-    const statements = [
-      database
-        .prepare(
-          `UPDATE cards SET title = ?, body_json = ?, revision = revision + 1,
-           updated_at = ?, last_mutation_id = ? WHERE id = ?`,
-        )
-        .bind(
-          mutation.title,
-          bodyJson(mutation.body),
-          mutation.updatedAt,
-          mutation.mutationId,
-          mutation.cardId,
-        ),
-      ...mutation.conflictIds.map((conflictId) =>
-        database
-          .prepare('DELETE FROM conflicts WHERE id = ? AND card_id = ?')
-          .bind(conflictId, mutation.cardId),
-      ),
-      database
-        .prepare('INSERT INTO card_mutations(id, card_id, created_at) VALUES (?, ?, ?)')
-        .bind(mutation.mutationId, mutation.cardId, Date.now()),
-    ];
-    await database.batch(statements);
+    await resolveCard(database, mutation);
     return;
   }
 
-  const serializedBody = bodyJson(mutation.body);
+  const serializedBody = bodyJson(mutation);
   await database.batch([
     database
       .prepare(
@@ -175,19 +185,24 @@ async function updateCard(
         mutation.mutationId,
         mutation.title,
         serializedBody,
-        Date.now(),
+        mutation.updatedAt,
         mutation.cardId,
         mutation.mutationId,
       ),
     database
-      .prepare('INSERT INTO card_mutations(id, card_id, created_at) VALUES (?, ?, ?)')
-      .bind(mutation.mutationId, mutation.cardId, Date.now()),
+      .prepare(
+        'INSERT INTO card_mutations(id, card_id, created_at) VALUES (?, ?, ?)',
+      )
+      .bind(mutation.mutationId, mutation.cardId, mutation.updatedAt),
   ]);
 }
 
-async function applyMutation(database: D1Database, mutation: PendingMutation): Promise<void> {
+async function applyMutation(
+  database: D1Database,
+  mutation: PendingMutation,
+): Promise<void> {
   if (await mutationWasApplied(database, mutation.mutationId)) return;
-  const current = await readCard(database, mutation.cardId);
+  const current = await readCard(database, mutation);
   if (current) {
     await updateCard(database, mutation);
     return;
@@ -196,7 +211,7 @@ async function applyMutation(database: D1Database, mutation: PendingMutation): P
   try {
     await createCard(database, mutation);
   } catch (error) {
-    const cardCreatedConcurrently = await readCard(database, mutation.cardId);
+    const cardCreatedConcurrently = await readCard(database, mutation);
     if (!cardCreatedConcurrently) throw error;
     await updateCard(database, mutation);
   }
@@ -207,9 +222,12 @@ export async function synchronize(
   mutations: PendingMutation[],
 ): Promise<SyncResponse> {
   await ensureSyncSchema(database);
-  const acknowledgedMutationIds: string[] = [];
+  await readSyncState(database, [], []);
+  const acknowledgedMutationIds: MutationId[] = [];
   const ordered = [...mutations].sort(
-    (left, right) => left.cardId.localeCompare(right.cardId) || left.mutationId.localeCompare(right.mutationId),
+    (left, right) =>
+      left.cardId.localeCompare(right.cardId) ||
+      left.mutationId.localeCompare(right.mutationId),
   );
 
   for (const mutation of ordered) {
@@ -217,38 +235,45 @@ export async function synchronize(
     acknowledgedMutationIds.push(mutation.mutationId);
   }
 
-  const cardRows = await database
+  return readSyncState(database, acknowledgedMutationIds, mutations);
+}
+
+async function readSyncState(
+  database: D1Database,
+  acknowledgedMutationIds: MutationId[],
+  sentMutations: PendingMutation[],
+): Promise<SyncResponse> {
+  const cardResult: unknown = await database
     .prepare(
-      `SELECT id, display_id, title, body_json, revision, created_at, updated_at
-       FROM cards ORDER BY display_id ASC`,
+      `SELECT id, display_id, title, body_json, revision, created_at, updated_at,
+       last_mutation_id FROM cards ORDER BY display_id ASC`,
     )
-    .all<CardRow>();
-  const conflictRows = await database
+    .all();
+  const conflictResult: unknown = await database
     .prepare(
       `SELECT id, card_id, server_revision, local_title, local_body_json,
-       server_title, server_body_json, created_at FROM conflicts ORDER BY created_at ASC`,
+       server_title, server_body_json, created_at
+       FROM conflicts ORDER BY created_at ASC`,
     )
-    .all<ConflictRow>();
+    .all();
 
-  const cards: ServerCard[] = cardRows.results.map((row) => ({
-    id: row.id,
-    officialDisplayId: row.display_id,
-    title: row.title,
-    body: parseBody(row.body_json),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    revision: row.revision,
-  }));
-  const conflicts: ConflictRecord[] = conflictRows.results.map((row) => ({
-    id: row.id,
-    cardId: row.card_id,
-    serverRevision: row.server_revision,
-    localTitle: row.local_title,
-    localBody: parseBody(row.local_body_json),
-    serverTitle: row.server_title,
-    serverBody: parseBody(row.server_body_json),
-    createdAt: row.created_at,
-  }));
+  const cardRows = decodeD1Results(
+    cardResult,
+    cardRowDecoder,
+    CONTRACT_LIMITS.cards,
+    'D1 card results',
+  );
+  const conflictRows = decodeD1Results(
+    conflictResult,
+    conflictRowDecoder,
+    CONTRACT_LIMITS.conflicts,
+    'D1 conflict results',
+  );
 
-  return { cards, conflicts, acknowledgedMutationIds };
+  const candidate: unknown = {
+    cards: cardRows.map(mapCardRow),
+    conflicts: conflictRows.map(mapConflictRow),
+    acknowledgedMutationIds,
+  };
+  return decodeSyncResponse(candidate, sentMutations);
 }

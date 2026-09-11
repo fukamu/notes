@@ -1,26 +1,36 @@
 const CACHE_NAME = 'fukamu-notes-v2';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg'];
-
-self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
-  self.skipWaiting();
+const globalScope = globalThis;
+if (!isServiceWorkerScope(globalScope)) {
+  throw new Error('Service Worker loaded outside a ServiceWorkerGlobalScope');
+}
+const worker = globalScope;
+worker.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)),
+  );
+  void worker.skipWaiting();
 });
-
-self.addEventListener('activate', (event) => {
+worker.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))),
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key !== CACHE_NAME)
+            .map((key) => caches.delete(key)),
+        ),
+      ),
   );
-  self.clients.claim();
+  void worker.clients.claim();
 });
-
-self.addEventListener('fetch', (event) => {
+worker.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
-
+  if (url.origin !== worker.location.origin || url.pathname.startsWith('/api/'))
+    return;
   event.respondWith(
     fetch(request)
       .then(async (response) => {
@@ -34,30 +44,65 @@ self.addEventListener('fetch', (event) => {
       .catch(async () => {
         const cached = await caches.match(request);
         if (cached) return cached;
-        if (request.mode === 'navigate') return (await caches.match('/'));
+        if (request.mode === 'navigate') {
+          const shell = await caches.match('/');
+          if (shell) return shell;
+        }
         throw new Error('offline and no cached response');
       }),
   );
 });
-
-self.addEventListener('message', (event) => {
-  if (event.data?.type !== 'CACHE_URLS' || !Array.isArray(event.data.urls)) return;
-  const urls = event.data.urls.filter((value) => {
-    try {
-      const url = new URL(value, self.location.origin);
-      return (
-        url.origin === self.location.origin &&
-        !url.pathname.startsWith('/api/') &&
-        !url.pathname.startsWith('/__')
-      );
-    } catch {
-      return false;
-    }
-  });
+worker.addEventListener('message', (event) => {
+  const urls = cacheUrlsFromMessage(event.data);
+  if (!urls) return;
+  const replyPort = event.ports[0];
   event.waitUntil(
     caches
       .open(CACHE_NAME)
       .then((cache) => Promise.allSettled(urls.map((url) => cache.add(url))))
-      .then(() => event.ports[0]?.postMessage({ ready: true })),
+      .then(() => replyPort?.postMessage({ ready: true })),
   );
 });
+/**
+ * Treats cross-context message data as untrusted. Only the documented message
+ * shape and string URLs from this origin can reach CacheStorage.
+ */
+function cacheUrlsFromMessage(data) {
+  if (!isRecord(data) || data.type !== 'CACHE_URLS') return undefined;
+  if (!isUnknownArray(data.urls)) return undefined;
+  const urls = [];
+  for (const value of data.urls) {
+    if (typeof value !== 'string') continue;
+    try {
+      const url = new URL(value, worker.location.origin);
+      if (
+        url.origin === worker.location.origin &&
+        !url.pathname.startsWith('/api/') &&
+        !url.pathname.startsWith('/__')
+      ) {
+        urls.push(value);
+      }
+    } catch {
+      // Invalid URLs are untrusted input and are intentionally ignored.
+    }
+  }
+  return urls;
+}
+function isRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+function isUnknownArray(value) {
+  return Array.isArray(value);
+}
+function isServiceWorkerScope(scope) {
+  return (
+    scope !== null &&
+    typeof scope === 'object' &&
+    'addEventListener' in scope &&
+    typeof scope.addEventListener === 'function' &&
+    'skipWaiting' in scope &&
+    typeof scope.skipWaiting === 'function' &&
+    'clients' in scope &&
+    typeof scope.clients === 'object'
+  );
+}

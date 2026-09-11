@@ -7,23 +7,16 @@ import type {
   ElkPoint,
   ElkPort,
 } from 'elkjs/lib/elk-api.js';
-import type { ConnectionsGraph, DirectedEdge } from '@/lib/domain/graph';
+import type { DirectedEdge } from '@/lib/domain/graph';
+import type { CardId } from '@/lib/domain/id';
+import { invariant } from '@/lib/shared/invariant';
 
-export const CONNECTION_NODE_WIDTH = 196;
-export const CONNECTION_NODE_HEIGHT = 72;
-const PORT_SIZE = 2;
-
-export const CONNECTIONS_LAYOUT_OPTIONS = {
+export const CONNECTIONS_LAYOUT_ALGORITHM_OPTIONS = {
   'elk.algorithm': 'layered',
   'elk.direction': 'RIGHT',
   'elk.edgeRouting': 'ORTHOGONAL',
   'elk.randomSeed': '1',
   'elk.separateConnectedComponents': 'true',
-  'elk.spacing.componentComponent': '96',
-  'elk.spacing.nodeNode': '72',
-  'elk.spacing.edgeNode': '32',
-  'elk.layered.spacing.nodeNodeBetweenLayers': '112',
-  'elk.layered.spacing.edgeNodeBetweenLayers': '40',
   'elk.layered.cycleBreaking.strategy': 'GREEDY',
   'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
   'elk.layered.crossingMinimization.greedySwitch.type': 'TWO_SIDED',
@@ -31,8 +24,29 @@ export const CONNECTIONS_LAYOUT_OPTIONS = {
   'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
   'elk.layered.thoroughness': '7',
   'elk.layered.mergeEdges': 'false',
-  'elk.padding': '[top=24,left=24,bottom=24,right=24]',
 } as const;
+
+export type ConnectionsLayoutMetrics = {
+  nodeWidth: number;
+  nodeHeight: number;
+  portSize: number;
+  componentSpacing: number;
+  nodeSpacing: number;
+  edgeNodeSpacing: number;
+  layerSpacing: number;
+  edgeLayerSpacing: number;
+  padding: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  };
+};
+
+export type ConnectionsLayoutGraph = {
+  nodes: { id: CardId }[];
+  edges: DirectedEdge[];
+};
 
 export type LayoutPoint = ElkPoint;
 
@@ -46,7 +60,7 @@ export type ConnectionsLayoutPort = {
 };
 
 export type ConnectionsLayoutNode = {
-  id: string;
+  id: CardId;
   x: number;
   y: number;
   width: number;
@@ -100,6 +114,38 @@ function requiredNumber(value: unknown, label: string): number {
   return value;
 }
 
+function requiredMetric(value: number, label: string): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`Connections layout metric ${label} must be positive`);
+  }
+  return value;
+}
+
+export function connectionsLayoutOptions(
+  metrics: ConnectionsLayoutMetrics,
+): Record<string, string> {
+  const padding = metrics.padding;
+  return {
+    ...CONNECTIONS_LAYOUT_ALGORITHM_OPTIONS,
+    'elk.spacing.componentComponent': String(
+      requiredMetric(metrics.componentSpacing, 'componentSpacing'),
+    ),
+    'elk.spacing.nodeNode': String(
+      requiredMetric(metrics.nodeSpacing, 'nodeSpacing'),
+    ),
+    'elk.spacing.edgeNode': String(
+      requiredMetric(metrics.edgeNodeSpacing, 'edgeNodeSpacing'),
+    ),
+    'elk.layered.spacing.nodeNodeBetweenLayers': String(
+      requiredMetric(metrics.layerSpacing, 'layerSpacing'),
+    ),
+    'elk.layered.spacing.edgeNodeBetweenLayers': String(
+      requiredMetric(metrics.edgeLayerSpacing, 'edgeLayerSpacing'),
+    ),
+    'elk.padding': `[top=${requiredMetric(padding.top, 'padding.top')},left=${requiredMetric(padding.left, 'padding.left')},bottom=${requiredMetric(padding.bottom, 'padding.bottom')},right=${requiredMetric(padding.right, 'padding.right')}]`,
+  };
+}
+
 function requiredPoint(
   point: ElkPoint | undefined,
   label: string,
@@ -111,7 +157,7 @@ function requiredPoint(
   };
 }
 
-function edgeInputs(graph: ConnectionsGraph): EdgeInput[] {
+function edgeInputs(graph: ConnectionsLayoutGraph): EdgeInput[] {
   return graph.edges.map((edge, index) => ({
     ...edge,
     id: `edge-${index}`,
@@ -120,38 +166,50 @@ function edgeInputs(graph: ConnectionsGraph): EdgeInput[] {
   }));
 }
 
-function elkPort(id: string, side: 'EAST' | 'WEST'): ElkPort {
+function elkPort(
+  id: string,
+  side: 'EAST' | 'WEST',
+  metrics: ConnectionsLayoutMetrics,
+): ElkPort {
   return {
     id,
-    width: PORT_SIZE,
-    height: PORT_SIZE,
+    width: requiredMetric(metrics.portSize, 'portSize'),
+    height: requiredMetric(metrics.portSize, 'portSize'),
     layoutOptions: { 'elk.port.side': side },
   };
 }
 
-function elkGraph(graph: ConnectionsGraph, inputs: EdgeInput[]): ElkNode {
+function elkGraph(
+  graph: ConnectionsLayoutGraph,
+  inputs: EdgeInput[],
+  metrics: ConnectionsLayoutMetrics,
+): ElkNode {
   const portsByNode = new Map<string, ElkPort[]>(
-    graph.nodes.map((node) => [node.card.id, []]),
+    graph.nodes.map((node) => [node.id, []]),
   );
   for (const edge of inputs) {
-    portsByNode
-      .get(edge.sourceCardId)!
-      .push(elkPort(edge.sourcePortId, 'EAST'));
-    portsByNode
-      .get(edge.targetCardId)!
-      .push(elkPort(edge.targetPortId, 'WEST'));
+    const sourcePorts = portsByNode.get(edge.sourceCardId);
+    const targetPorts = portsByNode.get(edge.targetCardId);
+    invariant(sourcePorts, `Missing source node ${edge.sourceCardId}`);
+    invariant(targetPorts, `Missing target node ${edge.targetCardId}`);
+    sourcePorts.push(elkPort(edge.sourcePortId, 'EAST', metrics));
+    targetPorts.push(elkPort(edge.targetPortId, 'WEST', metrics));
   }
 
   return {
     id: 'connections-root',
-    layoutOptions: CONNECTIONS_LAYOUT_OPTIONS,
-    children: graph.nodes.map((node) => ({
-      id: node.card.id,
-      width: CONNECTION_NODE_WIDTH,
-      height: CONNECTION_NODE_HEIGHT,
-      ports: portsByNode.get(node.card.id),
-      layoutOptions: { 'elk.portConstraints': 'FIXED_SIDE' },
-    })),
+    layoutOptions: connectionsLayoutOptions(metrics),
+    children: graph.nodes.map((node) => {
+      const ports = portsByNode.get(node.id);
+      invariant(ports, `Missing ports for node ${node.id}`);
+      return {
+        id: node.id,
+        width: requiredMetric(metrics.nodeWidth, 'nodeWidth'),
+        height: requiredMetric(metrics.nodeHeight, 'nodeHeight'),
+        ports,
+        layoutOptions: { 'elk.portConstraints': 'FIXED_SIDE' },
+      };
+    }),
     edges: inputs.map(
       (edge): ElkExtendedEdge => ({
         id: edge.id,
@@ -170,24 +228,22 @@ function layoutSection(section: ElkEdgeSection): ConnectionsLayoutSection {
       requiredPoint(point, `${section.id}.bendPoints[${index}]`),
     ),
     endPoint: requiredPoint(section.endPoint, `${section.id}.endPoint`),
-    incomingShape: section.incomingShape,
-    outgoingShape: section.outgoingShape,
+    ...(section.incomingShape === undefined
+      ? {}
+      : { incomingShape: section.incomingShape }),
+    ...(section.outgoingShape === undefined
+      ? {}
+      : { outgoingShape: section.outgoingShape }),
   };
 }
 
-export function sectionPath(section: ConnectionsLayoutSection): string {
-  const points = [section.startPoint, ...section.bendPoints, section.endPoint];
-  return points
-    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
-    .join(' ');
-}
-
 export async function layoutConnectionsGraph(
-  graph: ConnectionsGraph,
+  graph: ConnectionsLayoutGraph,
+  metrics: ConnectionsLayoutMetrics,
 ): Promise<ConnectionsLayout> {
   const inputs = edgeInputs(graph);
   const elk = elkEngine();
-  const result = await elk.layout(elkGraph(graph, inputs));
+  const result = await elk.layout(elkGraph(graph, inputs, metrics));
   const laidOutNodes = new Map(
     (result.children ?? []).map((node) => [node.id, node]),
   );
@@ -195,13 +251,13 @@ export async function layoutConnectionsGraph(
     (result.edges ?? []).map((edge) => [edge.id, edge]),
   );
 
-  const nodes = graph.nodes.map(({ card }) => {
-    const node = laidOutNodes.get(card.id);
-    if (!node) throw new Error(`ELK omitted node ${card.id}`);
-    const x = requiredNumber(node.x, `${card.id}.x`);
-    const y = requiredNumber(node.y, `${card.id}.y`);
-    const width = requiredNumber(node.width, `${card.id}.width`);
-    const height = requiredNumber(node.height, `${card.id}.height`);
+  const nodes = graph.nodes.map(({ id }) => {
+    const node = laidOutNodes.get(id);
+    if (!node) throw new Error(`ELK omitted node ${id}`);
+    const x = requiredNumber(node.x, `${id}.x`);
+    const y = requiredNumber(node.y, `${id}.y`);
+    const width = requiredNumber(node.width, `${id}.width`);
+    const height = requiredNumber(node.height, `${id}.height`);
     const ports = (node.ports ?? []).map((port): ConnectionsLayoutPort => {
       const side = port.layoutOptions?.['elk.port.side'];
       if (side !== 'EAST' && side !== 'WEST') {
@@ -216,7 +272,7 @@ export async function layoutConnectionsGraph(
         side,
       };
     });
-    return { id: card.id, x, y, width, height, ports };
+    return { id, x, y, width, height, ports };
   });
 
   const edges = inputs.map((input): ConnectionsLayoutEdge => {
