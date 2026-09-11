@@ -78,12 +78,15 @@ missing-link fallback. The renderer does not receive all conflicts.
 
 ## Temporary adapter exceptions
 
-The editor still receives card records and the local card collection required
-by its existing body/link adapter. #14 removes this temporary editor coupling.
+#14 replaced the editor exception with a typed `CardEditorInputModel` and a
+headless Tiptap adapter. The editor receives branded identity, body, candidate,
+and label models plus semantic application actions; it no longer receives raw
+store/card collections. See [Card editor contracts](card-editor.md).
+
 The connections renderer still receives its derived graph plus card records
-needed by the existing ELK layout/labels. #15 replaces that internal adapter.
-Neither exception permits direct store, storage, sync, or navigation access,
-and new coupling must not be added before those issues are implemented.
+needed by the existing ELK layout/labels. #15 replaces that remaining internal
+adapter. It does not permit direct store, storage, sync, or navigation access,
+and new coupling must not be added before #15 is implemented.
 
 Names use `Notes*` for application-wide contracts and `Card*` for individual
 card/domain artifacts. The runtime codecs, branded identifiers, guarded trust

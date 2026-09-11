@@ -59,7 +59,7 @@ npm run verify
 
 `npm run test:e2e` は本番ビルド相当のローカルサーバーを自動起動し、デスクトップChromeとPixel 7相当のChromiumで検証します。対象はオフライン作成、自動保存、再読み込み、再接続、別端末同期、仮番号から正式番号への変更、重複仮番号と遅延到着、本文リンク、Undo / Redo、一覧、全カードの一方向リンク可視化、現在カードの初期表示、キーボード／タッチ操作、循環・自己リンク・相互リンク、競合保持です。
 
-`npm run check` では全runtimeの型検査、静的検査、単体テスト、本番ビルドをまとめて実行します。`npm run verify` はCIと共通の入口で、format check、`check`、Desktop Chrome／Pixel 7相当のE2Eを実行します。型検査のruntime分離、trust boundary、assertion方針、段階的なunsafe lint／codec導入は [型安全の境界と検査](docs/type-safety.md)、データストア・ナビゲーション・描画の依存方向と交換契約は [Application / presentation contracts](docs/application-presentation.md) を参照してください。検証はlocal fixture／emulatorのみを使い、本番D1や本番データへ接続しません。
+`npm run check` では全runtimeの型検査、静的検査、単体テスト、本番ビルドをまとめて実行します。`npm run verify` はCIと共通の入口で、format check、`check`、Desktop Chrome／Pixel 7相当のE2Eを実行します。型検査のruntime分離、trust boundary、assertion方針、段階的なunsafe lint／codec導入は [型安全の境界と検査](docs/type-safety.md)、データストア・ナビゲーション・描画の依存方向と交換契約は [Application / presentation contracts](docs/application-presentation.md)、本文editorのheadless操作・Tiptap adapter・renderer・structural DOM契約は [Card editor contracts](docs/card-editor.md) を参照してください。検証はlocal fixture／emulatorのみを使い、本番D1や本番データへ接続しません。
 
 ## オフライン条件
 

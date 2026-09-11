@@ -344,6 +344,115 @@ test('inline card links, Backspace, Undo/Redo, shortcuts and plain hashtag input
   expect(isAtStartPosition).toBe(true);
 });
 
+test('headless editor preserves IME, candidate keyboard, link activation and identity reset', async ({
+  page,
+  context,
+}, testInfo) => {
+  const firstTarget = unique('候補A', testInfo.project.name);
+  const secondTarget = unique('候補B', testInfo.project.name);
+  const source = unique('controller本文', testInfo.project.name);
+  await ready(page);
+  await page.locator('html[data-offline-ready=true]').waitFor({
+    state: 'attached',
+    timeout: 15_000,
+  });
+  await context.setOffline(true);
+  await replaceLocalCards(page, []);
+  await page.reload();
+  await expect(page.getByTestId('new-card')).toBeVisible();
+
+  await page.getByTestId('new-card').click();
+  await page.getByTestId('card-title').fill(firstTarget);
+  await page.getByTestId('new-card').click();
+  await page.getByTestId('card-title').fill(secondTarget);
+  await page.getByTestId('new-card').click();
+  await page.getByTestId('card-title').fill(source);
+
+  const editor = page.getByTestId('body-editor');
+  await editor.click();
+  const ime = await context.newCDPSession(page);
+  await ime.send('Input.imeSetComposition', {
+    text: '#',
+    selectionStart: 1,
+    selectionEnd: 1,
+  });
+  await expect(page.getByTestId('link-candidates')).toHaveCount(0);
+  await ime.send('Input.insertText', { text: '#' });
+  await ime.detach();
+
+  const candidateList = page.getByTestId('link-candidates');
+  await expect(candidateList).toBeVisible();
+  const candidateButtons = candidateList.getByRole('button');
+  await expect(candidateButtons).toHaveCount(2);
+  await expect(candidateButtons.first()).toHaveAttribute(
+    'aria-current',
+    'true',
+  );
+  await editor.press('ArrowDown');
+  await expect(candidateButtons.nth(1)).toHaveAttribute('aria-current', 'true');
+  await editor.press('ArrowUp');
+  await expect(candidateButtons.first()).toHaveAttribute(
+    'aria-current',
+    'true',
+  );
+  const chosenTitle = (await candidateButtons.first().innerText()).includes(
+    firstTarget,
+  )
+    ? firstTarget
+    : secondTarget;
+  await editor.press('Enter');
+  const capsule = editor.getByRole('link');
+  await expect(capsule).toHaveCount(1);
+
+  if (testInfo.project.name === 'mobile-chromium') {
+    await capsule.tap();
+  } else {
+    await capsule.click();
+  }
+  await expect(page.getByTestId('card-title')).toHaveValue(chosenTitle);
+  await openFromHistory(page, source);
+  await expect(page.getByTestId('undo')).toBeDisabled();
+
+  const restoredEditor = page.getByTestId('body-editor');
+  const restoredCapsule = restoredEditor.getByRole('link');
+  await restoredCapsule.focus();
+  await restoredCapsule.press('Enter');
+  await expect(page.getByTestId('card-title')).toHaveValue(chosenTitle);
+  await openFromHistory(page, source);
+
+  const keyboardEditor = page.getByTestId('body-editor');
+  const keyboardCapsule = keyboardEditor.getByRole('link');
+  await keyboardCapsule.focus();
+  await keyboardCapsule.press('Space');
+  await expect(page.getByTestId('card-title')).toHaveValue(chosenTitle);
+  await openFromHistory(page, source);
+
+  const sourceEditor = page.getByTestId('body-editor');
+  await sourceEditor.focus();
+  await sourceEditor.press('Home');
+  await sourceEditor.press('Delete');
+  await expect(sourceEditor.getByRole('link')).toHaveCount(0);
+  await page.getByTestId('undo').click();
+  await expect(sourceEditor.getByRole('link')).toHaveCount(1);
+
+  await sourceEditor.press('End');
+  await sourceEditor.pressSequentially('追記');
+  await expect(page.getByTestId('undo')).toBeEnabled();
+  await sourceEditor.getByRole('link').focus();
+  await sourceEditor.getByRole('link').press('Enter');
+  await openFromHistory(page, source);
+  await expect(page.getByTestId('undo')).toBeDisabled();
+
+  const resetEditor = page.getByTestId('body-editor');
+  await resetEditor.press('End');
+  const keyboard = await context.newCDPSession(page);
+  await keyboard.send('Input.insertText', { text: ' #' });
+  await expect(page.getByTestId('link-candidates')).toBeVisible();
+  await resetEditor.press('Escape');
+  await expect(page.getByTestId('link-candidates')).toHaveCount(0);
+  await keyboard.detach();
+});
+
 test('global directed graph is safe and operable for the reported and cyclic fixtures', async ({
   page,
   context,

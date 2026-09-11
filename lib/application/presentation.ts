@@ -49,6 +49,24 @@ export type ConflictViewModel = {
   options: [ConflictOptionViewModel, ConflictOptionViewModel];
 };
 
+export type CardEditorLabelModel = {
+  cardId: CardId;
+  label: string;
+};
+
+export type CardEditorCandidateModel = {
+  cardId: CardId;
+  displayLabel: string;
+  title: string;
+};
+
+export type CardEditorInputModel = {
+  cardId: CardId;
+  body: BodySegment[];
+  labels: CardEditorLabelModel[];
+  candidates: CardEditorCandidateModel[];
+};
+
 export type ConnectionsViewModel = {
   cards: CardRecord[];
   currentCardId: CardId;
@@ -63,6 +81,7 @@ export type NotesPresentationModel = {
   cards: CardRecord[];
   currentCard: CardRecord | null;
   currentCardDisplayLabel: string | null;
+  cardEditor: CardEditorInputModel | null;
   history: HistoryViewModel;
   conflicts: ConflictViewModel[];
   connections: ConnectionsViewModel | null;

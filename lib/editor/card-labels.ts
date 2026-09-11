@@ -1,26 +1,40 @@
-import { formatDisplayId } from '@/lib/domain/display-id';
-import { visibleTitle, type CardRecord } from '@/lib/domain/types';
+import type { CardEditorLabelModel } from '@/lib/application/presentation';
 import type { CardId } from '@/lib/domain/id';
 
-const labels = new Map<CardId, string>();
-const listeners = new Set<() => void>();
+export type CardLabelResolver = {
+  labelFor: (cardId: CardId) => string;
+  replaceLabels: (labels: CardEditorLabelModel[]) => void;
+  subscribe: (listener: () => void) => () => void;
+  destroy: () => void;
+};
 
-export function setCardLabels(cards: CardRecord[]): void {
-  labels.clear();
-  for (const card of cards) {
-    labels.set(
-      card.id,
-      `${formatDisplayId(card.displayId)} ${visibleTitle(card.title)}`,
-    );
-  }
-  for (const listener of listeners) listener();
+function labelMap(labels: CardEditorLabelModel[]): Map<CardId, string> {
+  return new Map(labels.map((item) => [item.cardId, item.label]));
 }
 
-export function getCardLabel(cardId: CardId): string {
-  return labels.get(cardId) ?? 'リンク先なし';
-}
+export function createCardLabelResolver(
+  initialLabels: CardEditorLabelModel[],
+): CardLabelResolver {
+  let labels = labelMap(initialLabels);
+  let destroyed = false;
+  const listeners = new Set<() => void>();
 
-export function subscribeToCardLabels(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+  return {
+    labelFor: (cardId) => labels.get(cardId) ?? 'リンク先なし',
+    replaceLabels: (nextLabels) => {
+      if (destroyed) return;
+      labels = labelMap(nextLabels);
+      for (const listener of listeners) listener();
+    },
+    subscribe: (listener) => {
+      if (destroyed) return () => undefined;
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    destroy: () => {
+      destroyed = true;
+      labels.clear();
+      listeners.clear();
+    },
+  };
 }

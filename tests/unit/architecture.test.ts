@@ -142,3 +142,54 @@ describe('application and presentation architecture', () => {
     expect(source).toContain('aria-label="カード編集"');
   });
 });
+
+describe('headless card editor architecture', () => {
+  it('keeps editor state and Tiptap lifecycle free of renderer and data infrastructure', async () => {
+    const files = [
+      'lib/editor/card-editor-state.ts',
+      'lib/editor/use-card-editor.ts',
+    ];
+    const forbidden =
+      /(?:@\/components|lucide|tailwind|fukamu-editor|card-link-capsule|notes-store|indexed-db|service-worker|lib\/sync|\/api\/)/;
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      expect(source, file).not.toMatch(forbidden);
+    }
+  });
+
+  it('constructs the default renderer from typed model and commands only', async () => {
+    const source = await readFile('components/body-editor.tsx', 'utf8');
+    expect(source).toContain('model: CardEditorModel');
+    expect(source).toContain('commands: CardEditorCommands');
+    expect(source).not.toMatch(
+      /useEditor|StarterKit|CardRecord|notes-store|indexed-db|linkCandidates/,
+    );
+  });
+
+  it('dispatches card links directly without parent selectors or synthetic clicks', async () => {
+    const extension = await readFile(
+      'lib/editor/card-link-extension.ts',
+      'utf8',
+    );
+    const presentation = await readFile(
+      'components/notes-presentation.tsx',
+      'utf8',
+    );
+    expect(extension).toContain('openCard(targetCardId)');
+    expect(extension).not.toMatch(
+      /closest\(|parentElement|\.click\(|dispatchEvent|new MouseEvent/,
+    );
+    expect(presentation).not.toContain('key={card.id}');
+  });
+
+  it('separates editor structural hooks from the default visual theme', async () => {
+    const css = await readFile('app/globals.css', 'utf8');
+    const renderer = await readFile('components/body-editor.tsx', 'utf8');
+    expect(css).toContain('.card-editor-structure');
+    expect(css).toContain('.card-link-structure');
+    expect(css).toContain('.fukamu-editor');
+    expect(css).toContain('.card-link-capsule');
+    expect(renderer).toContain('card-editor-structure fukamu-editor');
+    expect(renderer).toContain('card-link-structure card-link-capsule');
+  });
+});
