@@ -12,22 +12,15 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react';
-import { BodyEditorAdapter } from '@/components/body-editor-adapter';
 import { ConflictNotice } from '@/components/conflict-notice';
-import { ConnectionsView } from '@/components/connections-view';
 import { HistoryView } from '@/components/history-view';
+import type { NotesPresentationProps } from '@/components/presentation-contract';
 import { Button } from '@/components/ui/button';
 import type {
   NotesPresentationActions,
-  NotesPresentationModel,
   NotesStatusKind,
   NotesViewName,
 } from '@/lib/application/presentation';
-
-type PresentationProps = {
-  model: NotesPresentationModel;
-  actions: NotesPresentationActions;
-};
 
 function StatusIcon({ kind }: { kind: NotesStatusKind }) {
   if (kind === 'saved') {
@@ -44,7 +37,10 @@ function StatusIcon({ kind }: { kind: NotesStatusKind }) {
   return <TriangleAlert aria-hidden="true" className="size-3.5" />;
 }
 
-function StatusIndicator({ model, actions }: PresentationProps) {
+function StatusIndicator({
+  model,
+  actions,
+}: Pick<NotesPresentationProps, 'model' | 'actions'>) {
   return (
     <button
       type="button"
@@ -94,7 +90,10 @@ const navigation: {
   },
 ];
 
-function Navigation({ model, actions }: PresentationProps) {
+function Navigation({
+  model,
+  actions,
+}: Pick<NotesPresentationProps, 'model' | 'actions'>) {
   return (
     <nav aria-label="表示切り替え" className="app-navigation">
       {navigation.map((item) => {
@@ -117,7 +116,7 @@ function Navigation({ model, actions }: PresentationProps) {
   );
 }
 
-function EmptyState({ actions }: Pick<PresentationProps, 'actions'>) {
+function EmptyState({ actions }: Pick<NotesPresentationProps, 'actions'>) {
   return (
     <section className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center rounded-3xl border border-dashed bg-card/45 px-6 text-center">
       <div className="mb-5 rounded-full bg-accent p-4 text-accent-foreground">
@@ -141,7 +140,7 @@ function EmptyState({ actions }: Pick<PresentationProps, 'actions'>) {
   );
 }
 
-function CardView({ model, actions }: PresentationProps) {
+function CardView({ model, actions, features }: NotesPresentationProps) {
   const card = model.currentCard;
   if (!card) return <EmptyState actions={actions} />;
 
@@ -176,15 +175,21 @@ function CardView({ model, actions }: PresentationProps) {
           placeholder="Untitled"
           data-testid="card-title"
         />
-        {model.cardEditor && (
-          <BodyEditorAdapter model={model.cardEditor} actions={actions} />
-        )}
+        {model.cardEditor &&
+          features.renderCardEditor({
+            input: model.cardEditor,
+            actions,
+          })}
       </article>
     </section>
   );
 }
 
-export function NotesPresentation({ model, actions }: PresentationProps) {
+export function NotesPresentation({
+  model,
+  actions,
+  features,
+}: NotesPresentationProps) {
   if (!model.initialized) {
     return (
       <main className="grid min-h-dvh place-items-center text-sm text-muted-foreground">
@@ -221,17 +226,17 @@ export function NotesPresentation({ model, actions }: PresentationProps) {
       <div className="mx-auto grid max-w-6xl gap-8 px-4 pb-28 pt-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_180px] lg:pb-12 lg:pt-12">
         <div className="min-w-0">
           {model.activeView === 'card' && (
-            <CardView model={model} actions={actions} />
+            <CardView model={model} actions={actions} features={features} />
           )}
           {model.activeView === 'history' && (
             <HistoryView model={model.history} onOpenCard={actions.openCard} />
           )}
-          {model.activeView === 'connections' && model.connections && (
-            <ConnectionsView
-              model={model.connections}
-              onOpenCard={actions.openCard}
-            />
-          )}
+          {model.activeView === 'connections' &&
+            model.connections &&
+            features.renderConnections({
+              input: model.connections,
+              actions,
+            })}
         </div>
         <Navigation model={model} actions={actions} />
       </div>

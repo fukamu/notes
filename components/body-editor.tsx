@@ -3,11 +3,8 @@
 import { EditorContent } from '@tiptap/react';
 import { Link2, Redo2, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type {
-  CardEditorCommands,
-  CardEditorModel,
-  CardEditorPresentationAdapter,
-} from '@/lib/editor/use-card-editor';
+import type { CardEditorRendererProps } from '@/components/presentation-contract';
+import type { CardEditorPresentationAdapter } from '@/lib/editor/use-card-editor';
 
 export const defaultCardEditorPresentation: CardEditorPresentationAdapter = {
   contentAttributes: {
@@ -22,12 +19,7 @@ export const defaultCardEditorPresentation: CardEditorPresentationAdapter = {
   },
 };
 
-type Props = {
-  model: CardEditorModel;
-  commands: CardEditorCommands;
-};
-
-export function BodyEditor({ model, commands }: Props) {
+export function BodyEditor({ model, commands }: CardEditorRendererProps) {
   if (!model.ready || !model.editor) {
     return (
       <div

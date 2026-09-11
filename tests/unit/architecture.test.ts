@@ -134,12 +134,135 @@ describe('application and presentation architecture', () => {
 
   it('keeps the default presentation behind model/actions props', async () => {
     const source = await readFile('components/notes-presentation.tsx', 'utf8');
-    expect(source).toContain('model: NotesPresentationModel');
-    expect(source).toContain('actions: NotesPresentationActions');
+    expect(source).toContain('NotesPresentationProps');
+    expect(source).toContain('model,');
+    expect(source).toContain('actions,');
+    expect(source).toContain('features.renderCardEditor');
+    expect(source).toContain('features.renderConnections');
     expect(source).not.toMatch(/notes-store|indexed-db|fetch\(|\/api\//);
+    expect(source).not.toMatch(/BodyEditorAdapter|ConnectionsAdapter/);
     expect(source).toContain('aria-label="表示切り替え"');
     expect(source).toContain('aria-current=');
     expect(source).toContain('aria-label="カード編集"');
+  });
+});
+
+describe('swappable presentation architecture', () => {
+  it('keeps connections state and geometry controllers renderer-neutral', async () => {
+    const files = [
+      'lib/graph/connections-contract.ts',
+      'lib/graph/connections-controller.ts',
+      'lib/graph/elk-layout.ts',
+      'lib/graph/connections-viewport.ts',
+    ];
+    const forbidden =
+      /(?:@\/components|lucide|tailwind|className|document\.|window\.|HTMLElement|SVG(?:Path|Element)|marker|halo|--primary)/;
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      expect(source, file).not.toMatch(forbidden);
+    }
+  });
+
+  it('joins feature adapters and concrete renderers only at the composition root', async () => {
+    const files = await sourceFiles('components');
+    const violations: string[] = [];
+    for (const file of files) {
+      if (file === 'components/notes-app.tsx') continue;
+      const source = await readFile(file, 'utf8');
+      const importsFeatureAdapter =
+        /from ['"]@\/components\/(?:body-editor-adapter|connections-adapter)['"]/.test(
+          source,
+        );
+      const importsConcreteRenderer =
+        /from ['"]@\/components\/(?:body-editor|connections-view|notes-presentation)['"]/.test(
+          source,
+        );
+      if (importsFeatureAdapter && importsConcreteRenderer) {
+        violations.push(file);
+      }
+    }
+    expect(violations).toEqual([]);
+
+    const root = await readFile('components/notes-app.tsx', 'utf8');
+    for (const dependency of [
+      'BodyEditorAdapter',
+      'ConnectionsAdapter',
+      'NotesPresentation',
+      'BodyEditor',
+      'ConnectionsView',
+    ]) {
+      expect(root).toContain(dependency);
+    }
+  });
+
+  it('keeps every presentation module away from data infrastructure', async () => {
+    const files = await sourceFiles('components');
+    const violations: string[] = [];
+    const infrastructure =
+      /(?:from ['"][^'"]*(?:indexed-db|notes-store|lib\/storage|lib\/sync|\/offline|service-worker|app\/api|\/db\/)|fetch\()/;
+    for (const file of files) {
+      if (file === 'components/notes-app.tsx') continue;
+      const source = await readFile(file, 'utf8');
+      if (infrastructure.test(source)) violations.push(file);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('uses one typed card-selection action for ready and fallback connections', async () => {
+    const renderer = await readFile('components/connections-view.tsx', 'utf8');
+    expect(renderer.match(/actions\.openCard/g)).toHaveLength(2);
+    expect(renderer).not.toMatch(/CardRecord|formatDisplayId|visibleTitle/);
+  });
+
+  it('keeps renderer-specific SVG assertions out of functional E2E', async () => {
+    const e2e = await readFile('tests/e2e/notes.spec.ts', 'utf8');
+    expect(e2e).not.toMatch(
+      /marker-end|getTotalLength|connection-edge-section|SVGPathElement|data-source-port|data-target-port/,
+    );
+    expect(e2e).toContain('カード間の一方向リンク一覧');
+    expect(e2e).toContain("toHaveAttribute('aria-current', 'true')");
+  });
+
+  it('uses semantic warning tokens instead of a fixed conflict palette', async () => {
+    const conflict = await readFile('components/conflict-notice.tsx', 'utf8');
+    const css = await readFile('app/globals.css', 'utf8');
+    expect(conflict).not.toMatch(/amber|bg-white|text-white/);
+    expect(css).toContain('--warning-bg');
+    expect(css).toContain('.conflict-notice');
+  });
+
+  it('keeps the alternate fixture independent and behaviorally exercised', async () => {
+    const fixture = await readFile(
+      'tests/fixtures/alternate-presentation.ts',
+      'utf8',
+    );
+    expect(fixture).not.toMatch(
+      /(?:notes-store|indexed-db|lib\/storage|lib\/sync|offline|service-worker|\/api\/|fetch\(|notes-presentation|body-editor['"]|connections-view)/,
+    );
+    for (const contract of [
+      'createAlternatePresentationProbe',
+      'createAlternateCardEditorProbe',
+      'createAlternateConnectionsProbe',
+      'satisfies NotesAppConfiguration',
+    ]) {
+      expect(fixture).toContain(contract);
+    }
+  });
+
+  it('documents every parent requirement and the #6/#7 follow-on seams', async () => {
+    const audit = await readFile('docs/presentation-boundary-audit.md', 'utf8');
+    for (let requirement = 1; requirement <= 29; requirement += 1) {
+      expect(audit).toMatch(new RegExp(`\\|\\s+${requirement}\\s+\\|`));
+    }
+    expect(audit).toContain('#6 must add a URL/History API implementation');
+    expect(audit).toContain('#7 must audit `FUKAMU Notes`/`Notes*`');
+
+    const contracts = await readFile(
+      'docs/application-presentation.md',
+      'utf8',
+    );
+    expect(contracts).not.toContain('Temporary adapter exceptions');
+    expect(contracts).toContain('NotesAppConfiguration');
   });
 });
 
@@ -159,8 +282,8 @@ describe('headless card editor architecture', () => {
 
   it('constructs the default renderer from typed model and commands only', async () => {
     const source = await readFile('components/body-editor.tsx', 'utf8');
-    expect(source).toContain('model: CardEditorModel');
-    expect(source).toContain('commands: CardEditorCommands');
+    expect(source).toContain('CardEditorRendererProps');
+    expect(source).toContain('{ model, commands }');
     expect(source).not.toMatch(
       /useEditor|StarterKit|CardRecord|notes-store|indexed-db|linkCandidates/,
     );

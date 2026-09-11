@@ -18,8 +18,10 @@ rules.
    or Tailwind dependency.
 4. `lib/client/use-notes-application.ts` observes the in-memory navigator and
    connects the data store to the application contracts.
-5. `components/notes-app.tsx` is the composition root. The default renderer
-   receives only `NotesPresentationModel` and `NotesPresentationActions`.
+5. `components/notes-app.tsx` is the composition root. It is the only module
+   that selects the concrete notes, editor, and connections renderers and
+   connects them to their feature adapters. A renderer receives only the
+   typed presentation model, semantic actions, and feature render callbacks.
 
 Presentation code must not access IndexedDB, fetch, sync, service workers,
 database bindings, or API routes. Application code must not select icons,
@@ -60,9 +62,11 @@ The reducer applies these rules:
 
 `NotesPresentationModel` provides initialization, location and active view,
 available views, the current editor card, history items, current-card conflict
-choices, connection graph context, and a semantic save/sync status. The status
-selector fixes priority as local-save failure, local save, active sync,
-offline, sync failure, then saved; it also states whether retry is available.
+choices, semantic connection nodes/edges, and a semantic save/sync status. The
+connections input contains labels, accessible names, current state, and branded
+IDs rather than raw card records. The status selector fixes priority as
+local-save failure, local save, active sync, offline, sync failure, then saved;
+it also states whether retry is available.
 
 `NotesPresentationActions` exposes semantic operations only:
 `createCard`, `openCard`, `showCurrentCard`, `showHistory`, `showConnections`,
@@ -76,19 +80,85 @@ lookup. Conflict view models contain only the two choices for the current
 card, including titles, previews, accessible action names, and the established
 missing-link fallback. The renderer does not receive all conflicts.
 
-## Temporary adapter exceptions
+## Feature adapters and composition
 
-#14 replaced the editor exception with a typed `CardEditorInputModel` and a
-headless Tiptap adapter. The editor receives branded identity, body, candidate,
-and label models plus semantic application actions; it no longer receives raw
-store/card collections. See [Card editor contracts](card-editor.md).
+`NotesAppConfiguration` selects the concrete `Presentation`, editor renderer
+and editor presentation attributes, connections renderer, layout metrics, and
+viewport padding. `NotesConnector` binds those choices to
+`BodyEditorAdapter` and `ConnectionsAdapter`, then gives the selected notes
+presentation two typed feature render functions. No production route, query
+parameter, feature flag, or hidden switch selects an alternate design.
 
-The connections renderer still receives its derived graph plus card records
-needed by the existing ELK layout/labels. #15 replaces that remaining internal
-adapter. It does not permit direct store, storage, sync, or navigation access,
-and new coupling must not be added before #15 is implemented.
+The default notes presentation does not import either feature adapter. The
+feature adapters do not choose their concrete renderers. Consequently only the
+composition root knows both a feature implementation and the concrete
+presentation that consumes it. To replace the design:
+
+1. Implement the three presentation contracts: notes, card editor, and
+   connections renderers.
+2. Provide editor structural attributes/link classes and connections layout
+   metrics/viewport padding as presentation data.
+3. Pass the resulting `NotesAppConfiguration` at the composition root.
+
+Do not change domain, codecs, storage, sync, DB/API, `NotesDataStore`,
+`NotesNavigator`, application selectors/controllers, editor controller, or
+connections controller. The test-only alternate configuration demonstrates
+this exact seam and is intentionally unavailable through the production UI.
+
+The editor receives branded identity, body, candidate, and label models plus
+semantic application actions; it no longer receives raw store/card
+collections. See [Card editor contracts](card-editor.md).
+
+## Connections contracts
+
+The application selector converts the domain graph to `ConnectionsInputModel`:
+semantic nodes, directed edges, labels, accessible names, current state, and
+branded IDs. `ConnectionsController` owns the graph/metrics key, asynchronous
+ELK request lifecycle, `loading | ready | error` state, stale-result rejection,
+geometry mapping, current node, and complete fallback items. A current-card or
+label-only update remaps the cached geometry without rerunning ELK; a graph or
+metrics change starts a new request. An older promise can never replace the
+new request's graph, metrics, or current semantics.
+
+`ConnectionsLayoutMetrics` makes node width/height, port size, component/node/
+edge spacing, layer spacing, and four-sided padding explicit. The default
+presentation supplies the former `196 × 72` geometry and spacing values;
+alternate presentations can supply compact or spacious metrics without
+changing graph/layout code. ELK returns finite node, port, section, and bend
+point geometry. SVG paths, arrows, halo, colors, decoration, and path layering
+exist only in the default renderer.
+
+`useConnectionsViewport` is the browser interaction adapter. It receives the
+current laid-out node and presentation padding, reads the viewport ref, and
+centers on current changes and `ResizeObserver` notifications. Its pure center
+calculation safely returns no action for a missing node/viewport, a zero-sized
+viewport, loading, or layout error. Both a ready node and every error fallback
+item dispatch the same typed `openCard(CardId)` action.
+
+## Style and interaction boundary
+
+Structural styles are named separately from the default visual theme:
+`.card-editor-structure`, `.card-link-structure`,
+`.connections-viewport-structure`, `.connections-canvas-structure`, and
+`.connections-node-structure` define browser behavior or geometry. Visual
+classes such as `.fukamu-editor`, `.card-link-capsule`,
+`.connections-viewport`, and `.connections-node` are replaceable theme choices.
+`.history-stack` only supplies functional scroll padding.
+
+Conflict visuals use light/dark semantic `--warning-*` tokens and the shared
+button primitive; no feature component embeds an amber or white palette.
+Unused `.quiet-button` styling was removed after a repository-wide reference
+check. The complete raw-interaction and requirement audit is recorded in
+[Presentation boundary audit](presentation-boundary-audit.md).
 
 Names use `Notes*` for application-wide contracts and `Card*` for individual
 card/domain artifacts. The runtime codecs, branded identifiers, guarded trust
 boundaries, atomic persistence, D1/API decoding, and unsafe-lint rules from #9
 remain unchanged.
+
+#6 may replace only the in-memory `NotesNavigator` adapter with a URL/History
+API implementation at the connector boundary; it must keep `NotesLocation`,
+named intents, controllers, models, actions, and renderers unchanged. #7 should
+audit product-wide names as `FUKAMU Notes`/`Notes*` and user-created artifacts
+as `Card`/`Card*`, including filenames, exported types, UI copy, tests, and
+documents, without conflating the two concepts.
