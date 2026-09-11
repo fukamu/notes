@@ -65,7 +65,7 @@ GitHub sub-Issue/dependencyを利用できる場合は登録し、本文また�
 
 ## BranchとPR
 
-親 #29 のintegration branchは `refactor/type-safe-functional`、mainからの起点は `4fe2f9d64fda7e9e57e3606e6c58fd254555b1af` です。integration branchへ直接実装せず、検証済みwork PRだけを集約します。
+現在の親 #41 のintegration branchは `refactor/type-safe-functional`、mainからの起点は `7f925fa3b51dc546b32cebbf10550dbd2807560f` です。同名だった親 #29 のintegration branchは完了後に削除されており、#41のbranchは最新mainから再作成した別のdelivery系列です。#29の起点 `4fe2f9d64fda7e9e57e3606e6c58fd254555b1af` と完了記録は過去のIssue・PRに保持します。integration branchへ直接実装せず、検証済みwork PRだけを集約します。
 
 各実装Issueは次の順で進めます。
 
