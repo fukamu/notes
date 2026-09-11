@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-12T01:51:11+09:00",
+  "command": "npm run test:e2e -- --grep 'connections map supports controls' --repeat-each=3",
+  "environment": {
+    "os": "Linux 7.0.0-31-generic x86_64",
+    "node": "26.8.1",
+    "playwright": "1.63.0",
+    "browser": "Chrome for Testing 153.0.8010.12 (Playwright Chromium revision 1243)",
+    "projects": {
+      "chromium": {
+        "viewport": { "width": 1280, "height": 720 },
+        "deviceScaleFactor": 1
+      },
+      "mobile-chromium": {
+        "device": "Pixel 7",
+        "viewport": { "width": 412, "height": 839 },
+        "deviceScaleFactor": 2.625
+      }
+    },
+    "fixture": {
+      "name": "synthetic large seed 0x41decade",
+      "nodes": 48,
+      "edges": 120
+    },
+    "network": "offline after service-worker readiness",
+    "warmup": "Each recorded loop follows fit, control zoom, modified-wheel zoom, keyboard pan/zoom, one-finger pan, pinch, and cancellation checks; no measured loop was discarded.",
+    "measuredIterations": 3,
+    "loop": {
+      "frames": 120,
+      "eventsPerFrame": 4,
+      "event": "modified WheelEvent handled by the same native camera adapter as pointer gestures"
+    }
+  },
+  "thresholds": {
+    "minimumContinuousDurationMs": 1500,
+    "handlerP95Ms": 8,
+    "longTaskBoundaryMs": 50,
+    "maximumTransformWrites": 122,
+    "policy": "Timing values are recorded evidence, not flaky CI gates. Deterministic transform-write coalescing remains asserted in E2E and unit tests."
+  },
+  "measurements": [
+    {
+      "project": "chromium",
+      "samples": {
+        "durationMs": [2257.9, 2397.9, 2345.5],
+        "handlerP95Ms": [0.5, 0.5, 0.5],
+        "longTaskCount": [0, 0, 0],
+        "longestTaskMs": [0, 0, 0],
+        "transformWrites": [120, 120, 120]
+      },
+      "summary": {
+        "durationMs": { "median": 2345.5, "p95": 2397.9 },
+        "handlerP95Ms": { "median": 0.5, "p95": 0.5 },
+        "reportedLongTasks": { "total": 0, "maximumMs": 0 },
+        "transformWrites": { "median": 120, "maximum": 120 }
+      }
+    },
+    {
+      "project": "mobile-chromium",
+      "samples": {
+        "durationMs": [2018.8, 2011, 2025.6],
+        "handlerP95Ms": [0.4, 0.4, 0.4],
+        "longTaskCount": [0, 0, 0],
+        "longestTaskMs": [0, 0, 0],
+        "transformWrites": [120, 120, 120]
+      },
+      "summary": {
+        "durationMs": { "median": 2018.8, "p95": 2025.6 },
+        "handlerP95Ms": { "median": 0.4, "p95": 0.4 },
+        "reportedLongTasks": { "total": 0, "maximumMs": 0 },
+        "transformWrites": { "median": 120, "maximum": 120 }
+      }
+    }
+  ],
+  "result": "pass: all measured handler p95 values are below 8 ms, no >50 ms Long Task was reported, and the world wrapper was transformed at most once per frame."
+}

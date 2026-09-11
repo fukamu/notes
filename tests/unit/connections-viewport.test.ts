@@ -1,64 +1,226 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  connectionsCenterPosition,
-  createConnectionsCenteringAdapter,
-  type ConnectionsCenterRequest,
+  centerConnectionsCameraOnRect,
+  clampConnectionsCamera,
+  connectionsCameraContainsRect,
+  connectionsCameraTransform,
+  connectionsCameraWorldPoint,
+  createConnectionsCameraFrameAdapter,
+  DEFAULT_CONNECTIONS_CAMERA_LIMITS,
+  ensureConnectionsRectVisible,
+  fitConnectionsCamera,
+  initialConnectionsCamera,
+  panConnectionsCamera,
+  pinchConnectionsCamera,
+  resizeConnectionsCamera,
+  zoomConnectionsCamera,
+  type ConnectionsCamera,
+  type ConnectionsCameraGeometry,
 } from '@/lib/graph/connections-viewport';
 
-const request: ConnectionsCenterRequest = {
-  viewport: { width: 320, height: 240 },
-  node: { x: 400, y: 300, width: 196, height: 72 },
-  padding: { top: 8, right: 24, bottom: 16, left: 12 },
+const geometry: ConnectionsCameraGeometry = {
+  viewport: { width: 800, height: 600 },
+  world: { x: 0, y: 0, width: 1_000, height: 800 },
+  padding: { top: 40, right: 40, bottom: 40, left: 40 },
+  limits: { minimumScale: 0.25, maximumScale: 3, maximumFitScale: 1 },
 };
 
-describe('connections viewport interaction', () => {
-  it('centers a node with explicit viewport geometry and padding', () => {
-    expect(connectionsCenterPosition(request)).toEqual({
-      left: 344,
-      top: 220,
-    });
+function expectCameraClose(
+  actual: ConnectionsCamera | null,
+  expected: ConnectionsCamera,
+) {
+  expect(actual).not.toBeNull();
+  expect(actual?.x).toBeCloseTo(expected.x);
+  expect(actual?.y).toBeCloseTo(expected.y);
+  expect(actual?.scale).toBeCloseTo(expected.scale);
+}
+
+describe('connections map camera geometry', () => {
+  it('keeps the default 72 px node at a touch-safe minimum size', () => {
     expect(
-      connectionsCenterPosition({ ...request, viewport: null }),
-    ).toBeNull();
-    expect(connectionsCenterPosition({ ...request, node: null })).toBeNull();
-    expect(
-      connectionsCenterPosition({
-        ...request,
-        viewport: { width: 0, height: 240 },
-      }),
-    ).toBeNull();
+      DEFAULT_CONNECTIONS_CAMERA_LIMITS.minimumScale * 72,
+    ).toBeGreaterThanOrEqual(44);
   });
 
-  it('handles current changes, resize, missing targets and disposal deterministically', () => {
+  it('fits the whole world into explicit viewport padding', () => {
+    const camera = fitConnectionsCamera(geometry);
+
+    expectCameraClose(camera, { x: 75, y: 40, scale: 0.65 });
+    expect(
+      camera && connectionsCameraContainsRect(camera, geometry.world, geometry),
+    ).toBe(true);
+  });
+
+  it('pans in screen coordinates and clamps scale and translation', () => {
+    expectCameraClose(
+      panConnectionsCamera(
+        { x: 0, y: 0, scale: 1 },
+        { x: 100, y: -300 },
+        geometry,
+      ),
+      { x: 40, y: -240, scale: 1 },
+    );
+    expectCameraClose(
+      clampConnectionsCamera({ x: 999, y: -999, scale: 4 }, geometry),
+      { x: 40, y: -999, scale: 3 },
+    );
+  });
+
+  it('zooms without moving the anchor world coordinate', () => {
+    const fitted = fitConnectionsCamera(geometry);
+    expect(fitted).not.toBeNull();
+    if (!fitted) return;
+    const anchor = { x: 400, y: 300 };
+    const before = connectionsCameraWorldPoint(fitted, anchor);
+    const zoomed = zoomConnectionsCamera(fitted, 2, anchor, geometry);
+    const after = zoomed && connectionsCameraWorldPoint(zoomed, anchor);
+
+    expect(before).not.toBeNull();
+    expect(after?.x).toBeCloseTo(before?.x ?? Number.NaN);
+    expect(after?.y).toBeCloseTo(before?.y ?? Number.NaN);
+    expectCameraClose(zoomed, { x: -250, y: -220, scale: 1.3 });
+  });
+
+  it('uses the pinch midpoint as a stable moving world anchor', () => {
+    const camera = { x: -100, y: -100, scale: 1 };
+    const start = [
+      { x: 300, y: 300 },
+      { x: 500, y: 300 },
+    ] as const;
+    const current = [
+      { x: 260, y: 320 },
+      { x: 560, y: 320 },
+    ] as const;
+    const pinched = pinchConnectionsCamera(camera, start, current, geometry);
+
+    expectCameraClose(pinched, { x: -340, y: -280, scale: 1.5 });
+    expect(
+      pinched && connectionsCameraWorldPoint(pinched, { x: 410, y: 320 }),
+    ).toEqual({ x: 500, y: 400 });
+  });
+
+  it('centers or minimally reveals a node including focus-ring margin', () => {
+    const centered = centerConnectionsCameraOnRect(
+      { x: 0, y: 0, scale: 1 },
+      { x: 450, y: 350, width: 100, height: 100 },
+      geometry,
+    );
+    expectCameraClose(centered, { x: -100, y: -100, scale: 1 });
+
+    const target = { x: 900, y: 700, width: 100, height: 100 };
+    const revealed = ensureConnectionsRectVisible(
+      { x: 40, y: 40, scale: 1 },
+      target,
+      geometry,
+      12,
+    );
+    expectCameraClose(revealed, { x: -240, y: -240, scale: 1 });
+    expect(
+      revealed && connectionsCameraContainsRect(revealed, target, geometry),
+    ).toBe(true);
+
+    const oversizedTarget = { x: 300, y: 300, width: 400, height: 200 };
+    const zoomedOut = ensureConnectionsRectVisible(
+      { x: -500, y: -500, scale: 3 },
+      oversizedTarget,
+      geometry,
+      12,
+    );
+    expect(zoomedOut?.scale).toBeCloseTo(1.74);
+    expect(
+      zoomedOut &&
+        connectionsCameraContainsRect(zoomedOut, oversizedTarget, geometry, 12),
+    ).toBe(true);
+  });
+
+  it('preserves the world point at the usable center through resize', () => {
+    const nextGeometry = {
+      ...geometry,
+      viewport: { width: 1_000, height: 700 },
+    };
+    expectCameraClose(
+      resizeConnectionsCamera(
+        { x: -100, y: -100, scale: 1 },
+        geometry,
+        nextGeometry,
+      ),
+      { x: 0, y: -50, scale: 1 },
+    );
+  });
+
+  it('keeps the current card visible when minimum zoom cannot fit the world', () => {
+    const wideGeometry = {
+      ...geometry,
+      world: { x: 0, y: 0, width: 10_000, height: 1_000 },
+      limits: { ...geometry.limits, minimumScale: 0.12 },
+    };
+    const current = { x: 9_000, y: 400, width: 100, height: 100 };
+    const camera = initialConnectionsCamera(wideGeometry, current);
+
+    expect(camera?.scale).toBe(0.12);
+    expect(
+      camera &&
+        connectionsCameraContainsRect(camera, current, wideGeometry, 12),
+    ).toBe(true);
+  });
+
+  it('rejects invalid geometry and never serializes non-finite transforms', () => {
+    expect(
+      fitConnectionsCamera({
+        ...geometry,
+        world: { ...geometry.world, width: 0 },
+      }),
+    ).toBeNull();
+    expect(
+      fitConnectionsCamera({
+        ...geometry,
+        padding: { ...geometry.padding, left: 900 },
+      }),
+    ).toBeNull();
+    expect(
+      zoomConnectionsCamera(
+        { x: 0, y: 0, scale: 1 },
+        Number.NaN,
+        { x: 1, y: 1 },
+        geometry,
+      ),
+    ).toBeNull();
+    expect(
+      connectionsCameraTransform({ x: Number.NaN, y: 0, scale: 1 }),
+    ).toBeNull();
+    expect(connectionsCameraTransform({ x: 1, y: 2, scale: 0.5 })).toBe(
+      'translate3d(1px, 2px, 0) scale(0.5)',
+    );
+  });
+});
+
+describe('connections camera frame adapter', () => {
+  it('applies at most once per frame, keeps the latest camera, and disposes', () => {
     const callbacks = new Map<number, () => void>();
     let nextHandle = 0;
     const cancel = vi.fn((handle: number) => callbacks.delete(handle));
-    const scrollTo = vi.fn();
-    const adapter = createConnectionsCenteringAdapter({
+    const apply = vi.fn();
+    const adapter = createConnectionsCameraFrameAdapter({
       schedule: (callback) => {
         nextHandle += 1;
         callbacks.set(nextHandle, callback);
         return nextHandle;
       },
       cancel,
-      scrollTo,
+      apply,
     });
 
-    adapter.currentChanged(request);
-    adapter.viewportResized({
-      ...request,
-      viewport: { width: 640, height: 480 },
-    });
-    expect(cancel).toHaveBeenCalledWith(1);
-    callbacks.get(2)?.();
-    expect(scrollTo).toHaveBeenLastCalledWith({ left: 184, top: 100 });
+    adapter.queue({ x: 1, y: 2, scale: 1 });
+    adapter.queue({ x: 3, y: 4, scale: 2 });
+    expect(callbacks).toHaveLength(1);
+    callbacks.get(1)?.();
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenLastCalledWith({ x: 3, y: 4, scale: 2 });
 
-    adapter.currentChanged({ ...request, node: null });
-    expect(scrollTo).toHaveBeenCalledTimes(1);
-    adapter.viewportResized(request);
+    adapter.queue({ x: 5, y: 6, scale: 2 });
     adapter.destroy();
-    expect(cancel).toHaveBeenCalledWith(3);
-    callbacks.get(3)?.();
-    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledWith(2);
+    callbacks.get(2)?.();
+    expect(apply).toHaveBeenCalledTimes(1);
   });
 });

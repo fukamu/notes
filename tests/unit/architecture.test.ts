@@ -263,6 +263,28 @@ describe('swappable presentation architecture', () => {
     }
   });
 
+  it('keeps camera geometry pure and browser gesture effects in the hook adapter', async () => {
+    const camera = await readFile('lib/graph/connections-viewport.ts', 'utf8');
+    const hook = await readFile('hooks/use-connections-viewport.ts', 'utf8');
+
+    expect(camera).toContain('fitConnectionsCamera');
+    expect(camera).toContain('pinchConnectionsCamera');
+    expect(camera).toContain('ensureConnectionsRectVisible');
+    expect(camera).not.toMatch(
+      /(?:react|window\.|document\.|PointerEvent|ResizeObserver|HTMLElement)/,
+    );
+    for (const boundary of [
+      'PointerEvent',
+      'ResizeObserver',
+      'requestAnimationFrame',
+      'setPointerCapture',
+      'world.style.transform',
+    ]) {
+      expect(hook).toContain(boundary);
+    }
+    expect(hook).not.toMatch(/useState|setCamera/);
+  });
+
   it('joins feature adapters and concrete renderers only at the composition root', async () => {
     const files = await sourceFiles('components');
     const violations: string[] = [];

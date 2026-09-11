@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { connectionsBenchmarkFixtures } from '@/tests/fixtures/connections-layout';
 import { fixtureCardId } from '@/tests/fixtures/ids';
 
@@ -100,6 +100,40 @@ function largeConnectionsBenchmarkCards(): LocalFixtureCard[] {
     localRevision: 1,
     serverRevision: 1,
   }));
+}
+
+type ConnectionsCameraSnapshot = {
+  x: number;
+  y: number;
+  scale: number;
+  renderCount: number;
+};
+
+async function connectionsCamera(
+  graph: Locator,
+): Promise<ConnectionsCameraSnapshot> {
+  return graph.evaluate((element) => ({
+    x: Number(element.dataset.cameraX),
+    y: Number(element.dataset.cameraY),
+    scale: Number(element.dataset.cameraScale),
+    renderCount: Number(element.dataset.cameraRenderCount),
+  }));
+}
+
+async function expectMapNodeFullyVisible(node: Locator, graph: Locator) {
+  const nodeBox = await node.boundingBox();
+  const viewportBox = await graph.boundingBox();
+  expect(nodeBox).not.toBeNull();
+  expect(viewportBox).not.toBeNull();
+  if (!nodeBox || !viewportBox) throw new Error('Map geometry is missing');
+  expect(nodeBox.x).toBeGreaterThanOrEqual(viewportBox.x);
+  expect(nodeBox.y).toBeGreaterThanOrEqual(viewportBox.y);
+  expect(nodeBox.x + nodeBox.width).toBeLessThanOrEqual(
+    viewportBox.x + viewportBox.width,
+  );
+  expect(nodeBox.y + nodeBox.height).toBeLessThanOrEqual(
+    viewportBox.y + viewportBox.height,
+  );
 }
 
 async function replaceLocalCards(page: Page, cards: LocalFixtureCard[]) {
@@ -593,6 +627,9 @@ test('global directed graph is safe and operable for the reported and cyclic fix
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 15_000,
   });
+  await expect(graph).toHaveAttribute('data-camera-scale', /\d/, {
+    timeout: 5_000,
+  });
   await expect(graph.getByRole('button')).toHaveCount(7);
   for (const title of Object.values(titles)) {
     await expect(
@@ -638,15 +675,32 @@ test('global directed graph is safe and operable for the reported and cyclic fix
     viewportBox.y + viewportBox.height,
   );
 
-  const touchAction = await graph.evaluate(
-    (element) => getComputedStyle(element).touchAction,
+  const viewportBehavior = await graph.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      touchAction: style.touchAction,
+      overflowX: style.overflowX,
+      overflowY: style.overflowY,
+      viewportHeight: element.clientHeight,
+      windowHeight: window.innerHeight,
+      documentWidth: document.documentElement.scrollWidth,
+      windowWidth: window.innerWidth,
+    };
+  });
+  expect(viewportBehavior.touchAction).toBe('none');
+  expect(viewportBehavior.overflowX).toBe('clip');
+  expect(viewportBehavior.overflowY).toBe('clip');
+  expect(viewportBehavior.viewportHeight).toBeGreaterThan(
+    viewportBehavior.windowHeight * 0.55,
   );
-  expect(touchAction).toContain('pan-x');
-  expect(touchAction).toContain('pan-y');
+  expect(viewportBehavior.documentWidth).toBeLessThanOrEqual(
+    viewportBehavior.windowWidth + 1,
+  );
   const targetNode = graph
     .getByRole('button')
     .filter({ hasText: titles.reportB });
-  await targetNode.scrollIntoViewIfNeeded();
+  await targetNode.focus();
+  await expect(targetNode).toBeInViewport();
   if (testInfo.project.name === 'mobile-chromium') {
     await targetNode.tap();
   } else {
@@ -654,6 +708,363 @@ test('global directed graph is safe and operable for the reported and cyclic fix
     await targetNode.press('Enter');
   }
   await expect(page.getByTestId('card-title')).toHaveValue(titles.reportB);
+});
+
+test('connections map supports controls, keyboard, touch gestures and drag-safe selection', async ({
+  page,
+  context,
+}, testInfo) => {
+  const cards = largeConnectionsBenchmarkCards();
+  const current = cards[0];
+  const target = cards[1];
+  if (!current || !target)
+    throw new Error('Large camera fixture is incomplete');
+  await ready(page);
+  await page.locator('html[data-offline-ready=true]').waitFor({
+    state: 'attached',
+    timeout: 15_000,
+  });
+  await context.setOffline(true);
+  await replaceLocalCards(page, cards);
+  await page.reload();
+  await openFromHistory(page, current.title);
+  await page.getByRole('button', { name: 'つながり', exact: true }).click();
+  const graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 30_000,
+  });
+  await expect(graph).toHaveAttribute('data-camera-scale', /\d/, {
+    timeout: 5_000,
+  });
+
+  const fitButton = page.getByRole('button', { name: '全体表示' });
+  const currentButton = page.getByRole('button', {
+    name: '現在のカードへ戻る',
+  });
+  const zoomInButton = page.getByRole('button', { name: '拡大' });
+  const zoomOutButton = page.getByRole('button', { name: '縮小' });
+  const keyboardControl = page.getByRole('button', {
+    name: 'キーボードでマップを操作',
+  });
+  for (const control of [
+    fitButton,
+    currentButton,
+    zoomInButton,
+    zoomOutButton,
+    keyboardControl,
+  ]) {
+    await expect(control).toBeVisible();
+    await expect(control).toBeEnabled();
+  }
+
+  const fitted = await connectionsCamera(graph);
+  for (const value of Object.values(fitted)) {
+    expect(Number.isFinite(value)).toBe(true);
+  }
+  const currentNode = graph
+    .getByRole('button')
+    .filter({ hasText: current.title });
+  await expect(currentNode).toBeInViewport();
+  await expectMapNodeFullyVisible(currentNode, graph);
+  const initialCurrentBox = await currentNode.boundingBox();
+  expect(initialCurrentBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await zoomInButton.click();
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeGreaterThan(fitted.scale);
+  const explicitlyZoomed = await connectionsCamera(graph);
+  await zoomOutButton.click();
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeLessThan(explicitlyZoomed.scale);
+
+  const normalWheelPrevented = await graph.evaluate((element) => {
+    const event = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 100,
+      clientY: 100,
+      deltaY: -120,
+    });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(normalWheelPrevented).toBe(false);
+  const beforeModifiedWheel = await connectionsCamera(graph);
+  const modifiedWheelPrevented = await graph.evaluate((element) => {
+    const event = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 100,
+      clientY: 100,
+      deltaY: -120,
+      ctrlKey: true,
+    });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(modifiedWheelPrevented).toBe(true);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeGreaterThan(beforeModifiedWheel.scale);
+
+  await fitButton.click();
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(fitted.scale, 5);
+  await keyboardControl.focus();
+  await keyboardControl.press('+');
+  await keyboardControl.press('+');
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeGreaterThan(fitted.scale);
+  const beforeKeyboardPan = await connectionsCamera(graph);
+  await keyboardControl.press('ArrowRight');
+  await page.waitForTimeout(50);
+  let afterKeyboardPan = await connectionsCamera(graph);
+  if (afterKeyboardPan.x === beforeKeyboardPan.x) {
+    await keyboardControl.press('ArrowLeft');
+    await page.waitForTimeout(50);
+    afterKeyboardPan = await connectionsCamera(graph);
+  }
+  expect(afterKeyboardPan.x).not.toBe(beforeKeyboardPan.x);
+  await keyboardControl.press('0');
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(fitted.scale, 5);
+
+  await zoomInButton.click();
+  await zoomInButton.click();
+  const viewportBox = await graph.boundingBox();
+  if (!viewportBox) throw new Error('Connections viewport has no geometry');
+  const center = {
+    x: viewportBox.x + viewportBox.width / 2,
+    y: viewportBox.y + viewportBox.height / 2,
+  };
+  const touch = await context.newCDPSession(page);
+  const beforeTouchPan = await connectionsCamera(graph);
+  await touch.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: center.x, y: center.y, id: 1 }],
+  });
+  await touch.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [{ x: center.x - 70, y: center.y - 45, id: 1 }],
+  });
+  await touch.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
+  });
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .not.toBe(beforeTouchPan.x);
+
+  const beforePinch = await connectionsCamera(graph);
+  await touch.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [
+      { x: center.x - 45, y: center.y, id: 2 },
+      { x: center.x + 45, y: center.y, id: 3 },
+    ],
+  });
+  await touch.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [
+      { x: center.x - 90, y: center.y, id: 2 },
+      { x: center.x + 90, y: center.y, id: 3 },
+    ],
+  });
+  await touch.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
+  });
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeGreaterThan(beforePinch.scale);
+
+  await touch.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: center.x, y: center.y, id: 5 }],
+  });
+  await touch.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [{ x: center.x + 30, y: center.y + 20, id: 5 }],
+  });
+  await expect(graph).toHaveAttribute('data-dragging', 'true');
+  await touch.send('Input.dispatchTouchEvent', {
+    type: 'touchCancel',
+    touchPoints: [],
+  });
+  await expect(graph).toHaveAttribute('data-active-pointers', '0');
+  await expect(graph).toHaveAttribute('data-dragging', 'false');
+  await expect(graph).toHaveAttribute('data-click-suppression', 'false', {
+    timeout: 1_000,
+  });
+
+  if (testInfo.project.name === 'chromium') {
+    const beforePenPan = await connectionsCamera(graph);
+    const dragPen = async (deltaX: number, deltaY: number) => {
+      await touch.send('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x: center.x,
+        y: center.y,
+        button: 'left',
+        buttons: 1,
+        clickCount: 1,
+        pointerType: 'pen',
+      });
+      await touch.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: center.x + deltaX,
+        y: center.y + deltaY,
+        button: 'left',
+        buttons: 1,
+        pointerType: 'pen',
+      });
+      await touch.send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x: center.x + deltaX,
+        y: center.y + deltaY,
+        button: 'left',
+        buttons: 0,
+        clickCount: 1,
+        pointerType: 'pen',
+      });
+    };
+    await dragPen(40, 30);
+    let afterPenPan = await connectionsCamera(graph);
+    if (afterPenPan.x === beforePenPan.x && afterPenPan.y === beforePenPan.y) {
+      await dragPen(-40, -30);
+      afterPenPan = await connectionsCamera(graph);
+    }
+    expect([afterPenPan.x, afterPenPan.y]).not.toEqual([
+      beforePenPan.x,
+      beforePenPan.y,
+    ]);
+  }
+
+  await currentButton.click();
+  await expect(currentNode).toBeInViewport();
+  await expectMapNodeFullyVisible(currentNode, graph);
+  const currentBox = await currentNode.boundingBox();
+  if (!currentBox) throw new Error('Current map node has no geometry');
+  if (testInfo.project.name === 'mobile-chromium') {
+    await touch.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [
+        {
+          x: currentBox.x + currentBox.width / 2,
+          y: currentBox.y + currentBox.height / 2,
+          id: 4,
+        },
+      ],
+    });
+    await touch.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [
+        {
+          x: currentBox.x + currentBox.width / 2 + 50,
+          y: currentBox.y + currentBox.height / 2 + 35,
+          id: 4,
+        },
+      ],
+    });
+    await touch.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+  } else {
+    await page.mouse.move(
+      currentBox.x + currentBox.width / 2,
+      currentBox.y + currentBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      currentBox.x + currentBox.width / 2 + 50,
+      currentBox.y + currentBox.height / 2 + 35,
+      { steps: 5 },
+    );
+    await page.mouse.up();
+  }
+  await expectPathname(page, `/cards/${current.id}/connections`);
+
+  const gesturePerformance = await graph.evaluate(async (element) => {
+    const durations: number[] = [];
+    const longTasks: number[] = [];
+    const observer =
+      typeof PerformanceObserver === 'undefined'
+        ? null
+        : new PerformanceObserver((list) => {
+            longTasks.push(...list.getEntries().map((entry) => entry.duration));
+          });
+    observer?.observe({ entryTypes: ['longtask'] });
+    const startingRenderCount = Number(
+      element.dataset.cameraRenderCount ?? '0',
+    );
+    const started = performance.now();
+    for (let frame = 0; frame < 120; frame += 1) {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+      for (let eventIndex = 0; eventIndex < 4; eventIndex += 1) {
+        const event = new WheelEvent('wheel', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 120,
+          clientY: 120,
+          deltaY: eventIndex % 2 === 0 ? -0.5 : 0.5,
+          ctrlKey: true,
+        });
+        const before = performance.now();
+        element.dispatchEvent(event);
+        durations.push(performance.now() - before);
+      }
+    }
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    longTasks.push(
+      ...(observer?.takeRecords() ?? []).map((entry) => entry.duration),
+    );
+    observer?.disconnect();
+    durations.sort((left, right) => left - right);
+    const p95Index = Math.floor((durations.length - 1) * 0.95);
+    return {
+      durationMs: performance.now() - started,
+      handlerP95Ms: durations[p95Index] ?? Number.NaN,
+      longTaskCount: longTasks.length,
+      longestTaskMs: Math.max(0, ...longTasks),
+      transformWrites:
+        Number(element.dataset.cameraRenderCount ?? '0') - startingRenderCount,
+    };
+  });
+  expect(gesturePerformance.durationMs).toBeGreaterThan(1_500);
+  expect(Number.isFinite(gesturePerformance.handlerP95Ms)).toBe(true);
+  expect(gesturePerformance.transformWrites).toBeLessThanOrEqual(122);
+  console.info(
+    `connections-gesture-benchmark ${JSON.stringify({ project: testInfo.project.name, ...gesturePerformance })}`,
+  );
+  await testInfo.attach('connections-gesture-benchmark.json', {
+    body: Buffer.from(`${JSON.stringify(gesturePerformance, null, 2)}\n`),
+    contentType: 'application/json',
+  });
+
+  await page.waitForTimeout(400);
+  const targetNode = graph
+    .getByRole('button')
+    .filter({ hasText: target.title });
+  await targetNode.focus();
+  await page.waitForTimeout(100);
+  await expect(targetNode).toBeInViewport();
+  await expectMapNodeFullyVisible(targetNode, graph);
+  await expect(graph).toHaveAttribute('data-active-pointers', '0');
+  await expect(graph).toHaveAttribute('data-click-suppression', 'false');
+  await expect(graph).toHaveAttribute('data-dragging', 'false');
+  if (testInfo.project.name === 'mobile-chromium') await targetNode.tap();
+  else await targetNode.click();
+  await touch.detach();
+  await expectPathname(page, `/cards/${target.id}`);
+  await expect(page.getByTestId('card-title')).toHaveValue(target.title);
 });
 
 test('connections readiness records reproducible large-fixture browser timing', async ({
