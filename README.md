@@ -62,6 +62,8 @@ npm run verify
 
 `npm run check` では全runtimeの型検査、静的検査、単体テスト、本番ビルドをまとめて実行します。`npm run verify` はCIと共通の入口で、format check、`check`、Desktop Chrome／Pixel 7相当のE2Eを実行します。型検査のruntime分離、trust boundary、assertion方針、段階的なunsafe lint／codec導入は [型安全の境界と検査](docs/type-safety.md)、データストア・ナビゲーション・描画の依存方向と交換契約は [Application / presentation contracts](docs/application-presentation.md)、本文editorのheadless操作・Tiptap adapter・renderer・structural DOM契約は [Card editor contracts](docs/card-editor.md)、全UI境界・raw interaction・親 #8 要件1–29の対応は [Presentation boundary audit](docs/presentation-boundary-audit.md) を参照してください。検証はlocal fixture／emulatorのみを使い、本番D1や本番データへ接続しません。
 
+Issue、統合／作業ブランチ、PR、merge後検証、型付き純粋ロジックと副作用adapter、mainへの反映制限は [Issue-based type-safe development workflow](docs/development-workflow.md) を正本とします。実装PRは統合ブランチだけをbaseとし、利用者が対象を特定して明示的に許可するまでmainへ反映しません。
+
 ## オフライン条件
 
 初回だけはオンラインでアプリを開き、画面と実行資源をService Workerへ保存してください。以後は通信がなくても、カードの作成・編集・自動保存・リンク・一覧・つながりを、この端末のIndexedDBだけで利用できます。

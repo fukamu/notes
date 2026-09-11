@@ -64,6 +64,8 @@ describe('trust-boundary architecture', () => {
       ['lib/storage/indexed-db.ts', 'decodeStoredCard'],
       ['lib/storage/indexed-db.ts', 'decodeStoredMutation'],
       ['lib/storage/indexed-db.ts', 'decodeStoredConflict'],
+      ['lib/storage/indexed-db.ts', 'planSyncResponseApplication'],
+      ['lib/client/notes-store.tsx', 'reconcileVisibleCardsAfterSync'],
       ['service-worker/sw.ts', 'cacheUrlsFromMessage(event.data)'],
       ['lib/editor/card-link-attributes.ts', 'cardLinkAttributesDecoder'],
     ] as const;
@@ -95,7 +97,67 @@ describe('trust-boundary architecture', () => {
   });
 });
 
+describe('pure-core dependency direction', () => {
+  const coreRoots = ['lib/domain', 'lib/sync', 'lib/application'];
+
+  it('keeps core imports independent of concrete effect adapters', async () => {
+    const files = (await Promise.all(coreRoots.map(sourceFiles))).flat();
+    const concreteEffectDependency =
+      /from ['"]@\/(?:app|components|db|service-worker)\/|from ['"]@\/lib\/(?:client|storage)\//;
+    const violations: string[] = [];
+
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (concreteEffectDependency.test(source)) violations.push(file);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps direct runtime effects out of core', async () => {
+    const files = (await Promise.all(coreRoots.map(sourceFiles))).flat();
+    const directEffect =
+      /\b(?:fetch|indexedDB)\s*\(|\b(?:window|document|localStorage|sessionStorage)\.|\bnavigator\.(?:onLine|serviceWorker)|\b(?:Date\.now|Math\.random|crypto\.|uuidv7\s*\()|\bprocess\.env\b|\bconsole\./;
+    const violations: string[] = [];
+
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (directEffect.test(source)) violations.push(file);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps UUID generation in the outer client adapter', async () => {
+    const domainIds = await readFile('lib/domain/id.ts', 'utf8');
+    const generator = await readFile('lib/client/id-generator.ts', 'utf8');
+
+    expect(domainIds).not.toMatch(/uuidv7|create(?:Card|Mutation|Device)Id/);
+    expect(generator).toContain('v7 as uuidv7');
+    expect(generator).toContain('parseCardId(uuidv7())');
+  });
+});
+
 describe('application and presentation architecture', () => {
+  it('uses one typed lifecycle as the initialization source of truth', async () => {
+    const lifecycle = await readFile(
+      'lib/application/initialization-lifecycle.ts',
+      'utf8',
+    );
+    const store = await readFile('lib/client/notes-store.tsx', 'utf8');
+    const connector = await readFile(
+      'lib/client/use-notes-application.ts',
+      'utf8',
+    );
+
+    expect(lifecycle).toContain('NotesInitializationLifecycle');
+    expect(lifecycle).toContain('transitionNotesInitialization');
+    expect(lifecycle).toContain('assertNever');
+    expect(store).toContain('useState<NotesInitializationLifecycle>');
+    expect(store).not.toMatch(/setInitialized|setInitialSyncComplete/);
+    expect(connector).toContain('isInitialSyncComplete(store.initialization)');
+  });
+
   it('keeps location and view selection out of the data store', async () => {
     const source = await readFile('lib/client/notes-store.tsx', 'utf8');
     for (const forbidden of [

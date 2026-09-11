@@ -3,10 +3,14 @@ name: Quality
 on:
   pull_request:
     branches:
+      - main
       - codex/integration-type-safety-ui
+      - refactor/type-safe-functional
   push:
     branches:
+      - main
       - codex/integration-type-safety-ui
+      - refactor/type-safe-functional
 
 permissions:
   contents: read

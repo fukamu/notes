@@ -1,23 +1,20 @@
 import type { CardId, ConflictId } from '@/lib/domain/id';
+import type { ConflictResolutionChoice } from '@/lib/domain/card-transitions';
 import type { BodySegment, CardRecord } from '@/lib/domain/types';
 import type { NotesLocation } from '@/lib/application/navigation';
 import type { ConnectionsInputModel } from '@/lib/graph/connections-contract';
 
 export type NotesViewName = 'card' | 'history' | 'connections';
 
-export type NotesStatusKind =
-  | 'saved'
-  | 'saving'
-  | 'save-failed'
-  | 'syncing'
-  | 'offline'
-  | 'sync-failed';
+export type NotesStatusViewModel =
+  | { kind: 'saved'; label: string; retryable: false }
+  | { kind: 'saving'; label: string; retryable: false }
+  | { kind: 'save-failed'; label: string; retryable: false }
+  | { kind: 'syncing'; label: string; retryable: false }
+  | { kind: 'offline'; label: string; retryable: false }
+  | { kind: 'sync-failed'; label: string; retryable: true };
 
-export type NotesStatusViewModel = {
-  kind: NotesStatusKind;
-  label: string;
-  retryable: boolean;
-};
+export type NotesStatusKind = NotesStatusViewModel['kind'];
 
 export type HistoryItemViewModel = {
   cardId: CardId;
@@ -33,7 +30,7 @@ export type HistoryViewModel = {
   items: HistoryItemViewModel[];
 };
 
-export type ConflictChoice = 'local' | 'server';
+export type ConflictChoice = ConflictResolutionChoice;
 
 export type ConflictOptionViewModel = {
   choice: ConflictChoice;
