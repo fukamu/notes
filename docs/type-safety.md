@@ -116,3 +116,9 @@ Phase 1〜3でcompiler、codec／brand、client／IndexedDB、API／D1／environ
 `npm run verify` がlocalとCIの共通入口です。format check、全runtime typecheck、全面unsafe lint、unit／Miniflare D1 integration／architecture test、production build、Desktop ChromeとPixel 7相当のE2Eを順に実行します。production build後は `dist/client/sw.js` のmessage guardと、Sites／型宣言／runtime／WranglerのD1 binding一致も検査します。
 
 個別調査には `npm run test:integration`、`npm run test:architecture`、`npm run check:environment` を使えます。CIとtestはlocal fixture／Miniflareだけを使い、本番D1、本番データ、デプロイを使用しません。
+
+## Pure coreとIssue実行管理
+
+業務判断、変換、状態遷移はtyped pure coreへ置き、React、clock、UUID、network、IndexedDB、D1、DOM等はadapterから検証・生成済み値を渡します。core→concrete effectの逆依存はarchitecture testで機械検査し、意味論的な純粋性と入力非変更はunit test/reviewで補います。
+
+Issue分割、integration/work branch、PR base、merge gate、検査設定変更の扱い、main/production境界の正本は [Issue-based type-safe development workflow](development-workflow.md) です。利用者が対象を特定して直接許可するまではmainへ反映しません。
