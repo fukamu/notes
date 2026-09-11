@@ -731,6 +731,63 @@ test('semantic navigation preserves availability, current context and accessible
   ).toHaveAttribute('aria-current', 'true');
 });
 
+test('history centers the current card without obscuring its page chrome', async ({
+  page,
+}, testInfo) => {
+  const cards: LocalFixtureCard[] = Array.from({ length: 12 }, (_, index) => ({
+    id: `01991f20-61d2-7000-8000-${String(index + 701).padStart(12, '0')}`,
+    displayId: { kind: 'official', value: index + 1 },
+    title: `一覧レイアウト ${index + 1}`,
+    body: [],
+    createdAt: index + 1,
+    updatedAt: index + 1,
+    localRevision: 1,
+    serverRevision: 1,
+  }));
+  const currentCard = cards.at(-1);
+  if (!currentCard) throw new Error('history layout fixture is empty');
+
+  await serveSyncCards(page, cards);
+  const response = await page.goto(`/cards/${currentCard.id}/history`);
+  expect(response?.status()).toBe(200);
+
+  const historyList = page.getByTestId('history-list');
+  const currentItem = historyList.locator('[data-current=true]');
+  await expect(currentItem).toHaveAttribute('aria-current', 'page', {
+    timeout: 15_000,
+  });
+
+  const layout = await page.evaluate(() => {
+    const header = document.querySelector('header');
+    const heading = document.querySelector('#history-heading');
+    const list = document.querySelector('[data-testid="history-list"]');
+    const current = list?.querySelector('[data-current="true"]');
+    const navigation = document.querySelector('.app-navigation');
+    if (!header || !heading || !list || !current || !navigation) {
+      throw new Error('history layout elements are missing');
+    }
+
+    return {
+      scrollY: window.scrollY,
+      headerBottom: header.getBoundingClientRect().bottom,
+      headingTop: heading.getBoundingClientRect().top,
+      listTop: list.getBoundingClientRect().top,
+      listBottom: list.getBoundingClientRect().bottom,
+      currentTop: current.getBoundingClientRect().top,
+      currentBottom: current.getBoundingClientRect().bottom,
+      navigationTop: navigation.getBoundingClientRect().top,
+    };
+  });
+
+  expect(layout.scrollY).toBe(0);
+  expect(layout.headingTop).toBeGreaterThanOrEqual(layout.headerBottom);
+  expect(layout.currentTop).toBeGreaterThanOrEqual(layout.listTop);
+  expect(layout.currentBottom).toBeLessThanOrEqual(layout.listBottom);
+  if (testInfo.project.name === 'mobile-chromium') {
+    expect(layout.listBottom).toBeLessThan(layout.navigationTop);
+  }
+});
+
 test('layout failure fallback opens a card through URL navigation', async ({
   page,
 }, testInfo) => {
