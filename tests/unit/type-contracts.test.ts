@@ -27,6 +27,9 @@ describe('type-level contracts', () => {
     expectTypeOf<
       Extract<PendingMutation, { kind: 'resolve' }>['conflictIds']
     >().toExtend<[ConflictId, ...ConflictId[]]>();
+    expectTypeOf<
+      Extract<PendingMutation, { kind: 'resolve' }>['baseServerRevision']
+    >().toEqualTypeOf<number>();
     const brandChecks: [
       CardIsNotMutation,
       CardIsNotDevice,

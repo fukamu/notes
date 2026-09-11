@@ -11,12 +11,10 @@ async function loadCacheMessageParser(): Promise<CacheMessageParser> {
   );
   const context = createContext({
     URL,
-    self: {
-      addEventListener: () => undefined,
-      clients: {},
-      location: { origin: 'https://notes.example' },
-      skipWaiting: () => undefined,
-    },
+    addEventListener: () => undefined,
+    clients: {},
+    location: { origin: 'https://notes.example' },
+    skipWaiting: () => undefined,
   });
   runInContext(
     `${source}\nglobalThis.__cacheUrlsFromMessage = cacheUrlsFromMessage;`,

@@ -4,6 +4,7 @@ import {
   literalDecoder,
   nullableDecoder,
   objectDecoder,
+  refineDecoder,
   safeIntegerDecoder,
   stringDecoder,
   transformDecoder,
@@ -24,6 +25,8 @@ export const CONTRACT_LIMITS = {
   conflictIds: 500,
   conflicts: 100_000,
   mutations: 500,
+  payloadBytes: 4_000_000,
+  serializedBody: 2_000_000,
   text: 100_000,
   title: 10_000,
 } as const;
@@ -102,7 +105,6 @@ const nonEmptyConflictIdsDecoder = transformDecoder(
 const mutationBase = {
   mutationId: mutationIdDecoder,
   cardId: cardIdDecoder,
-  baseServerRevision: nullableDecoder(positiveSafeIntegerDecoder),
   title: stringDecoder({ maxLength: CONTRACT_LIMITS.title }),
   body: bodyDecoder,
   createdAt: nonNegativeSafeIntegerDecoder,
@@ -112,16 +114,19 @@ const mutationBase = {
 const upsertMutationDecoder = objectDecoder({
   ...mutationBase,
   kind: literalDecoder('upsert'),
+  baseServerRevision: nullableDecoder(positiveSafeIntegerDecoder),
   conflictIds: emptyConflictIdsDecoder,
 });
 const resolveMutationDecoder = objectDecoder({
   ...mutationBase,
   kind: literalDecoder('resolve'),
+  baseServerRevision: positiveSafeIntegerDecoder,
   conflictIds: nonEmptyConflictIdsDecoder,
 });
-export const pendingMutationDecoder = unionDecoder(
-  upsertMutationDecoder,
-  resolveMutationDecoder,
+export const pendingMutationDecoder = refineDecoder(
+  unionDecoder(upsertMutationDecoder, resolveMutationDecoder),
+  (mutation) => mutation.createdAt <= mutation.updatedAt,
+  'expected createdAt <= updatedAt',
 );
 
 export type DisplayId = InferDecoder<typeof displayIdDecoder>;

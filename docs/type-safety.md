@@ -24,6 +24,8 @@ global typeの混在を避けるため、`npm run typecheck` は次の独立し�
 
 `skipLibCheck: true` は、Vite、Cloudflare、Reactなど複数の第三者宣言の検査に限定して残しています。上記すべてのentryでアプリの `.ts`、`.tsx` と対象の `.js` は通常どおり検査されるため、自コードの検査を除外する設定ではありません。
 
+Oxlintはapp、API／D1、Service Worker、tooling、testの全対象でunsafe assignment／argument／call／member access／return、不要なassertion、non-null assertion、switch exhaustivenessをerrorにします。baseline、対象の広い除外、blanket disableはありません。Service Workerは `service-worker/sw.ts` を型付き正本とし、build時に静的asset `public/sw.js` を生成してproduction成果物も検査します。
+
 ## assertionとinvariant
 
 外部値を `as` だけで信頼してapplicationやdomainへ渡しません。原則は次の順です。
@@ -59,6 +61,22 @@ domain objectをnetworkまたはIndexedDBへ渡すときは、`encodeSyncRequest
 
 IndexedDBの `get()`／`getAll()` はadapter内でも `unknown` として扱います。壊れたcards、mutations、conflicts、metaを見つけた場合は初期化／同期を失敗させ、raw recordを自動削除・上書きしません。UIは「端末への保存に失敗」または「同期失敗・端末に保存済み」を表示します。device IDを自動生成するのはmeta recordが存在しない場合だけで、存在する不正recordは保持して診断対象にします。自動修復やmigrationは行いません。
 
+## API／D1境界とatomicity
+
+同期APIはpayload byte上限を確認し、`Request.json()` の結果を `unknown` のまま共通 `SyncRequest` codecへ渡します。malformed JSON、root型、field、UUIDv7、safe integer、timestamp順序、本文、件数、重複、unknown field、mutation kind別invariantの違反は400、payload超過は413です。検証完了前にはbinding取得、schema初期化、D1 writeを行いません。内部障害は500とし、responseとlogにはraw request／rowを含めません。
+
+D1の `.first()`／`.all()` はgeneric指定をruntime保証にせず `unknown` として受け、row codecでID、display ID、revision、timestamp、nullable性、文字列を検査します。`body_json` はparse結果を `unknown` とし、共通Body codecを通します。rowからmappingしたserver outputは最後に `SyncResponse` codecで重複と参照を含めて再検証してから200 responseにします。
+
+`resolve` は非空・重複なしのconflict IDに加え、全IDが対象cardに属することとbase revisionを、card updateのSQL条件内で確認します。update、対象conflict削除、mutation log挿入は単一D1 batchです。条件不成立時は後続statementもguardされて無変更になり、batch末尾で失敗した場合はD1 transactionが全statementをrollbackします。このため確認後race、別card／存在しない／一部だけ正しいID、stale revisionで上書きできません。
+
+## schemaとenvironment
+
+Drizzle schema、checked-in migration、runtime初期化DDLは `tests/unit/schema-drift.test.ts` がtable、column、NOT NULL／primary key、CHECK、unique／indexまで比較します。追加migrationは従来runtime DDLに存在した正数CHECKをDrizzle管理schemaにも揃えるもので、column／index／有効データの意味は変えません。base migrationで作った有効fixtureが追加migration後も同じdomain値になることをMiniflareで確認します。schema変更時はDrizzle定義・migration・runtime DDLを同じPRで更新し、drift testを通します。
+
+Cloudflare bindingは `getD1Binding(unknown)` だけが `DB` をD1互換objectへ昇格させます。`.openai/hosting.json`、Cloudflare型宣言、runtime accessor、build後のWrangler設定のbinding名は `npm run check:environment` が照合します。欠落・不正bindingはconfiguration errorとなり、同期APIは安全な500を返します。
+
+`NEXT_PUBLIC_SITE_URL` は未設定または空なら公開既定URLを使います。設定時はabsolute HTTP(S) URLだけを受理し、不正値はmetadata moduleの初期化／buildを明示的に失敗させます。相対URL、HTTP(S)以外、非文字列をassertionで通しません。
+
 ## trust boundary
 
 | 境界                          | 現在の検査                                                            | 担当Phase     |
@@ -69,10 +87,12 @@ IndexedDBの `get()`／`getAll()` はadapter内でも `unknown` として扱い�
 | 合成互換fixture               | 現行のcard/body/mutation/conflict/sync形と固定UUIDv7                  | Phase 1 (#10) |
 | networkのsync response        | 全体codec、重複／参照／ack subset、transaction前検証                  | Phase 2 (#11) |
 | IndexedDB record              | 全storeをunknownからdecodeし、明示encodeでv1形式を維持                | Phase 2 (#11) |
-| APIのsync request             | 共通codecは定義済み。HTTP境界での最終適用とerror分類を完成            | Phase 3 (#12) |
-| D1 row / JSON column          | 現行形式を維持し、row codecを追加                                     | Phase 3 (#12) |
+| APIのsync request             | byte上限後、Request JSONをunknownから共通codecでdecode、400／413分類  | Phase 3 (#12) |
+| D1 row / JSON column          | first／allとJSON parseをunknownからrow／Body codecでdecode            | Phase 3 (#12) |
+| Cloudflare environment        | DB bindingをvalidated accessorで取得し、Sites／型／Wranglerを照合     | Phase 3 (#12) |
+| public URL environment        | absolute HTTP(S) URLとしてparse、未設定時の既定値を明文化             | Phase 3 (#12) |
 
-Phase 2ではclient response／IndexedDBを完成させました。D1 row、`body_json`、environment binding、API requestの最終適用、D1 transactionの意味、unsafe rule全面強制はPhase 3で完成させます。
+Phase 1〜3でcompiler、codec／brand、client／IndexedDB、API／D1／environmentと全面unsafe ruleを完成させました。親 #9 の要件1–30の証跡は `docs/type-safety-audit.md` に記録します。
 
 ## 第三者adapterの追加チェックリスト
 
@@ -83,7 +103,16 @@ Phase 2ではclient response／IndexedDBを完成させました。D1 row、`bod
 - assertionがある場合、直前のguardと理由があり、範囲が最小か。
 - malformed値、欠損値、正しい値を境界testで確認したか。
 - adapterからapplication/domainへ渡す型に第三者固有の曖昧さが漏れていないか。
+- API／database境界なら、検証失敗前後のstorage snapshotが同一か。
+- 新しいenvironment bindingなら、型宣言、hosting、Wrangler、runtime accessorの照合を追加したか。
+- schema変更なら、Drizzle、migration、runtime DDLのdrift testを更新したか。
+
+## invalid dataの回復方針
+
+不正なnetwork／API inputは破棄し、端末側pending mutationを残して再試行可能にします。不正なIndexedDB recordは自動削除・上書きせず、利用者向け失敗表示と診断を残します。不正なD1 row／JSONは200 responseとして返さず500で停止し、該当requestによる追加writeを行いません。D1の修復は検証済みbackupや管理手順による明示操作とし、request処理中に推測修復しません。
 
 ## 共通の検証入口
 
-`npm run verify` がlocalとCIの共通入口です。format check、全runtime typecheck、lint、unit/integration test、production build、Desktop ChromeとPixel 7相当のE2Eを順に実行します。production build後は `dist/client/sw.js` が存在し、型検査済みのmessage guardを含むことも検査します。CIとtestはlocalのfixture / emulatorだけを使い、本番D1、本番データ、デプロイを使用しません。
+`npm run verify` がlocalとCIの共通入口です。format check、全runtime typecheck、全面unsafe lint、unit／Miniflare D1 integration／architecture test、production build、Desktop ChromeとPixel 7相当のE2Eを順に実行します。production build後は `dist/client/sw.js` のmessage guardと、Sites／型宣言／runtime／WranglerのD1 binding一致も検査します。
+
+個別調査には `npm run test:integration`、`npm run test:architecture`、`npm run check:environment` を使えます。CIとtestはlocal fixture／Miniflareだけを使い、本番D1、本番データ、デプロイを使用しません。

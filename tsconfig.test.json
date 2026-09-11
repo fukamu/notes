@@ -2,7 +2,7 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "lib": ["dom", "dom.iterable", "esnext"],
-    "types": ["node"]
+    "types": ["node", "@cloudflare/workers-types"]
   },
   "include": ["tests/**/*.ts"],
   "exclude": ["node_modules"]

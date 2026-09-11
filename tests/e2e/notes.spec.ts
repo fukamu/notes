@@ -126,6 +126,7 @@ test('offline creation, automatic save, reload, reconnect and another device syn
   const officialValue = await page
     .getByTestId('display-id')
     .getAttribute('data-value');
+  if (officialValue === null) throw new Error('official display ID is missing');
 
   const otherDevice = await browser.newContext();
   const otherPage = await otherDevice.newPage();
@@ -137,7 +138,7 @@ test('offline creation, automatic save, reload, reconnect and another device syn
   );
   await expect(otherPage.getByTestId('display-id')).toHaveAttribute(
     'data-value',
-    officialValue!,
+    officialValue,
   );
   await expect(otherPage.getByTestId('body-editor')).toContainText(
     '通信がなくても、この本文は端末に残る。',
@@ -195,6 +196,8 @@ test('duplicate provisional ids become unique official ids without renumbering l
   const firstOfficial = await firstPage
     .getByTestId('display-id')
     .getAttribute('data-value');
+  if (firstOfficial === null)
+    throw new Error('first official display ID is missing');
 
   await late.setOffline(false);
   await expect(latePage.getByTestId('display-id')).toHaveAttribute(
@@ -207,6 +210,8 @@ test('duplicate provisional ids become unique official ids without renumbering l
   const lateOfficial = await latePage
     .getByTestId('display-id')
     .getAttribute('data-value');
+  if (lateOfficial === null)
+    throw new Error('late official display ID is missing');
   expect(lateOfficial).not.toBe(firstOfficial);
   expect(Number(lateOfficial)).toBeGreaterThan(Number(firstOfficial));
 
@@ -216,12 +221,12 @@ test('duplicate provisional ids become unique official ids without renumbering l
   await openFromHistory(verifierPage, firstTitle);
   await expect(verifierPage.getByTestId('display-id')).toHaveAttribute(
     'data-value',
-    firstOfficial!,
+    firstOfficial,
   );
   await openFromHistory(verifierPage, lateTitle);
   await expect(verifierPage.getByTestId('display-id')).toHaveAttribute(
     'data-value',
-    lateOfficial!,
+    lateOfficial,
   );
 
   await verifier.close();

@@ -11,6 +11,10 @@ try {
   });
 }
 
-if (!source.includes("data.type !== 'CACHE_URLS'")) {
+if (
+  !source.includes("data.type !== 'CACHE_URLS'") ||
+  !source.includes("typeof value !== 'string'") ||
+  !source.includes('url.origin === worker.location.origin')
+) {
   throw new Error('Production Service Worker is missing the CACHE_URLS guard');
 }
