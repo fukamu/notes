@@ -119,11 +119,17 @@ describe('card editor input view model', () => {
         { cardId: earlier.id, label: '#1 Untitled' },
       ],
       candidates: [
-        { cardId: earlier.id, displayLabel: '#1', title: 'Untitled' },
         {
           cardId: provisional.id,
           displayLabel: '仮 #2',
+          displayValue: 2,
           title: 'editor-provisional',
+        },
+        {
+          cardId: earlier.id,
+          displayLabel: '#1',
+          displayValue: 1,
+          title: 'Untitled',
         },
       ],
     });

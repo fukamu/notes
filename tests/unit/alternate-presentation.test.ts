@@ -61,7 +61,14 @@ function model(
       cardId: firstId,
       body: [],
       labels: [{ cardId: firstId, label: '#1 First' }],
-      candidates: [{ cardId: secondId, displayLabel: '#2', title: 'Second' }],
+      candidates: [
+        {
+          cardId: secondId,
+          displayLabel: '#2',
+          displayValue: 2,
+          title: 'Second',
+        },
+      ],
     },
     history: {
       currentCardId: firstId,
@@ -256,7 +263,14 @@ describe('alternate presentation contract', () => {
         selectionEmpty: false,
         canUndo: true,
         canRedo: true,
-        candidates: [{ cardId: secondId, displayLabel: '#2', title: 'Second' }],
+        candidates: [
+          {
+            cardId: secondId,
+            displayLabel: '#2',
+            displayValue: 2,
+            title: 'Second',
+          },
+        ],
         suggestionOpen: true,
         activeCandidate: 0,
       },

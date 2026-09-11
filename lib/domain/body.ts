@@ -1,6 +1,6 @@
 import type { BodySegment, CardRecord } from './types';
 import type { CardId } from './id';
-import { formatDisplayId, sortCardsByDisplayId } from './display-id';
+import { formatDisplayId } from './display-id';
 import { visibleTitle } from './types';
 
 export function normalizeBody(segments: BodySegment[]): BodySegment[] {
@@ -49,10 +49,29 @@ export function outgoingCardIds(body: BodySegment[]): CardId[] {
 }
 
 export function linkCandidates(
-  cards: CardRecord[],
+  cards: readonly CardRecord[],
   currentCardId: CardId,
+  numberPrefix = '',
 ): CardRecord[] {
-  return sortCardsByDisplayId(cards).filter(
-    (card) => card.id !== currentCardId,
-  );
+  if (!/^\d*$/u.test(numberPrefix)) return [];
+  return cards
+    .map((card, sourceIndex) => ({ card, sourceIndex }))
+    .filter(
+      ({ card }) =>
+        card.id !== currentCardId &&
+        String(card.displayId.value).startsWith(numberPrefix),
+    )
+    .sort((left, right) => {
+      const leftValue = left.card.displayId.value;
+      const rightValue = right.card.displayId.value;
+      if (leftValue !== rightValue) return leftValue < rightValue ? 1 : -1;
+      if (left.card.displayId.kind !== right.card.displayId.kind) {
+        return left.card.displayId.kind === 'official' ? -1 : 1;
+      }
+      const byCreatedAt = left.card.createdAt - right.card.createdAt;
+      if (byCreatedAt !== 0) return byCreatedAt;
+      const byId = left.card.id.localeCompare(right.card.id);
+      return byId !== 0 ? byId : left.sourceIndex - right.sourceIndex;
+    })
+    .map(({ card }) => card);
 }

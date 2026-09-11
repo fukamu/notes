@@ -33,6 +33,7 @@ export function selectCardEditorInputModel(
     candidates: linkCandidates(cards, currentCard.id).map((card) => ({
       cardId: card.id,
       displayLabel: formatDisplayId(card.displayId),
+      displayValue: card.displayId.value,
       title: visibleTitle(card.title),
     })),
   };

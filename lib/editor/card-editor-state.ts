@@ -3,6 +3,7 @@ import type { CardId } from '@/lib/domain/id';
 export type CardEditorCandidateState = {
   open: boolean;
   activeIndex: number;
+  numberPrefix: string;
 };
 
 export type CardEditorCandidateCommand =
@@ -19,7 +20,13 @@ export type CardEditorCandidateKeyResult = {
 export const CLOSED_CARD_EDITOR_CANDIDATES: CardEditorCandidateState = {
   open: false,
   activeIndex: 0,
+  numberPrefix: '',
 };
+
+export type CardEditorCandidateToken = Readonly<{
+  numberPrefix: string;
+  length: number;
+}>;
 
 export type CardEditorDocumentUpdate =
   | 'identity-reset'
@@ -35,8 +42,10 @@ export function classifyCardEditorDocumentUpdate(
   return bodyMatches ? 'unchanged' : 'external-body-sync';
 }
 
-export function openCardEditorCandidates(): CardEditorCandidateState {
-  return { open: true, activeIndex: 0 };
+export function openCardEditorCandidates(
+  numberPrefix = '',
+): CardEditorCandidateState {
+  return { open: true, activeIndex: 0, numberPrefix };
 }
 
 export function closeCardEditorCandidates(): CardEditorCandidateState {
@@ -85,7 +94,10 @@ export function handleCardEditorCandidateKey(
       preventDefault: true,
     };
   }
-  if (key.length === 1 || key === 'Backspace' || key === 'Delete') {
+  if (/^[0-9]$/u.test(key) || key === 'Backspace' || key === 'Delete') {
+    return { state, command: { type: 'none' }, preventDefault: false };
+  }
+  if (key.length === 1) {
     return {
       state: CLOSED_CARD_EDITOR_CANDIDATES,
       command: { type: 'close' },
@@ -109,12 +121,33 @@ export function isCardEditorHashContext(
   textBeforeCursor: string,
   selectionEmpty: boolean,
 ): boolean {
-  if (!selectionEmpty || !textBeforeCursor.endsWith('#')) return false;
-  const prefix = textBeforeCursor.slice(0, -1);
+  return cardEditorCandidateToken(textBeforeCursor, selectionEmpty) !== null;
+}
+
+export function cardEditorCandidateToken(
+  textBeforeCursor: string,
+  selectionEmpty: boolean,
+): CardEditorCandidateToken | null {
+  if (!selectionEmpty) return null;
+  const match = textBeforeCursor.match(/#([0-9]*)$/u);
+  if (!match) return null;
+  const numberPrefix = match[1];
+  if (numberPrefix === undefined) return null;
+  const length = numberPrefix.length + 1;
+  const prefix = textBeforeCursor.slice(0, -length);
   const previous = prefix.at(-1) ?? '';
-  if (previous && /[\p{L}\p{N}_]/u.test(previous)) return false;
+  if (previous && /[\p{L}\p{N}_]/u.test(previous)) return null;
 
   const token = prefix.split(/\s/u).at(-1) ?? '';
-  if (token.includes('://') || token.includes('](')) return false;
-  return true;
+  if (token.includes('://') || token.includes('](')) return null;
+  return { numberPrefix, length };
+}
+
+export function filterCardEditorCandidates<
+  Candidate extends Readonly<{ displayValue: number }>,
+>(candidates: readonly Candidate[], numberPrefix: string): Candidate[] {
+  if (!/^\d*$/u.test(numberPrefix)) return [];
+  return candidates.filter((candidate) =>
+    String(candidate.displayValue).startsWith(numberPrefix),
+  );
 }

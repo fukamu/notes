@@ -563,6 +563,108 @@ test('headless editor preserves IME, candidate keyboard, link activation and ide
   await keyboard.detach();
 });
 
+test('link candidates are descending, prefix-filtered, scroll-following and explicit-only', async ({
+  page,
+  context,
+}) => {
+  await ready(page);
+  await page.locator('html[data-offline-ready=true]').waitFor({
+    state: 'attached',
+    timeout: 15_000,
+  });
+  await context.setOffline(true);
+  const cards: LocalFixtureCard[] = Array.from({ length: 101 }, (_, index) => ({
+    id: fixtureCardId(`candidate-prefix-${index + 1}`),
+    displayId: { kind: 'official', value: index + 1 },
+    title: `候補 ${index + 1}`,
+    body: [],
+    createdAt: index + 1,
+    updatedAt: index + 1,
+    localRevision: 1,
+    serverRevision: 1,
+  }));
+  const current = cards.at(-1);
+  if (!current) throw new Error('Candidate fixture is empty');
+  await replaceLocalCards(page, cards);
+  await page.goto(`/cards/${current.id}`);
+  await expect(page.getByTestId('card-title')).toHaveValue('候補 101');
+
+  const editor = page.getByTestId('body-editor');
+  await editor.click();
+  const input = await context.newCDPSession(page);
+  await input.send('Input.insertText', { text: '#' });
+  const candidateList = page.getByTestId('link-candidates');
+  const candidateButtons = candidateList.getByRole('button');
+  await expect(candidateButtons).toHaveCount(100);
+  await expect(candidateButtons.first()).toContainText('#100');
+  await expect(candidateButtons.last()).toContainText('#1');
+
+  for (let index = 0; index < 30; index += 1) {
+    await editor.press('ArrowDown');
+  }
+  const activeCandidate = candidateList.locator('[aria-current=true]');
+  await expect(activeCandidate).toContainText('#70');
+  const activeIsVisible = await activeCandidate.evaluate((element) => {
+    const item = element.getBoundingClientRect();
+    const scroll = element.closest('[data-testid=link-candidate-scroll]');
+    if (!scroll) return false;
+    const viewport = scroll.getBoundingClientRect();
+    return item.top >= viewport.top && item.bottom <= viewport.bottom;
+  });
+  expect(activeIsVisible).toBe(true);
+  expect(
+    await page
+      .getByTestId('link-candidate-scroll')
+      .evaluate((element) => Math.max(element.scrollTop, 0)),
+  ).toBeGreaterThan(0);
+
+  await input.send('Input.insertText', { text: '3' });
+  await expect(candidateButtons).toHaveCount(11);
+  expect(
+    await candidateButtons.evaluateAll((buttons) =>
+      buttons.map((button) => button.textContent?.match(/#\d+/u)?.[0]),
+    ),
+  ).toEqual([
+    '#39',
+    '#38',
+    '#37',
+    '#36',
+    '#35',
+    '#34',
+    '#33',
+    '#32',
+    '#31',
+    '#30',
+    '#3',
+  ]);
+  await input.send('Input.insertText', { text: '2' });
+  await expect(candidateButtons).toHaveCount(1);
+  await expect(candidateButtons.first()).toContainText('#32');
+  await expect(editor.locator('[data-card-link-id]')).toHaveCount(0);
+
+  await input.send('Input.insertText', { text: ' ' });
+  await expect(candidateList).toHaveCount(0);
+  await expect(editor).toContainText('#32 ');
+  await expect(editor.locator('[data-card-link-id]')).toHaveCount(0);
+
+  await input.send('Input.insertText', { text: '#' });
+  await editor.press('Escape');
+  await expect(candidateList).toHaveCount(0);
+  await expect(editor).toContainText('#32 #');
+
+  await input.send('Input.insertText', { text: '32' });
+  await expect(candidateButtons).toHaveCount(1);
+  await candidateButtons.first().click();
+  await expect(editor.locator('[data-card-link-id]')).toHaveCount(1);
+  await expect(editor.getByRole('link')).toContainText('候補 32');
+  await page.getByTestId('undo').click();
+  await expect(editor.locator('[data-card-link-id]')).toHaveCount(0);
+  await expect(editor).toContainText('#32 #32');
+  await page.getByTestId('redo').click();
+  await expect(editor.locator('[data-card-link-id]')).toHaveCount(1);
+  await input.detach();
+});
+
 test('global directed graph is safe and operable for the reported and cyclic fixtures', async ({
   page,
   context,
