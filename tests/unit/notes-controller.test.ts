@@ -165,13 +165,20 @@ describe('notes application controller', () => {
     });
     const actions = createNotesApplicationController(store, navigator);
     const model = createNotesPresentationModel(store, navigator.getLocation());
-    const props: Parameters<typeof NotesPresentation>[0] = { model, actions };
+    const props: Parameters<typeof NotesPresentation>[0] = {
+      model,
+      actions,
+      features: {
+        renderCardEditor: () => null,
+        renderConnections: () => null,
+      },
+    };
 
     expect(props.model).toMatchObject({
       activeView: 'card',
       currentCardDisplayLabel: '#7',
       availableViews: { card: true, history: true, connections: true },
     });
-    expect(props.model.connections?.graph.nodes).toHaveLength(1);
+    expect(props.model.connections?.nodes).toHaveLength(1);
   });
 });

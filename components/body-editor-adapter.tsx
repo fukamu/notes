@@ -1,25 +1,31 @@
 'use client';
 
-import {
-  BodyEditor,
-  defaultCardEditorPresentation,
-} from '@/components/body-editor';
+import type { ComponentType } from 'react';
+import type { CardEditorRendererProps } from '@/components/presentation-contract';
 import type {
   CardEditorInputModel,
   NotesPresentationActions,
 } from '@/lib/application/presentation';
 import { useCardEditor } from '@/lib/editor/use-card-editor';
+import type { CardEditorPresentationAdapter } from '@/lib/editor/use-card-editor';
 
 type Props = {
   model: CardEditorInputModel;
   actions: Pick<NotesPresentationActions, 'openCard' | 'updateBody'>;
+  presentation: CardEditorPresentationAdapter;
+  Renderer: ComponentType<CardEditorRendererProps>;
 };
 
-export function BodyEditorAdapter({ model, actions }: Props) {
+export function BodyEditorAdapter({
+  model,
+  actions,
+  presentation,
+  Renderer,
+}: Props) {
   const controller = useCardEditor({
     input: model,
     actions,
-    presentation: defaultCardEditorPresentation,
+    presentation,
   });
-  return <BodyEditor model={controller.model} commands={controller.commands} />;
+  return <Renderer model={controller.model} commands={controller.commands} />;
 }

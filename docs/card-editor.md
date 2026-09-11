@@ -21,14 +21,17 @@ toolbar, icons, and theme.
   injected. The adapter decodes third-party attributes with the #9 codec
   boundary before dispatching a branded `CardId`.
 - `components/body-editor-adapter.tsx` connects the application input and
-  actions to the headless hook and supplies the chosen presentation adapter.
+  actions to the headless hook and receives its renderer and presentation
+  adapter from the composition root.
 - `components/body-editor.tsx` is the default renderer. It receives only a
   typed `CardEditorModel` and `CardEditorCommands`; it owns the current popup,
   toolbar, icons, spacing, colors, and copy.
 
 An alternative renderer can provide different content and NodeView classes,
-then render the same model/commands. It does not need the notes store,
-navigation implementation, IndexedDB, sync protocol, or Tiptap event logic.
+then render the same model/commands. `components/notes-app.tsx` is the only
+place that binds that concrete renderer to the headless adapter. The renderer
+does not need the notes store, navigation implementation, IndexedDB, sync
+protocol, or Tiptap event logic.
 
 ## Body and structural contract
 

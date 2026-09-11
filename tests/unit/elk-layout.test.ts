@@ -4,10 +4,13 @@ import type { CardRecord } from '@/lib/domain/types';
 import { invariant } from '@/lib/shared/invariant';
 import { fixtureCardId } from '@/tests/fixtures/ids';
 import {
-  CONNECTIONS_LAYOUT_OPTIONS,
+  CONNECTIONS_LAYOUT_ALGORITHM_OPTIONS,
+  connectionsLayoutOptions,
   layoutConnectionsGraph,
   type ConnectionsLayout,
   type ConnectionsLayoutEdge,
+  type ConnectionsLayoutGraph,
+  type ConnectionsLayoutMetrics,
   type ConnectionsLayoutNode,
   type LayoutPoint,
 } from '@/lib/graph/elk-layout';
@@ -87,7 +90,7 @@ const fixtures: Fixture[] = [
   },
 ];
 
-function fixtureGraph(fixture: Fixture) {
+function fixtureGraph(fixture: Fixture): ConnectionsLayoutGraph {
   const outgoing = new Map(fixture.nodes.map((id) => [id, [] as string[]]));
   for (const [source, target] of fixture.edges) {
     const targets = outgoing.get(source);
@@ -107,8 +110,36 @@ function fixtureGraph(fixture: Fixture) {
     localRevision: 1,
     serverRevision: 1,
   }));
-  return buildConnectionsGraph(cards);
+  const graph = buildConnectionsGraph(cards);
+  return {
+    nodes: graph.nodes.map(({ card }) => ({ id: card.id })),
+    edges: graph.edges,
+  };
 }
+
+const compactMetrics: ConnectionsLayoutMetrics = {
+  nodeWidth: 148,
+  nodeHeight: 56,
+  portSize: 2,
+  componentSpacing: 64,
+  nodeSpacing: 48,
+  edgeNodeSpacing: 24,
+  layerSpacing: 80,
+  edgeLayerSpacing: 28,
+  padding: { top: 16, right: 16, bottom: 16, left: 16 },
+};
+
+const spaciousMetrics: ConnectionsLayoutMetrics = {
+  nodeWidth: 232,
+  nodeHeight: 96,
+  portSize: 4,
+  componentSpacing: 128,
+  nodeSpacing: 96,
+  edgeNodeSpacing: 44,
+  layerSpacing: 148,
+  edgeLayerSpacing: 56,
+  padding: { top: 32, right: 40, bottom: 36, left: 44 },
+};
 
 function overlaps(
   left: ConnectionsLayoutNode,
@@ -185,6 +216,9 @@ function expectFiniteLayout(layout: ConnectionsLayout) {
     expect(edge.sections.length).toBeGreaterThan(0);
     for (const points of sectionPoints(edge)) {
       expect(points.length).toBeGreaterThanOrEqual(2);
+      expect(
+        new Set(points.map((point) => `${point.x},${point.y}`)).size,
+      ).toBeGreaterThan(1);
       for (const point of points) {
         expect(Number.isFinite(point.x)).toBe(true);
         expect(Number.isFinite(point.y)).toBe(true);
@@ -257,7 +291,7 @@ function expectNoNodeOrEdgeIntrusions(layout: ConnectionsLayout) {
 
 describe('ELK connections layout', () => {
   it('uses the layered orthogonal algorithm and explicit spacing/crossing settings', () => {
-    expect(CONNECTIONS_LAYOUT_OPTIONS).toMatchObject({
+    expect(CONNECTIONS_LAYOUT_ALGORITHM_OPTIONS).toMatchObject({
       'elk.algorithm': 'layered',
       'elk.direction': 'RIGHT',
       'elk.edgeRouting': 'ORTHOGONAL',
@@ -265,29 +299,55 @@ describe('ELK connections layout', () => {
       'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
       'elk.separateConnectedComponents': 'true',
     });
+    expect(connectionsLayoutOptions(spaciousMetrics)).toMatchObject({
+      'elk.spacing.componentComponent': '128',
+      'elk.spacing.nodeNode': '96',
+      'elk.layered.spacing.nodeNodeBetweenLayers': '148',
+      'elk.padding': '[top=32,left=44,bottom=36,right=40]',
+    });
   });
 
   for (const fixture of fixtures) {
-    it(`returns deterministic, finite, node-safe geometry for ${fixture.name}`, async () => {
-      const graph = fixtureGraph(fixture);
-      const first = await layoutConnectionsGraph(graph);
-      const second = await layoutConnectionsGraph(graph);
+    for (const [density, metrics] of [
+      ['compact', compactMetrics],
+      ['spacious', spaciousMetrics],
+    ] as const) {
+      it(`returns deterministic, finite, node-safe ${density} geometry for ${fixture.name}`, async () => {
+        const graph = fixtureGraph(fixture);
+        const first = await layoutConnectionsGraph(graph, metrics);
+        const second = await layoutConnectionsGraph(graph, metrics);
 
-      expect(first).toEqual(second);
-      expect(first.nodes.map((node) => node.id)).toEqual(
-        fixture.nodes.map(fixtureCardId),
-      );
-      expect(first.edges).toHaveLength(fixture.edges.length);
-      expectFiniteLayout(first);
-      expectNoNodeOrEdgeIntrusions(first);
-      expectEdgePortsApplied(first);
-      for (const edge of first.edges) {
-        const firstSection = edge.sections[0];
-        invariant(firstSection, `Missing section for ${edge.id}`);
-        expect(firstSection.incomingShape).toBe(edge.sourcePortId);
-        expect(edge.sections.at(-1)?.outgoingShape).toBe(edge.targetPortId);
-      }
-    });
+        expect(first).toEqual(second);
+        expect(first.nodes.map((node) => node.id)).toEqual(
+          fixture.nodes.map(fixtureCardId),
+        );
+        expect(first.edges).toHaveLength(fixture.edges.length);
+        expect(
+          first.nodes.every((node) => node.width === metrics.nodeWidth),
+        ).toBe(true);
+        expect(
+          first.nodes.every((node) => node.height === metrics.nodeHeight),
+        ).toBe(true);
+        expect(
+          first.nodes
+            .flatMap((node) => node.ports)
+            .every(
+              (port) =>
+                port.width === metrics.portSize &&
+                port.height === metrics.portSize,
+            ),
+        ).toBe(true);
+        expectFiniteLayout(first);
+        expectNoNodeOrEdgeIntrusions(first);
+        expectEdgePortsApplied(first);
+        for (const edge of first.edges) {
+          const firstSection = edge.sections[0];
+          invariant(firstSection, `Missing section for ${edge.id}`);
+          expect(firstSection.incomingShape).toBe(edge.sourcePortId);
+          expect(edge.sections.at(-1)?.outgoingShape).toBe(edge.targetPortId);
+        }
+      });
+    }
   }
 
   it('keeps self and mutual routes non-degenerate and visually distinct', async () => {
@@ -300,7 +360,7 @@ describe('ELK connections layout', () => {
         ['B', 'A'],
       ],
     });
-    const layout = await layoutConnectionsGraph(graph);
+    const layout = await layoutConnectionsGraph(graph, compactMetrics);
     const self = layout.edges.find(
       (edge) =>
         edge.sourceCardId === fixtureCardId('A') &&

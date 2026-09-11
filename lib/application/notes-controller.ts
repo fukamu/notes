@@ -140,7 +140,6 @@ export function createNotesPresentationModel(
       history: true,
       connections: hasCurrentCard,
     },
-    cards: store.cards,
     currentCard,
     currentCardDisplayLabel: currentCard
       ? formatDisplayId(currentCard.displayId)

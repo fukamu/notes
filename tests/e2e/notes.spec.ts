@@ -517,73 +517,49 @@ test('global directed graph is safe and operable for the reported and cyclic fix
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 15_000,
   });
-  await expect(graph.getByTestId('connection-node')).toHaveCount(7);
-  for (const id of Object.values(ids)) {
-    await expect(graph.locator(`[data-card-id="${id}"]`)).toBeVisible();
-  }
-
-  const edge = (source: string, target: string) =>
-    graph.locator(
-      `[data-testid="connection-edge"][data-source="${source}"][data-target="${target}"]`,
-    );
-  const reportedEdges = [
-    edge(ids.reportC, ids.reportA),
-    edge(ids.reportC, ids.reportB),
-    edge(ids.reportA, ids.reportB),
-  ];
-  for (const reportedEdge of reportedEdges) {
-    await expect(reportedEdge).toHaveCount(1);
+  await expect(graph.getByRole('button')).toHaveCount(7);
+  for (const title of Object.values(titles)) {
     await expect(
-      reportedEdge.getByTestId('connection-edge-section').last(),
-    ).toHaveAttribute('marker-end', /connection-edge-arrow/);
+      graph.getByRole('button').filter({ hasText: title }),
+    ).toBeVisible();
   }
 
-  const currentNode = graph.locator(`[data-card-id="${ids.reportA}"]`);
-  await expect(currentNode).toHaveAttribute('aria-current', 'true');
-  const currentIsInitiallyVisible = await currentNode.evaluate((element) => {
-    const node = element.getBoundingClientRect();
-    const viewportElement = element.closest(
-      '[data-testid="connections-graph"]',
-    );
-    if (!viewportElement) return false;
-    const viewport = viewportElement.getBoundingClientRect();
-    return (
-      node.left >= viewport.left &&
-      node.right <= viewport.right &&
-      node.top >= viewport.top &&
-      node.bottom <= viewport.bottom
-    );
+  const semanticEdges = graph.getByRole('list', {
+    name: 'カード間の一方向リンク一覧',
   });
-  expect(currentIsInitiallyVisible).toBe(true);
-
-  const selfEdge = edge(ids.cycleA, ids.cycleA);
-  const forwardEdge = edge(ids.cycleA, ids.cycleB);
-  const backwardEdge = edge(ids.cycleB, ids.cycleA);
-  for (const routedEdge of [selfEdge, forwardEdge, backwardEdge]) {
-    await expect(routedEdge).toHaveCount(1);
-    const routeLength = await routedEdge
-      .getByTestId('connection-edge-section')
-      .evaluateAll((paths) =>
-        paths.reduce(
-          (total, path) =>
-            total +
-            (path instanceof SVGPathElement ? path.getTotalLength() : 0),
-          0,
-        ),
-      );
-    expect(routeLength).toBeGreaterThan(0);
+  await expect(semanticEdges.getByRole('listitem')).toHaveCount(8);
+  const expectedEdges = [
+    `${titles.reportC} から ${titles.reportA} へのリンク`,
+    `${titles.reportC} から ${titles.reportB} へのリンク`,
+    `${titles.reportA} から ${titles.reportB} へのリンク`,
+    `${titles.cycleA} から ${titles.cycleA} へのリンク`,
+    `${titles.cycleA} から ${titles.cycleB} へのリンク`,
+    `${titles.cycleB} から ${titles.cycleA} へのリンク`,
+    `${titles.cycleB} から ${titles.cycleC} へのリンク`,
+    `${titles.cycleC} から ${titles.cycleA} へのリンク`,
+  ];
+  for (const label of expectedEdges) {
+    await expect(
+      semanticEdges.getByRole('listitem').filter({ hasText: label }),
+    ).toHaveCount(1);
   }
-  const selfSourcePort = await selfEdge.getAttribute('data-source-port');
-  const selfTargetPort = await selfEdge.getAttribute('data-target-port');
-  expect(selfSourcePort).not.toBeNull();
-  expect(selfTargetPort).not.toBeNull();
-  expect(selfSourcePort).not.toBe(selfTargetPort);
-  const routeSignature = async (routedEdge: ReturnType<typeof edge>) =>
-    routedEdge
-      .getByTestId('connection-edge-section')
-      .evaluateAll((paths) => paths.map((path) => path.getAttribute('d')));
-  expect(await routeSignature(forwardEdge)).not.toEqual(
-    await routeSignature(backwardEdge),
+
+  const currentNode = graph
+    .getByRole('button')
+    .filter({ hasText: titles.reportA });
+  await expect(currentNode).toHaveAttribute('aria-current', 'true');
+  const nodeBox = await currentNode.boundingBox();
+  const viewportBox = await graph.boundingBox();
+  expect(nodeBox).not.toBeNull();
+  expect(viewportBox).not.toBeNull();
+  if (!nodeBox || !viewportBox) throw new Error('graph geometry is missing');
+  expect(nodeBox.x).toBeGreaterThanOrEqual(viewportBox.x);
+  expect(nodeBox.y).toBeGreaterThanOrEqual(viewportBox.y);
+  expect(nodeBox.x + nodeBox.width).toBeLessThanOrEqual(
+    viewportBox.x + viewportBox.width,
+  );
+  expect(nodeBox.y + nodeBox.height).toBeLessThanOrEqual(
+    viewportBox.y + viewportBox.height,
   );
 
   const touchAction = await graph.evaluate(
@@ -591,7 +567,9 @@ test('global directed graph is safe and operable for the reported and cyclic fix
   );
   expect(touchAction).toContain('pan-x');
   expect(touchAction).toContain('pan-y');
-  const targetNode = graph.locator(`[data-card-id="${ids.reportB}"]`);
+  const targetNode = graph
+    .getByRole('button')
+    .filter({ hasText: titles.reportB });
   await targetNode.scrollIntoViewIfNeeded();
   if (testInfo.project.name === 'mobile-chromium') {
     await targetNode.tap();

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   selectCardEditorInputModel,
   selectConflictViewModel,
+  selectConnectionsViewModel,
   selectHistoryViewModel,
   selectNotesStatus,
 } from '@/lib/application/view-models';
@@ -167,5 +168,45 @@ describe('conflict view model', () => {
         accessibleName: '編集案「Server title」を使う',
       },
     ]);
+  });
+});
+
+describe('connections input view model', () => {
+  it('exposes semantic nodes and directed edge labels without raw cards', () => {
+    const target = card('target', {
+      displayId: { kind: 'official', value: 1 },
+      title: '',
+    });
+    const source = card('source', {
+      displayId: { kind: 'provisional', value: 2 },
+      body: [{ type: 'link', targetCardId: target.id }],
+    });
+
+    expect(selectConnectionsViewModel([source, target], source.id)).toEqual({
+      currentCardId: source.id,
+      nodes: [
+        {
+          cardId: target.id,
+          displayLabel: '#1',
+          title: 'Untitled',
+          accessibleName: '#1 Untitled',
+          current: false,
+        },
+        {
+          cardId: source.id,
+          displayLabel: '仮 #2',
+          title: 'source',
+          accessibleName: '仮 #2 source、現在のカード',
+          current: true,
+        },
+      ],
+      edges: [
+        {
+          sourceCardId: source.id,
+          targetCardId: target.id,
+          accessibleName: 'source から Untitled へのリンク',
+        },
+      ],
+    });
   });
 });

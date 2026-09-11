@@ -151,9 +151,28 @@ export function selectConnectionsViewModel(
   cards: CardRecord[],
   currentCardId: CardId,
 ): ConnectionsViewModel {
+  const graph = buildConnectionsGraph(cards);
+  const nodes = graph.nodes.map(({ card }) => {
+    const displayLabel = formatDisplayId(card.displayId);
+    const title = visibleTitle(card.title);
+    const current = card.id === currentCardId;
+    return {
+      cardId: card.id,
+      displayLabel,
+      title,
+      accessibleName: current
+        ? `${displayLabel} ${title}、現在のカード`
+        : `${displayLabel} ${title}`,
+      current,
+    };
+  });
+  const nodesById = new Map(nodes.map((node) => [node.cardId, node]));
   return {
-    cards,
     currentCardId,
-    graph: buildConnectionsGraph(cards),
+    nodes,
+    edges: graph.edges.map((edge) => ({
+      ...edge,
+      accessibleName: `${nodesById.get(edge.sourceCardId)?.title ?? edge.sourceCardId} から ${nodesById.get(edge.targetCardId)?.title ?? edge.targetCardId} へのリンク`,
+    })),
   };
 }

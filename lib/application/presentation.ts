@@ -1,7 +1,7 @@
-import type { ConnectionsGraph } from '@/lib/domain/graph';
 import type { CardId, ConflictId } from '@/lib/domain/id';
 import type { BodySegment, CardRecord } from '@/lib/domain/types';
 import type { NotesLocation } from '@/lib/application/navigation';
+import type { ConnectionsInputModel } from '@/lib/graph/connections-contract';
 
 export type NotesViewName = 'card' | 'history' | 'connections';
 
@@ -67,18 +67,13 @@ export type CardEditorInputModel = {
   candidates: CardEditorCandidateModel[];
 };
 
-export type ConnectionsViewModel = {
-  cards: CardRecord[];
-  currentCardId: CardId;
-  graph: ConnectionsGraph;
-};
+export type ConnectionsViewModel = ConnectionsInputModel;
 
 export type NotesPresentationModel = {
   initialized: boolean;
   location: NotesLocation;
   activeView: NotesViewName;
   availableViews: Record<NotesViewName, boolean>;
-  cards: CardRecord[];
   currentCard: CardRecord | null;
   currentCardDisplayLabel: string | null;
   cardEditor: CardEditorInputModel | null;
