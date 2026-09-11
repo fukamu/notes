@@ -16,12 +16,18 @@ rules.
 3. `lib/application` owns location transitions, application coordination, and
    pure view-model selectors. This layer has no React, DOM, icon, theme, SVG,
    or Tailwind dependency.
-4. `lib/client/use-notes-application.ts` observes the in-memory navigator and
-   connects the data store to the application contracts.
+4. `lib/client/use-notes-application.ts` observes the browser-history navigator
+   and connects the data store to the application contracts. Pathname parsing
+   remains a pure application codec; the `window` adapter stays in `lib/client`.
 5. `components/notes-app.tsx` is the composition root. It is the only module
    that selects the concrete notes, editor, and connections renderers and
    connects them to their feature adapters. A renderer receives only the
    typed presentation model, semantic actions, and feature render callbacks.
+
+The five supported application pages share `app/(notes)/layout.tsx`. That
+layout mounts the composition root once while its empty route children change,
+so browser history integration does not create a new provider or editor tree.
+Unrelated paths remain outside the group and retain the framework 404.
 
 Presentation code must not access IndexedDB, fetch, sync, service workers,
 database bindings, or API routes. Application code must not select icons,
@@ -40,9 +46,25 @@ boundaries alongside the existing trust-boundary and unsafe-lint checks.
 It is therefore impossible to represent a connections screen without a
 current card. Navigation is expressed with named intents—initialize,
 reconcile cards, open a card, show the current card, show history, and show
-connections—through `NotesNavigator`. #13 supplies an in-memory adapter. The
-URL adapter in #6 will implement the same port at the connector boundary; it
-does not require changes to the data store, controller, or default renderer.
+connections—through `NotesNavigator`. The browser adapter implements that
+existing port at the connector boundary. It serializes the location with the
+pure pathname codec and owns `pushState`, `replaceState`, and `popstate`; the
+data store, controller, model, actions, and renderers remain location-agnostic.
+
+User-selected destinations push one history entry. Initialization,
+canonicalization, missing-card reconciliation, and the first card created from
+an empty root replace the current entry. A pop only applies its parsed state;
+it never pushes. Query and hash are discarded during canonicalization, and
+display ID changes never affect the URL because routes use branded immutable
+card IDs.
+
+A syntactically valid deep card route remains pending while local loading and
+the initial synchronization can still resolve it. During that interval the
+presentation receives the existing initialization state instead of rendering a
+different card. When the initial attempt completes—including an offline or
+failed attempt—normal reconciliation deterministically selects the last local
+card, drops missing history context, or returns to the empty root. This adds a
+sync-lifecycle fact to `NotesDataStore`, not navigation state.
 
 The reducer applies these rules:
 
@@ -156,9 +178,11 @@ card/domain artifacts. The runtime codecs, branded identifiers, guarded trust
 boundaries, atomic persistence, D1/API decoding, and unsafe-lint rules from #9
 remain unchanged.
 
-#6 may replace only the in-memory `NotesNavigator` adapter with a URL/History
-API implementation at the connector boundary; it must keep `NotesLocation`,
-named intents, controllers, models, actions, and renderers unchanged. #7 should
-audit product-wide names as `FUKAMU Notes`/`Notes*` and user-created artifacts
-as `Card`/`Card*`, including filenames, exported types, UI copy, tests, and
+#6 replaced only the production in-memory `NotesNavigator` adapter with the
+URL/History API implementation at the connector boundary. `NotesLocation`,
+named intents, controllers, models, actions, renderers, and the
+`NotesProvider` lifetime remain unchanged; route transitions use History API
+state observation rather than mounting another provider tree. #7 should audit
+product-wide names as `FUKAMU Notes`/`Notes*` and user-created artifacts as
+`Card`/`Card*`, including filenames, exported types, UI copy, tests, and
 documents, without conflating the two concepts.

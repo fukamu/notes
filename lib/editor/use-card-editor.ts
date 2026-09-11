@@ -167,6 +167,7 @@ export function useCardEditor({
         actions.updateBody(editorDocumentToSegments(currentEditor.getJSON()));
       },
       onTransaction: ({ editor: currentEditor }) => {
+        if (currentEditor.isDestroyed) return;
         setCanUndo(currentEditor.can().undo());
         setCanRedo(currentEditor.can().redo());
       },
@@ -179,7 +180,7 @@ export function useCardEditor({
   );
 
   useEffect(() => {
-    if (!editor) return;
+    if (!editor || editor.isDestroyed) return;
     const editorBody = editorDocumentToSegments(editor.getJSON());
     const update = classifyCardEditorDocumentUpdate(
       editorCardId,
@@ -198,7 +199,7 @@ export function useCardEditor({
   };
 
   const openSuggestionsForInsertedHash = () => {
-    if (!editor || editorCardId !== input.cardId) return;
+    if (!editor || editor.isDestroyed || editorCardId !== input.cardId) return;
     const { selection, doc } = editor.state;
     const to = selection.from;
     const textBeforeCursor = doc.textBetween(1, to, '\n');
@@ -208,7 +209,12 @@ export function useCardEditor({
   };
 
   const closeSuggestionsIfTriggerChanged = () => {
-    if (!editor || triggerPositionRef.current === undefined) return;
+    if (
+      !editor ||
+      editor.isDestroyed ||
+      triggerPositionRef.current === undefined
+    )
+      return;
     const { selection, doc } = editor.state;
     if (
       !selection.empty ||
@@ -219,7 +225,7 @@ export function useCardEditor({
   };
 
   const selectCandidate = (cardId: CardId) => {
-    if (!editor || editorCardId !== input.cardId) return;
+    if (!editor || editor.isDestroyed || editorCardId !== input.cardId) return;
     if (!candidates.some((candidate) => candidate.cardId === cardId)) return;
     const from = triggerPositionRef.current;
     if (from === undefined) return;
@@ -290,7 +296,8 @@ export function useCardEditor({
   return {
     model: {
       editor,
-      ready: editor !== null && editorCardId === input.cardId,
+      ready:
+        editor !== null && !editor.isDestroyed && editorCardId === input.cardId,
       focused,
       selectionEmpty,
       canUndo,
@@ -306,10 +313,10 @@ export function useCardEditor({
       preserveEditorFocus: (event) => event.preventDefault(),
       selectCandidate,
       undo: () => {
-        editor?.chain().focus().undo().run();
+        if (editor && !editor.isDestroyed) editor.chain().focus().undo().run();
       },
       redo: () => {
-        editor?.chain().focus().redo().run();
+        if (editor && !editor.isDestroyed) editor.chain().focus().redo().run();
       },
     },
   };

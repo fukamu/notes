@@ -11,6 +11,49 @@ async function ready(page: Page) {
   await expect(page.getByTestId('new-card')).toBeVisible();
 }
 
+async function expectPathname(page: Page, pathname: string) {
+  await expect(page).toHaveURL(new URL(pathname, 'http://localhost:3100').href);
+}
+
+async function serveSyncCards(page: Page, cards: LocalFixtureCard[]) {
+  await page.route('**/api/sync', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        cards: cards.map((card) => ({
+          id: card.id,
+          officialDisplayId: card.displayId.value,
+          title: card.title,
+          body: card.body,
+          createdAt: card.createdAt,
+          updatedAt: card.updatedAt,
+          revision: card.serverRevision ?? 1,
+        })),
+        conflicts: [],
+        acknowledgedMutationIds: [],
+      }),
+    });
+  });
+}
+
+async function forceConnectionsLayoutFailure(page: Page) {
+  await page.route('**/_next/static/chunks/notes-app-*.js', async (route) => {
+    const response = await route.fetch();
+    const source = await response.text();
+    const layoutInvocation =
+      /let ([\w$]+)=([\w$]+)\(([\w$]+)\),([\w$]+)=await ([\w$]+)\(\)\.layout\(([\w$]+)\(\3,\1,([\w$]+)\)\)/;
+    const transformed = source.replace(
+      layoutInvocation,
+      'throw Error("forced connections layout failure");let $1=[],$4={}',
+    );
+    if (transformed === source) {
+      throw new Error('Unable to install the connections layout fault');
+    }
+    await route.fulfill({ response, body: transformed });
+  });
+}
+
 async function openFromHistory(page: Page, title: string) {
   await page.getByRole('button', { name: '過去のカード' }).click();
   await page
@@ -93,6 +136,10 @@ test('offline creation, automatic save, reload, reconnect and another device syn
 
   await context.setOffline(true);
   await page.getByTestId('new-card').click();
+  const provisionalPathname = new URL(page.url()).pathname;
+  expect(provisionalPathname).toMatch(
+    /^\/cards\/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
   await expect(page.getByTestId('display-id')).toHaveAttribute(
     'data-kind',
     'provisional',
@@ -123,6 +170,7 @@ test('offline creation, automatic save, reload, reconnect and another device syn
       timeout: 15_000,
     },
   );
+  expect(new URL(page.url()).pathname).toBe(provisionalPathname);
   const officialValue = await page
     .getByTestId('display-id')
     .getAttribute('data-value');
@@ -681,6 +729,297 @@ test('semantic navigation preserves availability, current context and accessible
       name: new RegExp(`${title}、現在のカード`),
     }),
   ).toHaveAttribute('aria-current', 'true');
+});
+
+test('layout failure fallback opens a card through URL navigation', async ({
+  page,
+}, testInfo) => {
+  const cardA = '01991f20-61d2-7000-8000-000000000611';
+  const cardB = '01991f20-61d2-7000-8000-000000000612';
+  const suffix = unique('fallback-url', testInfo.project.name);
+  const cardATitle = `配置失敗A ${suffix}`;
+  const cardBTitle = `配置失敗B ${suffix}`;
+  await forceConnectionsLayoutFailure(page);
+  await serveSyncCards(page, [
+    {
+      id: cardA,
+      displayId: { kind: 'official', value: 11 },
+      title: cardATitle,
+      body: [{ type: 'link', targetCardId: cardB }],
+      createdAt: 11,
+      updatedAt: 11,
+      localRevision: 1,
+      serverRevision: 1,
+    },
+    {
+      id: cardB,
+      displayId: { kind: 'official', value: 12 },
+      title: cardBTitle,
+      body: [],
+      createdAt: 12,
+      updatedAt: 12,
+      localRevision: 1,
+      serverRevision: 1,
+    },
+  ]);
+
+  const response = await page.goto(`/cards/${cardA}/connections`);
+  expect(response?.status()).toBe(200);
+  await expectPathname(page, `/cards/${cardA}/connections`);
+  const graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'error', {
+    timeout: 15_000,
+  });
+  await expect(graph.getByRole('alert')).toContainText(
+    '配置を計算できませんでした',
+  );
+  const fallbackCard = graph.getByRole('button', {
+    name: new RegExp(cardBTitle),
+  });
+  if (testInfo.project.name === 'mobile-chromium') {
+    await fallbackCard.tap();
+  } else {
+    await fallbackCard.focus();
+    await fallbackCard.press('Enter');
+  }
+  await expectPathname(page, `/cards/${cardB}`);
+  await expect(page.getByTestId('card-title')).toHaveValue(cardBTitle);
+});
+
+test('canonical URLs restore cards and views through direct, back, forward and offline navigation', async ({
+  page,
+  context,
+}, testInfo) => {
+  const ids = {
+    cardA: '01991f20-61d2-7000-8000-000000000601',
+    cardB: '01991f20-61d2-7000-8000-000000000602',
+    cardC: '01991f20-61d2-7000-8000-000000000603',
+    missing: '01991f20-61d2-7000-8000-000000000604',
+  };
+  const suffix = unique('url', testInfo.project.name);
+  const titles = {
+    cardA: `URLカードA ${suffix}`,
+    cardB: `URLカードB ${suffix}`,
+    cardC: `URLカードC ${suffix}`,
+  };
+  const cards: LocalFixtureCard[] = [
+    {
+      id: ids.cardA,
+      displayId: { kind: 'official', value: 1 },
+      title: titles.cardA,
+      body: [{ type: 'link', targetCardId: ids.cardB }],
+      createdAt: 1,
+      updatedAt: 1,
+      localRevision: 1,
+      serverRevision: 1,
+    },
+    {
+      id: ids.cardB,
+      displayId: { kind: 'official', value: 2 },
+      title: titles.cardB,
+      body: [{ type: 'link', targetCardId: ids.cardC }],
+      createdAt: 2,
+      updatedAt: 2,
+      localRevision: 1,
+      serverRevision: 1,
+    },
+    {
+      id: ids.cardC,
+      displayId: { kind: 'official', value: 3 },
+      title: titles.cardC,
+      body: [],
+      createdAt: 3,
+      updatedAt: 3,
+      localRevision: 1,
+      serverRevision: 1,
+    },
+  ];
+  await serveSyncCards(page, cards);
+
+  const response = await page.goto(`/cards/${ids.cardA}`);
+  expect(response?.status()).toBe(200);
+  await expect(page.getByTestId('card-title')).toHaveValue(titles.cardA, {
+    timeout: 15_000,
+  });
+  await expectPathname(page, `/cards/${ids.cardA}`);
+  await page.reload();
+  await expect(page.getByTestId('card-title')).toHaveValue(titles.cardA);
+  await expectPathname(page, `/cards/${ids.cardA}`);
+  await page.locator('html[data-offline-ready=true]').waitFor({
+    state: 'attached',
+    timeout: 15_000,
+  });
+
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await expectPathname(page, `/cards/${ids.cardA}/history`);
+  await expect(
+    page.getByTestId('history-list').locator(`[data-card-id="${ids.cardA}"]`),
+  ).toHaveAttribute('aria-current', 'page');
+  await page
+    .getByTestId('history-list')
+    .locator(`[data-card-id="${ids.cardB}"]`)
+    .click();
+  await expectPathname(page, `/cards/${ids.cardB}`);
+  await expect(page.getByTestId('card-title')).toHaveValue(titles.cardB);
+
+  await page.getByRole('button', { name: 'つながり', exact: true }).click();
+  await expectPathname(page, `/cards/${ids.cardB}/connections`);
+  const graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 15_000,
+  });
+  await expect(
+    graph.getByRole('button', {
+      name: new RegExp(`${titles.cardB}、現在のカード`),
+    }),
+  ).toHaveAttribute('aria-current', 'true');
+  const cardCNode = graph.getByRole('button').filter({ hasText: titles.cardC });
+  if (testInfo.project.name === 'mobile-chromium') {
+    await cardCNode.tap();
+  } else {
+    await cardCNode.focus();
+    await cardCNode.press('Enter');
+  }
+  await expectPathname(page, `/cards/${ids.cardC}`);
+  await expect(page.getByTestId('card-title')).toHaveValue(titles.cardC);
+
+  const historyLength = await page.evaluate(() => window.history.length);
+  await page.goBack();
+  await expectPathname(page, `/cards/${ids.cardB}/connections`);
+  await expect(page.getByRole('heading', { name: 'つながり' })).toBeVisible();
+  await expect(
+    page.getByTestId('connections-graph').getByRole('button', {
+      name: new RegExp(`${titles.cardB}、現在のカード`),
+    }),
+  ).toHaveAttribute('aria-current', 'true');
+  await page.goBack();
+  await expectPathname(page, `/cards/${ids.cardB}`);
+  await expect(page.getByTestId('card-title')).toHaveValue(titles.cardB);
+  await page.goBack();
+  await expectPathname(page, `/cards/${ids.cardA}/history`);
+  await expect(
+    page.getByTestId('history-list').locator(`[data-card-id="${ids.cardA}"]`),
+  ).toHaveAttribute('aria-current', 'page');
+  await page.goBack();
+  await expectPathname(page, `/cards/${ids.cardA}`);
+  await expect(page.getByTestId('card-title')).toHaveValue(titles.cardA);
+
+  await page.goForward();
+  await expectPathname(page, `/cards/${ids.cardA}/history`);
+  await page.goForward();
+  await expectPathname(page, `/cards/${ids.cardB}`);
+  await page.goForward();
+  await expectPathname(page, `/cards/${ids.cardB}/connections`);
+  await page.goForward();
+  await expectPathname(page, `/cards/${ids.cardC}`);
+  await expect(page.getByTestId('card-title')).toHaveValue(titles.cardC);
+  expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
+
+  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await expectPathname(page, `/cards/${ids.cardC}`);
+  expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
+
+  const editedTitle = `${titles.cardC} 編集済み`;
+  await page.getByTestId('card-title').fill(editedTitle);
+  await page.getByTestId('body-editor').fill('URL履歴を増やさない編集');
+  await expect(page.getByTestId('save-sync-status')).toHaveText('保存済み');
+  expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
+  await expectPathname(page, `/cards/${ids.cardC}`);
+
+  await page.getByTestId('new-card').click();
+  const newCardPathname = new URL(page.url()).pathname;
+  expect(newCardPathname).toMatch(/^\/cards\/[0-9a-f-]{36}$/);
+  await page.goBack();
+  await expectPathname(page, `/cards/${ids.cardC}`);
+  await expect(page.getByTestId('card-title')).toHaveValue(editedTitle);
+  await page.goForward();
+  await expectPathname(page, newCardPathname);
+  await page.goBack();
+
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await page
+    .getByTestId('history-list')
+    .locator(`[data-card-id="${ids.cardA}"]`)
+    .click();
+  const inlineLink = page.getByTestId('body-editor').getByRole('link');
+  if (testInfo.project.name === 'mobile-chromium') {
+    await inlineLink.tap();
+  } else {
+    await inlineLink.focus();
+    await inlineLink.press('Enter');
+  }
+  await expectPathname(page, `/cards/${ids.cardB}`);
+
+  await context.setOffline(true);
+  await page.goto(`/cards/${ids.cardB}/connections`);
+  await expectPathname(page, `/cards/${ids.cardB}/connections`);
+  await expect(page.getByRole('heading', { name: 'つながり' })).toBeVisible();
+  await page.reload();
+  await expectPathname(page, `/cards/${ids.cardB}/connections`);
+  await expect(
+    page.getByTestId('connections-graph').getByRole('button', {
+      name: new RegExp(`${titles.cardB}、現在のカード`),
+    }),
+  ).toHaveAttribute('aria-current', 'true', { timeout: 15_000 });
+
+  await page.goto(`/cards/${ids.missing}`);
+  await expectPathname(page, newCardPathname);
+  await expect(page.getByTestId('card-title')).toHaveValue('');
+});
+
+test('the first card replaces the empty root history entry', async ({
+  page,
+}) => {
+  await serveSyncCards(page, []);
+  const response = await page.goto('/');
+  expect(response?.status()).toBe(200);
+  await expect(
+    page.getByRole('heading', { name: '最初の一枚から始めましょう' }),
+  ).toBeVisible();
+  const historyLength = await page.evaluate(() => window.history.length);
+  await page.getByTestId('new-card').click();
+  expect(new URL(page.url()).pathname).toMatch(/^\/cards\/[0-9a-f-]{36}$/);
+  expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
+});
+
+test('invalid and unresolved card URLs normalize without a history loop', async ({
+  page,
+}) => {
+  const unknown = await page.goto('/not-an-app-route');
+  expect(unknown?.status()).toBe(404);
+
+  await serveSyncCards(page, []);
+  const invalid = await page.goto('/cards/not-a-uuid');
+  expect(invalid?.status()).toBe(200);
+  await expectPathname(page, '/');
+  await expect(
+    page.getByRole('heading', { name: '最初の一枚から始めましょう' }),
+  ).toBeVisible();
+
+  await page.unroute('**/api/sync');
+  const syncGate = Promise.withResolvers<void>();
+  await page.route('**/api/sync', async (route) => {
+    await syncGate.promise;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        cards: [],
+        conflicts: [],
+        acknowledgedMutationIds: [],
+      }),
+    });
+  });
+  const missingId = '01991f20-61d2-7000-8000-000000000699';
+  const missing = await page.goto(`/cards/${missingId}`);
+  expect(missing?.status()).toBe(200);
+  await expectPathname(page, `/cards/${missingId}`);
+  await expect(page.getByText('カードを開いています')).toBeVisible();
+  syncGate.resolve();
+  await expectPathname(page, '/');
+  await expect(
+    page.getByRole('heading', { name: '最初の一枚から始めましょう' }),
+  ).toBeVisible();
 });
 
 test('concurrent device edits preserve both versions for explicit resolution', async ({
