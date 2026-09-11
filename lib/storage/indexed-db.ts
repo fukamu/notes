@@ -4,13 +4,14 @@ import {
   type PendingMutationMode,
 } from '@/lib/domain/card-transitions';
 import type { DeviceId } from '@/lib/domain/id';
-import { reconcileProvisionalDisplayIds } from '@/lib/domain/display-id';
 import type {
   CardRecord,
   ConflictRecord,
   PendingMutation,
 } from '@/lib/domain/types';
 import { decodeSyncResponse } from '@/lib/sync/protocol';
+import { planSyncResponseApplication } from '@/lib/sync/client-reconciliation';
+import { assertNever } from '@/lib/shared/invariant';
 import {
   decodeStoredCards,
   decodeStoredConflicts,
@@ -160,70 +161,37 @@ export async function applySyncResponse(
     ]);
     const localCards = decodeStoredCards(localCardsInput);
     const currentMutations = decodeStoredMutations(currentMutationsInput);
-    const acknowledged = new Set(response.acknowledgedMutationIds);
-    const sentByCard = new Map(
-      sentMutations.map((mutation) => [mutation.cardId, mutation]),
-    );
-    const pendingByCard = new Map(
-      currentMutations.map((mutation) => [mutation.cardId, mutation]),
-    );
+    const plan = planSyncResponseApplication({
+      response,
+      localCards,
+      currentMutations,
+      sentMutations,
+    });
 
-    for (const mutation of currentMutations) {
-      if (acknowledged.has(mutation.mutationId)) {
-        mutationStore.delete(mutation.cardId);
-        pendingByCard.delete(mutation.cardId);
+    for (const operation of plan.operations) {
+      switch (operation.type) {
+        case 'delete-mutation':
+          mutationStore.delete(operation.cardId);
+          break;
+        case 'put-mutation':
+          mutationStore.put(encodeStoredMutation(operation.mutation));
+          break;
+        case 'put-card':
+          cardStore.put(encodeStoredCard(operation.card));
+          break;
+        case 'clear-conflicts':
+          conflictStore.clear();
+          break;
+        case 'put-conflict':
+          conflictStore.put(encodeStoredConflict(operation.conflict));
+          break;
+        default:
+          assertNever(operation, 'Unsupported sync storage operation');
       }
-    }
-
-    const merged = new Map(localCards.map((card) => [card.id, card]));
-    for (const serverCard of response.cards) {
-      const local = merged.get(serverCard.id);
-      const pending = pendingByCard.get(serverCard.id);
-      const sent = sentByCard.get(serverCard.id);
-      const pendingWasNotInThisRequest = pending && !sent;
-      const newerEditWasSaved =
-        pending &&
-        sent &&
-        pending.mutationId !== sent.mutationId &&
-        acknowledged.has(sent.mutationId);
-
-      if (pendingWasNotInThisRequest || newerEditWasSaved) {
-        const rebased = { ...pending, baseServerRevision: serverCard.revision };
-        mutationStore.put(encodeStoredMutation(rebased));
-        pendingByCard.set(serverCard.id, rebased);
-      }
-
-      if (local && pendingByCard.has(serverCard.id)) {
-        merged.set(serverCard.id, {
-          ...local,
-          displayId: { kind: 'official', value: serverCard.officialDisplayId },
-          serverRevision: serverCard.revision,
-        });
-        continue;
-      }
-
-      merged.set(serverCard.id, {
-        id: serverCard.id,
-        displayId: { kind: 'official', value: serverCard.officialDisplayId },
-        title: serverCard.title,
-        body: serverCard.body,
-        createdAt: serverCard.createdAt,
-        updatedAt: serverCard.updatedAt,
-        localRevision: local?.localRevision ?? serverCard.revision,
-        serverRevision: serverCard.revision,
-      });
-    }
-
-    const reconciled = reconcileProvisionalDisplayIds([...merged.values()]);
-    for (const card of reconciled) cardStore.put(encodeStoredCard(card));
-
-    conflictStore.clear();
-    for (const conflict of response.conflicts) {
-      conflictStore.put(encodeStoredConflict(conflict));
     }
     await completion;
 
-    return { cards: reconciled, conflicts: response.conflicts };
+    return { cards: plan.cards, conflicts: plan.conflicts };
   } catch (error) {
     try {
       transaction.abort();

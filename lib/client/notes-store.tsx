@@ -35,6 +35,7 @@ import {
   persistCardAndMutation,
 } from '@/lib/storage/indexed-db';
 import { encodeSyncRequest } from '@/lib/sync/protocol';
+import { reconcileVisibleCardsAfterSync } from '@/lib/sync/client-reconciliation';
 import { prepareOfflineApp } from '@/lib/client/offline';
 
 export type NotesDataStore = {
@@ -106,31 +107,11 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         if (!response.ok) throw new Error(`sync returned ${response.status}`);
         const result: unknown = await response.json();
         const merged = await applySyncResponse(result, mutations);
-        const latestLocalCards = new Map(
-          cardsRef.current.map((card) => [card.id, card]),
-        );
-        const visibleCards = merged.cards.map((mergedCard) => {
-          const latestLocal = latestLocalCards.get(mergedCard.id);
-          const revisionAtRequest = revisionsAtRequest.get(mergedCard.id);
-          if (
-            !latestLocal ||
-            revisionAtRequest === undefined ||
-            latestLocal.localRevision <= revisionAtRequest
-          ) {
-            return mergedCard;
-          }
-          latestLocalCards.delete(mergedCard.id);
-          return {
-            ...latestLocal,
-            displayId: mergedCard.displayId,
-            serverRevision: mergedCard.serverRevision,
-          };
+        const visibleCards = reconcileVisibleCardsAfterSync({
+          currentCards: cardsRef.current,
+          revisionsAtRequest,
+          mergedCards: merged.cards,
         });
-        for (const latestLocal of latestLocalCards.values()) {
-          if (!visibleCards.some((card) => card.id === latestLocal.id)) {
-            visibleCards.push(latestLocal);
-          }
-        }
         cardsRef.current = visibleCards;
         setCards(visibleCards);
         setConflicts(merged.conflicts);
