@@ -2,7 +2,8 @@
 
 - Status: accepted for parent Issue #41
 - Date: 2026-09-12
-- Decision owners: implementation Issue #43 and follow-up research Issue #57
+- Decision owners: implementation Issue #43, follow-up research Issue #57, and
+  routing implementation Issue #59
 - Baseline commit: `7f925fa3b51dc546b32cebbf10550dbd2807560f`
 
 ## Context
@@ -180,6 +181,23 @@ existing `EPL-2.0 OR GPL-3.0-or-later` declaration. The adopted configuration us
 the same single offline worker and cache lifecycle; changing its default creates
 a normally versioned worker asset without a network runtime dependency.
 
+Issue #59 applies that recommendation as the production default: ORTHOGONAL,
+`FREE`, and no per-port side hint. The boundary infers and validates the actual
+N/E/S/W side from each returned ELK port before geometry enters the application.
+Ambiguous combinations such as FREE with fixed side hints, or a fixed policy with
+ELK-selected sides, fail at the layout boundary. The fixed-side configuration
+remains explicit only as a benchmark baseline.
+
+The production-default unit run repeats all 16 hard-constraint fixtures and pins
+the two-node mutual total at 296 px and the bidirectional five-node total/excess
+at 3,094/18 px. Three offline-worker browser runs gave desktop initial
+920.1/924.4 ms median/p95 and cached re-entry 127.9/128.6 ms; Pixel 7-equivalent
+mobile gave 917.5/921.9 ms and 120.3/126.0 ms. All recorded frame gaps are at most
+16.8 ms and Chromium reported no long task. The default switch adds 95 raw / 40
+gzip application bytes against the Issue #59 branch point; CSS and the ELK worker
+are byte-identical and no dependency is added. Full production evidence is in
+[`connections-routing-production.json`](../benchmarks/connections-routing-production.json).
+
 ## Camera decision
 
 Use typed pure camera functions plus a small browser hook built on Pointer Events,
@@ -292,9 +310,8 @@ Desktop/mobile × light/dark visual evidence and its review checklist are in
 ## Consequences
 
 - The original study retained ORTHOGONAL + FIXED_SIDE. The expanded Issue #57
-  corpus supersedes that routing choice and recommends ORTHOGONAL + FREE with ELK
-  side selection for a separate implementation Issue; Issue #57 itself leaves the
-  production default unchanged.
+  corpus superseded that choice, and Issue #59 now uses ORTHOGONAL + FREE with ELK
+  side selection as the production default.
 - Implement native pan/zoom in Issue #44 with one CSS transform and pure camera
   geometry; ELK is not rerun by camera changes.
 - Investigate worker/cache evidence in Issue #45 while preserving the selected
