@@ -17,6 +17,16 @@ async function expectPathname(page: Page, pathname: string) {
   await expect(page).toHaveURL(new URL(pathname, 'http://localhost:3100').href);
 }
 
+async function expectVisibleButtonsToBeNonSelectable(page: Page) {
+  const userSelectValues = await page
+    .locator('button:visible')
+    .evaluateAll((buttons) =>
+      buttons.map((button) => getComputedStyle(button).userSelect),
+    );
+  expect(userSelectValues.length).toBeGreaterThan(0);
+  expect(new Set(userSelectValues)).toEqual(new Set(['none']));
+}
+
 async function serveSyncCards(page: Page, cards: LocalFixtureCard[]) {
   await page.route('**/api/sync', async (route) => {
     await route.fulfill({
@@ -1651,6 +1661,54 @@ test('semantic navigation preserves availability, current context and accessible
       name: new RegExp(`${title}、現在のカード`),
     }),
   ).toHaveAttribute('aria-current', 'true');
+});
+
+test('button and card labels are non-selectable while card editors remain selectable', async ({
+  page,
+}, testInfo) => {
+  const card: LocalFixtureCard = {
+    id: fixtureCardId(`non-selectable-${testInfo.project.name}`),
+    displayId: { kind: 'official', value: 1 },
+    title: '選択抑止を確認するカード',
+    body: [],
+    createdAt: 1,
+    updatedAt: 1,
+    localRevision: 1,
+    serverRevision: 1,
+  };
+  await serveSyncCards(page, [card]);
+  const response = await page.goto(`/cards/${card.id}`);
+  expect(response?.status()).toBe(200);
+  await expect(page.getByTestId('card-title')).toHaveValue(card.title);
+
+  await expectVisibleButtonsToBeNonSelectable(page);
+  const editableUserSelect = await Promise.all([
+    page
+      .getByTestId('card-title')
+      .evaluate((element) => getComputedStyle(element).userSelect),
+    page
+      .getByTestId('body-editor')
+      .evaluate((element) => getComputedStyle(element).userSelect),
+  ]);
+  expect(editableUserSelect).not.toContain('none');
+
+  await page.getByRole('button', { name: '過去のカード' }).click();
+  const historyCard = page
+    .getByTestId('history-list')
+    .locator(`[data-card-id="${card.id}"]`);
+  await expect(historyCard).toBeVisible();
+  await expect(historyCard).toHaveCSS('user-select', 'none');
+  await expectVisibleButtonsToBeNonSelectable(page);
+
+  await page.getByRole('button', { name: 'つながり' }).click();
+  const graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 15_000,
+  });
+  const connectionsCard = graph.locator(`[data-card-id="${card.id}"]`);
+  await expect(connectionsCard).toBeVisible();
+  await expect(connectionsCard).toHaveCSS('user-select', 'none');
+  await expectVisibleButtonsToBeNonSelectable(page);
 });
 
 test('history centers the current card without obscuring its page chrome', async ({
