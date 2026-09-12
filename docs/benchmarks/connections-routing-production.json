@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-11T23:53:34Z",
+  "issue": 59,
+  "branchPoint": "6a219eda10fa2786575392b9ed67c5b8e829ee99",
+  "workBranch": "refactor/issue-59-elk-free-multi-side-routing",
+  "configuration": {
+    "edgeRouting": "ORTHOGONAL",
+    "portPolicy": "FREE",
+    "edgePortSides": "ELK"
+  },
+  "routeEvidence": {
+    "source": "docs/benchmarks/connections-routing-follow-up.json",
+    "corpusFixtures": 16,
+    "hardConstraintPass": "16/16",
+    "aggregateVersusFixedSide": {
+      "routeLengthReductionPercent": 16.0,
+      "mutualReverseExcessReductionPercent": 92.6,
+      "crossingReductionPercent": 26.7,
+      "bendReductionPercent": 10.7
+    },
+    "mutualTwoNode": {
+      "totalRouteLength": 296,
+      "mutualReverseExcessLength": 0,
+      "edgeRouteLengths": [148, 148]
+    },
+    "bidirectionalFiveNode": {
+      "totalRouteLength": 3094,
+      "mutualReverseExcessLength": 18,
+      "edgeCrossings": 0
+    },
+    "representativeLarge": {
+      "nodes": 48,
+      "edges": 120,
+      "seed": "0x41decade",
+      "coldMedianRatio": 0.917,
+      "coldP95Ratio": 0.896,
+      "warmMedianRatio": 0.96,
+      "warmP95Ratio": 0.897,
+      "threshold": { "medianRatio": 1.1, "p95Ratio": 1.2 }
+    }
+  },
+  "browserWorkerEvidence": {
+    "command": "npm run test:e2e -- --grep connections readiness records reproducible large-fixture browser timing --repeat-each=3",
+    "environment": "Playwright Chromium; desktop and Pixel 7-equivalent mobile projects; service worker prepared before context is taken offline",
+    "warmup": "Each isolated E2E loads the app and waits for offline readiness before measurement.",
+    "iterations": 3,
+    "outlierPolicy": "No sample removed; p95 is the maximum of three samples.",
+    "desktop": {
+      "initialTimeToReadyMs": {
+        "samples": [917.1, 920.1, 924.4],
+        "median": 920.1,
+        "p95": 924.4
+      },
+      "cachedReentryTimeToReadyMs": {
+        "samples": [127.9, 124.0, 128.6],
+        "median": 127.9,
+        "p95": 128.6
+      },
+      "maximumFrameGapMs": {
+        "initialMaximum": 16.8,
+        "reentryMaximum": 16.7
+      },
+      "reportedLongTasks": 0
+    },
+    "mobile": {
+      "initialTimeToReadyMs": {
+        "samples": [921.9, 917.5, 916.4],
+        "median": 917.5,
+        "p95": 921.9
+      },
+      "cachedReentryTimeToReadyMs": {
+        "samples": [120.3, 119.9, 126.0],
+        "median": 120.3,
+        "p95": 126.0
+      },
+      "maximumFrameGapMs": {
+        "initialMaximum": 16.8,
+        "reentryMaximum": 16.8
+      },
+      "reportedLongTasks": 0
+    },
+    "acceptedWorkerReferenceRatios": {
+      "source": "docs/benchmarks/connections-worker-cache.json",
+      "note": "This is the previously accepted worker evidence rather than a same-process baseline. Same-process ELK timing ratios are in routeEvidence.",
+      "desktop": {
+        "initialMedian": 1.003,
+        "initialP95": 1.004,
+        "reentryMedian": 0.974,
+        "reentryP95": 0.964
+      },
+      "mobile": {
+        "initialMedian": 1.003,
+        "initialP95": 1.007,
+        "reentryMedian": 0.947,
+        "reentryP95": 0.932
+      }
+    }
+  },
+  "bundleComparison": {
+    "method": "Same-host production builds at the branch point and worktree, using the same node_modules and gzip -c.",
+    "applicationChunk": {
+      "branchPoint": { "rawBytes": 514523, "gzipBytes": 161264 },
+      "candidate": { "rawBytes": 514618, "gzipBytes": 161304 },
+      "delta": { "rawBytes": 95, "gzipBytes": 40 }
+    },
+    "css": {
+      "branchPoint": { "rawBytes": 51534, "gzipBytes": 8951 },
+      "candidate": { "rawBytes": 51534, "gzipBytes": 8951 },
+      "delta": { "rawBytes": 0, "gzipBytes": 0 }
+    },
+    "elkWorker": {
+      "branchPoint": { "rawBytes": 1595334, "gzipBytes": 464634 },
+      "candidate": { "rawBytes": 1595334, "gzipBytes": 464634 },
+      "delta": { "rawBytes": 0, "gzipBytes": 0 }
+    },
+    "newRuntimeDependencies": 0
+  },
+  "compatibility": {
+    "offline": "pass: the existing pre-cached ELK worker reaches ready while Playwright context is offline; no network route fallback was added",
+    "accessibility": "pass: semantic directed-edge list cardinality and labels remain independent of visual port sides; node buttons retain focus and activation",
+    "camera": "pass: layout remains a graph/metric-keyed worker result; the gesture E2E asserts unchanged node/edge geometry during pan, pinch, cancel, and lost capture",
+    "visual": {
+      "newLight": [
+        "docs/screenshots/connections-map/follow-up-routing-desktop-light.png",
+        "docs/screenshots/connections-map/follow-up-routing-mobile-light.png"
+      ],
+      "darkThemeReference": [
+        "docs/screenshots/connections-map/after-desktop-dark.png",
+        "docs/screenshots/connections-map/after-mobile-dark.png"
+      ],
+      "note": "Issue #59 changes geometry only. CSS, tokens, edge halo, marker, and theme logic are byte-identical, so existing dark captures are reused for the dark-style axis while new desktop/mobile light captures review the changed production layout."
+    }
+  },
+  "result": "pass: the production default uses one offline ELK layout with free side selection, keeps all hard and semantic contracts, passes the representative performance thresholds, and adds 40 gzip bytes without a new dependency"
+}

@@ -193,6 +193,16 @@ changes. Node tests and reproducible route benchmarks use a separate main-thread
 ELK adapter that production modules do not import. Measurements and bundle impact
 are recorded in `docs/benchmarks/connections-worker-cache.json`.
 
+The routing default is ELK Layered with `RIGHT`, `ORTHOGONAL`, and `FREE` port
+constraints. Endpoint side hints are omitted, so the same single ELK pass chooses
+each semantic source and target port position. The adapter infers and validates
+the returned NORTH/EAST/SOUTH/WEST side from finite port geometry before passing
+it inward. Fixed EAST/WEST ports, relative-position two-pass layout, visibility
+post-routing, and splines remain benchmark-only candidates. The full fixed-corpus
+comparison and production worker evidence are in
+`docs/benchmarks/connections-routing-follow-up.json` and
+`docs/benchmarks/connections-routing-production.json`.
+
 ## Style and interaction boundary
 
 Structural styles are named separately from the default visual theme:

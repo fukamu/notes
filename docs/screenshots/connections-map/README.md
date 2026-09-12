@@ -18,6 +18,16 @@ the dark-theme comparison; E2E additionally checks that the changed native
 disabled state has `pointer-events: none` and computed opacity 0.35 at both
 boundaries.
 
+Issue #59 adds the production FREE-port routing captures
+`follow-up-routing-desktop-light.png` (1425 × 891 captured surface) and
+`follow-up-routing-mobile-light.png` (397 × 882 captured surface from a 412 ×
+915 viewport). The 13-card local visual fixture verifies that free side selection
+does not regress fit, node/card clearance, arrowheads, toolbar wrapping, or the
+bottom-navigation boundary. Issue #59 has no CSS, color-token, edge-halo, marker,
+or theme-logic diff, so `after-desktop-dark.png` and `after-mobile-dark.png` are
+reused for the dark-style axis; fixed-corpus geometry and endpoints are protected
+independently by the routing tests and benchmark artifact.
+
 Visual review checks:
 
 - the three directed links visibly use real rounded corners and retain arrowheads;

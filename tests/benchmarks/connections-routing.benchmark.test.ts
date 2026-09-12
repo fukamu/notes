@@ -108,6 +108,10 @@ const candidates: Candidate[] = [
 
 const warmupIterations = 1;
 const measuredIterations = 5;
+const baselineConfiguration = {
+  edgeRouting: 'ORTHOGONAL',
+  portPolicy: 'FIXED_SIDE',
+} as const satisfies ConnectionsLayoutConfiguration;
 
 function rounded(value: number): number {
   return Math.round(value * 1_000) / 1_000;
@@ -154,7 +158,9 @@ function candidateRunner(candidate: Candidate): ConnectionsLayoutFunction {
   if (candidate.pipeline === 'single-layout') {
     return createMainThreadConnectionsLayoutRunner(candidate.configuration);
   }
-  const firstPass = createMainThreadConnectionsLayoutRunner();
+  const firstPass = createMainThreadConnectionsLayoutRunner(
+    baselineConfiguration,
+  );
   return async (graph, metrics) => {
     const initial = await firstPass(graph, metrics);
     if (candidate.pipeline === 'visibility-post-route') {

@@ -7,6 +7,7 @@ import {
   routeConnectionsWithVisibilityGraph,
 } from '@/tests/benchmarks/connections-routing-support';
 import {
+  connectionsBenchmarkFixtures,
   connectionsFixtureGraph,
   spaciousConnectionsMetrics,
 } from '@/tests/fixtures/connections-layout';
@@ -22,6 +23,37 @@ const candidateFixture = {
 };
 
 describe('connections routing research functions', () => {
+  it('keeps every hard constraint on the production FREE default corpus', async () => {
+    const runner = createMainThreadConnectionsLayoutRunner();
+    for (const fixture of connectionsBenchmarkFixtures) {
+      const graph = connectionsFixtureGraph(fixture);
+      const layout = await runner(graph, spaciousConnectionsMetrics);
+      const quality = measureRouteQuality(layout, 'orthogonal-polyline', {
+        expectedGraph: graph,
+        nodeClearance: spaciousConnectionsMetrics.edgeNodeSpacing / 2,
+      });
+      expect(quality, fixture.name).toMatchObject({
+        nonFiniteValues: 0,
+        semanticEdgeErrors: 0,
+        endpointMismatches: 0,
+        arrowTangentErrors: 0,
+        sectionDiscontinuities: 0,
+        degenerateEdges: 0,
+        nodeIntrusions: 0,
+        clearanceIntrusions: 0,
+        indistinguishableMutualPairs: 0,
+      });
+      if (fixture.name === 'mutual links') {
+        expect(quality.totalRouteLength).toBe(296);
+        expect(quality.mutualReverseExcessLength).toBe(0);
+      }
+      if (fixture.name === 'bidirectional five-node cycle') {
+        expect(quality.totalRouteLength).toBe(3_094);
+        expect(quality.mutualReverseExcessLength).toBe(18);
+      }
+    }
+  });
+
   it('selects relative sides deterministically for horizontal, vertical, diagonal, and self edges', () => {
     const graph = connectionsFixtureGraph({
       name: 'relative sides',
@@ -100,10 +132,10 @@ describe('connections routing research functions', () => {
         ['B', 'A'],
       ],
     });
-    const layout = await createMainThreadConnectionsLayoutRunner()(
-      graph,
-      spaciousConnectionsMetrics,
-    );
+    const layout = await createMainThreadConnectionsLayoutRunner({
+      edgeRouting: 'ORTHOGONAL',
+      portPolicy: 'FIXED_SIDE',
+    })(graph, spaciousConnectionsMetrics);
     const inputSnapshot = structuredClone(layout);
     const first = routeConnectionsWithVisibilityGraph(
       layout,

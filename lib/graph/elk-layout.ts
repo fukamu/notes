@@ -50,7 +50,8 @@ export type ConnectionsLayoutConfiguration = Readonly<{
 
 export const DEFAULT_CONNECTIONS_LAYOUT_CONFIGURATION = {
   edgeRouting: 'ORTHOGONAL',
-  portPolicy: 'FIXED_SIDE',
+  portPolicy: 'FREE',
+  edgePortSides: 'ELK',
 } as const satisfies ConnectionsLayoutConfiguration;
 
 export type ConnectionsLayoutMetrics = {
@@ -232,6 +233,22 @@ function elkGraph(
   metrics: ConnectionsLayoutMetrics,
   configuration: ConnectionsLayoutConfiguration,
 ): ElkNode {
+  if (
+    configuration.portPolicy === 'FREE' &&
+    configuration.edgePortSides !== 'ELK'
+  ) {
+    throw new Error(
+      'Connections FREE port policy must delegate every side to ELK',
+    );
+  }
+  if (
+    configuration.portPolicy !== 'FREE' &&
+    configuration.edgePortSides === 'ELK'
+  ) {
+    throw new Error(
+      'Connections fixed port policy cannot delegate sides to ELK',
+    );
+  }
   const portsByNode = new Map<string, ElkPort[]>(
     graph.nodes.map((node) => [node.id, []]),
   );

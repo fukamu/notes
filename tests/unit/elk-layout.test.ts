@@ -10,6 +10,7 @@ import { fixtureCardId } from '@/tests/fixtures/ids';
 import { createMainThreadConnectionsLayoutRunner } from '@/lib/client/connections-layout-main-thread';
 import {
   CONNECTIONS_LAYOUT_ALGORITHM_OPTIONS,
+  DEFAULT_CONNECTIONS_LAYOUT_CONFIGURATION,
   connectionsLayoutOptions,
   type ConnectionsLayout,
   type ConnectionsLayoutEdge,
@@ -131,15 +132,33 @@ function expectEdgePortsApplied(layout: ConnectionsLayout) {
     invariant(lastSection, `Missing last section for ${edge.id}`);
     const start = firstSection.startPoint;
     const end = lastSection.endPoint;
+    const expectAttachment = (point: LayoutPoint, port: typeof sourcePort) => {
+      switch (port.side) {
+        case 'NORTH':
+          expect(point.x).toBeGreaterThanOrEqual(port.x);
+          expect(point.x).toBeLessThanOrEqual(port.x + port.width);
+          expect(point.y).toBeCloseTo(port.y);
+          break;
+        case 'EAST':
+          expect(point.x).toBeCloseTo(port.x + port.width);
+          expect(point.y).toBeGreaterThanOrEqual(port.y);
+          expect(point.y).toBeLessThanOrEqual(port.y + port.height);
+          break;
+        case 'SOUTH':
+          expect(point.x).toBeGreaterThanOrEqual(port.x);
+          expect(point.x).toBeLessThanOrEqual(port.x + port.width);
+          expect(point.y).toBeCloseTo(port.y + port.height);
+          break;
+        case 'WEST':
+          expect(point.x).toBeCloseTo(port.x);
+          expect(point.y).toBeGreaterThanOrEqual(port.y);
+          expect(point.y).toBeLessThanOrEqual(port.y + port.height);
+          break;
+      }
+    };
 
-    expect(sourcePort.side).toBe('EAST');
-    expect(targetPort.side).toBe('WEST');
-    expect(start.x).toBeCloseTo(sourcePort.x + sourcePort.width);
-    expect(start.y).toBeGreaterThanOrEqual(sourcePort.y);
-    expect(start.y).toBeLessThanOrEqual(sourcePort.y + sourcePort.height);
-    expect(end.x).toBeCloseTo(targetPort.x);
-    expect(end.y).toBeGreaterThanOrEqual(targetPort.y);
-    expect(end.y).toBeLessThanOrEqual(targetPort.y + targetPort.height);
+    expectAttachment(start, sourcePort);
+    expectAttachment(end, targetPort);
   }
 }
 
@@ -245,6 +264,11 @@ describe('ELK connections layout', () => {
       'elk.layered.spacing.nodeNodeBetweenLayers': '148',
       'elk.padding': '[top=32,left=44,bottom=36,right=40]',
     });
+    expect(DEFAULT_CONNECTIONS_LAYOUT_CONFIGURATION).toEqual({
+      edgeRouting: 'ORTHOGONAL',
+      portPolicy: 'FREE',
+      edgePortSides: 'ELK',
+    });
   });
 
   it('exposes explicit benchmark options without changing the production default', () => {
@@ -281,6 +305,26 @@ describe('ELK connections layout', () => {
     await expect(
       runner(connectionsFixtureGraph(fixture), spaciousConnectionsMetrics),
     ).rejects.toThrow('priority straightness must be a non-negative integer');
+  });
+
+  it('rejects ambiguous FREE and fixed-side candidate combinations', async () => {
+    const fixture = connectionsBenchmarkFixtures[0];
+    invariant(fixture, 'Missing reported fixture');
+    const graph = connectionsFixtureGraph(fixture);
+
+    await expect(
+      createMainThreadConnectionsLayoutRunner({
+        edgeRouting: 'ORTHOGONAL',
+        portPolicy: 'FREE',
+      })(graph, spaciousConnectionsMetrics),
+    ).rejects.toThrow('FREE port policy must delegate every side to ELK');
+    await expect(
+      createMainThreadConnectionsLayoutRunner({
+        edgeRouting: 'ORTHOGONAL',
+        portPolicy: 'FIXED_SIDE',
+        edgePortSides: 'ELK',
+      })(graph, spaciousConnectionsMetrics),
+    ).rejects.toThrow('fixed port policy cannot delegate sides to ELK');
   });
 
   for (const fixture of connectionsBenchmarkFixtures) {
@@ -388,7 +432,7 @@ describe('ELK connections layout', () => {
         ),
       );
 
-    expect(sectionPoints(self).flat()).toHaveLength(6);
+    expect(sectionPoints(self).flat().length).toBeGreaterThanOrEqual(4);
     expect(
       new Set(
         sectionPoints(self)
@@ -403,5 +447,10 @@ describe('ELK connections layout', () => {
     expect(curvedSignature(forward)).not.toBe(curvedSignature(self));
     expect(curvedSignature(backward)).not.toBe(curvedSignature(self));
     expect(curvedSignature(self)).toContain('Q');
+    expect(
+      new Set(
+        layout.nodes.flatMap((node) => node.ports.map((port) => port.side)),
+      ),
+    ).toContain('NORTH');
   });
 });
