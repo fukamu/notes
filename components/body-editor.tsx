@@ -30,14 +30,14 @@ export function BodyEditor({ model, commands }: CardEditorRendererProps) {
   return (
     <Fragment>
       <div
-        className="e2-editor-history-toolbar"
+        className="c2-editor-history-toolbar"
         role="toolbar"
         aria-label="編集履歴"
       >
         <Button
           type="button"
           variant="outline"
-          className="h-11 px-4"
+          className="h-11 rounded-md px-4 focus-visible:ring-2"
           disabled={!model.ready || !model.canUndo}
           onClick={commands.undo}
           data-testid="undo"
@@ -47,7 +47,7 @@ export function BodyEditor({ model, commands }: CardEditorRendererProps) {
         <Button
           type="button"
           variant="outline"
-          className="h-11 px-4"
+          className="h-11 rounded-md px-4 focus-visible:ring-2"
           disabled={!model.ready || !model.canRedo}
           onClick={commands.redo}
           data-testid="redo"
@@ -57,7 +57,7 @@ export function BodyEditor({ model, commands }: CardEditorRendererProps) {
       </div>
 
       <div
-        className="e2-editor-content"
+        className="c2-editor-content"
         data-editor-focused={model.focused ? 'true' : 'false'}
         data-selection-empty={model.selectionEmpty ? 'true' : 'false'}
       >
@@ -76,7 +76,7 @@ export function BodyEditor({ model, commands }: CardEditorRendererProps) {
             />
 
             {model.suggestionOpen && (
-              <div className="e2-link-candidates">
+              <div className="c2-link-candidates">
                 <p className="px-3 py-2 text-xs text-muted-foreground">
                   リンクするカードを選択
                 </p>
@@ -108,7 +108,7 @@ export function BodyEditor({ model, commands }: CardEditorRendererProps) {
                                 ? 'true'
                                 : undefined
                             }
-                            className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted aria-[current=true]:bg-muted"
+                            className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted aria-[current=true]:bg-muted"
                             onPointerDown={commands.preserveEditorFocus}
                             onClick={() =>
                               commands.selectCandidate(candidate.cardId)

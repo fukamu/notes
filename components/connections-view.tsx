@@ -94,12 +94,10 @@ export function ConnectionsView({
   } = useConnectionsViewport(readyModel, presentation.viewportPadding);
 
   return (
-    <section className="e2-connections" aria-labelledby="connections-heading">
-      <div className="e2-connections-heading">
+    <section className="c2-connections" aria-labelledby="connections-heading">
+      <div className="c2-connections-heading">
         <h1 id="connections-heading">つながり</h1>
-        <p>
-          この端末にある全カードと、本文で明示した一方向リンクを表示します。
-        </p>
+        <p>本文で結んだカードを、一方向のつながりとして辿れます。</p>
       </div>
 
       <p id="connections-map-instructions" className="sr-only">
@@ -166,7 +164,7 @@ export function ConnectionsView({
           </button>
           <output
             ref={zoomOutputRef}
-            className="e2-zoom-output"
+            className="c2-zoom-output"
             aria-label="現在のズーム"
             aria-live="polite"
           >
@@ -185,13 +183,13 @@ export function ConnectionsView({
         </div>
 
         {model.status === 'loading' && (
-          <output className="e2-connections-state">
+          <output className="c2-connections-state">
             つながりを配置しています
           </output>
         )}
 
         {model.status === 'error' && (
-          <div className="e2-connections-error" role="alert">
+          <div className="c2-connections-error" role="alert">
             <p>配置を計算できませんでした。カードは一覧から開けます。</p>
             <div>
               {model.fallbackItems.map((item) => (
@@ -201,10 +199,10 @@ export function ConnectionsView({
                   onClick={() => actions.openCard(item.cardId)}
                   aria-current={item.current ? 'true' : undefined}
                   aria-label={item.accessibleName}
-                  className="e2-connections-fallback-card"
+                  className="c2-connections-fallback-card"
                 >
-                  <span className="e2-node-title">{item.title}</span>
-                  <span className="e2-node-meta">{item.displayLabel}</span>
+                  <span className="c2-node-title">{item.title}</span>
+                  <span className="c2-node-meta">{item.displayLabel}</span>
                 </button>
               ))}
             </div>
@@ -263,7 +261,7 @@ export function ConnectionsView({
                 onClick={() => actions.openCard(node.cardId)}
                 aria-current={node.current ? 'true' : undefined}
                 aria-label={node.accessibleName}
-                className="connections-node-structure connections-node"
+                className="connections-node-structure c2-connections-node"
                 style={{
                   left: node.x,
                   top: node.y,
@@ -274,8 +272,8 @@ export function ConnectionsView({
                 onFocus={() => ensureNodeVisible(node)}
                 draggable={false}
               >
-                <span className="e2-node-title">{node.title}</span>
-                <span className="e2-node-meta">
+                <span className="c2-node-title">{node.title}</span>
+                <span className="c2-node-meta">
                   {node.current && <span>現在 </span>}
                   {node.displayLabel}
                 </span>
@@ -286,7 +284,7 @@ export function ConnectionsView({
       </section>
 
       {model.status === 'ready' && model.edges.length === 0 && (
-        <div className="e2-connections-empty">
+        <div className="c2-connections-empty">
           本文でカードをリンクすると、カード間の一方向リンクが現れます。
         </div>
       )}

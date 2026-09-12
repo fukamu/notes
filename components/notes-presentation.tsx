@@ -1,6 +1,5 @@
 'use client';
 
-import { LoaderCircle } from 'lucide-react';
 import { ConflictNotice } from '@/components/conflict-notice';
 import { HistoryView } from '@/components/history-view';
 import type { NotesPresentationProps } from '@/components/presentation-contract';
@@ -18,20 +17,20 @@ function StatusIndicator({
     return (
       <button
         type="button"
-        className="e2-save-status e2-save-status-retryable"
+        className="c2-save-status c2-save-status-retryable"
         onClick={() => void actions.retrySync()}
         aria-live="polite"
         data-testid="save-sync-status"
       >
         <span>{model.status.label}</span>
-        <span className="e2-retry-label">再試行</span>
+        <span className="c2-retry-label">再試行</span>
       </button>
     );
   }
 
   return (
     <div
-      className="e2-save-status"
+      className="c2-save-status"
       aria-live="polite"
       data-testid="save-sync-status"
     >
@@ -79,7 +78,7 @@ function Navigation({
             aria-current={model.activeView === item.view ? 'page' : undefined}
             disabled={!model.availableViews[item.view]}
             onClick={() => actions[item.activate]()}
-            className="e2-nav-button"
+            className="c2-nav-button"
           >
             {item.label}
           </button>
@@ -91,7 +90,7 @@ function Navigation({
 
 function EmptyState({ actions }: Pick<NotesPresentationProps, 'actions'>) {
   return (
-    <section className="e2-empty-state">
+    <section className="c2-empty-state">
       <h1 className="text-2xl font-bold sm:text-[1.75rem]">
         最初の一枚から始めましょう
       </h1>
@@ -99,7 +98,7 @@ function EmptyState({ actions }: Pick<NotesPresentationProps, 'actions'>) {
         タイトルも本文も空のままで構いません。作成した瞬間から、この端末に保存されます。
       </p>
       <Button
-        className="mt-6 h-11 px-4"
+        className="mt-6 h-11 rounded-md px-4 focus-visible:ring-2"
         variant="outline"
         onClick={() => void actions.createCard()}
       >
@@ -114,68 +113,49 @@ function CardView({ model, actions, features }: NotesPresentationProps) {
   if (!card) return <EmptyState actions={actions} />;
 
   return (
-    <section className="e2-card-layout" aria-label="カード編集">
-      <div className="e2-manuscript-column">
-        {model.conflicts.map((conflict) => (
-          <ConflictNotice
-            key={conflict.conflictId}
-            model={conflict}
-            onResolve={(choice) =>
-              actions.resolveConflict(conflict.conflictId, choice)
-            }
-          />
-        ))}
-        <article className="e2-manuscript">
-          <span
-            className="e2-card-id"
-            data-testid="display-id"
-            data-kind={card.displayId.kind}
-            data-value={card.displayId.value}
-          >
-            {model.currentCardDisplayLabel}
-          </span>
-          <StatusIndicator model={model} actions={actions} />
-          <input
-            aria-label="カードのタイトル"
-            value={card.title}
-            onChange={(event) => actions.updateTitle(event.target.value)}
-            className="e2-card-title"
-            placeholder="タイトル"
-            data-testid="card-title"
-          />
-          {model.cardEditor &&
-            features.renderCardEditor({
-              input: model.cardEditor,
-              actions,
-            })}
-        </article>
-      </div>
-
-      {model.cardEditor && model.cardEditor.outgoingLinks.length > 0 && (
-        <aside className="e2-outgoing-index" aria-labelledby="outgoing-heading">
-          <h2 id="outgoing-heading">本文にあるリンク</h2>
-          <p>本文で最初に現れる順</p>
-          <ul>
-            {model.cardEditor.outgoingLinks.map((link) => (
-              <li key={link.cardId}>
-                <button
-                  type="button"
-                  aria-label={link.accessibleName}
-                  onClick={() => actions.openCard(link.cardId)}
-                >
-                  <span aria-hidden="true" className="e2-outgoing-arrow">
-                    →
-                  </span>
-                  <span>
-                    <span className="e2-outgoing-id">{link.displayLabel}</span>
-                    <span className="e2-outgoing-title">{link.title}</span>
-                  </span>
-                </button>
-              </li>
+    <section
+      className={`c2-card-layout${model.conflicts.length > 0 ? ' c2-card-layout-conflict' : ''}`}
+      aria-label="カード編集"
+    >
+      <article
+        className={`c2-manuscript${model.conflicts.length > 0 ? ' c2-manuscript-conflict' : ''}`}
+      >
+        <span
+          className="c2-card-id"
+          data-testid="display-id"
+          data-kind={card.displayId.kind}
+          data-value={card.displayId.value}
+        >
+          {model.currentCardDisplayLabel}
+        </span>
+        <StatusIndicator model={model} actions={actions} />
+        <input
+          aria-label="カードのタイトル"
+          value={card.title}
+          onChange={(event) => actions.updateTitle(event.target.value)}
+          className="c2-card-title"
+          placeholder="タイトル"
+          data-testid="card-title"
+        />
+        {model.conflicts.length > 0 && (
+          <div className="c2-conflict-list">
+            {model.conflicts.map((conflict) => (
+              <ConflictNotice
+                key={conflict.conflictId}
+                model={conflict}
+                onResolve={(choice) =>
+                  actions.resolveConflict(conflict.conflictId, choice)
+                }
+              />
             ))}
-          </ul>
-        </aside>
-      )}
+          </div>
+        )}
+        {model.cardEditor &&
+          features.renderCardEditor({
+            input: model.cardEditor,
+            actions,
+          })}
+      </article>
     </section>
   );
 }
@@ -188,25 +168,25 @@ export function NotesPresentation({
   if (!model.initialized) {
     return (
       <main className="grid min-h-dvh place-items-center text-sm text-muted-foreground">
-        <span className="inline-flex items-center gap-2">
-          <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />{' '}
-          カードを開いています
-        </span>
+        <span>カードを開いています</span>
       </main>
     );
   }
 
+  const hasVisibleConflict =
+    model.activeView === 'card' && model.conflicts.length > 0;
+
   return (
     <main className="min-h-dvh bg-background text-foreground">
-      <header className="e2-app-header">
-        <div className="e2-app-header-inner">
-          <div className="e2-brand">
+      <header className="c2-app-header">
+        <div className="c2-app-header-inner">
+          <div className="c2-brand">
             <p>FUKAMU Notes</p>
             <p>一枚ずつ、考えを深める</p>
           </div>
           <Navigation model={model} actions={actions} />
           <Button
-            className="e2-new-card"
+            className="c2-new-card focus-visible:ring-2"
             onClick={() => void actions.createCard()}
             data-testid="new-card"
           >
@@ -216,7 +196,7 @@ export function NotesPresentation({
       </header>
 
       <div
-        className={`e2-view-frame ${model.activeView === 'connections' ? 'e2-view-frame-wide' : ''}`}
+        className={`c2-view-frame c2-view-frame-${model.activeView}${hasVisibleConflict ? ' c2-view-frame-conflict' : ''}`}
       >
         {model.activeView === 'card' && (
           <CardView model={model} actions={actions} features={features} />

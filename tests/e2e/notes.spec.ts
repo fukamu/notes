@@ -2251,6 +2251,72 @@ test('invalid and unresolved card URLs normalize without a history loop', async 
   ).toBeVisible();
 });
 
+test('C2 keeps the editor, history and connections usable at 320px', async ({
+  page,
+}) => {
+  const card: LocalFixtureCard = {
+    id: '01991f20-61d2-7000-8000-000000000702',
+    displayId: { kind: 'official', value: 1042 },
+    title: '考えを小さく残す',
+    body: [],
+    createdAt: 1,
+    updatedAt: 1,
+    localRevision: 1,
+    serverRevision: 1,
+  };
+  await page.setViewportSize({ width: 320, height: 900 });
+  await serveSyncCards(page, [card]);
+  const response = await page.goto(`/cards/${card.id}`);
+  expect(response?.status()).toBe(200);
+  await expect(page.getByTestId('card-title')).toHaveValue(card.title);
+
+  const expectNoDocumentOverflow = async () => {
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+  };
+  const expectVisibleTargetsAtLeast44px = async () => {
+    const targetSizes = await page
+      .locator('button:visible')
+      .evaluateAll((buttons) =>
+        buttons.map((button) => {
+          const bounds = button.getBoundingClientRect();
+          return { width: bounds.width, height: bounds.height };
+        }),
+      );
+    expect(targetSizes.length).toBeGreaterThan(0);
+    for (const target of targetSizes) {
+      expect(target.width).toBeGreaterThanOrEqual(44);
+      expect(target.height).toBeGreaterThanOrEqual(44);
+    }
+  };
+
+  await expect(page.locator('.c2-card-layout > .c2-manuscript')).toHaveCount(1);
+  await expect(page.getByText('本文にあるリンク', { exact: true })).toHaveCount(
+    0,
+  );
+  await expectNoDocumentOverflow();
+  await expectVisibleTargetsAtLeast44px();
+
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await expect(page.getByTestId('history-list')).toBeVisible();
+  await expectNoDocumentOverflow();
+  await expectVisibleTargetsAtLeast44px();
+
+  await page.getByRole('button', { name: 'つながり', exact: true }).click();
+  await expect(page.getByTestId('connections-graph')).toHaveAttribute(
+    'data-layout-status',
+    'ready',
+    { timeout: 15_000 },
+  );
+  await expectNoDocumentOverflow();
+  await expectVisibleTargetsAtLeast44px();
+});
+
 test('concurrent device edits preserve both versions for explicit resolution', async ({
   browser,
 }, testInfo) => {
