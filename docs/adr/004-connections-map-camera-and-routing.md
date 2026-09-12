@@ -228,6 +228,15 @@ timing, bounds, and +536 raw/+148 gzip application-chunk delta are recorded in
 [`connections-camera-follow-up.json`](../benchmarks/connections-camera-follow-up.json).
 There is no CSS, ELK worker, offline-cache, or dependency delta.
 
+Issue #70 retains a user's explicit zoom scale across presentation-view unmounts
+and reloads as one versioned device-local preference. The boundary adapter treats
+the stored value as untrusted, and the pure camera core clamps it to 0.10–2.00
+before restoring it against current geometry. It deliberately does not persist
+camera translation, layout results, or current-card identity: those values can be
+stale after graph, viewport, or navigation changes. Gesture writes are debounced
+and pending scale is flushed at unmount, so raw pointer moves still only update
+the rAF-coalesced world transform and never synchronously write storage per move.
+
 [Panzoom 4.6.2](https://github.com/timmywil/panzoom) was the external comparison.
 It is MIT-licensed, uses Pointer Events/CSS transforms/requestAnimationFrame, and
 advertises about 3.7 kB gzip. Its published 4.6.2 package was 161,576 unpacked

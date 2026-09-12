@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { CONNECTIONS_ZOOM_PREFERENCE_KEY } from '@/lib/client/connections-zoom-preference';
 import { connectionsBenchmarkFixtures } from '@/tests/fixtures/connections-layout';
 import { fixtureCardId } from '@/tests/fixtures/ids';
 
@@ -1525,6 +1526,108 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   await touch.detach();
   await expectPathname(page, `/cards/${target.id}`);
   await expect(page.getByTestId('card-title')).toHaveValue(target.title);
+});
+
+test('connections zoom persists across app views and reloads', async ({
+  page,
+  context,
+}) => {
+  const cards = largeConnectionsBenchmarkCards();
+  const current = cards[0];
+  if (!current) throw new Error('Zoom preference fixture is incomplete');
+  await ready(page);
+  await page.evaluate(
+    (key) => localStorage.removeItem(key),
+    CONNECTIONS_ZOOM_PREFERENCE_KEY,
+  );
+  await page.locator('html[data-offline-ready=true]').waitFor({
+    state: 'attached',
+    timeout: 15_000,
+  });
+  await context.setOffline(true);
+  await replaceLocalCards(page, cards);
+  await page.reload();
+  await openFromHistory(page, current.title);
+  await page.getByRole('button', { name: 'つながり', exact: true }).click();
+
+  let graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 30_000,
+  });
+  const fitted = await connectionsCamera(graph);
+  await page.getByRole('button', { name: '拡大' }).click();
+  await page.getByRole('button', { name: '拡大' }).click();
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeGreaterThan(fitted.scale);
+  const preferredScale = (await connectionsCamera(graph)).scale;
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (key) => Number(localStorage.getItem(key)),
+        CONNECTIONS_ZOOM_PREFERENCE_KEY,
+      ),
+    )
+    .toBeCloseTo(preferredScale, 7);
+
+  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await expect(page.getByTestId('card-title')).toHaveValue(current.title);
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await expect(page.getByTestId('history-list')).toBeVisible();
+  await page.getByRole('button', { name: 'つながり', exact: true }).click();
+  graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 30_000,
+  });
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(preferredScale, 7);
+  await expect(page.getByRole('status', { name: '現在のズーム' })).toHaveText(
+    `${Math.round(preferredScale * 100)}%`,
+  );
+
+  await page.reload();
+  graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 30_000,
+  });
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(preferredScale, 7);
+
+  await page.evaluate(
+    (key) => localStorage.setItem(key, '2'),
+    CONNECTIONS_ZOOM_PREFERENCE_KEY,
+  );
+  await page.reload();
+  graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 30_000,
+  });
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(2, 7);
+  await expect(page.getByRole('button', { name: '拡大' })).toBeDisabled();
+  await expect(page.getByRole('status', { name: '現在のズーム' })).toHaveText(
+    '200%',
+  );
+
+  await page.evaluate(
+    (key) => localStorage.setItem(key, '0.1'),
+    CONNECTIONS_ZOOM_PREFERENCE_KEY,
+  );
+  await page.reload();
+  graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 30_000,
+  });
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(0.1, 7);
+  await expect(page.getByRole('button', { name: '縮小' })).toBeDisabled();
+  await expect(page.getByRole('status', { name: '現在のズーム' })).toHaveText(
+    '10%',
+  );
 });
 
 test('connections readiness records reproducible large-fixture browser timing', async ({

@@ -7,6 +7,7 @@ import {
   connectionsCameraWorldPoint,
   connectionsCameraZoomState,
   createConnectionsCameraFrameAdapter,
+  decodeConnectionsCameraScale,
   DEFAULT_CONNECTIONS_CAMERA_LIMITS,
   ensureConnectionsRectVisible,
   fitConnectionsCamera,
@@ -14,6 +15,7 @@ import {
   panConnectionsCamera,
   pinchConnectionsCamera,
   resizeConnectionsCamera,
+  restoreConnectionsCameraScale,
   zoomConnectionsCamera,
   type ConnectionsCamera,
   type ConnectionsCameraGeometry,
@@ -82,6 +84,21 @@ describe('connections map camera geometry', () => {
         DEFAULT_CONNECTIONS_CAMERA_LIMITS,
       ),
     ).toBeNull();
+  });
+
+  it('decodes finite preferred scales and clamps stored values to camera limits', () => {
+    expect(decodeConnectionsCameraScale('1.25', geometry.limits)).toBe(1.25);
+    expect(decodeConnectionsCameraScale(0.01, geometry.limits)).toBe(0.25);
+    expect(decodeConnectionsCameraScale('99', geometry.limits)).toBe(3);
+    for (const value of [
+      null,
+      '',
+      'scale',
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+    ]) {
+      expect(decodeConnectionsCameraScale(value, geometry.limits)).toBeNull();
+    }
   });
 
   it('fits the whole world into explicit viewport padding', () => {
@@ -204,6 +221,29 @@ describe('connections map camera geometry', () => {
       camera &&
         connectionsCameraContainsRect(camera, current, wideGeometry, 12),
     ).toBe(true);
+  });
+
+  it('restores only preferred scale against current geometry and recenters the current card', () => {
+    const fitted = fitConnectionsCamera(geometry);
+    expect(fitted).not.toBeNull();
+    if (!fitted) return;
+    const current = { x: 850, y: 650, width: 100, height: 100 };
+    const restored = restoreConnectionsCameraScale(
+      fitted,
+      1.5,
+      geometry,
+      current,
+    );
+
+    expect(restored?.scale).toBe(1.5);
+    expect(restored?.x).not.toBe(fitted.x);
+    expect(restored?.y).not.toBe(fitted.y);
+    expect(
+      restored && connectionsCameraContainsRect(restored, current, geometry),
+    ).toBe(true);
+    expect(initialConnectionsCamera(geometry, current, '1.5')).toEqual(
+      restored,
+    );
   });
 
   it('clamps fit, zoom, pinch, resize and programmatic cameras to 10–200%', () => {

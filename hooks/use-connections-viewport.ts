@@ -1,6 +1,11 @@
 'use client';
 
 import { useCallback, useLayoutEffect, useRef } from 'react';
+import {
+  readConnectionsZoomPreference,
+  writeConnectionsZoomPreference,
+  type ConnectionsZoomPreferenceStorage,
+} from '@/lib/client/connections-zoom-preference';
 import type {
   ConnectionsReadyNode,
   ConnectionsReadyState,
@@ -69,8 +74,54 @@ export function useConnectionsViewport(
   const paddingRef = useRef(padding);
   const geometryRef = useRef<ConnectionsCameraGeometry | null>(null);
   const cameraRef = useRef<ConnectionsCamera | null>(null);
+  const preferredScaleRef = useRef<number | null>(null);
+  const preferenceStorageRef = useRef<ConnectionsZoomPreferenceStorage | null>(
+    null,
+  );
+  const pendingPreferredScaleRef = useRef<number | null>(null);
+  const preferenceTimerRef = useRef<number | null>(null);
   const layoutKeyRef = useRef<string | null>(null);
   const frameAdapterRef = useRef<ConnectionsCameraFrameAdapter | null>(null);
+
+  const flushPreferredScale = useCallback(() => {
+    const scale = pendingPreferredScaleRef.current;
+    pendingPreferredScaleRef.current = null;
+    if (preferenceTimerRef.current !== null) {
+      window.clearTimeout(preferenceTimerRef.current);
+      preferenceTimerRef.current = null;
+    }
+    if (scale !== null) {
+      writeConnectionsZoomPreference(preferenceStorageRef.current, scale);
+    }
+  }, []);
+
+  const queuePreferredScale = useCallback(
+    (scale: number) => {
+      preferredScaleRef.current = scale;
+      pendingPreferredScaleRef.current = scale;
+      if (preferenceTimerRef.current !== null) {
+        window.clearTimeout(preferenceTimerRef.current);
+      }
+      preferenceTimerRef.current = window.setTimeout(flushPreferredScale, 120);
+    },
+    [flushPreferredScale],
+  );
+
+  useLayoutEffect(() => {
+    try {
+      preferenceStorageRef.current = window.localStorage;
+    } catch {
+      preferenceStorageRef.current = null;
+    }
+    preferredScaleRef.current = readConnectionsZoomPreference(
+      preferenceStorageRef.current,
+    );
+    return () => {
+      flushPreferredScale();
+      preferenceStorageRef.current = null;
+    };
+  }, [flushPreferredScale]);
+
   useLayoutEffect(() => {
     modelRef.current = model;
     paddingRef.current = padding;
@@ -91,11 +142,15 @@ export function useConnectionsViewport(
     };
   }, []);
 
-  const commitCamera = useCallback((camera: ConnectionsCamera | null) => {
-    if (!camera) return;
-    cameraRef.current = camera;
-    frameAdapterRef.current?.queue(camera);
-  }, []);
+  const commitCamera = useCallback(
+    (camera: ConnectionsCamera | null, persistScale = false) => {
+      if (!camera) return;
+      cameraRef.current = camera;
+      frameAdapterRef.current?.queue(camera);
+      if (persistScale) queuePreferredScale(camera.scale);
+    },
+    [queuePreferredScale],
+  );
 
   const synchronizeGeometry = useCallback(() => {
     const geometry = readGeometry();
@@ -107,7 +162,13 @@ export function useConnectionsViewport(
     geometryRef.current = geometry;
     layoutKeyRef.current = ready.layoutKey;
     if (!previousCamera || !previousGeometry || layoutChanged) {
-      commitCamera(initialConnectionsCamera(geometry, ready.currentNode));
+      commitCamera(
+        initialConnectionsCamera(
+          geometry,
+          ready.currentNode,
+          preferredScaleRef.current,
+        ),
+      );
       return;
     }
     commitCamera(
@@ -189,6 +250,7 @@ export function useConnectionsViewport(
           { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 },
           geometry,
         ),
+        true,
       );
     },
     [commitCamera, readGeometry],
@@ -196,7 +258,7 @@ export function useConnectionsViewport(
 
   const fit = useCallback(() => {
     const geometry = geometryRef.current ?? readGeometry();
-    if (geometry) commitCamera(fitConnectionsCamera(geometry));
+    if (geometry) commitCamera(fitConnectionsCamera(geometry), true);
   }, [commitCamera, readGeometry]);
 
   const centerCurrent = useCallback(() => {
@@ -351,6 +413,7 @@ export function useConnectionsViewport(
               pair,
               geometry,
             ),
+            true,
           );
         }
         gestureMoved = true;
@@ -394,6 +457,7 @@ export function useConnectionsViewport(
           { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
           geometry,
         ),
+        true,
       );
       event.preventDefault();
     };

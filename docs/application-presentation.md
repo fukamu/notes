@@ -171,6 +171,15 @@ minimum zoom cannot fit everything. A focus event minimally reveals the whole
 node and its focus ring. Both a ready node and every error fallback item dispatch
 the same typed `openCard(CardId)` action.
 
+An explicitly selected zoom scale is a versioned device-local preference. The
+client adapter decodes and clamps only that scalar, debounces gesture writes, and
+flushes a pending value when the view unmounts. Re-entering the connections view
+or reloading restores the scale against the latest viewport and layout, then
+recenters the current card when necessary. Camera translation, layout geometry,
+and current-card identity are never persisted, synced, or written to IndexedDB or
+D1. Automatic fit, resize, pan, and current-card recovery do not overwrite the
+preference.
+
 The reproducible desktop/mobile continuous-gesture measurements live in
 `docs/benchmarks/connections-camera-gesture.json`; the post-deployment pointer
 sequence, zoom-boundary, bundle, and three-run measurements live in
