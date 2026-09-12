@@ -35,20 +35,20 @@
 :root {
   --font-body: 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
   --font-heading: 'Yu Mincho', 'Hiragino Mincho ProN', serif;
-  --background: oklch(0.968 0.013 82);
-  --foreground: oklch(0.25 0.02 55);
-  --card: oklch(0.993 0.007 84);
-  --card-foreground: oklch(0.25 0.02 55);
-  --popover: oklch(0.995 0.006 84);
-  --popover-foreground: oklch(0.25 0.02 55);
-  --primary: oklch(0.39 0.08 255);
+  --background: oklch(0.955 0.011 79);
+  --foreground: oklch(0.235 0.018 64);
+  --card: oklch(0.992 0.006 88);
+  --card-foreground: oklch(0.235 0.018 64);
+  --popover: oklch(0.995 0.005 88);
+  --popover-foreground: oklch(0.235 0.018 64);
+  --primary: oklch(0.36 0.064 247);
   --primary-foreground: oklch(0.985 0.006 84);
-  --secondary: oklch(0.925 0.025 78);
-  --secondary-foreground: oklch(0.31 0.025 55);
-  --muted: oklch(0.93 0.014 78);
-  --muted-foreground: oklch(0.51 0.025 55);
-  --accent: oklch(0.9 0.035 71);
-  --accent-foreground: oklch(0.38 0.05 53);
+  --secondary: oklch(0.9 0.022 76);
+  --secondary-foreground: oklch(0.29 0.023 58);
+  --muted: oklch(0.916 0.013 78);
+  --muted-foreground: oklch(0.48 0.022 63);
+  --accent: oklch(0.82 0.055 91);
+  --accent-foreground: oklch(0.34 0.054 68);
   --destructive: oklch(0.56 0.19 28);
   --border: oklch(0.85 0.025 77);
   --input: oklch(0.85 0.025 77);
@@ -67,12 +67,12 @@
 }
 
 .dark {
-  --background: oklch(0.2 0.015 55);
-  --foreground: oklch(0.92 0.015 80);
-  --card: oklch(0.24 0.018 58);
-  --card-foreground: oklch(0.92 0.015 80);
-  --popover: oklch(0.24 0.018 58);
-  --popover-foreground: oklch(0.92 0.015 80);
+  --background: oklch(0.19 0.014 62);
+  --foreground: oklch(0.92 0.014 82);
+  --card: oklch(0.235 0.017 64);
+  --card-foreground: oklch(0.92 0.014 82);
+  --popover: oklch(0.235 0.017 64);
+  --popover-foreground: oklch(0.92 0.014 82);
   --primary: oklch(0.72 0.09 252);
   --primary-foreground: oklch(0.18 0.02 58);
   --secondary: oklch(0.29 0.02 58);
@@ -125,7 +125,7 @@
 }
 
 .nav-button {
-  @apply inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-left text-sm text-muted-foreground transition hover:bg-card hover:text-foreground;
+  @apply inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-left text-sm text-muted-foreground transition hover:bg-card hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring;
 }
 
 .nav-button-active {
@@ -136,18 +136,90 @@
   @apply mb-1 text-[10px] font-bold tracking-[0.18em] text-muted-foreground;
 }
 
-.app-navigation {
-  @apply fixed inset-x-3 bottom-3 z-30 grid grid-cols-3 gap-1 rounded-2xl border bg-card/95 p-1.5 shadow-xl backdrop-blur lg:sticky lg:top-28 lg:inset-auto lg:flex lg:h-fit lg:flex-col lg:bg-transparent lg:p-0 lg:shadow-none;
-}
-
-.app-navigation .nav-button {
-  @apply min-w-0 justify-center px-2 text-xs lg:justify-start lg:px-3 lg:text-sm;
-}
-
 .card-editor-structure {
   @apply min-h-72 outline-none;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.workbench-header {
+  @apply sticky top-0 z-30 border-b border-border/80 bg-background/92 px-4 py-3 backdrop-blur sm:px-8;
+}
+
+.workbench-header-actions {
+  @apply flex flex-col gap-3 sm:flex-row sm:items-center;
+}
+
+.app-navigation {
+  @apply grid grid-cols-3 gap-1 rounded-xl border bg-muted/70 p-1;
+}
+
+.app-navigation .nav-button {
+  @apply min-w-0 justify-center whitespace-nowrap px-2 text-xs sm:px-3 sm:text-sm;
+}
+
+.workbench-layout {
+  @apply grid w-full px-4 pb-10 pt-7 sm:px-8;
+}
+
+.workbench-layout-standard {
+  @apply mx-auto max-w-7xl gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start lg:pt-10;
+}
+
+.workbench-layout-map {
+  @apply max-w-none gap-4 lg:gap-6 lg:pt-8;
+}
+
+.card-workspace {
+  @apply mx-auto w-full max-w-4xl;
+}
+
+.card-workspace-sheet {
+  @apply rounded-xl shadow-[0_18px_60px_rgb(42_35_25/9%)];
+}
+
+.empty-workbench {
+  @apply rounded-xl bg-card/55 shadow-[0_18px_60px_rgb(42_35_25/6%)];
+}
+
+.workbench-context {
+  @apply grid gap-4 rounded-xl border bg-card/72 p-4 shadow-[0_18px_50px_rgb(42_35_25/6%)] backdrop-blur lg:sticky lg:top-28;
+}
+
+.context-section {
+  @apply rounded-lg border border-border/70 bg-background/45 p-3;
+}
+
+.context-status {
+  @apply flex min-h-9 items-center gap-2 text-sm text-muted-foreground;
+}
+
+.context-inline-action {
+  @apply ml-auto rounded-md border px-2 py-1 text-xs font-medium text-foreground transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring;
+}
+
+.context-link {
+  @apply inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring;
+}
+
+.context-muted {
+  @apply mt-2 text-sm text-muted-foreground;
+}
+
+.context-card-list {
+  @apply mt-3 grid gap-2;
+}
+
+.context-card {
+  @apply grid grid-cols-[auto_1fr] items-center gap-2 rounded-lg border bg-card px-3 py-2 text-left transition hover:border-primary/35 hover:bg-muted/45 focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:border-primary;
+}
+
+.context-actions {
+  @apply mt-3 grid grid-cols-2 gap-2 lg:grid-cols-1;
+}
+
+.context-action {
+  @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium text-muted-foreground transition hover:border-primary/35 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35;
 }
 
 .card-editor-structure p {

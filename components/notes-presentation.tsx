@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ArrowRight,
   CloudOff,
   History,
   LoaderCircle,
@@ -118,11 +119,11 @@ function Navigation({
 
 function EmptyState({ actions }: Pick<NotesPresentationProps, 'actions'>) {
   return (
-    <section className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center rounded-3xl border border-dashed bg-card/45 px-6 text-center">
-      <div className="mb-5 rounded-full bg-accent p-4 text-accent-foreground">
+    <section className="empty-workbench mx-auto flex min-h-[58vh] max-w-2xl flex-col items-center justify-center border border-dashed px-6 text-center">
+      <div className="mb-5 rounded-full bg-secondary p-4 text-secondary-foreground">
         <NotebookPen aria-hidden="true" className="size-7" />
       </div>
-      <p className="eyebrow">YOUR FIRST CARD</p>
+      <p className="eyebrow">最初のカード</p>
       <h1 className="font-heading text-[1.35rem] font-semibold sm:text-2xl">
         最初の一枚から始めましょう
       </h1>
@@ -145,7 +146,7 @@ function CardView({ model, actions, features }: NotesPresentationProps) {
   if (!card) return <EmptyState actions={actions} />;
 
   return (
-    <section className="mx-auto w-full max-w-3xl" aria-label="カード編集">
+    <section className="card-workspace" aria-label="カード編集">
       {model.conflicts.map((conflict) => (
         <ConflictNotice
           key={conflict.conflictId}
@@ -155,7 +156,7 @@ function CardView({ model, actions, features }: NotesPresentationProps) {
           }
         />
       ))}
-      <article className="paper-sheet min-h-[68vh] rounded-[1.5rem] border bg-card px-5 py-7 shadow-[0_18px_50px_rgb(55_45_35/8%)] sm:px-10 sm:py-10">
+      <article className="paper-sheet card-workspace-sheet min-h-[68vh] border bg-card px-5 py-7 sm:px-10 sm:py-10">
         <div className="mb-8 flex items-center justify-between gap-4 border-b border-border/70 pb-4">
           <span
             className="font-mono text-sm font-semibold text-accent-foreground"
@@ -185,6 +186,94 @@ function CardView({ model, actions, features }: NotesPresentationProps) {
   );
 }
 
+function ContextPanel({
+  model,
+  actions,
+}: Pick<NotesPresentationProps, 'model' | 'actions'>) {
+  const nearbyItems = model.history.items.slice(0, 4);
+
+  return (
+    <aside className="workbench-context" aria-label="作業中の文脈">
+      <section className="context-section">
+        <p className="eyebrow">状態</p>
+        <div className="context-status">
+          <StatusIcon kind={model.status.kind} />
+          <span>{model.status.label}</span>
+          {model.status.retryable && (
+            <button
+              type="button"
+              className="context-inline-action"
+              onClick={() => void actions.retrySync()}
+            >
+              再試行
+            </button>
+          )}
+        </div>
+      </section>
+
+      <section className="context-section">
+        <div className="flex items-center justify-between gap-3">
+          <p className="eyebrow mb-0">近いカード</p>
+          <button
+            type="button"
+            className="context-link"
+            onClick={actions.showHistory}
+          >
+            履歴へ
+            <ArrowRight aria-hidden="true" className="size-3.5" />
+          </button>
+        </div>
+        {nearbyItems.length === 0 ? (
+          <p className="context-muted">まだカードがありません。</p>
+        ) : (
+          <div className="context-card-list">
+            {nearbyItems.map((item) => (
+              <button
+                key={item.cardId}
+                type="button"
+                className="context-card"
+                aria-current={item.current ? 'page' : undefined}
+                onClick={() => actions.openCard(item.cardId)}
+              >
+                <span className="font-mono text-[11px] font-semibold text-accent-foreground">
+                  {item.displayLabel}
+                </span>
+                <span className="truncate text-sm font-medium">
+                  {item.title}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="context-section">
+        <p className="eyebrow">移動</p>
+        <div className="context-actions">
+          <button
+            type="button"
+            className="context-action"
+            disabled={!model.availableViews.card}
+            onClick={actions.showCurrentCard}
+          >
+            <NotebookPen aria-hidden="true" className="size-4" />
+            今のカード
+          </button>
+          <button
+            type="button"
+            className="context-action"
+            disabled={!model.availableViews.connections}
+            onClick={actions.showConnections}
+          >
+            <Network aria-hidden="true" className="size-4" />
+            地図へ
+          </button>
+        </div>
+      </section>
+    </aside>
+  );
+}
+
 export function NotesPresentation({
   model,
   actions,
@@ -203,8 +292,8 @@ export function NotesPresentation({
 
   return (
     <main className="min-h-dvh bg-background text-foreground">
-      <header className="sticky top-0 z-30 border-b border-border/80 bg-background/92 px-4 py-3 backdrop-blur sm:px-8">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+      <header className="workbench-header">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="font-heading text-lg font-semibold tracking-[0.08em]">
               FUKAMU Notes
@@ -213,21 +302,24 @@ export function NotesPresentation({
               一枚ずつ、考えを深める
             </p>
           </div>
-          <Button
-            className="rounded-full"
-            onClick={() => void actions.createCard()}
-            data-testid="new-card"
-          >
-            <Plus aria-hidden="true" /> 新しいカード
-          </Button>
+          <div className="workbench-header-actions">
+            <Navigation model={model} actions={actions} />
+            <Button
+              className="rounded-full"
+              onClick={() => void actions.createCard()}
+              data-testid="new-card"
+            >
+              <Plus aria-hidden="true" /> 新しいカード
+            </Button>
+          </div>
         </div>
       </header>
 
       <div
-        className={`grid w-full px-4 pb-28 pt-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_180px] lg:pb-12 ${
+        className={`workbench-layout ${
           model.activeView === 'connections'
-            ? 'max-w-none gap-4 lg:gap-6 lg:pt-8'
-            : 'mx-auto max-w-6xl gap-8 lg:pt-12'
+            ? 'workbench-layout-map'
+            : 'workbench-layout-standard'
         }`}
       >
         <div className="min-w-0">
@@ -244,7 +336,9 @@ export function NotesPresentation({
               actions,
             })}
         </div>
-        <Navigation model={model} actions={actions} />
+        {model.activeView !== 'connections' && (
+          <ContextPanel model={model} actions={actions} />
+        )}
       </div>
     </main>
   );

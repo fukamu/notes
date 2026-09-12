@@ -1940,6 +1940,7 @@ test('history centers the current card without obscuring its page chrome', async
       currentTop: current.getBoundingClientRect().top,
       currentBottom: current.getBoundingClientRect().bottom,
       navigationTop: navigation.getBoundingClientRect().top,
+      navigationBottom: navigation.getBoundingClientRect().bottom,
     };
   });
 
@@ -1948,7 +1949,9 @@ test('history centers the current card without obscuring its page chrome', async
   expect(layout.currentTop).toBeGreaterThanOrEqual(layout.listTop);
   expect(layout.currentBottom).toBeLessThanOrEqual(layout.listBottom);
   if (testInfo.project.name === 'mobile-chromium') {
-    expect(layout.listBottom).toBeLessThan(layout.navigationTop);
+    expect(layout.navigationTop).toBeGreaterThanOrEqual(0);
+    expect(layout.navigationBottom).toBeLessThanOrEqual(layout.headerBottom);
+    expect(layout.currentTop).toBeGreaterThan(layout.headerBottom);
   }
 });
 
