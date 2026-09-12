@@ -350,6 +350,22 @@
   .e2-save-status {
     @apply min-w-0 flex-wrap text-xs;
   }
+
+  .connections-map-toolbar {
+    @apply left-1 right-1 translate-x-0 justify-center gap-0 px-0;
+  }
+
+  .connections-map-control {
+    @apply px-1;
+  }
+
+  .connections-map-control-square {
+    @apply min-w-10 px-0;
+  }
+
+  .e2-zoom-output {
+    @apply min-w-9;
+  }
 }
 
 .history-stack {

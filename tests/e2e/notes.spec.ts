@@ -28,6 +28,14 @@ async function expectVisibleButtonsToBeNonSelectable(page: Page) {
   expect(new Set(userSelectValues)).toEqual(new Set(['none']));
 }
 
+async function expectNoHorizontalDocumentOverflow(page: Page) {
+  const widths = await page.evaluate(() => ({
+    document: document.documentElement.scrollWidth,
+    viewport: document.documentElement.clientWidth,
+  }));
+  expect(widths.document).toBeLessThanOrEqual(widths.viewport + 1);
+}
+
 async function serveSyncCards(page: Page, cards: LocalFixtureCard[]) {
   await page.route('**/api/sync', async (route) => {
     await route.fulfill({
@@ -1844,6 +1852,82 @@ test('semantic navigation preserves availability, current context and accessible
       name: new RegExp(`${title}、現在のカード`),
     }),
   ).toHaveAttribute('aria-current', 'true');
+});
+
+test('E2 remains operable without horizontal clipping at 320px', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  const current: LocalFixtureCard = {
+    id: fixtureCardId('e2-320-current'),
+    displayId: { kind: 'official', value: 1 },
+    title: '320pxで読むカード',
+    body: [{ type: 'link', targetCardId: fixtureCardId('e2-320-target') }],
+    createdAt: 2,
+    updatedAt: 2,
+    localRevision: 1,
+    serverRevision: 1,
+  };
+  const target: LocalFixtureCard = {
+    id: fixtureCardId('e2-320-target'),
+    displayId: { kind: 'official', value: 2 },
+    title: 'リンク先のカード',
+    body: [],
+    createdAt: 1,
+    updatedAt: 1,
+    localRevision: 1,
+    serverRevision: 1,
+  };
+  await serveSyncCards(page, [current, target]);
+  const response = await page.goto(`/cards/${current.id}`);
+  expect(response?.status()).toBe(200);
+  await expect(page.getByTestId('card-title')).toHaveValue(current.title);
+
+  await expect(page.getByText('FUKAMU Notes', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('new-card')).toBeVisible();
+  await expect(page.locator('.e2-outgoing-index')).toBeAttached();
+  await expect(page.locator('.e2-outgoing-index')).toBeHidden();
+  await expectNoHorizontalDocumentOverflow(page);
+
+  await page.getByRole('button', { name: '過去のカード' }).click();
+  await expect(
+    page.getByRole('heading', { name: '過去のカード' }),
+  ).toBeVisible();
+  await expect(page.getByTestId('history-list')).toContainText('現在');
+  await expectNoHorizontalDocumentOverflow(page);
+
+  await page.getByRole('button', { name: 'つながり' }).click();
+  const graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 15_000,
+  });
+  const toolbar = graph.getByRole('toolbar', {
+    name: 'つながりマップの表示操作',
+  });
+  for (const label of ['全体', '現在地', '操作', '−', '＋']) {
+    await expect(toolbar.getByText(label, { exact: true })).toBeVisible();
+  }
+  await expect(
+    toolbar.getByRole('status', { name: '現在のズーム' }),
+  ).toHaveText(/\d+%/);
+  const toolbarBounds = await toolbar.evaluate((element) => {
+    const toolbarRect = element.getBoundingClientRect();
+    const graphRect = element.parentElement?.getBoundingClientRect();
+    if (!graphRect) throw new Error('connections graph is missing');
+    return {
+      toolbarLeft: toolbarRect.left,
+      toolbarRight: toolbarRect.right,
+      graphLeft: graphRect.left,
+      graphRight: graphRect.right,
+    };
+  });
+  expect(toolbarBounds.toolbarLeft).toBeGreaterThanOrEqual(
+    toolbarBounds.graphLeft,
+  );
+  expect(toolbarBounds.toolbarRight).toBeLessThanOrEqual(
+    toolbarBounds.graphRight,
+  );
+  await expectNoHorizontalDocumentOverflow(page);
 });
 
 test('button and card labels are non-selectable while card editors remain selectable', async ({
