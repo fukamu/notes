@@ -266,6 +266,10 @@ describe('swappable presentation architecture', () => {
   it('keeps camera geometry pure and browser gesture effects in the hook adapter', async () => {
     const camera = await readFile('lib/graph/connections-viewport.ts', 'utf8');
     const hook = await readFile('hooks/use-connections-viewport.ts', 'utf8');
+    const preference = await readFile(
+      'lib/client/connections-zoom-preference.ts',
+      'utf8',
+    );
 
     expect(camera).toContain('fitConnectionsCamera');
     expect(camera).toContain('pinchConnectionsCamera');
@@ -283,6 +287,11 @@ describe('swappable presentation architecture', () => {
       expect(hook).toContain(boundary);
     }
     expect(hook).not.toMatch(/useState|setCamera/);
+    expect(hook).toContain('readConnectionsZoomPreference');
+    expect(hook).toContain('writeConnectionsZoomPreference');
+    expect(preference).toContain('decodeConnectionsCameraScale');
+    expect(preference).toContain('storage.getItem');
+    expect(preference).toContain('storage.setItem');
   });
 
   it('keeps curve math pure and recomputes SVG paths only with layout geometry', async () => {

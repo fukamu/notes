@@ -104,6 +104,28 @@ export function connectionsCameraZoomState(
   };
 }
 
+export function decodeConnectionsCameraScale(
+  value: unknown,
+  limits: ConnectionsCameraLimits,
+): number | null {
+  const candidate =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim().length > 0
+        ? Number(value)
+        : Number.NaN;
+  if (
+    !finite(candidate) ||
+    !finite(limits.minimumScale) ||
+    !finite(limits.maximumScale) ||
+    limits.minimumScale <= 0 ||
+    limits.maximumScale < limits.minimumScale
+  ) {
+    return null;
+  }
+  return clamp(candidate, limits.minimumScale, limits.maximumScale);
+}
+
 function usableViewport(geometry: ConnectionsCameraGeometry) {
   const { viewport, padding, limits, world } = geometry;
   if (
@@ -341,9 +363,22 @@ export function ensureConnectionsRectVisible(
 export function initialConnectionsCamera(
   geometry: ConnectionsCameraGeometry,
   currentNode: ConnectionsNodeGeometry | null,
+  preferredScale: unknown = null,
 ): ConnectionsCamera | null {
   const camera = fitConnectionsCamera(geometry);
   if (!camera) return null;
+  const decodedScale = decodeConnectionsCameraScale(
+    preferredScale,
+    geometry.limits,
+  );
+  if (decodedScale !== null) {
+    return restoreConnectionsCameraScale(
+      camera,
+      decodedScale,
+      geometry,
+      currentNode,
+    );
+  }
   if (
     currentNode &&
     !connectionsCameraContainsRect(camera, currentNode, geometry, 12)
@@ -351,6 +386,35 @@ export function initialConnectionsCamera(
     return ensureConnectionsRectVisible(camera, currentNode, geometry, 12);
   }
   return camera;
+}
+
+export function restoreConnectionsCameraScale(
+  camera: ConnectionsCamera,
+  preferredScale: unknown,
+  geometry: ConnectionsCameraGeometry,
+  currentNode: ConnectionsNodeGeometry | null,
+): ConnectionsCamera | null {
+  const viewport = usableViewport(geometry);
+  const scale = decodeConnectionsCameraScale(preferredScale, geometry.limits);
+  if (!viewport || !finiteCamera(camera) || scale === null) return null;
+  const center = {
+    x: viewport.left + viewport.width / 2,
+    y: viewport.top + viewport.height / 2,
+  };
+  const restored = zoomConnectionsCamera(
+    camera,
+    scale / camera.scale,
+    center,
+    geometry,
+  );
+  if (
+    !restored ||
+    !currentNode ||
+    connectionsCameraContainsRect(restored, currentNode, geometry, 12)
+  ) {
+    return restored;
+  }
+  return centerConnectionsCameraOnRect(restored, currentNode, geometry);
 }
 
 export function panConnectionsCamera(
