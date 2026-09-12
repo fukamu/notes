@@ -817,7 +817,7 @@ test('global directed graph is safe and operable for the reported and cyclic fix
   await expect(graph).toHaveAttribute('data-camera-scale', /\d/, {
     timeout: 5_000,
   });
-  await expect(graph.getByRole('button')).toHaveCount(7);
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(7);
   for (const title of Object.values(titles)) {
     await expect(
       graph.getByRole('button').filter({ hasText: title }),
@@ -848,6 +848,7 @@ test('global directed graph is safe and operable for the reported and cyclic fix
     .getByRole('button')
     .filter({ hasText: titles.reportA });
   await expect(currentNode).toHaveAttribute('aria-current', 'true');
+  await expect(currentNode).toContainText('現在');
   const nodeBox = await currentNode.boundingBox();
   const viewportBox = await graph.boundingBox();
   expect(nodeBox).not.toBeNull();
@@ -944,6 +945,11 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
     await expect(control).toBeEnabled();
   }
   await expect(zoomOutButton).toBeVisible();
+  await expect(fitButton).toHaveText('全体');
+  await expect(currentButton).toHaveText('現在地');
+  await expect(keyboardControl).toHaveText('操作');
+  await expect(zoomOutButton).toHaveText('−');
+  await expect(zoomInButton).toHaveText('＋');
   if (fitted.scale <= 0.100_000_1) await expect(zoomOutButton).toBeDisabled();
   else await expect(zoomOutButton).toBeEnabled();
   for (const value of Object.values(fitted)) {

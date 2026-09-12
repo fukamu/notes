@@ -9,8 +9,8 @@ export type ConnectionsPresentationAdapter = {
 
 export const defaultConnectionsPresentation: ConnectionsPresentationAdapter = {
   layoutMetrics: {
-    nodeWidth: 196,
-    nodeHeight: 72,
+    nodeWidth: 216,
+    nodeHeight: 80,
     portSize: 2,
     componentSpacing: 96,
     nodeSpacing: 72,
@@ -19,6 +19,6 @@ export const defaultConnectionsPresentation: ConnectionsPresentationAdapter = {
     edgeLayerSpacing: 40,
     padding: { top: 24, right: 24, bottom: 24, left: 24 },
   },
-  viewportPadding: { top: 24, right: 24, bottom: 24, left: 24 },
+  viewportPadding: { top: 88, right: 24, bottom: 24, left: 24 },
   edgeMaximumRadius: 16,
 };

@@ -407,18 +407,7 @@
 }
 
 .connections-viewport {
-  @apply rounded-2xl border bg-card/55 shadow-sm focus-visible:ring-2 focus-visible:ring-ring;
-  background-image:
-    linear-gradient(
-      color-mix(in oklch, var(--border), transparent 72%) 1px,
-      transparent 1px
-    ),
-    linear-gradient(
-      90deg,
-      color-mix(in oklch, var(--border), transparent 72%) 1px,
-      transparent 1px
-    );
-  background-size: 24px 24px;
+  @apply rounded-xl bg-muted focus-visible:ring-2 focus-visible:ring-ring;
 }
 
 .connections-canvas-structure {
@@ -435,28 +424,80 @@
   cursor: grabbing;
 }
 
-.connections-map-heading {
-  @apply flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between;
+.e2-connections {
+  @apply mx-auto w-full max-w-[70rem] min-w-0;
+}
+
+.e2-connections-heading {
+  @apply mb-4;
+}
+
+.e2-connections-heading h1 {
+  @apply text-[1.75rem] font-bold leading-10;
+}
+
+.e2-connections-heading p {
+  @apply mt-2 text-[1.0625rem] leading-[1.8125rem] text-muted-foreground;
 }
 
 .connections-map-toolbar {
-  @apply flex min-h-11 shrink-0 items-center gap-1 self-start rounded-xl border bg-card/92 p-1 shadow-sm backdrop-blur sm:self-auto;
+  @apply absolute left-1/2 top-4 z-20 flex min-h-11 -translate-x-1/2 items-center gap-1 rounded-lg border bg-card p-1;
 }
 
 .connections-map-control {
-  @apply inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35 sm:px-3;
+  @apply inline-flex min-h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-lg px-2 text-xs font-medium text-primary outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35 sm:px-3;
 }
 
 .connections-map-control-square {
   @apply min-w-11 px-0;
 }
 
+.e2-zoom-output {
+  @apply min-w-10 text-center text-xs font-medium text-muted-foreground;
+}
+
+.e2-connections-state {
+  @apply grid h-full min-h-64 place-items-center pt-16 text-sm font-medium text-muted-foreground;
+}
+
+.e2-connections-error {
+  @apply min-h-64 px-6 pb-6 pt-24;
+}
+
+.e2-connections-error > p {
+  @apply mb-4 text-sm font-medium text-muted-foreground;
+}
+
+.e2-connections-error > div {
+  @apply grid gap-2 sm:grid-cols-2;
+}
+
+.e2-connections-fallback-card {
+  @apply flex min-h-20 flex-col justify-center rounded-xl border bg-card px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring aria-[current=true]:border-2 aria-[current=true]:border-primary;
+}
+
 .connections-node-structure {
-  @apply absolute z-10 flex flex-col justify-center px-4 text-left;
+  @apply absolute z-10 flex flex-col justify-center gap-1 p-3 text-left;
 }
 
 .connections-node {
-  @apply rounded-xl border bg-card shadow-sm transition hover:border-primary/40 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring aria-[current=true]:border-primary aria-[current=true]:shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary),transparent_72%)];
+  @apply rounded-xl border bg-card outline-none transition-colors hover:border-primary focus-visible:ring-2 focus-visible:ring-ring aria-[current=true]:border-2 aria-[current=true]:border-primary;
+}
+
+.e2-node-title {
+  @apply block w-full truncate text-sm font-medium leading-5;
+}
+
+.e2-node-meta {
+  @apply block text-xs font-medium leading-[1.125rem] tracking-[0.0125rem] text-muted-foreground;
+}
+
+.connections-node[aria-current='true'] .e2-node-meta {
+  @apply text-primary;
+}
+
+.e2-connections-empty {
+  @apply mt-4 text-sm font-medium leading-5 text-muted-foreground;
 }
 
 @media (min-width: 64rem) {
