@@ -1920,6 +1920,7 @@ test('history centers the current card without obscuring its page chrome', async
   await expect(currentItem).toHaveAttribute('aria-current', 'page', {
     timeout: 15_000,
   });
+  await expect(currentItem).toContainText('現在');
 
   const layout = await page.evaluate(() => {
     const header = document.querySelector('header');
