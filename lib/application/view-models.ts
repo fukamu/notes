@@ -11,6 +11,7 @@ import {
 } from '@/lib/domain/types';
 import type {
   CardEditorInputModel,
+  CardEditorOutgoingLinkModel,
   ConflictChoice,
   ConflictOptionViewModel,
   ConflictViewModel,
@@ -18,6 +19,32 @@ import type {
   HistoryViewModel,
   NotesStatusViewModel,
 } from '@/lib/application/presentation';
+
+export function selectCardEditorOutgoingLinks(
+  cards: readonly CardRecord[],
+  body: readonly CardRecord['body'][number][],
+): CardEditorOutgoingLinkModel[] {
+  const cardsById = new Map(cards.map((card) => [card.id, card]));
+  const seen = new Set<CardId>();
+  const outgoing: CardEditorOutgoingLinkModel[] = [];
+
+  for (const segment of body) {
+    if (segment.type !== 'link' || seen.has(segment.targetCardId)) continue;
+    seen.add(segment.targetCardId);
+    const target = cardsById.get(segment.targetCardId);
+    if (!target) continue;
+    const displayLabel = formatDisplayId(target.displayId);
+    const title = visibleTitle(target.title);
+    outgoing.push({
+      cardId: target.id,
+      displayLabel,
+      title,
+      accessibleName: `${displayLabel} ${title}を開く`,
+    });
+  }
+
+  return outgoing;
+}
 
 export function selectCardEditorInputModel(
   cards: CardRecord[],
@@ -28,7 +55,7 @@ export function selectCardEditorInputModel(
     body: currentCard.body,
     labels: cards.map((card) => ({
       cardId: card.id,
-      label: `${formatDisplayId(card.displayId)} ${visibleTitle(card.title)}`,
+      label: visibleTitle(card.title),
     })),
     candidates: linkCandidates(cards, currentCard.id).map((card) => ({
       cardId: card.id,
@@ -36,6 +63,7 @@ export function selectCardEditorInputModel(
       displayValue: card.displayId.value,
       title: visibleTitle(card.title),
     })),
+    outgoingLinks: selectCardEditorOutgoingLinks(cards, currentCard.body),
   };
 }
 

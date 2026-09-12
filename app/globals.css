@@ -33,29 +33,30 @@
 }
 
 :root {
-  --font-body: 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
-  --font-heading: 'Yu Mincho', 'Hiragino Mincho ProN', serif;
-  --background: oklch(0.968 0.013 82);
-  --foreground: oklch(0.25 0.02 55);
-  --card: oklch(0.993 0.007 84);
-  --card-foreground: oklch(0.25 0.02 55);
-  --popover: oklch(0.995 0.006 84);
-  --popover-foreground: oklch(0.25 0.02 55);
-  --primary: oklch(0.39 0.08 255);
-  --primary-foreground: oklch(0.985 0.006 84);
-  --secondary: oklch(0.925 0.025 78);
-  --secondary-foreground: oklch(0.31 0.025 55);
-  --muted: oklch(0.93 0.014 78);
-  --muted-foreground: oklch(0.51 0.025 55);
-  --accent: oklch(0.9 0.035 71);
-  --accent-foreground: oklch(0.38 0.05 53);
-  --destructive: oklch(0.56 0.19 28);
-  --border: oklch(0.85 0.025 77);
-  --input: oklch(0.85 0.025 77);
-  --ring: oklch(0.55 0.1 255);
-  --link-bg: oklch(0.92 0.035 252);
-  --link-border: oklch(0.73 0.075 253);
-  --link-foreground: oklch(0.37 0.09 256);
+  --font-body:
+    'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+  --font-heading: var(--font-body);
+  --background: #f6fafa;
+  --foreground: #112728;
+  --card: #ffffff;
+  --card-foreground: #112728;
+  --popover: #ffffff;
+  --popover-foreground: #112728;
+  --primary: #006e75;
+  --primary-foreground: #ffffff;
+  --secondary: #eaf3f3;
+  --secondary-foreground: #112728;
+  --muted: #eaf3f3;
+  --muted-foreground: #607274;
+  --accent: #eaf3f3;
+  --accent-foreground: #006e75;
+  --destructive: #b1494f;
+  --border: #bdd1d2;
+  --input: #bdd1d2;
+  --ring: #006e75;
+  --link-bg: transparent;
+  --link-border: #006e75;
+  --link-foreground: #006e75;
   --warning-bg: oklch(0.987 0.022 95.277 / 80%);
   --warning-surface: oklch(1 0 0 / 70%);
   --warning-border: oklch(0.769 0.188 70.08 / 35%);
@@ -63,31 +64,31 @@
   --warning-muted-foreground: oklch(0.414 0.112 45.904 / 75%);
   --warning-preview-foreground: oklch(0.279 0.077 45.635 / 70%);
   --warning-icon: oklch(0.555 0.163 48.998);
-  --radius: 0.75rem;
+  --radius: 0.5rem;
 }
 
 .dark {
-  --background: oklch(0.2 0.015 55);
-  --foreground: oklch(0.92 0.015 80);
-  --card: oklch(0.24 0.018 58);
-  --card-foreground: oklch(0.92 0.015 80);
-  --popover: oklch(0.24 0.018 58);
-  --popover-foreground: oklch(0.92 0.015 80);
-  --primary: oklch(0.72 0.09 252);
-  --primary-foreground: oklch(0.18 0.02 58);
-  --secondary: oklch(0.29 0.02 58);
-  --secondary-foreground: oklch(0.9 0.015 80);
-  --muted: oklch(0.28 0.017 58);
-  --muted-foreground: oklch(0.68 0.02 80);
-  --accent: oklch(0.34 0.03 65);
-  --accent-foreground: oklch(0.9 0.02 80);
-  --destructive: oklch(0.7 0.16 28);
-  --border: oklch(0.37 0.025 65);
-  --input: oklch(0.37 0.025 65);
-  --ring: oklch(0.67 0.09 252);
-  --link-bg: oklch(0.31 0.06 254);
-  --link-border: oklch(0.51 0.09 253);
-  --link-foreground: oklch(0.84 0.06 250);
+  --background: #0f2021;
+  --foreground: #e9f3f3;
+  --card: #152a2c;
+  --card-foreground: #e9f3f3;
+  --popover: #152a2c;
+  --popover-foreground: #e9f3f3;
+  --primary: #70d9dd;
+  --primary-foreground: #0f2021;
+  --secondary: #1b3537;
+  --secondary-foreground: #e9f3f3;
+  --muted: #1b3537;
+  --muted-foreground: #a6b8b9;
+  --accent: #1b3537;
+  --accent-foreground: #70d9dd;
+  --destructive: #ff9a9f;
+  --border: #3b5658;
+  --input: #3b5658;
+  --ring: #70d9dd;
+  --link-bg: transparent;
+  --link-border: #70d9dd;
+  --link-foreground: #70d9dd;
   --warning-bg: oklch(0.987 0.022 95.277 / 80%);
   --warning-surface: oklch(1 0 0 / 70%);
   --warning-border: oklch(0.769 0.188 70.08 / 35%);
@@ -115,33 +116,153 @@
   }
 }
 
-.paper-sheet {
-  background-image: linear-gradient(
-    to bottom,
-    transparent 31px,
-    color-mix(in oklch, var(--border), transparent 58%) 32px
-  );
-  background-size: 100% 32px;
-}
-
-.nav-button {
-  @apply inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-left text-sm text-muted-foreground transition hover:bg-card hover:text-foreground;
-}
-
-.nav-button-active {
-  @apply bg-card font-medium text-foreground shadow-sm;
-}
-
 .eyebrow {
-  @apply mb-1 text-[10px] font-bold tracking-[0.18em] text-muted-foreground;
+  @apply mb-1 text-xs font-medium tracking-[0.0125rem] text-muted-foreground;
 }
 
 .app-navigation {
-  @apply fixed inset-x-3 bottom-3 z-30 grid grid-cols-3 gap-1 rounded-2xl border bg-card/95 p-1.5 shadow-xl backdrop-blur lg:sticky lg:top-28 lg:inset-auto lg:flex lg:h-fit lg:flex-col lg:bg-transparent lg:p-0 lg:shadow-none;
+  @apply flex items-center justify-center gap-2;
+  grid-area: navigation;
 }
 
-.app-navigation .nav-button {
-  @apply min-w-0 justify-center px-2 text-xs lg:justify-start lg:px-3 lg:text-sm;
+.e2-app-header {
+  @apply px-4 pt-4 sm:px-10 sm:pt-8;
+}
+
+.e2-app-header-inner {
+  @apply mx-auto grid min-h-[4.5rem] w-full max-w-[85rem] items-center bg-card px-10;
+  grid-template-areas: 'brand navigation action';
+  grid-template-columns: 1fr auto 1fr;
+}
+
+.e2-brand {
+  @apply min-w-0;
+  grid-area: brand;
+}
+
+.e2-brand p:first-child {
+  @apply text-sm font-medium leading-5;
+}
+
+.e2-brand p:last-child {
+  @apply text-xs font-medium leading-[1.125rem] tracking-[0.0125rem] text-muted-foreground;
+}
+
+.e2-nav-button {
+  @apply inline-flex min-h-11 items-center justify-center rounded-lg px-4 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35 aria-[current=page]:bg-muted aria-[current=page]:text-primary;
+}
+
+.e2-new-card {
+  @apply h-11 justify-self-end rounded-lg px-4;
+  grid-area: action;
+}
+
+.e2-view-frame {
+  @apply mx-auto w-full max-w-[85rem] px-4 pb-14 pt-8 sm:px-10 sm:pb-20 sm:pt-16;
+}
+
+.e2-view-frame-wide {
+  @apply max-w-none;
+}
+
+.e2-empty-state {
+  @apply mx-auto flex min-h-[55vh] max-w-2xl flex-col items-start justify-center;
+}
+
+.e2-card-layout {
+  @apply mx-auto grid w-full max-w-[65.5rem] min-w-0 gap-12;
+}
+
+.e2-manuscript-column,
+.e2-manuscript {
+  @apply min-w-0;
+}
+
+.e2-manuscript {
+  @apply grid items-center gap-y-7;
+  grid-template-areas:
+    'identity history status'
+    'title title title'
+    'body body body';
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.e2-card-id {
+  @apply whitespace-nowrap text-xs font-medium leading-[1.125rem] tracking-[0.0125rem] text-muted-foreground;
+  grid-area: identity;
+}
+
+.e2-save-status {
+  @apply flex min-h-11 items-center justify-end gap-2 text-right text-sm font-medium leading-5 text-muted-foreground;
+  grid-area: status;
+}
+
+.e2-save-status-retryable {
+  @apply rounded-lg px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring;
+}
+
+.e2-retry-label {
+  @apply text-primary underline underline-offset-4;
+}
+
+.e2-card-title {
+  @apply w-full min-w-0 bg-transparent text-[1.75rem] font-bold leading-10 text-foreground outline-none placeholder:text-muted-foreground/60 focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring;
+  grid-area: title;
+}
+
+.e2-editor-history-toolbar {
+  @apply flex items-center justify-center gap-2;
+  grid-area: history;
+}
+
+.e2-editor-content {
+  @apply relative min-w-0;
+  grid-area: body;
+}
+
+.e2-link-candidates {
+  @apply absolute left-0 top-12 z-20 w-full max-w-sm rounded-lg border bg-popover p-1 shadow-lg;
+}
+
+.e2-outgoing-index {
+  @apply hidden w-[17.5rem] min-w-0 border-l pl-6 sm:block;
+}
+
+.e2-outgoing-index h2 {
+  @apply text-sm font-medium leading-5;
+}
+
+.e2-outgoing-index > p {
+  @apply mt-2 text-xs font-medium leading-[1.125rem] tracking-[0.0125rem] text-muted-foreground;
+}
+
+.e2-outgoing-index ul {
+  @apply mt-2;
+}
+
+.e2-outgoing-index li {
+  @apply border-b;
+}
+
+.e2-outgoing-index button {
+  @apply flex min-h-[3.25rem] w-full items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring;
+}
+
+.e2-outgoing-arrow {
+  @apply text-sm font-medium text-primary;
+}
+
+.e2-outgoing-id,
+.e2-outgoing-title {
+  @apply block;
+}
+
+.e2-outgoing-id {
+  @apply text-xs font-medium leading-[1.125rem] tracking-[0.0125rem] text-muted-foreground;
+}
+
+.e2-outgoing-title {
+  @apply max-w-[13rem] truncate text-sm font-medium leading-5;
 }
 
 .card-editor-structure {
@@ -151,11 +272,11 @@
 }
 
 .card-editor-structure p {
-  min-height: 2rem;
+  min-height: 1.8125rem;
 }
 
 .fukamu-editor {
-  @apply text-[1.06rem] leading-8 text-foreground/90;
+  @apply text-[1.0625rem] leading-[1.8125rem] text-foreground;
 }
 
 .fukamu-editor p.is-editor-empty:first-child::before {
@@ -167,26 +288,68 @@
 }
 
 .card-link-structure {
-  @apply inline-flex select-all items-center align-baseline;
-  white-space: nowrap;
+  @apply inline select-all align-baseline;
 }
 
 .card-link-capsule {
-  @apply mx-1 cursor-pointer rounded-full border px-2.5 py-0.5 font-sans text-sm font-semibold shadow-xs transition;
-  border-color: var(--link-border);
-  background: var(--link-bg);
-  color: var(--link-foreground);
-}
-
-.card-link-capsule::before {
-  content: '→';
-  margin-right: 0.35rem;
-  font-size: 0.75rem;
+  @apply cursor-pointer rounded-sm text-[color:var(--link-foreground)] underline decoration-1 underline-offset-2 outline-none;
 }
 
 .card-link-capsule:hover,
 .card-link-capsule.ProseMirror-selectednode {
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring), transparent 50%);
+}
+
+@media (min-width: 64rem) {
+  .e2-card-layout {
+    grid-template-columns: minmax(0, 45rem) 17.5rem;
+  }
+}
+
+@media (max-width: 39.999rem) {
+  .e2-app-header-inner {
+    @apply gap-2 bg-transparent p-0;
+    grid-template-areas:
+      'brand action'
+      'navigation navigation';
+    grid-template-columns: 1fr auto;
+  }
+
+  .e2-brand p:last-child {
+    @apply hidden;
+  }
+
+  .app-navigation {
+    @apply w-full;
+  }
+
+  .e2-nav-button {
+    @apply px-4;
+  }
+
+  .e2-card-layout {
+    @apply gap-0;
+  }
+
+  .e2-outgoing-index {
+    @apply hidden;
+  }
+}
+
+@media (max-width: 22.999rem) {
+  .e2-manuscript {
+    @apply gap-y-4;
+    grid-template-areas:
+      'identity status'
+      'history history'
+      'title title'
+      'body body';
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .e2-save-status {
+    @apply min-w-0 flex-wrap text-xs;
+  }
 }
 
 .history-stack {

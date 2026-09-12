@@ -1890,7 +1890,7 @@ test('button and card labels are non-selectable while card editors remain select
 
 test('history centers the current card without obscuring its page chrome', async ({
   page,
-}, testInfo) => {
+}) => {
   const cards: LocalFixtureCard[] = Array.from({ length: 12 }, (_, index) => ({
     id: `01991f20-61d2-7000-8000-${String(index + 701).padStart(12, '0')}`,
     displayId: { kind: 'official', value: index + 1 },
@@ -1933,6 +1933,7 @@ test('history centers the current card without obscuring its page chrome', async
 
     return {
       scrollY: window.scrollY,
+      headerTop: header.getBoundingClientRect().top,
       headerBottom: header.getBoundingClientRect().bottom,
       headingTop: heading.getBoundingClientRect().top,
       listTop: list.getBoundingClientRect().top,
@@ -1940,16 +1941,16 @@ test('history centers the current card without obscuring its page chrome', async
       currentTop: current.getBoundingClientRect().top,
       currentBottom: current.getBoundingClientRect().bottom,
       navigationTop: navigation.getBoundingClientRect().top,
+      navigationBottom: navigation.getBoundingClientRect().bottom,
     };
   });
 
   expect(layout.scrollY).toBe(0);
   expect(layout.headingTop).toBeGreaterThanOrEqual(layout.headerBottom);
+  expect(layout.navigationTop).toBeGreaterThanOrEqual(layout.headerTop);
+  expect(layout.navigationBottom).toBeLessThanOrEqual(layout.headerBottom);
   expect(layout.currentTop).toBeGreaterThanOrEqual(layout.listTop);
   expect(layout.currentBottom).toBeLessThanOrEqual(layout.listBottom);
-  if (testInfo.project.name === 'mobile-chromium') {
-    expect(layout.listBottom).toBeLessThan(layout.navigationTop);
-  }
 });
 
 test('layout failure fallback opens a card through URL navigation', async ({

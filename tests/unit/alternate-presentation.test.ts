@@ -61,6 +61,7 @@ function model(
       cardId: firstId,
       body: [],
       labels: [{ cardId: firstId, label: '#1 First' }],
+      outgoingLinks: [],
       candidates: [
         {
           cardId: secondId,

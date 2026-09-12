@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   selectCardEditorInputModel,
+  selectCardEditorOutgoingLinks,
   selectConflictViewModel,
   selectConnectionsViewModel,
   selectHistoryViewModel,
@@ -111,12 +112,12 @@ describe('card editor input view model', () => {
       cardId: current.id,
       body: current.body,
       labels: [
-        { cardId: current.id, label: '#4 editor-current' },
+        { cardId: current.id, label: 'editor-current' },
         {
           cardId: provisional.id,
-          label: '仮 #2 editor-provisional',
+          label: 'editor-provisional',
         },
-        { cardId: earlier.id, label: '#1 Untitled' },
+        { cardId: earlier.id, label: 'Untitled' },
       ],
       candidates: [
         {
@@ -132,7 +133,53 @@ describe('card editor input view model', () => {
           title: 'Untitled',
         },
       ],
+      outgoingLinks: [],
     });
+  });
+
+  it('selects only navigable outgoing links in stable first-appearance order', () => {
+    const current = card('outgoing-current', {
+      displayId: { kind: 'official', value: 9 },
+    });
+    const first = card('outgoing-first', {
+      displayId: { kind: 'official', value: 7 },
+      title: '',
+    });
+    const second = card('outgoing-second', {
+      displayId: { kind: 'provisional', value: 8 },
+    });
+    const missing = fixtureCardId('outgoing-missing');
+    const body: CardRecord['body'] = [
+      { type: 'text', text: 'before' },
+      { type: 'link', targetCardId: first.id },
+      { type: 'link', targetCardId: missing },
+      { type: 'link', targetCardId: second.id },
+      { type: 'link', targetCardId: first.id },
+    ];
+
+    expect(
+      selectCardEditorOutgoingLinks([second, current, first], body),
+    ).toEqual([
+      {
+        cardId: first.id,
+        displayLabel: '#7',
+        title: 'Untitled',
+        accessibleName: '#7 Untitledを開く',
+      },
+      {
+        cardId: second.id,
+        displayLabel: '仮 #8',
+        title: 'outgoing-second',
+        accessibleName: '仮 #8 outgoing-secondを開く',
+      },
+    ]);
+    expect(selectCardEditorOutgoingLinks([current], [])).toEqual([]);
+    expect(
+      selectCardEditorOutgoingLinks(
+        [current],
+        [{ type: 'link', targetCardId: missing }],
+      ),
+    ).toEqual([]);
   });
 });
 

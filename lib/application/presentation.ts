@@ -58,11 +58,19 @@ export type CardEditorCandidateModel = {
   title: string;
 };
 
+export type CardEditorOutgoingLinkModel = {
+  cardId: CardId;
+  displayLabel: string;
+  title: string;
+  accessibleName: string;
+};
+
 export type CardEditorInputModel = {
   cardId: CardId;
   body: BodySegment[];
   labels: CardEditorLabelModel[];
   candidates: CardEditorCandidateModel[];
+  outgoingLinks: CardEditorOutgoingLinkModel[];
 };
 
 export type ConnectionsViewModel = ConnectionsInputModel;
