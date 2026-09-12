@@ -23,9 +23,10 @@ const candidateFixture = {
 };
 
 describe('connections routing research functions', () => {
-  it('keeps every hard constraint on the production FREE default corpus', async () => {
-    const runner = createMainThreadConnectionsLayoutRunner();
-    for (const fixture of connectionsBenchmarkFixtures) {
+  it.each(connectionsBenchmarkFixtures)(
+    'keeps every hard constraint on the production FREE default corpus: $name',
+    async (fixture) => {
+      const runner = createMainThreadConnectionsLayoutRunner();
       const graph = connectionsFixtureGraph(fixture);
       const layout = await runner(graph, spaciousConnectionsMetrics);
       const quality = measureRouteQuality(layout, 'orthogonal-polyline', {
@@ -51,8 +52,8 @@ describe('connections routing research functions', () => {
         expect(quality.totalRouteLength).toBe(3_094);
         expect(quality.mutualReverseExcessLength).toBe(18);
       }
-    }
-  });
+    },
+  );
 
   it('selects relative sides deterministically for horizontal, vertical, diagonal, and self edges', () => {
     const graph = connectionsFixtureGraph({
