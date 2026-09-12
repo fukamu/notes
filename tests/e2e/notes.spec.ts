@@ -601,6 +601,42 @@ test('link candidates are descending, prefix-filtered, scroll-following and expl
 
   const editor = page.getByTestId('body-editor');
   await editor.click();
+  const deleteThroughEditingCommand = (inputType = 'deleteContentBackward') =>
+    editor.evaluate((editorElement, nextInputType) => {
+      const selection = window.getSelection();
+      const paragraph = editorElement.querySelector('p');
+      const text = paragraph?.lastChild;
+      if (
+        !selection ||
+        !(paragraph instanceof HTMLElement) ||
+        !(text instanceof Text) ||
+        text.length === 0
+      ) {
+        throw new Error('Expected editable text before deletion');
+      }
+      const range = document.createRange();
+      range.setStart(text, text.length - 1);
+      range.setEnd(text, text.length);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      paragraph.dispatchEvent(
+        new InputEvent('beforeinput', {
+          bubbles: true,
+          cancelable: true,
+          inputType: nextInputType,
+        }),
+      );
+      range.deleteContents();
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      paragraph.dispatchEvent(
+        new InputEvent('input', {
+          bubbles: true,
+          inputType: nextInputType,
+        }),
+      );
+    }, inputType);
   const input = await context.newCDPSession(page);
   await input.send('Input.insertText', { text: '#' });
   const candidateList = page.getByTestId('link-candidates');
@@ -651,6 +687,44 @@ test('link candidates are descending, prefix-filtered, scroll-following and expl
   await expect(candidateButtons).toHaveCount(1);
   await expect(candidateButtons.first()).toContainText('#32');
   await expect(editor.locator('[data-card-link-id]')).toHaveCount(0);
+
+  await deleteThroughEditingCommand('deleteByCut');
+  await expect(candidateButtons).toHaveCount(11);
+  expect(
+    await candidateButtons.evaluateAll((buttons) =>
+      buttons.map((button) => button.textContent?.match(/#\d+/u)?.[0]),
+    ),
+  ).toEqual([
+    '#39',
+    '#38',
+    '#37',
+    '#36',
+    '#35',
+    '#34',
+    '#33',
+    '#32',
+    '#31',
+    '#30',
+    '#3',
+  ]);
+  await deleteThroughEditingCommand();
+  await expect(candidateButtons).toHaveCount(100);
+  await expect(candidateButtons.first()).toContainText('#100');
+  await expect(candidateButtons.last()).toContainText('#1');
+
+  await input.send('Input.insertText', { text: '369' });
+  await expect(candidateButtons).toHaveCount(0);
+  await deleteThroughEditingCommand();
+  await expect(candidateButtons).toHaveCount(1);
+  await expect(candidateButtons.first()).toContainText('#36');
+  await deleteThroughEditingCommand();
+  await expect(candidateButtons).toHaveCount(11);
+  await deleteThroughEditingCommand();
+  await expect(candidateButtons).toHaveCount(100);
+
+  await input.send('Input.insertText', { text: '32' });
+  await expect(candidateButtons).toHaveCount(1);
+  await expect(candidateButtons.first()).toContainText('#32');
 
   await input.send('Input.insertText', { text: ' ' });
   await expect(candidateList).toHaveCount(0);

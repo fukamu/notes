@@ -4,6 +4,7 @@ import {
   classifyCardEditorDocumentUpdate,
   filterCardEditorCandidates,
   handleCardEditorCandidateKey,
+  isCardEditorDeletionInput,
   isCardEditorHashContext,
   isTypedCardEditorInput,
   openCardEditorCandidates,
@@ -62,6 +63,23 @@ describe('card editor input and IME classification', () => {
   });
 
   it.each([
+    'deleteContentBackward',
+    'deleteContentForward',
+    'deleteWordBackward',
+    'deleteByCut',
+    'deleteByDrag',
+  ])('recognizes %s as a candidate-query deletion', (inputType) => {
+    expect(isCardEditorDeletionInput(inputType)).toBe(true);
+  });
+
+  it.each(['insertText', 'insertFromPaste', 'historyUndo'])(
+    'does not classify %s as deletion',
+    (inputType) => {
+      expect(isCardEditorDeletionInput(inputType)).toBe(false);
+    },
+  );
+
+  it.each([
     ['#', true, true],
     ['本文 #', true, true],
     ['C#', true, false],
@@ -111,6 +129,23 @@ describe('card editor input and IME classification', () => {
       '3',
       '2',
     ]);
+  });
+
+  it('derives every narrowing and re-expansion from the full candidate set', () => {
+    const candidates = Array.from({ length: 100 }, (_, index) => ({
+      displayValue: 100 - index,
+    }));
+    const valuesFor = (numberPrefix: string) =>
+      filterCardEditorCandidates(candidates, numberPrefix).map(
+        (candidate) => candidate.displayValue,
+      );
+
+    expect(valuesFor('')).toHaveLength(100);
+    expect(valuesFor('3')).toEqual([39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 3]);
+    expect(valuesFor('36')).toEqual([36]);
+    expect(valuesFor('3')).toEqual([39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 3]);
+    expect(valuesFor('')).toHaveLength(100);
+    expect(candidates).toHaveLength(100);
   });
 });
 
