@@ -356,6 +356,50 @@
   scroll-padding-block: 35%;
 }
 
+.e2-history {
+  @apply mx-auto w-full max-w-[55rem];
+}
+
+.e2-history-heading {
+  @apply mb-10;
+}
+
+.e2-history-heading h1 {
+  @apply text-[1.75rem] font-bold leading-10;
+}
+
+.e2-history-heading p {
+  @apply mt-2 text-sm font-medium leading-5 text-muted-foreground;
+}
+
+.e2-history-list {
+  @apply max-h-[calc(100dvh-18.25rem)] overflow-y-auto lg:max-h-[calc(100dvh-14rem)];
+}
+
+.e2-history-row {
+  @apply grid min-h-28 w-full grid-cols-[6rem_minmax(0,1fr)] items-center gap-5 border-b border-l-[3px] border-l-transparent p-5 text-left outline-none transition-colors hover:bg-card/55 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring aria-[current=page]:border-l-primary;
+}
+
+.e2-history-meta {
+  @apply flex min-w-0 flex-col items-start gap-2 text-xs font-medium leading-[1.125rem] tracking-[0.0125rem] text-muted-foreground;
+}
+
+.e2-current-label {
+  @apply text-primary;
+}
+
+.e2-history-copy {
+  @apply flex min-w-0 flex-col items-start gap-1.5;
+}
+
+.e2-history-title {
+  @apply block w-full break-words text-sm font-medium leading-5;
+}
+
+.e2-history-preview {
+  @apply line-clamp-2 block w-full text-[1.0625rem] leading-[1.8125rem] text-muted-foreground;
+}
+
 .connections-viewport-structure {
   @apply relative min-h-80 touch-none overflow-clip overscroll-contain outline-none sm:min-h-96;
   height: max(20rem, calc(100dvh - 22rem - env(safe-area-inset-bottom, 0px)));
@@ -423,25 +467,35 @@
 }
 
 .conflict-notice {
-  border-color: var(--warning-border);
-  background: var(--warning-bg);
-  color: var(--warning-foreground);
+  @apply mb-10 rounded-xl border border-l-[3px] border-l-destructive bg-card p-6 text-foreground;
 }
 
-.conflict-notice-icon {
-  color: var(--warning-icon);
+.conflict-notice h2 {
+  @apply text-[1.75rem] font-bold leading-10;
 }
 
 .conflict-notice-muted {
-  color: var(--warning-muted-foreground);
+  @apply mt-2 text-sm font-medium leading-5 text-muted-foreground;
 }
 
-.conflict-notice-preview {
-  color: var(--warning-preview-foreground);
+.e2-conflict-options {
+  @apply mt-6 grid gap-4 sm:grid-cols-2;
 }
 
 .conflict-notice-option {
-  background: var(--warning-surface);
+  @apply flex min-h-52 min-w-0 flex-col justify-between gap-6 rounded-lg border bg-background p-5;
+}
+
+.e2-conflict-option-heading {
+  @apply text-xs font-medium leading-[1.125rem] tracking-[0.0125rem] text-muted-foreground;
+}
+
+.e2-conflict-title {
+  @apply mt-3 break-words text-sm font-medium leading-5;
+}
+
+.conflict-notice-preview {
+  @apply mt-3 line-clamp-3 text-[1.0625rem] leading-[1.8125rem] text-foreground;
 }
 
 @media (prefers-reduced-motion: reduce) {
