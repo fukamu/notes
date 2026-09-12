@@ -54,6 +54,7 @@ export type CardEditorLabelModel = {
 export type CardEditorCandidateModel = {
   cardId: CardId;
   displayLabel: string;
+  displayValue: number;
   title: string;
 };
 

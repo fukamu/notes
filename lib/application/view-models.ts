@@ -33,6 +33,7 @@ export function selectCardEditorInputModel(
     candidates: linkCandidates(cards, currentCard.id).map((card) => ({
       cardId: card.id,
       displayLabel: formatDisplayId(card.displayId),
+      displayValue: card.displayId.value,
       title: visibleTitle(card.title),
     })),
   };
@@ -76,7 +77,7 @@ function compareHistoryCards(
   left: { card: CardRecord; sourceIndex: number },
   right: { card: CardRecord; sourceIndex: number },
 ): number {
-  const byNumber = left.card.displayId.value - right.card.displayId.value;
+  const byNumber = right.card.displayId.value - left.card.displayId.value;
   if (byNumber !== 0) return byNumber;
   if (left.card.displayId.kind !== right.card.displayId.kind) {
     return left.card.displayId.kind === 'official' ? -1 : 1;

@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
 const integrationBranch = 'refactor/type-safe-functional';
+const currentParent = '#41';
+const currentBranchPoint = '7f925fa3b51dc546b32cebbf10550dbd2807560f';
 
 function normalizeWhitespace(source: string): string {
   return source.replace(/\s+/g, ' ');
@@ -25,6 +27,11 @@ describe('issue-based delivery contract', () => {
       '原則1 Issue / 1 work branch / 1 PR',
     );
     expect(workflow).toContain(integrationBranch);
+    expect(agents).toContain(currentParent);
+    expect(workflow).toContain(currentParent);
+    expect(agents).toContain(currentBranchPoint);
+    expect(workflow).toContain(currentBranchPoint);
+    expect(workflow).toContain('親 #29');
   });
 
   it('requires direct user permission before any main update', async () => {
@@ -55,7 +62,10 @@ describe('issue-based delivery contract', () => {
     expect(mainBranchFilters).toHaveLength(2);
     expect(quality).toContain('permissions:\n  contents: read');
     expect(quality).toContain('run: npm run verify');
-    expect(quality).not.toMatch(/\b(?:deploy|publish)\b|wrangler\s+deploy/i);
+    expect(quality).not.toContain('codex/integration-type-safety-ui');
+    expect(quality).not.toMatch(
+      /\b(?:deploy|deployment|publish)\b|wrangler\s+deploy|d1\s+(?:execute|migrations\s+apply)/i,
+    );
   });
 
   it('separates check weakening from ordinary implementation work', async () => {

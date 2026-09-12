@@ -263,6 +263,86 @@ describe('swappable presentation architecture', () => {
     }
   });
 
+  it('keeps camera geometry pure and browser gesture effects in the hook adapter', async () => {
+    const camera = await readFile('lib/graph/connections-viewport.ts', 'utf8');
+    const hook = await readFile('hooks/use-connections-viewport.ts', 'utf8');
+
+    expect(camera).toContain('fitConnectionsCamera');
+    expect(camera).toContain('pinchConnectionsCamera');
+    expect(camera).toContain('ensureConnectionsRectVisible');
+    expect(camera).not.toMatch(
+      /(?:react|window\.|document\.|PointerEvent|ResizeObserver|HTMLElement)/,
+    );
+    for (const boundary of [
+      'PointerEvent',
+      'ResizeObserver',
+      'requestAnimationFrame',
+      'setPointerCapture',
+      'world.style.transform',
+    ]) {
+      expect(hook).toContain(boundary);
+    }
+    expect(hook).not.toMatch(/useState|setCamera/);
+  });
+
+  it('keeps curve math pure and recomputes SVG paths only with layout geometry', async () => {
+    const path = await readFile('lib/graph/connections-path.ts', 'utf8');
+    const renderer = await readFile('components/connections-view.tsx', 'utf8');
+
+    expect(path).toContain('normalizeConnectionsOrthogonalPoints');
+    expect(path).toContain('createConnectionsSvgPath');
+    expect(path).toContain('`Q ${coordinate');
+    expect(path).not.toMatch(
+      /(?:react|window\.|document\.|PointerEvent|HTMLElement|SVGPathElement|--primary|--card)/,
+    );
+    expect(renderer).toContain('const ConnectionsEdgeLayer = memo(');
+    expect(renderer).toContain('previous.layoutKey === next.layoutKey');
+    expect(renderer).toContain('strokeWidth="8"');
+    expect(renderer).toContain("'url(#connection-edge-arrow)'");
+    expect(renderer).toContain('aria-label="カード間の一方向リンク一覧"');
+  });
+
+  it('isolates the ELK Web Worker and keeps the main-thread engine out of production', async () => {
+    const layout = await readFile('lib/graph/elk-layout.ts', 'utf8');
+    const controller = await readFile(
+      'lib/graph/connections-controller.ts',
+      'utf8',
+    );
+    const hook = await readFile('hooks/use-connections-controller.ts', 'utf8');
+    const worker = await readFile(
+      'lib/client/connections-layout-worker.ts',
+      'utf8',
+    );
+    const mainThread = await readFile(
+      'lib/client/connections-layout-main-thread.ts',
+      'utf8',
+    );
+    const offline = await readFile('lib/client/offline.ts', 'utf8');
+
+    expect(layout).not.toMatch(/elk\.bundled|new Worker|new ElkConstructor/);
+    expect(controller).not.toMatch(/connections-layout-worker|elk\.bundled/);
+    expect(hook).toContain('layoutConnectionsGraphInWorker');
+    expect(worker).toContain('new Worker(connectionsLayoutWorkerUrl)');
+    expect(worker).toContain('createBoundedConnectionsLayoutRunner');
+    expect(mainThread).toContain('elkjs/lib/elk.bundled.js');
+    expect(offline).toContain('connectionsLayoutWorkerUrl');
+
+    const productionFiles = [
+      ...(await sourceFiles('app')),
+      ...(await sourceFiles('components')),
+      ...(await sourceFiles('hooks')),
+      ...(await sourceFiles('lib')),
+    ].filter((file) => file !== 'lib/client/connections-layout-main-thread.ts');
+    const importsMainThreadAdapter: string[] = [];
+    for (const file of productionFiles) {
+      const source = await readFile(file, 'utf8');
+      if (source.includes('connections-layout-main-thread')) {
+        importsMainThreadAdapter.push(file);
+      }
+    }
+    expect(importsMainThreadAdapter).toEqual([]);
+  });
+
   it('joins feature adapters and concrete renderers only at the composition root', async () => {
     const files = await sourceFiles('components');
     const violations: string[] = [];

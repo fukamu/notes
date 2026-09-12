@@ -26,7 +26,7 @@ export function HistoryView({ model, onOpenCard }: Props) {
           過去のカード
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          番号順に、前後のカードをめくれます。
+          新しい番号から、前後のカードをめくれます。
         </p>
       </div>
       <div

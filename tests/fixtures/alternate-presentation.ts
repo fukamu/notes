@@ -209,5 +209,6 @@ export const alternateNotesAppConfiguration = {
       padding: { top: 16, right: 16, bottom: 16, left: 16 },
     },
     viewportPadding: { top: 8, right: 8, bottom: 8, left: 8 },
+    edgeMaximumRadius: 7,
   },
 } satisfies NotesAppConfiguration;

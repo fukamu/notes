@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createBoundedConnectionsLayoutRunner } from '@/lib/application/connections-layout-cache';
 import type { ConnectionsInputModel } from '@/lib/graph/connections-contract';
 import {
   createConnectionsController,
@@ -151,6 +152,78 @@ describe('connections controller', () => {
       true,
     );
     expect(runner).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares a bounded settled layout across controller re-entry', async () => {
+    const source = vi.fn<ConnectionsLayoutRunner>(async (graph) =>
+      layout(graph),
+    );
+    const runner = createBoundedConnectionsLayoutRunner(source, 2);
+    const first = createConnectionsController(input(), metrics, runner);
+    first.update(input(), metrics);
+    await vi.waitFor(() => expect(first.getState().status).toBe('ready'));
+    first.destroy();
+
+    const second = createConnectionsController(
+      input(secondId),
+      metrics,
+      runner,
+    );
+    second.update(input(secondId), metrics);
+    await vi.waitFor(() => expect(second.getState().status).toBe('ready'));
+
+    expect(second.getState()).toMatchObject({
+      status: 'ready',
+      currentCardId: secondId,
+    });
+    expect(source).toHaveBeenCalledTimes(1);
+  });
+
+  it('evicts rejected work so a later controller can retry', async () => {
+    const source = vi
+      .fn<ConnectionsLayoutRunner>()
+      .mockRejectedValueOnce(new Error('temporary worker failure'))
+      .mockImplementation(async (graph) => layout(graph));
+    const runner = createBoundedConnectionsLayoutRunner(source, 2);
+    const failed = createConnectionsController(input(), metrics, runner);
+    failed.update(input(), metrics);
+    await vi.waitFor(() => expect(failed.getState().status).toBe('error'));
+
+    const retried = createConnectionsController(input(), metrics, runner);
+    retried.update(input(), metrics);
+    await vi.waitFor(() => expect(retried.getState().status).toBe('ready'));
+
+    expect(source).toHaveBeenCalledTimes(2);
+  });
+
+  it('evicts least-recently-used layouts at the configured bound', async () => {
+    const source = vi.fn<ConnectionsLayoutRunner>(async (graph) =>
+      layout(graph),
+    );
+    const runner = createBoundedConnectionsLayoutRunner(source, 1);
+    const graph: ConnectionsLayoutGraph = {
+      nodes: input().nodes.map(({ cardId: id }) => ({ id })),
+      edges: input().edges.map(({ sourceCardId, targetCardId }) => ({
+        sourceCardId,
+        targetCardId,
+      })),
+    };
+    const widerMetrics = { ...metrics, nodeWidth: metrics.nodeWidth + 1 };
+
+    await runner(graph, metrics);
+    await runner(graph, metrics);
+    await runner(graph, widerMetrics);
+    await runner(graph, metrics);
+
+    expect(source).toHaveBeenCalledTimes(3);
+  });
+
+  it('rejects an invalid layout-cache capacity', () => {
+    const source: ConnectionsLayoutRunner = async (graph) => layout(graph);
+
+    expect(() => createBoundedConnectionsLayoutRunner(source, 0)).toThrow(
+      'capacity must be positive',
+    );
   });
 
   it('starts a new loading cycle when the semantic graph changes', async () => {

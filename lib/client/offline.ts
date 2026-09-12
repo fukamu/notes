@@ -1,3 +1,6 @@
+import { prepareConnectionsLayoutWorker } from '@/lib/client/connections-layout-worker';
+import { connectionsLayoutWorkerUrl } from '@/lib/client/connections-layout-worker-url';
+
 export async function prepareOfflineApp(): Promise<void> {
   if (!('serviceWorker' in navigator)) return;
   await navigator.serviceWorker.register('/sw.js');
@@ -23,7 +26,12 @@ export async function prepareOfflineApp(): Promise<void> {
         !url.pathname.startsWith('/__')
       );
     });
-  resources.push(location.href, '/manifest.webmanifest', '/favicon.svg');
+  resources.push(
+    location.href,
+    '/manifest.webmanifest',
+    '/favicon.svg',
+    connectionsLayoutWorkerUrl,
+  );
 
   await new Promise<void>((resolve) => {
     const channel = new MessageChannel();
@@ -37,5 +45,6 @@ export async function prepareOfflineApp(): Promise<void> {
       [channel.port2],
     );
   });
+  await prepareConnectionsLayoutWorker();
   document.documentElement.dataset.offlineReady = 'true';
 }

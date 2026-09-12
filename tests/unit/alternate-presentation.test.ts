@@ -61,7 +61,14 @@ function model(
       cardId: firstId,
       body: [],
       labels: [{ cardId: firstId, label: '#1 First' }],
-      candidates: [{ cardId: secondId, displayLabel: '#2', title: 'Second' }],
+      candidates: [
+        {
+          cardId: secondId,
+          displayLabel: '#2',
+          displayValue: 2,
+          title: 'Second',
+        },
+      ],
     },
     history: {
       currentCardId: firstId,
@@ -256,7 +263,14 @@ describe('alternate presentation contract', () => {
         selectionEmpty: false,
         canUndo: true,
         canRedo: true,
-        candidates: [{ cardId: secondId, displayLabel: '#2', title: 'Second' }],
+        candidates: [
+          {
+            cardId: secondId,
+            displayLabel: '#2',
+            displayValue: 2,
+            title: 'Second',
+          },
+        ],
         suggestionOpen: true,
         activeCandidate: 0,
       },
@@ -303,5 +317,14 @@ describe('alternate presentation contract', () => {
     expect(typeof alternateNotesAppConfiguration.ConnectionsRenderer).toBe(
       'function',
     );
+    expect(
+      alternateNotesAppConfiguration.connectionsPresentation.viewportPadding,
+    ).toEqual({ top: 8, right: 8, bottom: 8, left: 8 });
+    expect(
+      alternateNotesAppConfiguration.connectionsPresentation.layoutMetrics,
+    ).toMatchObject({ nodeWidth: 148, nodeHeight: 56, layerSpacing: 80 });
+    expect(
+      alternateNotesAppConfiguration.connectionsPresentation.edgeMaximumRadius,
+    ).toBe(7);
   });
 });

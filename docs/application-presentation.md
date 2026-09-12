@@ -147,25 +147,72 @@ edge spacing, layer spacing, and four-sided padding explicit. The default
 presentation supplies the former `196 × 72` geometry and spacing values;
 alternate presentations can supply compact or spacious metrics without
 changing graph/layout code. ELK returns finite node, port, section, and bend
-point geometry. SVG paths, arrows, halo, colors, decoration, and path layering
-exist only in the default renderer.
+point geometry. The deterministic `connections-path` presentation core validates
+finite orthogonal sections, removes duplicate and forward-collinear points, and
+turns real corners into quadratic SVG commands without reading the DOM. Radius is
+bounded by the presentation adapter, half of both adjacent segments, and half of
+the configured edge/node clearance; endpoints and the final straight tangent are
+unchanged. The memoized default edge layer recomputes these paths only when the
+layout key or curve settings change. SVG elements, arrows, halo, colors,
+decoration, and path layering remain in the default renderer, while the semantic
+edge list remains renderer-independent input.
 
-`useConnectionsViewport` is the browser interaction adapter. It receives the
-current laid-out node and presentation padding, reads the viewport ref, and
-centers on current changes and `ResizeObserver` notifications. Its pure center
-calculation safely returns no action for a missing node/viewport, a zero-sized
-viewport, loading, or layout error. Both a ready node and every error fallback
-item dispatch the same typed `openCard(CardId)` action.
+`useConnectionsViewport` is the browser interaction adapter. It owns Pointer
+Events, pointer capture/cancellation, wheel and keyboard input, ResizeObserver,
+and requestAnimationFrame scheduling. Typed pure functions own fit, pan, zoom,
+pinch anchoring, centering, visibility recovery, resize preservation, and finite
+camera clamps. Every camera path shares the 0.10–2.00 scale range. The same rAF
+commit derives the rounded percentage and the native disabled state of the zoom
+buttons, with an epsilon only for boundary-state stability. Raw moves update only
+one world-wrapper CSS transform at most once per animation frame; they do not
+rerender the React node/edge tree or rerun ELK.
+The initial camera fits the padded graph and recovers the current card when the
+minimum zoom cannot fit everything. A focus event minimally reveals the whole
+node and its focus ring. Both a ready node and every error fallback item dispatch
+the same typed `openCard(CardId)` action.
+
+The reproducible desktop/mobile continuous-gesture measurements live in
+`docs/benchmarks/connections-camera-gesture.json`; the post-deployment pointer
+sequence, zoom-boundary, bundle, and three-run measurements live in
+`docs/benchmarks/connections-camera-follow-up.json`. A touch starts with the
+browser's implicit capture on the hit descendant. When a real drag transfers
+capture to the viewport, the descendant's bubbling `lostpointercapture` is not a
+viewport cleanup signal; only a loss targeted at the viewport clears the active
+pointer. This preserves short node taps and makes subsequent single-finger moves
+continuous. Timing values are recorded as evidence rather than unstable CI gates;
+deterministic one-write-per-frame coalescing is asserted in unit and browser
+tests.
+
+The production layout runner uses the installed ELK build through a dedicated
+browser Web Worker. Offline preparation caches and prewarms the hashed worker
+asset before declaring the app offline-ready. A four-entry bounded cache shares
+in-flight and settled immutable layouts across view re-entry, evicts failures for
+retry, and keys only on semantic graph structure plus layout metrics. The
+controller still owns stale-result rejection and reruns layout only when that key
+changes. Node tests and reproducible route benchmarks use a separate main-thread
+ELK adapter that production modules do not import. Measurements and bundle impact
+are recorded in `docs/benchmarks/connections-worker-cache.json`.
+
+The routing default is ELK Layered with `RIGHT`, `ORTHOGONAL`, and `FREE` port
+constraints. Endpoint side hints are omitted, so the same single ELK pass chooses
+each semantic source and target port position. The adapter infers and validates
+the returned NORTH/EAST/SOUTH/WEST side from finite port geometry before passing
+it inward. Fixed EAST/WEST ports, relative-position two-pass layout, visibility
+post-routing, and splines remain benchmark-only candidates. The full fixed-corpus
+comparison and production worker evidence are in
+`docs/benchmarks/connections-routing-follow-up.json` and
+`docs/benchmarks/connections-routing-production.json`.
 
 ## Style and interaction boundary
 
 Structural styles are named separately from the default visual theme:
 `.card-editor-structure`, `.card-link-structure`,
-`.connections-viewport-structure`, `.connections-canvas-structure`, and
-`.connections-node-structure` define browser behavior or geometry. Visual
-classes such as `.fukamu-editor`, `.card-link-capsule`,
-`.connections-viewport`, and `.connections-node` are replaceable theme choices.
-`.history-stack` only supplies functional scroll padding.
+`.connections-viewport-structure`, `.connections-canvas-structure`,
+`.connections-world`, and `.connections-node-structure` define browser behavior
+or geometry. Visual classes such as `.fukamu-editor`, `.card-link-capsule`,
+`.connections-viewport`, `.connections-map-toolbar`, and `.connections-node` are
+replaceable theme choices. `.history-stack` only supplies functional scroll
+padding.
 
 Conflict visuals use light/dark semantic `--warning-*` tokens and the shared
 button primitive; no feature component embeds an amber or white palette.

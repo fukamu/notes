@@ -1,145 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { buildConnectionsGraph } from '@/lib/domain/graph';
-import type { CardRecord } from '@/lib/domain/types';
 import { invariant } from '@/lib/shared/invariant';
+import {
+  connectionsBenchmarkFixtures,
+  compactConnectionsMetrics,
+  connectionsFixtureGraph,
+  spaciousConnectionsMetrics,
+} from '@/tests/fixtures/connections-layout';
 import { fixtureCardId } from '@/tests/fixtures/ids';
+import { createMainThreadConnectionsLayoutRunner } from '@/lib/client/connections-layout-main-thread';
 import {
   CONNECTIONS_LAYOUT_ALGORITHM_OPTIONS,
+  DEFAULT_CONNECTIONS_LAYOUT_CONFIGURATION,
   connectionsLayoutOptions,
-  layoutConnectionsGraph,
   type ConnectionsLayout,
   type ConnectionsLayoutEdge,
-  type ConnectionsLayoutGraph,
-  type ConnectionsLayoutMetrics,
   type ConnectionsLayoutNode,
   type LayoutPoint,
 } from '@/lib/graph/elk-layout';
+import {
+  createConnectionsSvgPath,
+  normalizeConnectionsOrthogonalPoints,
+  sampleConnectionsSvgPath,
+} from '@/lib/graph/connections-path';
 
-type Fixture = {
-  name: string;
-  nodes: string[];
-  edges: [string, string][];
-};
-
-const fixtures: Fixture[] = [
-  {
-    name: 'reported C→A / C→B / A→B',
-    nodes: ['A', 'B', 'C'],
-    edges: [
-      ['C', 'A'],
-      ['C', 'B'],
-      ['A', 'B'],
-    ],
-  },
-  {
-    name: 'diamond',
-    nodes: ['A', 'B', 'C', 'D'],
-    edges: [
-      ['A', 'B'],
-      ['A', 'C'],
-      ['B', 'D'],
-      ['C', 'D'],
-    ],
-  },
-  {
-    name: 'fan-out and fan-in',
-    nodes: ['A', 'B', 'C', 'D', 'E', 'Z'],
-    edges: [
-      ['A', 'B'],
-      ['A', 'C'],
-      ['A', 'D'],
-      ['A', 'E'],
-      ['B', 'Z'],
-      ['C', 'Z'],
-      ['D', 'Z'],
-      ['E', 'Z'],
-    ],
-  },
-  {
-    name: 'cycle',
-    nodes: ['A', 'B', 'C'],
-    edges: [
-      ['A', 'B'],
-      ['B', 'C'],
-      ['C', 'A'],
-    ],
-  },
-  { name: 'self link', nodes: ['A'], edges: [['A', 'A']] },
-  {
-    name: 'mutual links',
-    nodes: ['A', 'B'],
-    edges: [
-      ['A', 'B'],
-      ['B', 'A'],
-    ],
-  },
-  {
-    name: 'disconnected components',
-    nodes: ['A', 'B', 'C', 'D', 'E'],
-    edges: [
-      ['A', 'B'],
-      ['C', 'D'],
-    ],
-  },
-  {
-    name: 'dense K3,3',
-    nodes: ['A', 'B', 'C', 'X', 'Y', 'Z'],
-    edges: ['A', 'B', 'C'].flatMap((source) =>
-      ['X', 'Y', 'Z'].map((target): [string, string] => [source, target]),
-    ),
-  },
-];
-
-function fixtureGraph(fixture: Fixture): ConnectionsLayoutGraph {
-  const outgoing = new Map(fixture.nodes.map((id) => [id, [] as string[]]));
-  for (const [source, target] of fixture.edges) {
-    const targets = outgoing.get(source);
-    invariant(targets, `Fixture is missing source ${source}`);
-    targets.push(target);
-  }
-  const cards: CardRecord[] = fixture.nodes.map((id, index) => ({
-    id: fixtureCardId(id),
-    displayId: { kind: 'official', value: index + 1 },
-    title: id,
-    body: (outgoing.get(id) ?? []).map((targetCardId) => ({
-      type: 'link',
-      targetCardId: fixtureCardId(targetCardId),
-    })),
-    createdAt: index,
-    updatedAt: index,
-    localRevision: 1,
-    serverRevision: 1,
-  }));
-  const graph = buildConnectionsGraph(cards);
-  return {
-    nodes: graph.nodes.map(({ card }) => ({ id: card.id })),
-    edges: graph.edges,
-  };
-}
-
-const compactMetrics: ConnectionsLayoutMetrics = {
-  nodeWidth: 148,
-  nodeHeight: 56,
-  portSize: 2,
-  componentSpacing: 64,
-  nodeSpacing: 48,
-  edgeNodeSpacing: 24,
-  layerSpacing: 80,
-  edgeLayerSpacing: 28,
-  padding: { top: 16, right: 16, bottom: 16, left: 16 },
-};
-
-const spaciousMetrics: ConnectionsLayoutMetrics = {
-  nodeWidth: 232,
-  nodeHeight: 96,
-  portSize: 4,
-  componentSpacing: 128,
-  nodeSpacing: 96,
-  edgeNodeSpacing: 44,
-  layerSpacing: 148,
-  edgeLayerSpacing: 56,
-  padding: { top: 32, right: 40, bottom: 36, left: 44 },
-};
+const layoutConnectionsGraph = createMainThreadConnectionsLayoutRunner();
 
 function overlaps(
   left: ConnectionsLayoutNode,
@@ -248,15 +132,33 @@ function expectEdgePortsApplied(layout: ConnectionsLayout) {
     invariant(lastSection, `Missing last section for ${edge.id}`);
     const start = firstSection.startPoint;
     const end = lastSection.endPoint;
+    const expectAttachment = (point: LayoutPoint, port: typeof sourcePort) => {
+      switch (port.side) {
+        case 'NORTH':
+          expect(point.x).toBeGreaterThanOrEqual(port.x);
+          expect(point.x).toBeLessThanOrEqual(port.x + port.width);
+          expect(point.y).toBeCloseTo(port.y);
+          break;
+        case 'EAST':
+          expect(point.x).toBeCloseTo(port.x + port.width);
+          expect(point.y).toBeGreaterThanOrEqual(port.y);
+          expect(point.y).toBeLessThanOrEqual(port.y + port.height);
+          break;
+        case 'SOUTH':
+          expect(point.x).toBeGreaterThanOrEqual(port.x);
+          expect(point.x).toBeLessThanOrEqual(port.x + port.width);
+          expect(point.y).toBeCloseTo(port.y + port.height);
+          break;
+        case 'WEST':
+          expect(point.x).toBeCloseTo(port.x);
+          expect(point.y).toBeGreaterThanOrEqual(port.y);
+          expect(point.y).toBeLessThanOrEqual(port.y + port.height);
+          break;
+      }
+    };
 
-    expect(sourcePort.side).toBe('EAST');
-    expect(targetPort.side).toBe('WEST');
-    expect(start.x).toBeCloseTo(sourcePort.x + sourcePort.width);
-    expect(start.y).toBeGreaterThanOrEqual(sourcePort.y);
-    expect(start.y).toBeLessThanOrEqual(sourcePort.y + sourcePort.height);
-    expect(end.x).toBeCloseTo(targetPort.x);
-    expect(end.y).toBeGreaterThanOrEqual(targetPort.y);
-    expect(end.y).toBeLessThanOrEqual(targetPort.y + targetPort.height);
+    expectAttachment(start, sourcePort);
+    expectAttachment(end, targetPort);
   }
 }
 
@@ -289,6 +191,63 @@ function expectNoNodeOrEdgeIntrusions(layout: ConnectionsLayout) {
   }
 }
 
+function expectCurvedPathsNodeSafe(
+  layout: ConnectionsLayout,
+  nodeClearance: number,
+) {
+  for (const edge of layout.edges) {
+    const otherNodes = layout.nodes
+      .filter(
+        (node) =>
+          node.id !== edge.sourceCardId && node.id !== edge.targetCardId,
+      )
+      .map((node) => ({
+        ...node,
+        x: node.x - nodeClearance / 2,
+        y: node.y - nodeClearance / 2,
+        width: node.width + nodeClearance,
+        height: node.height + nodeClearance,
+      }));
+    let previousEnd: LayoutPoint | null = null;
+    for (const section of edge.sections) {
+      const path = createConnectionsSvgPath(section, {
+        maximumRadius: 16,
+        nodeClearance,
+      });
+      expect(path.d).not.toMatch(/NaN|Infinity/);
+      expect(path.startPoint).toEqual(section.startPoint);
+      expect(path.endPoint).toEqual(section.endPoint);
+      if (previousEnd) expect(path.startPoint).toEqual(previousEnd);
+      previousEnd = path.endPoint;
+
+      const raw = normalizeConnectionsOrthogonalPoints(section);
+      const rawTangentStart = raw.at(-2);
+      const lastSegment = path.segments.at(-1);
+      invariant(rawTangentStart, `Missing raw end tangent for ${section.id}`);
+      invariant(lastSegment, `Missing curve end tangent for ${section.id}`);
+      const curvedTangentStart =
+        lastSegment.kind === 'line' ? lastSegment.start : lastSegment.control;
+      const rawX = path.endPoint.x - rawTangentStart.x;
+      const rawY = path.endPoint.y - rawTangentStart.y;
+      const curvedX = path.endPoint.x - curvedTangentStart.x;
+      const curvedY = path.endPoint.y - curvedTangentStart.y;
+      expect(Math.abs(rawX * curvedY - rawY * curvedX)).toBeLessThan(1e-7);
+      expect(rawX * curvedX + rawY * curvedY).toBeGreaterThan(0);
+
+      const sampled = sampleConnectionsSvgPath(path, 12);
+      for (let index = 1; index < sampled.length; index += 1) {
+        const start = sampled[index - 1];
+        const end = sampled[index];
+        invariant(start, `Missing sampled start ${index - 1}`);
+        invariant(end, `Missing sampled end ${index}`);
+        for (const node of otherNodes) {
+          expect(segmentCrossesRectInterior(start, end, node)).toBe(false);
+        }
+      }
+    }
+  }
+}
+
 describe('ELK connections layout', () => {
   it('uses the layered orthogonal algorithm and explicit spacing/crossing settings', () => {
     expect(CONNECTIONS_LAYOUT_ALGORITHM_OPTIONS).toMatchObject({
@@ -299,29 +258,98 @@ describe('ELK connections layout', () => {
       'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
       'elk.separateConnectedComponents': 'true',
     });
-    expect(connectionsLayoutOptions(spaciousMetrics)).toMatchObject({
+    expect(connectionsLayoutOptions(spaciousConnectionsMetrics)).toMatchObject({
       'elk.spacing.componentComponent': '128',
       'elk.spacing.nodeNode': '96',
       'elk.layered.spacing.nodeNodeBetweenLayers': '148',
       'elk.padding': '[top=32,left=44,bottom=36,right=40]',
     });
+    expect(DEFAULT_CONNECTIONS_LAYOUT_CONFIGURATION).toEqual({
+      edgeRouting: 'ORTHOGONAL',
+      portPolicy: 'FREE',
+      edgePortSides: 'ELK',
+    });
   });
 
-  for (const fixture of fixtures) {
+  it('exposes explicit benchmark options without changing the production default', () => {
+    const options = connectionsLayoutOptions(spaciousConnectionsMetrics, {
+      edgeRouting: 'SPLINES',
+      portPolicy: 'FIXED_ORDER',
+      splineRoutingMode: 'CONSERVATIVE',
+      addUnnecessaryBendpoints: false,
+      favorStraightEdges: true,
+      straightnessPriority: 8,
+      shortnessPriority: 8,
+    });
+
+    expect(options).toMatchObject({
+      'elk.edgeRouting': 'SPLINES',
+      'elk.layered.edgeRouting.splines.mode': 'CONSERVATIVE',
+      'elk.layered.unnecessaryBendpoints': 'false',
+      'elk.layered.nodePlacement.favorStraightEdges': 'true',
+    });
+    expect(connectionsLayoutOptions(spaciousConnectionsMetrics)).toMatchObject({
+      'elk.edgeRouting': 'ORTHOGONAL',
+    });
+  });
+
+  it('rejects invalid candidate priorities at the layout boundary', async () => {
+    const fixture = connectionsBenchmarkFixtures[0];
+    invariant(fixture, 'Missing reported fixture');
+    const runner = createMainThreadConnectionsLayoutRunner({
+      edgeRouting: 'ORTHOGONAL',
+      portPolicy: 'FIXED_SIDE',
+      straightnessPriority: -1,
+    });
+
+    await expect(
+      runner(connectionsFixtureGraph(fixture), spaciousConnectionsMetrics),
+    ).rejects.toThrow('priority straightness must be a non-negative integer');
+  });
+
+  it('rejects ambiguous FREE and fixed-side candidate combinations', async () => {
+    const fixture = connectionsBenchmarkFixtures[0];
+    invariant(fixture, 'Missing reported fixture');
+    const graph = connectionsFixtureGraph(fixture);
+
+    await expect(
+      createMainThreadConnectionsLayoutRunner({
+        edgeRouting: 'ORTHOGONAL',
+        portPolicy: 'FREE',
+      })(graph, spaciousConnectionsMetrics),
+    ).rejects.toThrow('FREE port policy must delegate every side to ELK');
+    await expect(
+      createMainThreadConnectionsLayoutRunner({
+        edgeRouting: 'ORTHOGONAL',
+        portPolicy: 'FIXED_SIDE',
+        edgePortSides: 'ELK',
+      })(graph, spaciousConnectionsMetrics),
+    ).rejects.toThrow('fixed port policy cannot delegate sides to ELK');
+  });
+
+  for (const fixture of connectionsBenchmarkFixtures) {
     for (const [density, metrics] of [
-      ['compact', compactMetrics],
-      ['spacious', spaciousMetrics],
+      ['compact', compactConnectionsMetrics],
+      ['spacious', spaciousConnectionsMetrics],
     ] as const) {
       it(`returns deterministic, finite, node-safe ${density} geometry for ${fixture.name}`, async () => {
-        const graph = fixtureGraph(fixture);
+        const graph = connectionsFixtureGraph(fixture);
+        const inputSnapshot = structuredClone(graph);
         const first = await layoutConnectionsGraph(graph, metrics);
         const second = await layoutConnectionsGraph(graph, metrics);
 
+        expect(graph).toEqual(inputSnapshot);
         expect(first).toEqual(second);
         expect(first.nodes.map((node) => node.id)).toEqual(
-          fixture.nodes.map(fixtureCardId),
+          graph.nodes.map((node) => node.id),
         );
         expect(first.edges).toHaveLength(fixture.edges.length);
+        expect(
+          first.edges.map(({ sourceCardId, targetCardId }) => ({
+            sourceCardId,
+            targetCardId,
+          })),
+        ).toEqual(graph.edges);
         expect(
           first.nodes.every((node) => node.width === metrics.nodeWidth),
         ).toBe(true);
@@ -340,49 +368,71 @@ describe('ELK connections layout', () => {
         expectFiniteLayout(first);
         expectNoNodeOrEdgeIntrusions(first);
         expectEdgePortsApplied(first);
+        expectCurvedPathsNodeSafe(first, metrics.edgeNodeSpacing);
         for (const edge of first.edges) {
           const firstSection = edge.sections[0];
           invariant(firstSection, `Missing section for ${edge.id}`);
           expect(firstSection.incomingShape).toBe(edge.sourcePortId);
           expect(edge.sections.at(-1)?.outgoingShape).toBe(edge.targetPortId);
+          for (let index = 1; index < edge.sections.length; index += 1) {
+            const previous = edge.sections[index - 1];
+            const current = edge.sections[index];
+            invariant(previous, `Missing previous section ${index - 1}`);
+            invariant(current, `Missing current section ${index}`);
+            expect(current.startPoint).toEqual(previous.endPoint);
+          }
         }
       });
     }
   }
 
   it('keeps self and mutual routes non-degenerate and visually distinct', async () => {
-    const graph = fixtureGraph({
+    const combinedFixture = {
       name: 'combined loops',
       nodes: ['A', 'B'],
       edges: [
         ['A', 'A'],
         ['A', 'B'],
         ['B', 'A'],
-      ],
-    });
-    const layout = await layoutConnectionsGraph(graph, compactMetrics);
+      ] as [string, string][],
+    };
+    const graph = connectionsFixtureGraph(combinedFixture);
+    const layout = await layoutConnectionsGraph(
+      graph,
+      compactConnectionsMetrics,
+    );
     const self = layout.edges.find(
       (edge) =>
-        edge.sourceCardId === fixtureCardId('A') &&
-        edge.targetCardId === fixtureCardId('A'),
+        edge.sourceCardId === fixtureCardId(`${combinedFixture.name}-A`) &&
+        edge.targetCardId === fixtureCardId(`${combinedFixture.name}-A`),
     );
     const forward = layout.edges.find(
       (edge) =>
-        edge.sourceCardId === fixtureCardId('A') &&
-        edge.targetCardId === fixtureCardId('B'),
+        edge.sourceCardId === fixtureCardId(`${combinedFixture.name}-A`) &&
+        edge.targetCardId === fixtureCardId(`${combinedFixture.name}-B`),
     );
     const backward = layout.edges.find(
       (edge) =>
-        edge.sourceCardId === fixtureCardId('B') &&
-        edge.targetCardId === fixtureCardId('A'),
+        edge.sourceCardId === fixtureCardId(`${combinedFixture.name}-B`) &&
+        edge.targetCardId === fixtureCardId(`${combinedFixture.name}-A`),
     );
     invariant(self, 'Missing self edge');
     invariant(forward, 'Missing forward edge');
     invariant(backward, 'Missing backward edge');
     const signature = (edge: ConnectionsLayoutEdge) =>
       JSON.stringify(sectionPoints(edge));
+    const curvedSignature = (edge: ConnectionsLayoutEdge) =>
+      JSON.stringify(
+        edge.sections.map(
+          (section) =>
+            createConnectionsSvgPath(section, {
+              maximumRadius: 16,
+              nodeClearance: compactConnectionsMetrics.edgeNodeSpacing,
+            }).d,
+        ),
+      );
 
-    expect(sectionPoints(self).flat()).toHaveLength(6);
+    expect(sectionPoints(self).flat().length).toBeGreaterThanOrEqual(4);
     expect(
       new Set(
         sectionPoints(self)
@@ -393,5 +443,14 @@ describe('ELK connections layout', () => {
     expect(signature(forward)).not.toBe(signature(backward));
     expect(signature(forward)).not.toBe(signature(self));
     expect(signature(backward)).not.toBe(signature(self));
+    expect(curvedSignature(forward)).not.toBe(curvedSignature(backward));
+    expect(curvedSignature(forward)).not.toBe(curvedSignature(self));
+    expect(curvedSignature(backward)).not.toBe(curvedSignature(self));
+    expect(curvedSignature(self)).toContain('Q');
+    expect(
+      new Set(
+        layout.nodes.flatMap((node) => node.ports.map((port) => port.side)),
+      ),
+    ).toContain('NORTH');
   });
 });

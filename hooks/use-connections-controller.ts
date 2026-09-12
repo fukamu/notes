@@ -6,6 +6,7 @@ import type {
   ConnectionsControllerState,
   ConnectionsInputModel,
 } from '@/lib/graph/connections-contract';
+import { layoutConnectionsGraphInWorker } from '@/lib/client/connections-layout-worker';
 import {
   createConnectionsController,
   type ConnectionsLayoutRunner,
@@ -17,7 +18,11 @@ export function useConnectionsController(
   runner?: ConnectionsLayoutRunner,
 ): ConnectionsControllerState {
   const [controller] = useState(() =>
-    createConnectionsController(input, presentation.layoutMetrics, runner),
+    createConnectionsController(
+      input,
+      presentation.layoutMetrics,
+      runner ?? layoutConnectionsGraphInWorker,
+    ),
   );
   const state = useSyncExternalStore(
     controller.subscribe,

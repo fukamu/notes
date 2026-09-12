@@ -119,7 +119,7 @@ type BodySegment =
 
 保持する関係は本文に書かれた `A → B` だけです。「つながり」は端末内の全カード（孤立カードと非連結コンポーネントを含む）を表示し、全カードの本文から、存在するリンク先への明示的な一方向リンクを都度列挙します。同じ有向ペアが本文に複数あっても表示上は1辺へ集約し、欠損したリンク先は無視します。現在カードは強調表示と初期表示位置にだけ使い、表示対象の絞り込みには使いません。逆向きの関係、被リンク件数、被リンク用のAPI・型・保存データはありません。
 
-配置にはアプリへバンドルした `elkjs` のELK Layered（Sugiyama系）を使います。方向は左から右、edge routingは `ORTHOGONAL` とし、greedy cycle breaking、layer sweep crossing minimization、network simplexの層割当／ノード配置、コンポーネント・ノード・辺の間隔を設定しています。各辺専用の東西ポートを与え、ELKが返したedge section、bend point、ポート端点をそのままSVGの折れ線へ変換します。線の背景色haloと矢印により、交差が残る場合も経路と方向を追えるようにしています。配置計算は端末内で完結し、CDNやネットワークへ依存しません。
+配置にはアプリへバンドルした `elkjs` のELK Layered（Sugiyama系）を使います。方向は左から右、edge routingは `ORTHOGONAL` とし、greedy cycle breaking、layer sweep crossing minimization、network simplexの層割当／ノード配置、コンポーネント・ノード・辺の間隔を設定しています。各辺専用の東西ポートを与え、ELKが返したnode-safeなedge section、bend point、ポート端点は維持したまま、実SVG quadratic curveで各cornerだけを安全な半径へ丸めます。endpoint直線tangent、背景色halo、矢印により、交差が残る場合も経路と方向を追えるようにしています。配置計算は端末内で完結し、CDNやネットワークへ依存しません。
 
 ## 既知の制約
 

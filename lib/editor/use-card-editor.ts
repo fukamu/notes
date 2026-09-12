@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   type CompositionEvent as ReactCompositionEvent,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type SyntheticEvent,
 } from 'react';
 import { type Editor } from '@tiptap/core';
@@ -19,10 +19,12 @@ import type {
 import type { CardId } from '@/lib/domain/id';
 import {
   classifyCardEditorDocumentUpdate,
+  cardEditorCandidateToken,
   clampCardEditorCandidate,
   closeCardEditorCandidates,
+  filterCardEditorCandidates,
   handleCardEditorCandidateKey,
-  isCardEditorHashContext,
+  isCardEditorDeletionInput,
   isTypedCardEditorInput,
   openCardEditorCandidates,
   type CardEditorCandidateState,
@@ -50,7 +52,7 @@ export type CardEditorCommands = {
   handleKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
   handleInput: (event: SyntheticEvent<HTMLDivElement, InputEvent>) => void;
   handleCompositionEnd: (event: ReactCompositionEvent<HTMLDivElement>) => void;
-  preserveEditorFocus: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  preserveEditorFocus: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   selectCandidate: (cardId: CardId) => void;
   undo: () => void;
   redo: () => void;
@@ -98,6 +100,21 @@ function cardEditorStarterKit() {
   });
 }
 
+function candidateTokenAtSelection(editor: Editor): {
+  from: number;
+  numberPrefix: string;
+} | null {
+  const { selection, doc } = editor.state;
+  const to = selection.from;
+  const token = cardEditorCandidateToken(
+    doc.textBetween(1, to, '\n'),
+    selection.empty,
+  );
+  return token
+    ? { from: to - token.length, numberPrefix: token.numberPrefix }
+    : null;
+}
+
 export function useCardEditor({
   input,
   actions,
@@ -116,7 +133,10 @@ export function useCardEditor({
     useState<CardEditorCandidateState>(closeCardEditorCandidates);
   const triggerPositionRef = useRef<number | undefined>(undefined);
   const compositionInputRef = useRef(false);
-  const candidates: CardEditorCandidateModel[] = input.candidates;
+  const candidates: CardEditorCandidateModel[] = filterCardEditorCandidates(
+    input.candidates,
+    candidateState.numberPrefix,
+  );
   const normalizedCandidateState = clampCardEditorCandidate(
     candidateState,
     candidates.length,
@@ -165,6 +185,20 @@ export function useCardEditor({
       },
       onUpdate: ({ editor: currentEditor }) => {
         actions.updateBody(editorDocumentToSegments(currentEditor.getJSON()));
+        const triggerPosition = triggerPositionRef.current;
+        if (triggerPosition === undefined || currentEditor.view.composing)
+          return;
+        const token = candidateTokenAtSelection(currentEditor);
+        if (!token || token.from !== triggerPosition) {
+          setCandidateState(closeCardEditorCandidates());
+          triggerPositionRef.current = undefined;
+          return;
+        }
+        setCandidateState((current) =>
+          current.open && current.numberPrefix === token.numberPrefix
+            ? current
+            : openCardEditorCandidates(token.numberPrefix),
+        );
       },
       onTransaction: ({ editor: currentEditor }) => {
         if (currentEditor.isDestroyed) return;
@@ -172,9 +206,22 @@ export function useCardEditor({
         setCanRedo(currentEditor.can().redo());
       },
       onFocus: () => setFocused(true),
-      onBlur: () => setFocused(false),
-      onSelectionUpdate: ({ editor: currentEditor }) =>
-        setSelectionEmpty(currentEditor.state.selection.empty),
+      onBlur: () => {
+        setFocused(false);
+        setCandidateState(closeCardEditorCandidates());
+        triggerPositionRef.current = undefined;
+      },
+      onSelectionUpdate: ({ editor: currentEditor }) => {
+        const { selection } = currentEditor.state;
+        setSelectionEmpty(selection.empty);
+        const triggerPosition = triggerPositionRef.current;
+        if (triggerPosition === undefined) return;
+        const token = candidateTokenAtSelection(currentEditor);
+        if (!token || token.from !== triggerPosition) {
+          setCandidateState(closeCardEditorCandidates());
+          triggerPositionRef.current = undefined;
+        }
+      },
     },
     [input.cardId],
   );
@@ -198,14 +245,19 @@ export function useCardEditor({
     triggerPositionRef.current = undefined;
   };
 
-  const openSuggestionsForInsertedHash = () => {
+  const updateSuggestionsForCandidateToken = () => {
     if (!editor || editor.isDestroyed || editorCardId !== input.cardId) return;
-    const { selection, doc } = editor.state;
-    const to = selection.from;
-    const textBeforeCursor = doc.textBetween(1, to, '\n');
-    if (!isCardEditorHashContext(textBeforeCursor, selection.empty)) return;
-    triggerPositionRef.current = to - 1;
-    setCandidateState(openCardEditorCandidates());
+    const token = candidateTokenAtSelection(editor);
+    if (!token) {
+      closeSuggestions();
+      return;
+    }
+    triggerPositionRef.current = token.from;
+    setCandidateState((current) =>
+      current.open && current.numberPrefix === token.numberPrefix
+        ? current
+        : openCardEditorCandidates(token.numberPrefix),
+    );
   };
 
   const closeSuggestionsIfTriggerChanged = () => {
@@ -215,11 +267,8 @@ export function useCardEditor({
       triggerPositionRef.current === undefined
     )
       return;
-    const { selection, doc } = editor.state;
-    if (
-      !selection.empty ||
-      doc.textBetween(triggerPositionRef.current, selection.from, '\n') !== '#'
-    ) {
+    const token = candidateTokenAtSelection(editor);
+    if (!token || token.from !== triggerPositionRef.current) {
       closeSuggestions();
     }
   };
@@ -230,10 +279,14 @@ export function useCardEditor({
     const from = triggerPositionRef.current;
     if (from === undefined) return;
     const to = editor.state.selection.from;
-    if (editor.state.doc.textBetween(from, to, '\n') !== '#') {
+    if (
+      editor.state.doc.textBetween(from, to, '\n') !==
+      `#${normalizedCandidateState.numberPrefix}`
+    ) {
       closeSuggestions();
       return;
     }
+    editor.view.dispatch(closeHistory(editor.state.tr));
     editor
       .chain()
       .focus()
@@ -272,9 +325,12 @@ export function useCardEditor({
     }
     if (isTypedCardEditorInput(inputEvent.inputType, inputEvent.isComposing)) {
       queueMicrotask(() => {
-        openSuggestionsForInsertedHash();
-        closeSuggestionsIfTriggerChanged();
+        updateSuggestionsForCandidateToken();
       });
+      return;
+    }
+    if (isCardEditorDeletionInput(inputEvent.inputType)) {
+      queueMicrotask(updateSuggestionsForCandidateToken);
       return;
     }
     queueMicrotask(closeSuggestionsIfTriggerChanged);
@@ -288,8 +344,7 @@ export function useCardEditor({
     compositionInputRef.current = false;
     if (!hadCompositionInput) return;
     queueMicrotask(() => {
-      openSuggestionsForInsertedHash();
-      closeSuggestionsIfTriggerChanged();
+      updateSuggestionsForCandidateToken();
     });
   };
 

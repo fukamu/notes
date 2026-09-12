@@ -6,10 +6,14 @@ toolbar, icons, and theme.
 
 ## Responsibilities and dependencies
 
-- `lib/editor/card-editor-state.ts` is the pure candidate/input/lifecycle state
-  machine. It classifies direct input versus active IME composition, validates
-  hash context, applies Arrow/Enter/Escape behavior, and distinguishes card
-  identity reset from same-card external body synchronization.
+- `lib/domain/body.ts` performs the immutable link-candidate ordering. It sorts
+  display numbers numerically descending, then resolves equal values by official
+  before provisional, creation time ascending, card ID, and original input order.
+  `lib/editor/card-editor-state.ts` is the pure candidate/input/lifecycle state
+  machine. It classifies direct input versus active IME composition, decodes the
+  ASCII numeric prefix after a valid hash, filters candidate display values,
+  applies Arrow/Enter/Escape behavior, and distinguishes card identity reset from
+  same-card external body synchronization.
 - `lib/editor/use-card-editor.ts` is the headless React/Tiptap adapter. It owns
   editor creation/destruction, body synchronization, selection/focus state,
   candidate trigger position, composition state, candidate insertion, and
@@ -60,7 +64,8 @@ atomic node selection to provide Undo/Redo and IME safely. It has
 ## Card links and labels
 
 Each editor creates its own `CardLabelResolver`. Application selectors supply
-all current labels as plain `cardId/label` records and sorted candidate models;
+all current labels as plain `cardId/label` records and descending candidate models
+with their numeric display values;
 title or display-ID changes replace only that resolver’s map and notify only
 its subscribers. Missing targets render `リンク先なし`. Every NodeView
 unsubscribes and removes its event listeners on destroy, while editor unmount
@@ -90,15 +95,24 @@ are retained. A body already equal to the application model is untouched.
 
 - Active IME composition records input without opening candidates. The final
   composition event is inspected once composition ends.
-- Only typed half-width `#` at an allowed boundary opens candidates. Paste,
-  `C#`, `#123` after completion, full-width `＃`, URL fragments, and
-  Markdown-style link fragments do not remain triggers and never auto-link.
+- Only a typed half-width `#` at an allowed boundary opens candidates. With no
+  digits, all non-current candidates appear in numeric descending order. Typed
+  ASCII digits keep the popup open and filter the numeric display value by
+  prefix: `#3` includes `#3` and `#30`–`#39`; `#32` matches values beginning
+  with `32`. Paste, `C#`, full-width `＃` or digits, URL fragments, and
+  Markdown-style link fragments do not open candidates and never auto-link.
+- Equal display values remain deterministic: official precedes provisional,
+  followed by creation time, card ID, and original input order. Exact matches
+  are not promoted or converted automatically.
 - ArrowUp/ArrowDown wrap the active candidate, Enter chooses it, and Escape
   closes the list. Mouse/touch choice preserves editor focus so insertion uses
-  the original selection.
-- Candidate choice replaces only the trigger and inserts an atomic link, then
-  closes the suggestion state. Candidate list names and `aria-current` remain
-  the renderer contract.
+  the original selection. Keyboard movement scrolls the active item into the
+  popup viewport, whose height is bounded by the browser viewport.
+- Candidate choice replaces only the `#digits` trigger and inserts an atomic
+  link, then closes the suggestion state. Blur, Space, punctuation, an unhandled
+  Enter, Escape, or any other unselected completion only closes the popup; the
+  typed text remains ordinary editor content. Candidate list names and
+  `aria-current` remain the renderer contract.
 - The toolbar keeps `role=toolbar` and accessible name `編集履歴`; button and
   platform keyboard shortcuts execute the same Tiptap Undo/Redo history and
   expose their current availability.

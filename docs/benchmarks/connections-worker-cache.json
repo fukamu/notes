@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-12T02:28:33+09:00",
+  "browserMeasurementBaselineCommit": "cac7ea433fa72f2efe16ac412ad10702799d685f",
+  "implementationAndBundleBaselineCommit": "5b469ba0dc146ddab2b5e56bbb61d41275e1725f",
+  "candidateBranchPoint": "5b469ba0dc146ddab2b5e56bbb61d41275e1725f",
+  "command": "npm run test:e2e -- --grep 'connections readiness records' --repeat-each=5",
+  "environment": {
+    "browser": "Chrome for Testing 153.0.8010.12 (Playwright Chromium revision 1243)",
+    "fixture": {
+      "name": "synthetic large seed 0x41decade",
+      "nodes": 48,
+      "edges": 120
+    },
+    "network": "offline after service-worker readiness",
+    "warmupIterations": 0,
+    "measuredIterations": 5,
+    "worker": "elkjs 0.12.0 elk-worker.min.js, prewarmed after its hashed URL is cached for offline use",
+    "cache": "module-lifetime least-recently-used promise/layout cache, maximum 4 graph-and-metrics keys"
+  },
+  "baseline": {
+    "source": "docs/benchmarks/connections-browser-baseline.json",
+    "implementation": "bundled ELK fake worker on the browser main thread; no cross-controller cache"
+  },
+  "measurements": [
+    {
+      "project": "chromium",
+      "candidate": {
+        "initial": {
+          "samples": {
+            "timeToReadyMs": [920.3, 917.4, 917.1, 917.7, 915],
+            "maximumFrameGapMs": [16.8, 16.7, 16.8, 16.8, 16.8]
+          },
+          "timeToReadyMs": { "median": 917.4, "p95": 920.3 },
+          "maximumFrameGapMs": { "median": 16.8, "p95": 16.8 },
+          "reportedLongTasks": { "total": 0, "maximumMs": 0 }
+        },
+        "reentry": {
+          "samples": {
+            "timeToReadyMs": [132.7, 133.4, 131.3, 128.9, 130.9],
+            "maximumFrameGapMs": [16.7, 16.7, 16.7, 16.7, 16.8]
+          },
+          "timeToReadyMs": { "median": 131.3, "p95": 133.4 },
+          "maximumFrameGapMs": { "median": 16.7, "p95": 16.8 },
+          "reportedLongTasks": { "total": 0, "maximumMs": 0 }
+        }
+      },
+      "baselineRatios": {
+        "initialReady": { "median": 1.046, "p95": 0.971 },
+        "reentryReady": { "median": 0.16, "p95": 0.148 },
+        "initialFrameGap": { "median": 0.023, "p95": 0.021 },
+        "reentryFrameGap": { "median": 0.026, "p95": 0.023 }
+      }
+    },
+    {
+      "project": "mobile-chromium",
+      "candidate": {
+        "initial": {
+          "samples": {
+            "timeToReadyMs": [912.4, 915.6, 915, 910.5, 914.7],
+            "maximumFrameGapMs": [16.8, 16.8, 16.8, 16.8, 16.8]
+          },
+          "timeToReadyMs": { "median": 914.7, "p95": 915.6 },
+          "maximumFrameGapMs": { "median": 16.8, "p95": 16.8 },
+          "reportedLongTasks": { "total": 0, "maximumMs": 0 }
+        },
+        "reentry": {
+          "samples": {
+            "timeToReadyMs": [127.1, 128.2, 126.7, 127.1, 135.2],
+            "maximumFrameGapMs": [16.7, 16.7, 16.7, 16.8, 16.8]
+          },
+          "timeToReadyMs": { "median": 127.1, "p95": 135.2 },
+          "maximumFrameGapMs": { "median": 16.7, "p95": 16.8 },
+          "reportedLongTasks": { "total": 0, "maximumMs": 0 }
+        }
+      },
+      "baselineRatios": {
+        "initialReady": { "median": 0.978, "p95": 0.94 },
+        "reentryReady": { "median": 0.141, "p95": 0.144 },
+        "initialFrameGap": { "median": 0.022, "p95": 0.021 },
+        "reentryFrameGap": { "median": 0.023, "p95": 0.023 }
+      }
+    }
+  ],
+  "bundle": {
+    "baseline": {
+      "applicationChunk": { "rawBytes": 1940802, "gzipBytes": 596214 }
+    },
+    "candidate": {
+      "applicationChunk": { "rawBytes": 509400, "gzipBytes": 159517 },
+      "workerAsset": { "rawBytes": 1595334, "gzipBytes": 464634 },
+      "combined": { "rawBytes": 2104734, "gzipBytes": 624151 }
+    },
+    "difference": {
+      "initialApplicationChunk": { "rawBytes": -1431402, "gzipBytes": -436697 },
+      "combined": { "rawBytes": 163932, "gzipBytes": 27937 }
+    },
+    "note": "The worker is the already-installed ELK runtime split into an offline-cached asset, not a new dependency. Total transfer increases 27,937 gzip bytes while the render-critical application chunk decreases 436,697 gzip bytes."
+  },
+  "routeCompatibility": {
+    "command": "npm run benchmark:connections",
+    "fixedCorpusQualityIdentical": true,
+    "fixtureDefinitionsIdentical": true,
+    "candidateDefinitionsIdentical": true,
+    "largeBaselineLayoutTimingRatio": {
+      "coldMedian": 1.016,
+      "coldP95": 1.014,
+      "warmMedian": 1.015,
+      "warmP95": 1.034
+    },
+    "thresholds": { "median": 1.1, "p95": 1.2 },
+    "note": "The benchmark still executes the same installed ELK worker implementation synchronously in Node so route geometry and algorithm time can be compared independently from browser worker messaging. All quality records were byte-for-byte identical to the accepted baseline."
+  },
+  "decision": "adopt worker plus bounded cache: route geometry and Node layout timing remain unchanged; initial ready stays within the 1.10x median and 1.20x p95 thresholds, frame blocking is removed in the measured browser corpus, and re-entry is materially faster."
+}
