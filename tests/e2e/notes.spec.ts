@@ -449,7 +449,7 @@ test('inline card links, Backspace, Undo/Redo, shortcuts and plain hashtag input
     .evaluateAll((items) =>
       items.map((item) => Number(item.getAttribute('data-display-value'))),
     );
-  expect(values).toEqual([...values].sort((left, right) => left - right));
+  expect(values).toEqual([...values].sort((left, right) => right - left));
   const current = page
     .getByTestId('history-list')
     .locator('[data-current=true]');
@@ -1806,6 +1806,13 @@ test('history centers the current card without obscuring its page chrome', async
   expect(response?.status()).toBe(200);
 
   const historyList = page.getByTestId('history-list');
+  const historyItems = historyList.locator('[data-display-value]');
+  await expect(historyItems).toHaveCount(12, { timeout: 15_000 });
+  expect(
+    await historyItems.evaluateAll((items) =>
+      items.map((item) => Number(item.getAttribute('data-display-value'))),
+    ),
+  ).toEqual([12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
   const currentItem = historyList.locator('[data-current=true]');
   await expect(currentItem).toHaveAttribute('aria-current', 'page', {
     timeout: 15_000,

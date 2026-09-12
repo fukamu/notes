@@ -137,7 +137,26 @@ describe('card editor input view model', () => {
 });
 
 describe('history view model', () => {
-  it('sorts display IDs, marks current, and keeps deterministic stable ties', () => {
+  it.each([0, 1, 9, 10, 99, 100, 105])(
+    'sorts %i display IDs by numeric value descending without mutation',
+    (cardCount) => {
+      const cards = Array.from({ length: cardCount }, (_, index) =>
+        card(`history-${index + 1}`, {
+          displayId: { kind: 'official', value: index + 1 },
+        }),
+      ).reverse();
+      const inputOrder = cards.map((item) => item.id);
+
+      const model = selectHistoryViewModel(cards, null);
+
+      expect(model.items.map((item) => item.displayValue)).toEqual(
+        Array.from({ length: cardCount }, (_, index) => cardCount - index),
+      );
+      expect(cards.map((item) => item.id)).toEqual(inputOrder);
+    },
+  );
+
+  it('marks current and keeps deterministic stable ties below descending numbers', () => {
     const repeatedId = fixtureCardId('history-repeated');
     const cards = [
       card('late-number', {
@@ -155,14 +174,47 @@ describe('history view model', () => {
 
     const model = selectHistoryViewModel(cards, repeatedId);
     expect(model.items.map((item) => item.title)).toEqual([
-      'stable-first',
-      'stable-second',
+      'late-number',
       'official',
       'provisional',
-      'late-number',
+      'stable-first',
+      'stable-second',
     ]);
     expect(model.items.filter((item) => item.current)).toHaveLength(2);
-    expect(model.items[3]?.displayLabel).toBe('仮 #2');
+    expect(model.items[2]?.displayLabel).toBe('仮 #2');
+  });
+
+  it('keeps created-at and card-id tie breaks ascending within one kind and number', () => {
+    const firstId = fixtureCardId('history-tie-a');
+    const secondId = fixtureCardId('history-tie-z');
+    const earlierId = firstId.localeCompare(secondId) < 0 ? firstId : secondId;
+    const laterId = earlierId === firstId ? secondId : firstId;
+    const model = selectHistoryViewModel(
+      [
+        card('created-later', {
+          id: earlierId,
+          displayId: { kind: 'official', value: 7 },
+          createdAt: 2,
+        }),
+        card('id-later', {
+          id: laterId,
+          displayId: { kind: 'official', value: 7 },
+          createdAt: 1,
+        }),
+        card('id-earlier', {
+          id: earlierId,
+          displayId: { kind: 'official', value: 7 },
+          createdAt: 1,
+        }),
+      ],
+      null,
+    );
+
+    expect(model.items.map((item) => item.title)).toEqual([
+      'id-earlier',
+      'id-later',
+      'created-later',
+    ]);
   });
 
   it('builds normalized previews with empty and missing-link fallbacks', () => {
