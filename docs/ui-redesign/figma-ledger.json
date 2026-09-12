@@ -1,0 +1,125 @@
+{
+  "fileKey": "UCfz16t3ZU7yUYKBHNiz8r",
+  "fileUrl": "https://www.figma.com/design/UCfz16t3ZU7yUYKBHNiz8r",
+  "pages": {
+    "comparison": "0:1",
+    "sharedConstraints": "2:2",
+    "proposalA": "2:3",
+    "proposalB": "2:4",
+    "proposalC": "2:5",
+    "proposalD": "2:6",
+    "proposalE": "2:7"
+  },
+  "documentation": {
+    "comparisonBoard": "17:2",
+    "sharedConstraintsBoard": "17:223",
+    "collection": "VariableCollectionId:16:2"
+  },
+  "proposals": {
+    "A": {
+      "issue": 84,
+      "branch": "redesign/83/proposal-01-quiet-manuscript",
+      "collections": {
+        "primitives": "VariableCollectionId:3:2",
+        "theme": "VariableCollectionId:3:3"
+      },
+      "components": {
+        "button": "8:2",
+        "navigationItem": "8:3",
+        "saveStatus": "7:39",
+        "graphNode": "9:95"
+      },
+      "screens": {
+        "desktopEditor": "9:2",
+        "mobileEditor": "9:31",
+        "desktopHistory": "9:51",
+        "desktopConnections": "9:84",
+        "desktopConflict": "9:124"
+      }
+    },
+    "B": {
+      "issue": 85,
+      "branch": "redesign/83/proposal-02-index-ledger",
+      "collections": {
+        "primitives": "VariableCollectionId:4:2",
+        "theme": "VariableCollectionId:4:3"
+      },
+      "components": {
+        "button": "8:4",
+        "navigationItem": "8:5",
+        "saveStatus": "7:99",
+        "graphNode": "10:130"
+      },
+      "screens": {
+        "desktopEditor": "10:2",
+        "mobileEditor": "10:49",
+        "desktopHistory": "10:72",
+        "desktopConnections": "10:110",
+        "desktopConflict": "10:159"
+      }
+    },
+    "C": {
+      "issue": 86,
+      "branch": "redesign/83/proposal-03-spacious-archive",
+      "collections": {
+        "primitives": "VariableCollectionId:4:59",
+        "theme": "VariableCollectionId:4:60"
+      },
+      "components": {
+        "button": "8:10",
+        "navigationItem": "8:11",
+        "saveStatus": "7:79",
+        "graphNode": "11:119"
+      },
+      "screens": {
+        "desktopEditor": "11:2",
+        "mobileEditor": "11:44",
+        "desktopHistory": "11:68",
+        "desktopConnections": "11:102",
+        "desktopConflict": "11:148"
+      }
+    },
+    "D": {
+      "issue": 88,
+      "branch": "redesign/83/proposal-04-editing-desk",
+      "collections": {
+        "primitives": "VariableCollectionId:4:116",
+        "theme": "VariableCollectionId:4:117"
+      },
+      "components": {
+        "button": "8:6",
+        "navigationItem": "8:7",
+        "saveStatus": "7:19",
+        "graphNode": "12:145"
+      },
+      "screens": {
+        "desktopEditor": "12:2",
+        "mobileEditor": "12:56",
+        "desktopHistory": "12:79",
+        "desktopConnections": "12:121",
+        "desktopConflict": "12:163"
+      }
+    },
+    "E": {
+      "issue": 87,
+      "branch": "redesign/83/proposal-05-connected-sheet",
+      "collections": {
+        "primitives": "VariableCollectionId:4:173",
+        "theme": "VariableCollectionId:4:174"
+      },
+      "components": {
+        "button": "8:8",
+        "navigationItem": "8:9",
+        "saveStatus": "7:59",
+        "graphNode": "13:122"
+      },
+      "screens": {
+        "desktopEditor": "13:2",
+        "mobileEditor": "13:44",
+        "desktopHistory": "13:67",
+        "desktopConnections": "13:109",
+        "desktopConflict": "13:155"
+      }
+    }
+  }
+}
