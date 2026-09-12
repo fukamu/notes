@@ -117,6 +117,10 @@ export function isTypedCardEditorInput(
   );
 }
 
+export function isCardEditorDeletionInput(inputType: string): boolean {
+  return inputType.startsWith('delete');
+}
+
 export function isCardEditorHashContext(
   textBeforeCursor: string,
   selectionEmpty: boolean,

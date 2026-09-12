@@ -24,6 +24,7 @@ import {
   closeCardEditorCandidates,
   filterCardEditorCandidates,
   handleCardEditorCandidateKey,
+  isCardEditorDeletionInput,
   isTypedCardEditorInput,
   openCardEditorCandidates,
   type CardEditorCandidateState,
@@ -184,6 +185,20 @@ export function useCardEditor({
       },
       onUpdate: ({ editor: currentEditor }) => {
         actions.updateBody(editorDocumentToSegments(currentEditor.getJSON()));
+        const triggerPosition = triggerPositionRef.current;
+        if (triggerPosition === undefined || currentEditor.view.composing)
+          return;
+        const token = candidateTokenAtSelection(currentEditor);
+        if (!token || token.from !== triggerPosition) {
+          setCandidateState(closeCardEditorCandidates());
+          triggerPositionRef.current = undefined;
+          return;
+        }
+        setCandidateState((current) =>
+          current.open && current.numberPrefix === token.numberPrefix
+            ? current
+            : openCardEditorCandidates(token.numberPrefix),
+        );
       },
       onTransaction: ({ editor: currentEditor }) => {
         if (currentEditor.isDestroyed) return;
@@ -314,7 +329,7 @@ export function useCardEditor({
       });
       return;
     }
-    if (inputEvent.inputType.startsWith('deleteContent')) {
+    if (isCardEditorDeletionInput(inputEvent.inputType)) {
       queueMicrotask(updateSuggestionsForCandidateToken);
       return;
     }
