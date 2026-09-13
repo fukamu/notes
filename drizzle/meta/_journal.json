@@ -50,6 +50,13 @@
       "when": 1789309934476,
       "tag": "0006_narrow_vapor",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1789312414395,
+      "tag": "0007_special_shadowcat",
+      "breakpoints": true
     }
   ]
 }
