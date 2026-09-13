@@ -7,6 +7,7 @@
   "include": [
     "app/api/**/*.ts",
     "db/**/*.ts",
+    "server/**/*.ts",
     "lib/domain/**/*.ts",
     "lib/sync/**/*.ts"
   ],
