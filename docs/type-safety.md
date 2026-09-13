@@ -63,7 +63,7 @@ IndexedDBの `get()`／`getAll()` はadapter内でも `unknown` として扱い�
 
 ## API／D1境界とatomicity
 
-同期APIはpayload byte上限を確認し、`Request.json()` の結果を `unknown` のまま共通 `SyncRequest` codecへ渡します。malformed JSON、root型、field、UUIDv7、safe integer、timestamp順序、本文、件数、重複、unknown field、mutation kind別invariantの違反は400、payload超過は413です。検証完了前にはbinding取得、schema初期化、D1 writeを行いません。内部障害は500とし、responseとlogにはraw request／rowを含めません。
+同期APIはpayload byte上限を確認し、`Request.json()` の結果を `unknown` のまま共通 `SyncRequest` codecへ渡します。malformed JSON、root型、field、UUIDv7、safe integer、timestamp順序、本文、件数、重複、unknown field、mutation kind別invariantの違反は400、payload超過は413です。request pathではschema DDLを実行せず、未migration環境はfail closedにします。内部障害は500とし、responseとlogにはraw request／rowを含めません。
 
 D1の `.first()`／`.all()` はgeneric指定をruntime保証にせず `unknown` として受け、row codecでID、display ID、revision、timestamp、nullable性、文字列を検査します。`body_json` はparse結果を `unknown` とし、共通Body codecを通します。rowからmappingしたserver outputは最後に `SyncResponse` codecで重複と参照を含めて再検証してから200 responseにします。
 
@@ -71,7 +71,7 @@ D1の `.first()`／`.all()` はgeneric指定をruntime保証にせず `unknown` 
 
 ## schemaとenvironment
 
-Drizzle schema、checked-in migration、runtime初期化DDLは `tests/unit/schema-drift.test.ts` がtable、column、NOT NULL／primary key、CHECK、unique／indexまで比較します。追加migrationは従来runtime DDLに存在した正数CHECKをDrizzle管理schemaにも揃えるもので、column／index／有効データの意味は変えません。base migrationで作った有効fixtureが追加migration後も同じdomain値になることをMiniflareで確認します。schema変更時はDrizzle定義・migration・runtime DDLを同じPRで更新し、drift testを通します。
+Drizzle schema、checked-in migration、feature-owned manifestはschema testがtable、column、CHECK、foreign key、unique／indexとchecksumを照合します。migration ledgerの未知ID、非prefix履歴、checksum不一致はschema driftとして適用前に拒否します。D1 effectは明示runnerに限定し、各migrationのDDLとledger insertを単一batchでrollback可能にします。既存v1 schemaはcompatibility fixtureだけが明示migrationし、runtime初期化DDLは持ちません。詳細は [Identity / Vault control plane and migrations](server-control-plane.md) を参照してください。
 
 Cloudflare bindingは `getD1Binding(unknown)` だけが `DB` をD1互換objectへ昇格させます。`.openai/hosting.json`、Cloudflare型宣言、runtime accessor、build後のWrangler設定のbinding名は `npm run check:environment` が照合します。欠落・不正bindingはconfiguration errorとなり、同期APIは安全な500を返します。
 

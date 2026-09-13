@@ -6,7 +6,6 @@ import {
   mapCardRow,
   mapConflictRow,
 } from '@/db/d1-records';
-import { syncSchemaStatements } from '@/db/schema';
 import { BoundaryDecodeError } from '@/lib/codec/core';
 import type { MutationId } from '@/lib/domain/id';
 import { CONTRACT_LIMITS, type PendingMutation } from '@/lib/domain/types';
@@ -27,12 +26,6 @@ function bodyJson(mutation: PendingMutation): string {
     ]);
   }
   return value;
-}
-
-export async function ensureSyncSchema(database: D1Database): Promise<void> {
-  await database.batch(
-    syncSchemaStatements.map((statement) => database.prepare(statement)),
-  );
 }
 
 async function mutationWasApplied(
@@ -221,7 +214,6 @@ export async function synchronize(
   database: D1Database,
   mutations: PendingMutation[],
 ): Promise<SyncResponse> {
-  await ensureSyncSchema(database);
   await readSyncState(database, [], []);
   const acknowledgedMutationIds: MutationId[] = [];
   const ordered = [...mutations].sort(

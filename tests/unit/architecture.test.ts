@@ -352,6 +352,48 @@ describe('pure-core dependency direction', () => {
   });
 });
 
+describe('Identity/Vault control-plane ownership', () => {
+  it('keeps private schema, records, migrations, and D1 mutations inside their owner modules', async () => {
+    const files = (await Promise.all(roots.map(sourceFiles))).flat();
+    const violations: string[] = [];
+    for (const file of files) {
+      if (
+        file.startsWith('server/control-plane/') ||
+        file.startsWith('server/migrations/')
+      ) {
+        continue;
+      }
+      const source = await readFile(file, 'utf8');
+      if (
+        /server\/control-plane\/(?:core|d1-adapter|d1-schema|migration|records)/.test(
+          source,
+        ) ||
+        /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:accounts|personal_vaults|identities|sessions)\b/i.test(
+          source,
+        )
+      ) {
+        violations.push(file);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps migration planning pure and request handlers free of schema DDL', async () => {
+    const [core, runner, sync, handler] = await Promise.all([
+      readFile('server/migrations/core.ts', 'utf8'),
+      readFile('server/migrations/d1-runner.ts', 'utf8'),
+      readFile('db/d1-sync.ts', 'utf8'),
+      readFile('app/api/sync/handler.ts', 'utf8'),
+    ]);
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(/,
+    );
+    expect(runner).toContain('planMigrations');
+    expect(sync).not.toMatch(/CREATE\s+(?:TABLE|INDEX)|ensureSyncSchema/i);
+    expect(handler).not.toMatch(/CREATE\s+(?:TABLE|INDEX)|ensureSyncSchema/i);
+  });
+});
+
 describe('application and presentation architecture', () => {
   it('uses one typed lifecycle as the initialization source of truth', async () => {
     const lifecycle = await readFile(

@@ -15,6 +15,13 @@
       "when": 1789086480489,
       "tag": "0001_amazing_cannonball",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789286874235,
+      "tag": "0002_identity_vault_control_plane",
+      "breakpoints": true
     }
   ]
 }

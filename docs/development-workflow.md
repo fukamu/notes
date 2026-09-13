@@ -106,6 +106,8 @@ npm run verify
 
 Issue固有testは実装中に繰返します。個別PR結果の合計を最終integration検証の代用にしません。test/build/CIはfixture/emulatorだけを使い、本番D1/実dataへ接続せずdeployしません。未実行、skip、環境制約を成功扱いにしません。
 
+Schema変更はfeature ownerのDrizzle定義、versioned manifest、checked-in migration、codec、Miniflare testを同じIssueへ含めます。request handlerからDDLを実行せず、migration適用は明示runnerと別途承認された運用手順に限定します。local/CIは新規の空Miniflare databaseだけを使い、既存Sites data migrationやproduction applyを行いません。
+
 ## 検査設定の変更
 
 TypeScript、lint、test、coverage、architecture、CIを弱める変更は通常実装へ混ぜず、別Issueで必要性と影響を示します。strict option削除、rule severity低下、対象除外、baseline、snapshot/期待値の安易な更新、test skip、CI command削除は、実装を通す理由では認めません。

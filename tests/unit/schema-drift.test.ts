@@ -1,45 +1,18 @@
 import { readFile } from 'node:fs/promises';
 import { getTableConfig } from 'drizzle-orm/sqlite-core';
 import { describe, expect, it } from 'vitest';
-import {
-  cardMutations,
-  cards,
-  conflicts,
-  syncSchemaStatements,
-  syncState,
-} from '@/db/schema';
-
-function normalize(statement: string): string {
-  return statement
-    .replaceAll('`', '')
-    .replaceAll('"', '')
-    .replaceAll(/\b(?:sync_state|cards)\./g, '')
-    .replaceAll(/\bif not exists\b/gi, '')
-    .replaceAll(/\s+/g, ' ')
-    .replaceAll(/\s*([(),;])\s*/g, '$1')
-    .replace(/;$/, '')
-    .trim()
-    .toLowerCase();
-}
-
-function withoutChecks(statement: string): string {
-  return statement.replaceAll(/\s+constraint\s+\w+\s+check\s*\([^)]*\)/gi, '');
-}
+import { cardMutations, cards, conflicts, syncState } from '@/db/schema';
 
 describe('D1 schema drift', () => {
-  it('keeps runtime tables and indexes equivalent to the base migration', async () => {
-    const migration = await readFile('drizzle/0000_sticky_gamora.sql', 'utf8');
-    const migrationStatements = migration
-      .split('--> statement-breakpoint')
-      .map(normalize)
-      .filter(Boolean)
-      .sort();
-    const runtimeStatements = syncSchemaStatements
-      .filter((statement) => !statement.startsWith('INSERT'))
-      .map(withoutChecks)
-      .map(normalize)
-      .sort();
-    expect(runtimeStatements).toEqual(migrationStatements);
+  it('keeps schema creation out of the request-time sync path', async () => {
+    const [repository, handler] = await Promise.all([
+      readFile('db/d1-sync.ts', 'utf8'),
+      readFile('app/api/sync/handler.ts', 'utf8'),
+    ]);
+    expect(repository).not.toMatch(
+      /CREATE\s+(?:TABLE|INDEX)|ensureSyncSchema/i,
+    );
+    expect(handler).not.toMatch(/CREATE\s+(?:TABLE|INDEX)|ensureSyncSchema/i);
   });
 
   it('keeps Drizzle columns and indexes aligned with the SQL contract', () => {
@@ -104,13 +77,12 @@ describe('D1 schema drift', () => {
     }
   });
 
-  it('keeps final checks in Drizzle, runtime DDL, migration, and snapshot', async () => {
+  it('keeps final checks in Drizzle, migration, and snapshot', async () => {
     const migration = await readFile(
       'drizzle/0001_amazing_cannonball.sql',
       'utf8',
     );
     const snapshot = await readFile('drizzle/meta/0001_snapshot.json', 'utf8');
-    const runtime = syncSchemaStatements.join('\n');
     for (const name of [
       'cards_display_id_check',
       'cards_revision_check',
@@ -119,7 +91,6 @@ describe('D1 schema drift', () => {
     ]) {
       expect(migration).toContain(name);
       expect(snapshot).toContain(name);
-      expect(runtime).toContain(name);
     }
   });
 });
