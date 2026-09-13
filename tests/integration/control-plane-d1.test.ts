@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BoundaryDecodeError } from '@/lib/codec/core';
 import { createActiveSession, revokeSession } from '@/server/core/session';
 import { D1IdentityVaultControlPlane } from '@/server/control-plane/d1-adapter';
-import { productionMigrationManifest } from '@/server/control-plane/migration';
+import { identityVaultControlPlaneMigration } from '@/server/control-plane/migration';
 import { runD1Migrations } from '@/server/migrations/d1-runner';
 import type { MigrationDefinition } from '@/server/migrations/core';
 import {
@@ -15,6 +15,8 @@ import {
 } from '@/tests/fixtures/control-plane';
 
 type TestDatabase = Awaited<ReturnType<Miniflare['getD1Database']>>;
+
+const identityVaultManifest = [identityVaultControlPlaneMigration] as const;
 
 let miniflare: Miniflare;
 let freshDatabase: TestDatabase;
@@ -54,7 +56,7 @@ describe('explicit D1 migrations', () => {
     expect(
       await runD1Migrations({
         database: freshDatabase,
-        manifest: productionMigrationManifest,
+        manifest: identityVaultManifest,
         appliedAt: 1_000,
       }),
     ).toEqual({
@@ -79,7 +81,7 @@ describe('explicit D1 migrations', () => {
     expect(
       await runD1Migrations({
         database: freshDatabase,
-        manifest: productionMigrationManifest,
+        manifest: identityVaultManifest,
         appliedAt: 2_000,
       }),
     ).toEqual({ kind: 'up-to-date' });
@@ -113,7 +115,7 @@ describe('explicit D1 migrations', () => {
   it('fails closed when the ledger checksum has drifted', async () => {
     await runD1Migrations({
       database: driftDatabase,
-      manifest: productionMigrationManifest,
+      manifest: identityVaultManifest,
       appliedAt: 1_000,
     });
     await driftDatabase
@@ -123,7 +125,7 @@ describe('explicit D1 migrations', () => {
     expect(
       await runD1Migrations({
         database: driftDatabase,
-        manifest: productionMigrationManifest,
+        manifest: identityVaultManifest,
         appliedAt: 2_000,
       }),
     ).toMatchObject({
@@ -138,7 +140,7 @@ describe('D1 Identity/Vault data owner', () => {
   it('enforces personal Vault, issuer+subject, hashed session, and revocation ownership', async () => {
     await runD1Migrations({
       database: controlDatabase,
-      manifest: productionMigrationManifest,
+      manifest: identityVaultManifest,
       appliedAt: 1_000,
     });
     await controlDatabase.prepare('PRAGMA foreign_keys = ON').run();
@@ -224,7 +226,7 @@ describe('D1 Identity/Vault data owner', () => {
   it('decodes D1 rows from unknown and rejects malformed stored identity data', async () => {
     await runD1Migrations({
       database: malformedDatabase,
-      manifest: productionMigrationManifest,
+      manifest: identityVaultManifest,
       appliedAt: 1_000,
     });
     const adapter = new D1IdentityVaultControlPlane(malformedDatabase);

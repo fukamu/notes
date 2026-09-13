@@ -22,6 +22,13 @@
       "when": 1789286874235,
       "tag": "0002_identity_vault_control_plane",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789289411763,
+      "tag": "0003_late_nighthawk",
+      "breakpoints": true
     }
   ]
 }

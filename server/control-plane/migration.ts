@@ -53,7 +53,3 @@ export const identityVaultControlPlaneMigration: MigrationDefinition = {
     'sha256:6b40f7998457c4746430898bcb2a843b672e82218dfc9d504761a7b0b65bc6dd',
   statements: identityVaultControlPlaneStatements,
 };
-
-export const productionMigrationManifest = [
-  identityVaultControlPlaneMigration,
-] as const;
