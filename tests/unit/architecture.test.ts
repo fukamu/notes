@@ -236,6 +236,44 @@ describe('pure-core dependency direction', () => {
     );
     expect(testConfig).toContain("'lib/client/notes-store.tsx'");
   });
+
+  it('keeps logout purge decisions pure and production composition independent of its fake progress port', async () => {
+    const [core, progress, fake, testConfig] = await Promise.all([
+      readFile('lib/application/logout-purge.ts', 'utf8'),
+      readFile('lib/application/logout-purge-progress.ts', 'utf8'),
+      readFile('lib/client/fake-logout-purge-progress.ts', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+    ]);
+    const productionRoots = ['app', 'components', 'lib/client'];
+    const productionFiles = (
+      await Promise.all(productionRoots.map(sourceFiles))
+    ).flat();
+    const fakeConsumers: string[] = [];
+    for (const file of productionFiles) {
+      if (file === 'lib/client/fake-logout-purge-progress.ts') continue;
+      const source = await readFile(file, 'utf8');
+      if (source.includes('fake-logout-purge-progress')) {
+        fakeConsumers.push(file);
+      }
+    }
+
+    expect(core).toContain('transitionLogoutPurge');
+    expect(core).toContain('decideNotesRuntimePurgeGate');
+    expect(core).toContain('logoutPurgeProgressDecoder');
+    expect(core).not.toMatch(
+      /Promise|BroadcastChannel|indexedDB|caches\.|serviceWorker|new Worker|window\.|document\.|Date\.now|Math\.random|console\./,
+    );
+    expect(core).not.toMatch(
+      /CardRecord|PendingMutation|ConflictRecord|SessionToken/,
+    );
+    expect(progress).toContain('LogoutPurgeProgressPort');
+    expect(progress).toContain('Promise<unknown>');
+    expect(fake).toContain('must never be wired into production composition');
+    expect(fakeConsumers).toEqual([]);
+    expect(testConfig).toContain("'lib/application/logout-purge.ts'");
+    expect(testConfig).toContain("'lib/application/logout-purge-progress.ts'");
+    expect(testConfig).toContain("'lib/client/fake-logout-purge-progress.ts'");
+  });
 });
 
 describe('application and presentation architecture', () => {

@@ -41,8 +41,8 @@ runtime generation.
 The repository remains scope-bound. Browser storage operations already in a
 low-level transaction cannot always be cancelled at the JavaScript boundary;
 they can affect only the old Vault namespace and cannot be redirected to a new
-repository. Issue #144 owns coordinated tab/worker shutdown and
-crash-resumable deletion of that old namespace.
+repository. Issue #144 owns crash-resumable progress decisions, #147 owns tab
+coordination, and #148 owns worker shutdown and deletion of that old namespace.
 
 ## Compatibility, verification, and rollback
 

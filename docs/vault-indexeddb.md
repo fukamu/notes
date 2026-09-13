@@ -34,9 +34,10 @@ which it can be opened again.
 
 Deletion first closes the managed connection and returns a discriminated
 result. `deleted`, `blocked`, and adapter failure are distinct. In particular,
-`blocked` never means logout succeeded. Issue #144 will consume this result in
-a crash-resumable, multi-tab purge coordinator. Until #143 and #144 are
-integrated, the Vault repository is not connected to a production login flow.
+`blocked` never means logout succeeded. Issue #144 defines the crash-resumable
+pure progress, #147 coordinates tabs, and #148 consumes this result in the
+browser purge composition. Until #148 is integrated, the Vault repository is
+not connected to a production login flow.
 
 ## Verification and rollback
 
