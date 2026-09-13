@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import {
   BodyEditor,
   defaultCardEditorPresentation,
@@ -77,12 +77,20 @@ function NotesConnector({
 export function NotesApp({
   configuration = defaultNotesAppConfiguration,
   runtimePorts,
+  runtimeFenced = false,
+  runtimeFencedFallback,
 }: {
   configuration?: NotesAppConfiguration;
   runtimePorts: NotesRuntimePorts;
+  runtimeFenced?: boolean;
+  runtimeFencedFallback?: ReactNode;
 }) {
   return (
-    <NotesProvider ports={runtimePorts}>
+    <NotesProvider
+      ports={runtimePorts}
+      fenced={runtimeFenced}
+      fencedFallback={runtimeFencedFallback}
+    >
       <NotesConnector configuration={configuration} />
     </NotesProvider>
   );

@@ -156,6 +156,7 @@ function currentStore(): NotesDataStore {
 async function renderRuntime(
   harness: RuntimeHarness,
   runtimeKey: string,
+  fenced = false,
 ): Promise<void> {
   if (!root) {
     const container = document.createElement('div');
@@ -166,6 +167,8 @@ async function renderRuntime(
     const providerProperties = {
       key: runtimeKey,
       ports: harness.ports,
+      fenced,
+      fencedFallback: createElement('p', null, 'Runtime fenced'),
       children: createElement(StoreProbe),
     };
     root?.render(createElement(NotesProvider, providerProperties));
@@ -231,6 +234,26 @@ describe('NotesProvider operation lifecycle', () => {
     act(() => root?.unmount());
     root = undefined;
     response.resolve({ untrusted: 'late response' });
+    await flushAsyncCompletion();
+
+    expect(runtime.repository.applySyncResponse).not.toHaveBeenCalled();
+  });
+
+  it('stops operations in the layout phase before a purge fence releases', async () => {
+    const response = Promise.withResolvers<unknown>();
+    const runtime = createRuntimeHarness({
+      online: true,
+      send: () => response.promise,
+    });
+
+    await renderRuntime(runtime, 'fenced-sync-runtime');
+    await vi.waitFor(() =>
+      expect(runtime.transport.send).toHaveBeenCalledOnce(),
+    );
+    await renderRuntime(runtime, 'fenced-sync-runtime', true);
+    expect(document.body.textContent).toContain('Runtime fenced');
+
+    response.resolve({ untrusted: 'late fenced response' });
     await flushAsyncCompletion();
 
     expect(runtime.repository.applySyncResponse).not.toHaveBeenCalled();

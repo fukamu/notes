@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -65,9 +66,13 @@ const NotesDataContext = createContext<NotesDataStore | null>(null);
 export function NotesProvider({
   children,
   ports,
+  fenced = false,
+  fencedFallback = null,
 }: {
   children: ReactNode;
   ports: NotesRuntimePorts;
+  fenced?: boolean;
+  fencedFallback?: ReactNode;
 }) {
   const [cards, setCards] = useState<CardRecord[]>([]);
   const [conflicts, setConflicts] = useState<ConflictRecord[]>([]);
@@ -104,6 +109,19 @@ export function NotesProvider({
       );
     };
   }, [ports]);
+
+  useLayoutEffect(() => {
+    if (!fenced) return;
+    operationLifecycleRef.current = stopNotesOperationLifecycle(
+      operationLifecycleRef.current,
+    );
+    syncRunningRef.current = undefined;
+    syncRequestedRef.current = false;
+    if (syncTimerRef.current !== undefined) {
+      window.clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = undefined;
+    }
+  }, [fenced]);
 
   useEffect(() => {
     cardsRef.current = cards;
@@ -421,7 +439,7 @@ export function NotesProvider({
 
   return (
     <NotesDataContext.Provider value={value}>
-      {children}
+      {fenced ? fencedFallback : children}
     </NotesDataContext.Provider>
   );
 }
