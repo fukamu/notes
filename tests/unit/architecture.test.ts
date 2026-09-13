@@ -120,6 +120,7 @@ describe('pure-core dependency direction', () => {
   ];
   const coreFiles = [
     'server/account-deletion/core.ts',
+    'server/account-deletion/delete-vault-data-core.ts',
     'server/billing/cancellation-core.ts',
     'server/billing/core.ts',
     'server/crypto/core.ts',
@@ -438,7 +439,7 @@ function accountDeletionBoundaryViolation(
     return false;
   }
   return (
-    /server\/account-deletion\/(?:cancel-subscription|core|d1-adapter|d1-schema|migration|records|revoke-sessions)/.test(
+    /server\/account-deletion\/(?:cancel-subscription|core|d1-adapter|d1-schema|delete-vault-data|delete-vault-data-core|migration|records|revoke-sessions)/.test(
       source,
     ) ||
     /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:account_deletion_operations|account_deletion_step_receipts)\b/i.test(
@@ -467,6 +468,8 @@ describe('Account deletion saga ownership', () => {
       migration,
       revokeSessions,
       cancelSubscription,
+      deleteVaultDataCore,
+      deleteVaultData,
       testConfig,
     ] = await Promise.all([
       readFile('server/account-deletion/core.ts', 'utf8'),
@@ -476,6 +479,8 @@ describe('Account deletion saga ownership', () => {
       readFile('server/account-deletion/migration.ts', 'utf8'),
       readFile('server/account-deletion/revoke-sessions.ts', 'utf8'),
       readFile('server/account-deletion/cancel-subscription.ts', 'utf8'),
+      readFile('server/account-deletion/delete-vault-data-core.ts', 'utf8'),
+      readFile('server/account-deletion/delete-vault-data.ts', 'utf8'),
       readFile('vitest.config.ts', 'utf8'),
     ]);
     expect(core).toContain('planAccountDeletionStepClaim');
@@ -500,6 +505,15 @@ describe('Account deletion saga ownership', () => {
     expect(cancelSubscription).toContain('../billing/public');
     expect(cancelSubscription).not.toMatch(
       /billing\/(?:cancellation-core|cancellation-service|core|d1-adapter|d1-schema|fake|fake-cancellation|migration|ports|records|service)|D1Database|\.prepare\(|Date\.now|Stripe|fetch\(/,
+    );
+    expect(deleteVaultDataCore).toContain('planDeleteVaultDataStep');
+    expect(deleteVaultDataCore).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise|R2|KMS|Stripe/,
+    );
+    expect(deleteVaultData).toContain('../encrypted-object/public');
+    expect(deleteVaultData).toContain('../vault-content/public');
+    expect(deleteVaultData).not.toMatch(
+      /(?:encrypted-object|vault-content)\/(?:core|d1-adapter|d1-schema|migration|ports|records|service)|D1Database|\.prepare\(|Date\.now|R2|KMS|Stripe|fetch\(/,
     );
     expect(testConfig).toContain("'server/**/*.ts'");
   });
@@ -544,12 +558,18 @@ describe('Vault-scoped server repository ownership', () => {
     );
     expect(publicContract).toContain('open(context: VaultContext)');
     expect(publicContract).toContain('type VaultContentRepository');
+    expect(publicContract).toContain('type VaultLiveDataPurgePort');
     expect(publicContract).not.toMatch(
       /findCard\([^)]*(?:VaultId|VaultContext)|compareAndSwapCard\([^)]*(?:VaultId|VaultContext)|deleteCard\([^)]*(?:VaultId|VaultContext)/,
     );
     expect(adapter).toContain('class D1ScopedVaultContentRepository');
     expect(adapter).toContain('this.context.vaultId');
     expect(adapter).toContain('this.route.routingRevision');
+    expect(adapter).toContain('purgeVaultLiveData');
+    expect(adapter).toContain('NOT EXISTS');
+    expect(adapter).not.toMatch(
+      /DELETE\s+FROM\s+(?:vault_encrypted_objects|vault_encrypted_write_intents)/i,
+    );
     expect(adapter).toContain("return { kind: 'not-found' }");
     expect(records).toContain('partitionRouteRowDecoder');
     expect(records).toContain('mapMutationReceiptRow');
@@ -580,6 +600,62 @@ describe('Vault-scoped server repository ownership', () => {
     );
     expect(schema).toContain('vaultSyncV2Changes');
     expect(testConfig).toContain("'server/**/*.ts'");
+  });
+});
+
+function encryptedObjectBoundaryViolation(
+  file: string,
+  source: string,
+): boolean {
+  if (
+    file.startsWith('server/encrypted-object/') ||
+    file.startsWith('server/migrations/')
+  ) {
+    return false;
+  }
+  return (
+    /server\/encrypted-object\/(?:core|d1-adapter|d1-schema|migration|ports|records|service)/.test(
+      source,
+    ) ||
+    /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:vault_encrypted_objects|vault_encrypted_write_intents|vault_object_delete_outbox)\b/i.test(
+      source,
+    )
+  );
+}
+
+describe('Encrypted object metadata ownership', () => {
+  it('keeps metadata and outbox mutations inside the encrypted-object module', async () => {
+    const files = (await Promise.all(roots.map(sourceFiles))).flat();
+    const violations: string[] = [];
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (encryptedObjectBoundaryViolation(file, source)) violations.push(file);
+    }
+    expect(violations).toEqual([]);
+    expect(
+      encryptedObjectBoundaryViolation(
+        'server/account-deletion/delete-vault-data.ts',
+        'DELETE FROM vault_encrypted_objects WHERE vault_id = ?',
+      ),
+    ).toBe(true);
+  });
+
+  it('exposes only the provider-neutral purge port and keeps D1 effects in its adapter', async () => {
+    const [core, publicContract, adapter] = await Promise.all([
+      readFile('server/encrypted-object/core.ts', 'utf8'),
+      readFile('server/encrypted-object/public.ts', 'utf8'),
+      readFile('server/encrypted-object/d1-adapter.ts', 'utf8'),
+    ]);
+    expect(core).toContain('evaluateEncryptedObjectMetadataPurge');
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|fetch\(|Promise|R2Bucket|KMS/,
+    );
+    expect(publicContract).toContain('type EncryptedObjectMetadataPurgePort');
+    expect(publicContract).not.toMatch(/D1Database|R2Bucket|Stripe|objectKey/);
+    expect(adapter).toContain('D1EncryptedObjectMetadataPurge');
+    expect(adapter).toContain('INSERT INTO vault_object_delete_outbox');
+    expect(adapter).toContain('DELETE FROM vault_encrypted_objects');
+    expect(adapter).toContain('DELETE FROM vault_encrypted_write_intents');
   });
 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  evaluateVaultLiveDataPurge,
   planCardCompareAndSwap,
   planPartitionAssignment,
   planPartitionCompareAndSwap,
@@ -116,4 +117,67 @@ describe('Vault content routing and CAS plans', () => {
 
     expect(vaultContentContext('a').vaultId).toBe(controlPlaneIds.vaultA);
   });
+
+  it('confirms live purge only for the owner with no remaining scoped rows', () => {
+    expect(
+      evaluateVaultLiveDataPurge({
+        ownerMatches: true,
+        routePresentBefore: true,
+        remaining: emptyCounts(),
+      }),
+    ).toEqual({ kind: 'confirmed', outcome: 'purged' });
+    expect(
+      evaluateVaultLiveDataPurge({
+        ownerMatches: true,
+        routePresentBefore: false,
+        remaining: emptyCounts(),
+      }),
+    ).toEqual({ kind: 'confirmed', outcome: 'already-purged' });
+    expect(
+      evaluateVaultLiveDataPurge({
+        ownerMatches: false,
+        routePresentBefore: false,
+        remaining: emptyCounts(),
+      }),
+    ).toEqual({ kind: 'terminal-failure', reason: 'owner-mismatch' });
+    expect(
+      evaluateVaultLiveDataPurge({
+        ownerMatches: true,
+        routePresentBefore: true,
+        remaining: { ...emptyCounts(), encryptedObjects: 1 },
+      }),
+    ).toEqual({
+      kind: 'retryable-failure',
+      reason: 'object-inventory-not-empty',
+    });
+    expect(
+      evaluateVaultLiveDataPurge({
+        ownerMatches: true,
+        routePresentBefore: true,
+        remaining: { ...emptyCounts(), syncChanges: 1 },
+      }),
+    ).toEqual({ kind: 'retryable-failure', reason: 'incomplete-delete' });
+    expect(
+      evaluateVaultLiveDataPurge({
+        ownerMatches: true,
+        routePresentBefore: true,
+        remaining: { ...emptyCounts(), routes: 2 },
+      }),
+    ).toEqual({ kind: 'retryable-failure', reason: 'incomplete-delete' });
+  });
 });
+
+function emptyCounts() {
+  return {
+    routes: 0,
+    cards: 0,
+    mutationReceipts: 0,
+    conflicts: 0,
+    syncStates: 0,
+    displayIds: 0,
+    syncCommits: 0,
+    syncChanges: 0,
+    encryptedObjects: 0,
+    encryptedWriteIntents: 0,
+  } as const;
+}

@@ -10,12 +10,17 @@ import type { CryptoObjectRevision, EnvelopeObject } from '../crypto/core';
 import type { VaultContentDirectory } from '../vault-content/public';
 import type { VaultPartitionRoute } from '../vault-content/records';
 import {
+  evaluateEncryptedObjectMetadataPurge,
   type DeleteOutboxEntry,
   type EncryptedObjectMetadata,
   type EncryptedWriteId,
   type OpaqueObjectKey,
   type PendingEncryptedWrite,
 } from './core';
+import type {
+  EncryptedObjectMetadataPurgePort,
+  EncryptedObjectMetadataPurgeScope,
+} from './public';
 import type {
   EncryptedObjectMetadataDirectory,
   EncryptedObjectMetadataRepository,
@@ -51,6 +56,131 @@ const deleteOutboxResultDecoder = objectDecoder(
   },
   { unknownFields: 'allow' },
 );
+const purgeInventoryDecoder = objectDecoder(
+  {
+    route_present: safeIntegerDecoder({ minimum: 0, maximum: 1 }),
+    source_rows: safeIntegerDecoder({ minimum: 0 }),
+  },
+  { unknownFields: 'allow' },
+);
+
+export class D1EncryptedObjectMetadataPurge implements EncryptedObjectMetadataPurgePort {
+  constructor(private readonly database: D1DatabaseBinding) {}
+
+  async purgeVaultMetadata(input: {
+    readonly scope: EncryptedObjectMetadataPurgeScope;
+    readonly requestedAt: number;
+  }) {
+    const requestedAt = decodeOrThrow(
+      safeIntegerDecoder({ minimum: 0 }),
+      input.requestedAt,
+      'encrypted object metadata purge timestamp',
+    );
+    const before = await this.readInventory(input.scope);
+    if (before.route_present === 0) {
+      return evaluateEncryptedObjectMetadataPurge({
+        routePresent: false,
+        sourceRowsBefore: before.source_rows,
+        sourceRowsAfter: before.source_rows,
+      });
+    }
+
+    await this.database.batch([
+      this.database
+        .prepare(
+          `INSERT INTO vault_object_delete_outbox(
+            vault_id, object_key, attempt_count, next_attempt_at, created_at
+          )
+          SELECT candidates.vault_id, candidates.object_key, 0, ?, ?
+          FROM (
+            SELECT vault_id, object_key FROM vault_encrypted_objects
+            WHERE vault_id = ?
+            UNION
+            SELECT vault_id, object_key FROM vault_encrypted_write_intents
+            WHERE vault_id = ?
+          ) candidates
+          WHERE EXISTS (
+            SELECT 1 FROM vault_partition_mappings route
+            WHERE route.account_id = ? AND route.vault_id = ?
+              AND route.vault_id = candidates.vault_id
+          )
+          ON CONFLICT(vault_id, object_key) DO NOTHING`,
+        )
+        .bind(
+          requestedAt,
+          requestedAt,
+          input.scope.vaultId,
+          input.scope.vaultId,
+          input.scope.accountId,
+          input.scope.vaultId,
+        ),
+      this.database
+        .prepare(
+          `DELETE FROM vault_encrypted_objects
+           WHERE vault_id = ?
+             AND EXISTS (
+               SELECT 1 FROM vault_partition_mappings route
+               WHERE route.account_id = ? AND route.vault_id = ?
+                 AND route.vault_id = vault_encrypted_objects.vault_id
+             )
+             AND EXISTS (
+               SELECT 1 FROM vault_object_delete_outbox pending
+               WHERE pending.vault_id = vault_encrypted_objects.vault_id
+                 AND pending.object_key = vault_encrypted_objects.object_key
+             )`,
+        )
+        .bind(input.scope.vaultId, input.scope.accountId, input.scope.vaultId),
+      this.database
+        .prepare(
+          `DELETE FROM vault_encrypted_write_intents
+           WHERE vault_id = ?
+             AND EXISTS (
+               SELECT 1 FROM vault_partition_mappings route
+               WHERE route.account_id = ? AND route.vault_id = ?
+                 AND route.vault_id = vault_encrypted_write_intents.vault_id
+             )
+             AND EXISTS (
+               SELECT 1 FROM vault_object_delete_outbox pending
+               WHERE pending.vault_id = vault_encrypted_write_intents.vault_id
+                 AND pending.object_key = vault_encrypted_write_intents.object_key
+             )`,
+        )
+        .bind(input.scope.vaultId, input.scope.accountId, input.scope.vaultId),
+    ]);
+
+    const after = await this.readInventory(input.scope);
+    return evaluateEncryptedObjectMetadataPurge({
+      routePresent: before.route_present === 1,
+      sourceRowsBefore: before.source_rows,
+      sourceRowsAfter: after.source_rows,
+    });
+  }
+
+  private async readInventory(scope: EncryptedObjectMetadataPurgeScope) {
+    const raw: unknown = await this.database
+      .prepare(
+        `SELECT
+          EXISTS(
+            SELECT 1 FROM vault_partition_mappings route
+            WHERE route.account_id = ? AND route.vault_id = ?
+          ) AS route_present,
+          (
+            (SELECT COUNT(*) FROM vault_encrypted_objects stored
+             WHERE stored.vault_id = ?)
+            +
+            (SELECT COUNT(*) FROM vault_encrypted_write_intents pending
+             WHERE pending.vault_id = ?)
+          ) AS source_rows`,
+      )
+      .bind(scope.accountId, scope.vaultId, scope.vaultId, scope.vaultId)
+      .first();
+    return decodeOrThrow(
+      purgeInventoryDecoder,
+      raw,
+      'D1 encrypted object metadata purge inventory',
+    );
+  }
+}
 
 export class D1EncryptedObjectMetadataDirectory implements EncryptedObjectMetadataDirectory {
   constructor(

@@ -2,12 +2,14 @@ import {
   arrayDecoder,
   decodeOrThrow,
   objectDecoder,
+  safeIntegerDecoder,
 } from '../../lib/codec/core';
 import type { VaultContext } from '../../lib/domain/identity';
 import type { CardId, ConflictId, MutationId } from '../../lib/domain/id';
 import type { D1DatabaseBinding } from '../../db/d1-types';
 import type { IdentityVaultControlPlane } from '../control-plane/public';
 import {
+  evaluateVaultLiveDataPurge,
   planCardCompareAndSwap,
   planPartitionAssignment,
   planPartitionCompareAndSwap,
@@ -21,6 +23,9 @@ import type {
   PartitionCompareAndSwap,
   ScopedWriteResult,
   VaultContentDirectory,
+  VaultLiveDataPurgePort,
+  VaultLiveDataPurgeResult,
+  VaultLiveDataPurgeScope,
   VaultContentRepository,
   VaultRepositoryOpenResult,
 } from './public';
@@ -49,8 +54,25 @@ const cardListResultDecoder = objectDecoder(
   },
   { unknownFields: 'allow' },
 );
+const liveDataCountsDecoder = objectDecoder(
+  {
+    routes: safeIntegerDecoder({ minimum: 0 }),
+    cards: safeIntegerDecoder({ minimum: 0 }),
+    mutation_receipts: safeIntegerDecoder({ minimum: 0 }),
+    conflicts: safeIntegerDecoder({ minimum: 0 }),
+    sync_states: safeIntegerDecoder({ minimum: 0 }),
+    display_ids: safeIntegerDecoder({ minimum: 0 }),
+    sync_commits: safeIntegerDecoder({ minimum: 0 }),
+    sync_changes: safeIntegerDecoder({ minimum: 0 }),
+    encrypted_objects: safeIntegerDecoder({ minimum: 0 }),
+    encrypted_write_intents: safeIntegerDecoder({ minimum: 0 }),
+  },
+  { unknownFields: 'allow' },
+);
 
-export class D1VaultContentDirectory implements VaultContentDirectory {
+export class D1VaultContentDirectory
+  implements VaultContentDirectory, VaultLiveDataPurgePort
+{
   constructor(
     private readonly database: D1DatabaseBinding,
     private readonly controlPlane: IdentityVaultControlPlane,
@@ -132,6 +154,74 @@ export class D1VaultContentDirectory implements VaultContentDirectory {
         };
   }
 
+  async purgeVaultLiveData(
+    scope: VaultLiveDataPurgeScope,
+  ): Promise<VaultLiveDataPurgeResult> {
+    if ((await this.readOwner(scope)) === undefined) {
+      return evaluateVaultLiveDataPurge({
+        ownerMatches: false,
+        routePresentBefore: false,
+        remaining: emptyLiveDataCounts(),
+      });
+    }
+
+    const before = await this.readLiveDataCounts(scope);
+    if (
+      before.encrypted_objects !== 0 ||
+      before.encrypted_write_intents !== 0
+    ) {
+      return evaluateVaultLiveDataPurge({
+        ownerMatches: true,
+        routePresentBefore: before.routes === 1,
+        remaining: {
+          routes: before.routes,
+          cards: before.cards,
+          mutationReceipts: before.mutation_receipts,
+          conflicts: before.conflicts,
+          syncStates: before.sync_states,
+          displayIds: before.display_ids,
+          syncCommits: before.sync_commits,
+          syncChanges: before.sync_changes,
+          encryptedObjects: before.encrypted_objects,
+          encryptedWriteIntents: before.encrypted_write_intents,
+        },
+      });
+    }
+
+    await this.database
+      .prepare(
+        `DELETE FROM vault_partition_mappings
+         WHERE account_id = ? AND vault_id = ?
+           AND NOT EXISTS (
+             SELECT 1 FROM vault_encrypted_objects stored
+             WHERE stored.vault_id = vault_partition_mappings.vault_id
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM vault_encrypted_write_intents pending
+             WHERE pending.vault_id = vault_partition_mappings.vault_id
+           )`,
+      )
+      .bind(scope.accountId, scope.vaultId)
+      .run();
+    const remaining = await this.readLiveDataCounts(scope);
+    return evaluateVaultLiveDataPurge({
+      ownerMatches: true,
+      routePresentBefore: before.routes === 1,
+      remaining: {
+        routes: remaining.routes,
+        cards: remaining.cards,
+        mutationReceipts: remaining.mutation_receipts,
+        conflicts: remaining.conflicts,
+        syncStates: remaining.sync_states,
+        displayIds: remaining.display_ids,
+        syncCommits: remaining.sync_commits,
+        syncChanges: remaining.sync_changes,
+        encryptedObjects: remaining.encrypted_objects,
+        encryptedWriteIntents: remaining.encrypted_write_intents,
+      },
+    });
+  }
+
   private async readRoute(
     context: VaultContext,
   ): Promise<VaultPartitionRoute | undefined> {
@@ -154,7 +244,7 @@ export class D1VaultContentDirectory implements VaultContentDirectory {
         );
   }
 
-  private async readOwner(context: VaultContext) {
+  private async readOwner(context: VaultLiveDataPurgeScope) {
     const account = await this.controlPlane.findPersonalAccount(
       context.accountId,
     );
@@ -169,6 +259,41 @@ export class D1VaultContentDirectory implements VaultContentDirectory {
       accountId: account.account.accountId,
       vaultId: account.vault.vaultId,
     };
+  }
+
+  private async readLiveDataCounts(scope: VaultLiveDataPurgeScope) {
+    const raw: unknown = await this.database
+      .prepare(
+        `SELECT
+          (SELECT COUNT(*) FROM vault_partition_mappings WHERE vault_id = ?) AS routes,
+          (SELECT COUNT(*) FROM vault_cards WHERE vault_id = ?) AS cards,
+          (SELECT COUNT(*) FROM vault_mutation_receipts WHERE vault_id = ?) AS mutation_receipts,
+          (SELECT COUNT(*) FROM vault_conflicts WHERE vault_id = ?) AS conflicts,
+          (SELECT COUNT(*) FROM vault_sync_v2_states WHERE vault_id = ?) AS sync_states,
+          (SELECT COUNT(*) FROM vault_card_display_ids WHERE vault_id = ?) AS display_ids,
+          (SELECT COUNT(*) FROM vault_sync_v2_commits WHERE vault_id = ?) AS sync_commits,
+          (SELECT COUNT(*) FROM vault_sync_v2_changes WHERE vault_id = ?) AS sync_changes,
+          (SELECT COUNT(*) FROM vault_encrypted_objects WHERE vault_id = ?) AS encrypted_objects,
+          (SELECT COUNT(*) FROM vault_encrypted_write_intents WHERE vault_id = ?) AS encrypted_write_intents`,
+      )
+      .bind(
+        scope.vaultId,
+        scope.vaultId,
+        scope.vaultId,
+        scope.vaultId,
+        scope.vaultId,
+        scope.vaultId,
+        scope.vaultId,
+        scope.vaultId,
+        scope.vaultId,
+        scope.vaultId,
+      )
+      .first();
+    return decodeOrThrow(
+      liveDataCountsDecoder,
+      raw,
+      'D1 Vault live data counts',
+    );
   }
 }
 
@@ -438,4 +563,19 @@ function routeGuard(vaultExpression: string): string {
 
 function writeResult(changes: number): ScopedWriteResult {
   return changes > 0 ? { kind: 'applied' } : { kind: 'not-applied' };
+}
+
+function emptyLiveDataCounts() {
+  return {
+    routes: 0,
+    cards: 0,
+    mutationReceipts: 0,
+    conflicts: 0,
+    syncStates: 0,
+    displayIds: 0,
+    syncCommits: 0,
+    syncChanges: 0,
+    encryptedObjects: 0,
+    encryptedWriteIntents: 0,
+  } as const;
 }
