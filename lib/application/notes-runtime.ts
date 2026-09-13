@@ -1,4 +1,5 @@
 import type { PendingMutationMode } from '@/lib/domain/card-transitions';
+import type { VaultNotesScope } from '@/lib/application/notes-access';
 import type { CardId, DeviceId, MutationId } from '@/lib/domain/id';
 import type {
   CardRecord,
@@ -17,11 +18,10 @@ export const LEGACY_NOTES_SCOPE = {
   syncEndpoint: '/api/sync',
 } as const;
 
-export type NotesScope = {
-  readonly kind: string;
-};
-
 export type LegacyNotesScope = typeof LEGACY_NOTES_SCOPE;
+
+/** Every runtime scope accepted by the notes application composition. */
+export type NotesScope = LegacyNotesScope | VaultNotesScope;
 
 export type NotesRepository<TScope extends NotesScope = NotesScope> = {
   readonly scope: TScope;
