@@ -1,18 +1,17 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createCardId } from '@/lib/client/id-generator';
+import { browserIdGenerator, createCardId } from '@/lib/client/id-generator';
+import {
+  LEGACY_NOTES_SCOPE,
+  type IdGenerator,
+} from '@/lib/application/notes-runtime';
 import { isUuidV7 } from '@/lib/domain/id';
 import type { CardRecord } from '@/lib/domain/types';
 import { invariant } from '@/lib/shared/invariant';
 import {
-  applySyncResponse,
   clearNotesDatabaseForTests,
-  loadCards,
-  loadPendingMutations,
-  loadConflicts,
-  loadOrCreateDeviceId,
+  createIndexedDbNotesRepository,
   openNotesDatabase,
-  persistCardAndMutation,
 } from '@/lib/storage/indexed-db';
 import {
   encodeStoredConflict,
@@ -22,6 +21,15 @@ import {
   compatibilityIds,
   createCompatibilityFixture,
 } from '@/tests/fixtures/compatibility';
+
+const {
+  applySyncResponse,
+  loadCards,
+  loadConflicts,
+  loadOrCreateDeviceId,
+  loadPendingMutations,
+  persistCardAndMutation,
+} = createIndexedDbNotesRepository(LEGACY_NOTES_SCOPE, browserIdGenerator);
 
 async function transactionDone(transaction: IDBTransaction): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -36,14 +44,14 @@ async function transactionDone(transaction: IDBTransaction): Promise<void> {
 }
 
 async function putRaw(storeName: string, value: unknown): Promise<void> {
-  const database = await openNotesDatabase();
+  const database = await openNotesDatabase(LEGACY_NOTES_SCOPE);
   const transaction = database.transaction(storeName, 'readwrite');
   transaction.objectStore(storeName).put(value);
   await transactionDone(transaction);
 }
 
 async function getRaw(storeName: string): Promise<unknown[]> {
-  const database = await openNotesDatabase();
+  const database = await openNotesDatabase(LEGACY_NOTES_SCOPE);
   const transaction = database.transaction(storeName, 'readonly');
   const request = transaction.objectStore(storeName).getAll();
   const result = await new Promise<unknown[]>((resolve, reject) => {
@@ -59,10 +67,33 @@ async function getRaw(storeName: string): Promise<unknown[]> {
 }
 
 afterEach(async () => {
-  await clearNotesDatabaseForTests();
+  await clearNotesDatabaseForTests(LEGACY_NOTES_SCOPE);
 });
 
 describe('local persistence', () => {
+  it('uses injected identifiers while keeping the fixed legacy database', async () => {
+    const fixture = createCompatibilityFixture();
+    const idGenerator: IdGenerator = {
+      createCardId: () => compatibilityIds.cardB,
+      createMutationId: () => compatibilityIds.mutation,
+      createDeviceId: () => compatibilityIds.device,
+    };
+    const injectedRepository = createIndexedDbNotesRepository(
+      LEGACY_NOTES_SCOPE,
+      idGenerator,
+    );
+    const card = fixture.cards[0];
+    invariant(card, 'Compatibility card is missing');
+
+    expect(injectedRepository.scope).toBe(LEGACY_NOTES_SCOPE);
+    await expect(injectedRepository.loadOrCreateDeviceId()).resolves.toBe(
+      compatibilityIds.device,
+    );
+    await expect(
+      injectedRepository.persistCardAndMutation(card),
+    ).resolves.toMatchObject({ mutationId: compatibilityIds.mutation });
+  });
+
   it('persists an empty offline card with UUIDv7 and provisional id', async () => {
     const id = createCardId();
     const card: CardRecord = {

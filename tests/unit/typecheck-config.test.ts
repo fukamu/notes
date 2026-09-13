@@ -45,4 +45,21 @@ describe('runtime typecheck configuration', () => {
     expect(architecture).toContain("'server/core'");
     expect(vitest).toContain("'server/core/**/*.ts'");
   });
+
+  it('includes the extracted data ports and adapters in coverage', async () => {
+    const vitest = await readFile('vitest.config.ts', 'utf8');
+
+    for (const target of [
+      'lib/application/notes-runtime.ts',
+      'lib/client/browser-clock.ts',
+      'lib/client/browser-connectivity.ts',
+      'lib/client/http-sync-transport.ts',
+      'lib/client/id-generator.ts',
+      'lib/client/legacy-notes-runtime.ts',
+      'lib/client/offline.ts',
+      'lib/storage/**/*.ts',
+    ]) {
+      expect(vitest).toContain(`'${target}'`);
+    }
+  });
 });

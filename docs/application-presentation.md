@@ -7,22 +7,27 @@ rules.
 
 ## Layers and dependency direction
 
-1. `lib/domain`, codecs, storage, and sync define trusted card data and data
-   operations. Internal references continue to use the branded `CardId` from
-   the type-safety contract.
-2. `lib/client/notes-store.tsx` connects IndexedDB, sync, and React state. Its
-   public `NotesDataStore` contains data/init/save/sync/conflict behavior only;
-   it does not contain the current location or view selection.
-3. `lib/application` owns location transitions, application coordination, and
-   pure view-model selectors. This layer has no React, DOM, icon, theme, SVG,
-   or Tailwind dependency.
-4. `lib/client/use-notes-application.ts` observes the browser-history navigator
+1. `lib/domain`, codecs, and sync define trusted card data, validation, and
+   deterministic data operations. Internal references continue to use the
+   branded `CardId` from the type-safety contract.
+2. `lib/application/notes-runtime.ts` defines provider-neutral
+   `NotesRepository`, `SyncTransport`, `Clock`, `IdGenerator`, connectivity,
+   and offline preparation ports. Its fixed `LEGACY_NOTES_SCOPE` preserves the
+   pre-account database and endpoint without putting scope fields in cards.
+3. `lib/client/notes-store.tsx` connects those injected ports to React state.
+   Its public `NotesDataStore` contains data/init/save/sync/conflict behavior
+   only; it does not contain the current location or view selection.
+4. The rest of `lib/application` owns location transitions, application
+   coordination, and pure view-model selectors. This layer has no React, DOM,
+   icon, theme, SVG, or Tailwind dependency.
+5. `lib/client/use-notes-application.ts` observes the browser-history navigator
    and connects the data store to the application contracts. Pathname parsing
    remains a pure application codec; the `window` adapter stays in `lib/client`.
-5. `components/notes-app.tsx` is the composition root. It is the only module
-   that selects the concrete notes, editor, and connections renderers and
-   connects them to their feature adapters. A renderer receives only the
-   typed presentation model, semantic actions, and feature render callbacks.
+6. `components/notes-app.tsx` is the composition root. It creates the legacy
+   runtime adapter set and is the only module that selects the concrete notes,
+   editor, and connections renderers and connects them to feature adapters. A
+   renderer receives only the typed presentation model, semantic actions, and
+   feature render callbacks.
 
 The five supported application pages share `app/(notes)/layout.tsx`. That
 layout mounts the composition root once while its empty route children change,
@@ -33,6 +38,22 @@ Presentation code must not access IndexedDB, fetch, sync, service workers,
 database bindings, or API routes. Application code must not select icons,
 classes, colors, or DOM structure. The architecture test enforces these
 boundaries alongside the existing trust-boundary and unsafe-lint checks.
+
+## Runtime data ports and legacy compatibility
+
+The default composition uses `createLegacyNotesRuntimePorts`. It binds the
+unchanged `fukamu-notes` IndexedDB database, `/api/sync` v1 endpoint, browser
+clock and UUIDv7 generator, online/offline events, and Service Worker
+preparation to one explicit scope. `NotesProvider` imports none of those
+concrete adapters; tests and future authenticated composition roots can supply
+another complete port set.
+
+The IndexedDB adapter still opens schema version 1 with the same four stores,
+decodes all values from `unknown`, and performs the same read/write transaction
+plans. The HTTP adapter sends the same POST, content type, and JSON field order.
+No storage migration or wire migration occurs in this extraction. Account and
+Vault ownership will be represented by a session-derived scope-bound
+repository in later Issues, not by adding fields to `CardRecord` or its body.
 
 ## Navigation contract
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { ComponentType } from 'react';
 import {
   BodyEditor,
@@ -20,6 +20,8 @@ import type {
   NotesPresentationComponent,
   NotesPresentationFeatures,
 } from '@/components/presentation-contract';
+import type { NotesRuntimePorts } from '@/lib/application/notes-runtime';
+import { createLegacyNotesRuntimePorts } from '@/lib/client/legacy-notes-runtime';
 import { NotesProvider, useNotesDataStore } from '@/lib/client/notes-store';
 import { useNotesApplication } from '@/lib/client/use-notes-application';
 import type { CardEditorPresentationAdapter } from '@/lib/editor/use-card-editor';
@@ -74,11 +76,14 @@ function NotesConnector({
 
 export function NotesApp({
   configuration = defaultNotesAppConfiguration,
+  runtimePorts,
 }: {
   configuration?: NotesAppConfiguration;
+  runtimePorts?: NotesRuntimePorts;
 }) {
+  const [legacyRuntimePorts] = useState(createLegacyNotesRuntimePorts);
   return (
-    <NotesProvider>
+    <NotesProvider ports={runtimePorts ?? legacyRuntimePorts}>
       <NotesConnector configuration={configuration} />
     </NotesProvider>
   );

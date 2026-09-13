@@ -1,4 +1,8 @@
-import { createDeviceId, createMutationId } from '@/lib/client/id-generator';
+import type {
+  IdGenerator,
+  LegacyNotesScope,
+  NotesRepository,
+} from '@/lib/application/notes-runtime';
 import {
   createPendingMutation,
   type PendingMutationMode,
@@ -23,7 +27,6 @@ import {
   encodeStoredMutation,
 } from '@/lib/storage/records';
 
-const DATABASE_NAME = 'fukamu-notes';
 const DATABASE_VERSION = 1;
 
 let databasePromise: Promise<IDBDatabase> | undefined;
@@ -51,10 +54,12 @@ function transactionComplete(transaction: IDBTransaction): Promise<void> {
   });
 }
 
-export function openNotesDatabase(): Promise<IDBDatabase> {
+export function openNotesDatabase(
+  scope: LegacyNotesScope,
+): Promise<IDBDatabase> {
   if (databasePromise) return databasePromise;
   databasePromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+    const request = indexedDB.open(scope.databaseName, DATABASE_VERSION);
     request.addEventListener('upgradeneeded', () => {
       const database = request.result;
       if (!database.objectStoreNames.contains('cards')) {
@@ -80,50 +85,63 @@ export function openNotesDatabase(): Promise<IDBDatabase> {
   return databasePromise;
 }
 
-export async function loadCards(): Promise<CardRecord[]> {
-  const database = await openNotesDatabase();
+async function loadCards(scope: LegacyNotesScope): Promise<CardRecord[]> {
+  const database = await openNotesDatabase(scope);
   const transaction = database.transaction('cards', 'readonly');
   return decodeStoredCards(
     await requestResult(transaction.objectStore('cards').getAll()),
   );
 }
 
-export async function loadPendingMutations(): Promise<PendingMutation[]> {
-  const database = await openNotesDatabase();
+async function loadPendingMutations(
+  scope: LegacyNotesScope,
+): Promise<PendingMutation[]> {
+  const database = await openNotesDatabase(scope);
   const transaction = database.transaction('mutations', 'readonly');
   return decodeStoredMutations(
     await requestResult(transaction.objectStore('mutations').getAll()),
   );
 }
 
-export async function loadConflicts(): Promise<ConflictRecord[]> {
-  const database = await openNotesDatabase();
+async function loadConflicts(
+  scope: LegacyNotesScope,
+): Promise<ConflictRecord[]> {
+  const database = await openNotesDatabase(scope);
   const transaction = database.transaction('conflicts', 'readonly');
   return decodeStoredConflicts(
     await requestResult(transaction.objectStore('conflicts').getAll()),
   );
 }
 
-export async function loadOrCreateDeviceId(): Promise<DeviceId> {
-  const database = await openNotesDatabase();
+async function loadOrCreateDeviceId(
+  scope: LegacyNotesScope,
+  idGenerator: IdGenerator,
+): Promise<DeviceId> {
+  const database = await openNotesDatabase(scope);
   const transaction = database.transaction('meta', 'readwrite');
   const store = transaction.objectStore('meta');
   const existing = await requestResult(store.get('deviceId'));
   if (existing !== undefined) return decodeStoredMeta(existing).value;
-  const value = createDeviceId();
+  const value = idGenerator.createDeviceId();
   store.put(encodeStoredMeta(value));
   await transactionComplete(transaction);
   return value;
 }
 
-export async function persistCardAndMutation(
+async function persistCardAndMutation(
+  scope: LegacyNotesScope,
+  idGenerator: IdGenerator,
   card: CardRecord,
   options: PendingMutationMode = {
     kind: 'upsert',
   },
 ): Promise<PendingMutation> {
-  const database = await openNotesDatabase();
-  const result = createPendingMutation(card, createMutationId(), options);
+  const database = await openNotesDatabase(scope);
+  const result = createPendingMutation(
+    card,
+    idGenerator.createMutationId(),
+    options,
+  );
   if (!result.ok) {
     throw new Error('Cannot resolve a conflict without a server revision');
   }
@@ -135,14 +153,15 @@ export async function persistCardAndMutation(
   return mutation;
 }
 
-export async function applySyncResponse(
+async function applySyncResponse(
+  scope: LegacyNotesScope,
   input: unknown,
   sentMutations: PendingMutation[],
 ): Promise<{ cards: CardRecord[]; conflicts: ConflictRecord[] }> {
   // Decode the complete response and its cross-field invariants before opening
   // a readwrite transaction. Invalid 2xx payloads cannot delete mutations.
   const response = decodeSyncResponse(input, sentMutations);
-  const database = await openNotesDatabase();
+  const database = await openNotesDatabase(scope);
   const transaction = database.transaction(
     ['cards', 'mutations', 'conflicts'],
     'readwrite',
@@ -207,14 +226,33 @@ export async function applySyncResponse(
   }
 }
 
-export async function clearNotesDatabaseForTests(): Promise<void> {
+export function createIndexedDbNotesRepository(
+  scope: LegacyNotesScope,
+  idGenerator: IdGenerator,
+): NotesRepository<LegacyNotesScope> {
+  return {
+    scope,
+    loadCards: () => loadCards(scope),
+    loadConflicts: () => loadConflicts(scope),
+    loadOrCreateDeviceId: () => loadOrCreateDeviceId(scope, idGenerator),
+    loadPendingMutations: () => loadPendingMutations(scope),
+    persistCardAndMutation: (card, options) =>
+      persistCardAndMutation(scope, idGenerator, card, options),
+    applySyncResponse: (input, sentMutations) =>
+      applySyncResponse(scope, input, sentMutations),
+  };
+}
+
+export async function clearNotesDatabaseForTests(
+  scope: LegacyNotesScope,
+): Promise<void> {
   if (databasePromise) {
     const database = await databasePromise;
     database.close();
   }
   databasePromise = undefined;
   await new Promise<void>((resolve, reject) => {
-    const request = indexedDB.deleteDatabase(DATABASE_NAME);
+    const request = indexedDB.deleteDatabase(scope.databaseName);
     request.addEventListener('success', () => resolve(), { once: true });
     request.addEventListener('blocked', () => resolve(), { once: true });
     request.addEventListener('error', () => reject(request.error), {

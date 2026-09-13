@@ -1,3 +1,4 @@
+import type { OfflineAppPort } from '@/lib/application/notes-runtime';
 import { prepareConnectionsLayoutWorker } from '@/lib/client/connections-layout-worker';
 import { connectionsLayoutWorkerUrl } from '@/lib/client/connections-layout-worker-url';
 
@@ -48,3 +49,7 @@ export async function prepareOfflineApp(): Promise<void> {
   await prepareConnectionsLayoutWorker();
   document.documentElement.dataset.offlineReady = 'true';
 }
+
+export const browserOfflineApp: OfflineAppPort = {
+  prepare: prepareOfflineApp,
+};

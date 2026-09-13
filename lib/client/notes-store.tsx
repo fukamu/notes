@@ -16,8 +16,8 @@ import {
   transitionNotesInitialization,
   type NotesInitializationLifecycle,
 } from '@/lib/application/initialization-lifecycle';
+import type { NotesRuntimePorts } from '@/lib/application/notes-runtime';
 import { type CardId, type ConflictId, type DeviceId } from '@/lib/domain/id';
-import { createCardId } from '@/lib/client/id-generator';
 import { reconcileProvisionalDisplayIds } from '@/lib/domain/display-id';
 import {
   applyCardEdit,
@@ -32,17 +32,8 @@ import {
   type SaveState,
   type SyncState,
 } from '@/lib/domain/types';
-import {
-  applySyncResponse,
-  loadCards,
-  loadConflicts,
-  loadOrCreateDeviceId,
-  loadPendingMutations,
-  persistCardAndMutation,
-} from '@/lib/storage/indexed-db';
 import { encodeSyncRequest } from '@/lib/sync/protocol';
 import { reconcileVisibleCardsAfterSync } from '@/lib/sync/client-reconciliation';
-import { prepareOfflineApp } from '@/lib/client/offline';
 
 export type NotesDataStore = {
   cards: CardRecord[];
@@ -62,7 +53,13 @@ export type NotesDataStore = {
 
 const NotesDataContext = createContext<NotesDataStore | null>(null);
 
-export function NotesProvider({ children }: { children: ReactNode }) {
+export function NotesProvider({
+  children,
+  ports,
+}: {
+  children: ReactNode;
+  ports: NotesRuntimePorts;
+}) {
   const [cards, setCards] = useState<CardRecord[]>([]);
   const [conflicts, setConflicts] = useState<ConflictRecord[]>([]);
   const [initialization, setInitialization] =
@@ -88,7 +85,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       syncRequestedRef.current = true;
       return;
     }
-    if (!navigator.onLine) {
+    if (!ports.connectivity.isOnline()) {
       setSyncState('offline');
       return;
     }
@@ -98,21 +95,20 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     try {
       do {
         syncRequestedRef.current = false;
-        const deviceId = deviceIdRef.current ?? (await loadOrCreateDeviceId());
+        const deviceId =
+          deviceIdRef.current ??
+          (await ports.repository.loadOrCreateDeviceId());
         deviceIdRef.current = deviceId;
-        const mutations = await loadPendingMutations();
+        const mutations = await ports.repository.loadPendingMutations();
         const revisionsAtRequest = new Map(
           cardsRef.current.map((card) => [card.id, card.localRevision]),
         );
         const requestBody = encodeSyncRequest({ deviceId, mutations });
-        const response = await fetch('/api/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-        });
-        if (!response.ok) throw new Error(`sync returned ${response.status}`);
-        const result: unknown = await response.json();
-        const merged = await applySyncResponse(result, mutations);
+        const result = await ports.syncTransport.send(requestBody);
+        const merged = await ports.repository.applySyncResponse(
+          result,
+          mutations,
+        );
         const visibleCards = reconcileVisibleCardsAfterSync({
           currentCards: cardsRef.current,
           revisionsAtRequest,
@@ -121,19 +117,23 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         cardsRef.current = visibleCards;
         setCards(visibleCards);
         setConflicts(merged.conflicts);
-      } while (syncRequestedRef.current && navigator.onLine);
+      } while (syncRequestedRef.current && ports.connectivity.isOnline());
       setSyncState('idle');
     } catch (error) {
       console.error(error);
-      setSyncState(navigator.onLine ? 'failed' : 'offline');
+      setSyncState(ports.connectivity.isOnline() ? 'failed' : 'offline');
     } finally {
       syncRunningRef.current = false;
     }
-  }, [initialized]);
+  }, [initialized, ports.connectivity, ports.repository, ports.syncTransport]);
 
   useEffect(() => {
     let active = true;
-    void Promise.all([loadCards(), loadConflicts(), loadOrCreateDeviceId()])
+    void Promise.all([
+      ports.repository.loadCards(),
+      ports.repository.loadConflicts(),
+      ports.repository.loadOrCreateDeviceId(),
+    ])
       .then(([storedCards, storedConflicts, deviceId]) => {
         if (!active) return;
         const reconciled = reconcileProvisionalDisplayIds(storedCards);
@@ -141,7 +141,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         deviceIdRef.current = deviceId;
         setCards(reconciled);
         setConflicts(storedConflicts);
-        setSyncState(navigator.onLine ? 'idle' : 'offline');
+        setSyncState(ports.connectivity.isOnline() ? 'idle' : 'offline');
         setInitialization((lifecycle) =>
           transitionNotesInitialization(lifecycle, {
             type: 'load-completed',
@@ -164,7 +164,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [ports.connectivity, ports.repository]);
 
   useEffect(() => {
     if (!initialized) return;
@@ -182,23 +182,24 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }, 0);
     const onOnline = () => void synchronizeNow();
     const onOffline = () => setSyncState('offline');
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
+    const unsubscribeConnectivity = ports.connectivity.subscribe({
+      onOnline,
+      onOffline,
+    });
     const timer = window.setInterval(() => void synchronizeNow(), 15_000);
     return () => {
       active = false;
       window.clearTimeout(initialSync);
       if (syncTimerRef.current !== undefined)
         window.clearTimeout(syncTimerRef.current);
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
+      unsubscribeConnectivity();
       window.clearInterval(timer);
     };
-  }, [initialized, synchronizeNow]);
+  }, [initialized, ports.connectivity, synchronizeNow]);
 
   useEffect(() => {
-    void prepareOfflineApp().catch((error) => console.error(error));
-  }, []);
+    void ports.offlineApp.prepare().catch((error) => console.error(error));
+  }, [ports.offlineApp]);
 
   const queueSave = useCallback(
     (
@@ -216,7 +217,10 @@ export function NotesProvider({ children }: { children: ReactNode }) {
           const latestCard = cardsRef.current.find(
             (candidate) => candidate.id === card.id,
           );
-          return persistCardAndMutation(latestCard ?? card, options);
+          return ports.repository.persistCardAndMutation(
+            latestCard ?? card,
+            options,
+          );
         })
         .then(() => {
           if (sequence === saveSequenceRef.current) setSaveState('saved');
@@ -232,14 +236,14 @@ export function NotesProvider({ children }: { children: ReactNode }) {
           setSaveState('failed');
         });
     },
-    [synchronizeNow],
+    [ports.repository, synchronizeNow],
   );
 
   const createCard = useCallback(async () => {
-    const now = Date.now();
+    const now = ports.clock.now();
     const card = createLocalCard({
       cards: cardsRef.current,
-      cardId: createCardId(),
+      cardId: ports.idGenerator.createCardId(),
       now,
     });
     const nextCards = [...cardsRef.current, card];
@@ -247,13 +251,13 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     setCards(nextCards);
     queueSave(card);
     return card;
-  }, [queueSave]);
+  }, [ports.clock, ports.idGenerator, queueSave]);
 
   const updateCard = useCallback(
     (cardId: CardId, edit: CardEdit) => {
       const existing = cardsRef.current.find((card) => card.id === cardId);
       if (!existing) return;
-      const updated = applyCardEdit(existing, edit, Date.now());
+      const updated = applyCardEdit(existing, edit, ports.clock.now());
       const nextCards = cardsRef.current.map((card) =>
         card.id === cardId ? updated : card,
       );
@@ -261,7 +265,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       setCards(nextCards);
       queueSave(updated);
     },
-    [queueSave],
+    [ports.clock, queueSave],
   );
 
   const hasCard = useCallback(
@@ -279,7 +283,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         existing,
         conflict,
         choice,
-        Date.now(),
+        ports.clock.now(),
       );
       if (!result.ok) return undefined;
       const updated = result.card;
@@ -294,7 +298,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       });
       return updated;
     },
-    [queueSave],
+    [ports.clock, queueSave],
   );
 
   const value = useMemo<NotesDataStore>(
