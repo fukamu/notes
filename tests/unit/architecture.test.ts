@@ -422,7 +422,7 @@ describe('Vault-scoped server repository ownership', () => {
         /server\/vault-content\/(?:core|d1-adapter|d1-schema|migration|records)/.test(
           source,
         ) ||
-        /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:vault_partition_mappings|vault_cards|vault_mutation_receipts|vault_conflicts)\b/i.test(
+        /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:vault_partition_mappings|vault_cards|vault_mutation_receipts|vault_conflicts|vault_sync_v2_states|vault_card_display_ids|vault_sync_v2_commits|vault_sync_v2_changes)\b/i.test(
           source,
         )
       ) {
@@ -453,6 +453,33 @@ describe('Vault-scoped server repository ownership', () => {
     expect(adapter).toContain("return { kind: 'not-found' }");
     expect(records).toContain('partitionRouteRowDecoder');
     expect(records).toContain('mapMutationReceiptRow');
+  });
+
+  it('keeps Sync v2 journal planning pure and payload storage outside its D1 contract', async () => {
+    const [core, publicContract, adapter, schema, testConfig] =
+      await Promise.all([
+        readFile('server/vault-content/sync-v2-core.ts', 'utf8'),
+        readFile('server/vault-content/sync-v2-public.ts', 'utf8'),
+        readFile('server/vault-content/sync-v2-d1-adapter.ts', 'utf8'),
+        readFile('server/vault-content/sync-v2-d1-schema.ts', 'utf8'),
+        readFile('vitest.config.ts', 'utf8'),
+      ]);
+    expect(core).toContain('planSyncV2JournalCommit');
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise/,
+    );
+    expect(publicContract).toContain('type SyncV2JournalRepository');
+    expect(publicContract).not.toMatch(
+      /D1Database|R2|KMS|KeyManagement|EncryptedObjectService|title|body/,
+    );
+    expect(adapter).toContain('class D1ScopedSyncV2JournalRepository');
+    expect(adapter).toContain('this.context.vaultId');
+    expect(adapter).toContain('this.route.routingRevision');
+    expect(adapter).not.toMatch(
+      /encrypted-object|KeyManagement|R2|KMS|plaintext|ciphertext/,
+    );
+    expect(schema).toContain('vaultSyncV2Changes');
+    expect(testConfig).toContain("'server/**/*.ts'");
   });
 });
 
