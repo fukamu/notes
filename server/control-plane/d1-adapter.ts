@@ -8,6 +8,7 @@ import type { AccountId, VaultContext } from '../../lib/domain/identity';
 import type { D1DatabaseBinding } from '../../db/d1-types';
 import type { ActiveSession, RevokedSession } from '../core/session';
 import {
+  evaluateAccountLiveStateFinalization,
   evaluateAccountSessionRevocation,
   planAccountSessionRevocation,
   planIdentityLink,
@@ -289,10 +290,155 @@ export class D1IdentityVaultControlPlane implements IdentityVaultControlPlane {
       ),
     });
   }
+
+  async finalizeAccountLiveState(scope: {
+    readonly accountId: AccountId;
+    readonly vaultId: VaultContext['vaultId'];
+  }) {
+    const results = await this.database.batch([
+      liveStateCount(this.database, scope.accountId, scope.vaultId),
+      this.database
+        .prepare(
+          `DELETE FROM sessions
+           WHERE account_id = ? AND vault_id = ?
+             AND EXISTS (
+               SELECT 1 FROM personal_vaults owner
+               WHERE owner.account_id = ? AND owner.vault_id = ?
+             )`,
+        )
+        .bind(scope.accountId, scope.vaultId, scope.accountId, scope.vaultId),
+      this.database
+        .prepare(
+          `DELETE FROM identities
+           WHERE account_id = ?
+             AND EXISTS (
+               SELECT 1 FROM personal_vaults owner
+               WHERE owner.account_id = ? AND owner.vault_id = ?
+             )`,
+        )
+        .bind(scope.accountId, scope.accountId, scope.vaultId),
+      this.database
+        .prepare(
+          'DELETE FROM personal_vaults WHERE account_id = ? AND vault_id = ?',
+        )
+        .bind(scope.accountId, scope.vaultId),
+      this.database
+        .prepare(
+          `DELETE FROM accounts
+           WHERE account_id = ?
+             AND NOT EXISTS (
+               SELECT 1 FROM personal_vaults vault
+               WHERE vault.account_id = accounts.account_id
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM identities identity
+               WHERE identity.account_id = accounts.account_id
+             )`,
+        )
+        .bind(scope.accountId),
+      liveStateCount(this.database, scope.accountId, scope.vaultId),
+    ]);
+    const deletedAccount = decodeOrThrow(
+      mutationResultDecoder,
+      results[4],
+      'D1 Account live-state finalization mutation',
+    );
+    return evaluateAccountLiveStateFinalization({
+      before: liveStateCounts(
+        results[0],
+        'D1 Account live-state finalization precondition',
+      ),
+      deletedAccountCount: deletedAccount.meta.changes,
+      after: liveStateCounts(
+        results[5],
+        'D1 Account live-state finalization confirmation',
+      ),
+    });
+  }
 }
 
 function countFromResult(input: unknown, context: string): number {
   const decoded = decodeOrThrow(countResultDecoder, input, context);
   const row = decoded.results[0];
   return decodeOrThrow(safeIntegerDecoder({ minimum: 0 }), row?.count, context);
+}
+
+const liveStateCountRowDecoder = objectDecoder(
+  {
+    owner_count: safeIntegerDecoder({ minimum: 0 }),
+    account_count: safeIntegerDecoder({ minimum: 0 }),
+    vault_count: safeIntegerDecoder({ minimum: 0 }),
+    identity_count: safeIntegerDecoder({ minimum: 0 }),
+    session_count: safeIntegerDecoder({ minimum: 0 }),
+  },
+  { unknownFields: 'allow' },
+);
+
+const liveStateCountResultDecoder = objectDecoder(
+  {
+    results: arrayDecoder(liveStateCountRowDecoder, {
+      minLength: 1,
+      maxLength: 1,
+    }),
+  },
+  { unknownFields: 'allow' },
+);
+
+function liveStateCount(
+  database: D1DatabaseBinding,
+  accountId: AccountId,
+  vaultId: VaultContext['vaultId'],
+) {
+  return database
+    .prepare(
+      `SELECT
+        (SELECT COUNT(*) FROM personal_vaults
+         WHERE account_id = ? AND vault_id = ?) AS owner_count,
+        (SELECT COUNT(*) FROM accounts WHERE account_id = ?) AS account_count,
+        (SELECT COUNT(*) FROM personal_vaults WHERE vault_id = ?) AS vault_count,
+        (SELECT COUNT(*) FROM identities WHERE account_id = ?) AS identity_count,
+        (SELECT COUNT(*) FROM sessions
+         WHERE account_id = ? OR vault_id = ?) AS session_count`,
+    )
+    .bind(
+      accountId,
+      vaultId,
+      accountId,
+      vaultId,
+      accountId,
+      accountId,
+      vaultId,
+    );
+}
+
+function liveStateCounts(input: unknown, context: string) {
+  const decoded = decodeOrThrow(liveStateCountResultDecoder, input, context);
+  const row = decoded.results[0];
+  return {
+    ownerCount: decodeOrThrow(
+      safeIntegerDecoder({ minimum: 0 }),
+      row?.owner_count,
+      `${context} owner count`,
+    ),
+    accountCount: decodeOrThrow(
+      safeIntegerDecoder({ minimum: 0 }),
+      row?.account_count,
+      `${context} Account count`,
+    ),
+    vaultCount: decodeOrThrow(
+      safeIntegerDecoder({ minimum: 0 }),
+      row?.vault_count,
+      `${context} Vault count`,
+    ),
+    identityCount: decodeOrThrow(
+      safeIntegerDecoder({ minimum: 0 }),
+      row?.identity_count,
+      `${context} identity count`,
+    ),
+    sessionCount: decodeOrThrow(
+      safeIntegerDecoder({ minimum: 0 }),
+      row?.session_count,
+      `${context} session count`,
+    ),
+  };
 }

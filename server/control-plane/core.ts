@@ -38,6 +38,28 @@ export type AccountSessionRevocationResult =
         | 'incomplete-revocation';
     };
 
+export type AccountLiveStateFinalizationResult =
+  | {
+      readonly kind: 'confirmed';
+      readonly outcome: 'deleted' | 'already-finalized';
+    }
+  | {
+      readonly kind: 'retryable-failure';
+      readonly reason: 'incomplete-finalization' | 'invalid-result';
+    }
+  | {
+      readonly kind: 'terminal-failure';
+      readonly reason: 'owner-mismatch';
+    };
+
+export type AccountLiveStateCounts = {
+  readonly ownerCount: number;
+  readonly accountCount: number;
+  readonly vaultCount: number;
+  readonly identityCount: number;
+  readonly sessionCount: number;
+};
+
 export type AccountSessionRevocationPlan =
   | {
       readonly kind: 'accepted';
@@ -79,6 +101,46 @@ export function evaluateAccountSessionRevocation(input: {
     kind: 'applied',
     revokedSessionCount: input.revokedSessionCount,
   };
+}
+
+export function evaluateAccountLiveStateFinalization(input: {
+  readonly before: AccountLiveStateCounts;
+  readonly deletedAccountCount: number;
+  readonly after: AccountLiveStateCounts;
+}): AccountLiveStateFinalizationResult {
+  const counts = [
+    ...stateCounts(input.before),
+    input.deletedAccountCount,
+    ...stateCounts(input.after),
+  ];
+  if (counts.some((count) => !validCount(count))) {
+    return { kind: 'retryable-failure', reason: 'invalid-result' };
+  }
+  if (
+    input.before.ownerCount > 1 ||
+    input.before.accountCount > 1 ||
+    input.before.vaultCount > 1 ||
+    input.after.ownerCount > 1 ||
+    input.after.accountCount > 1 ||
+    input.after.vaultCount > 1 ||
+    input.deletedAccountCount > 1
+  ) {
+    return { kind: 'retryable-failure', reason: 'invalid-result' };
+  }
+  if (input.before.ownerCount === 0) {
+    return stateIsEmpty(input.before) &&
+      input.deletedAccountCount === 0 &&
+      stateIsEmpty(input.after)
+      ? { kind: 'confirmed', outcome: 'already-finalized' }
+      : { kind: 'terminal-failure', reason: 'owner-mismatch' };
+  }
+  if (input.before.accountCount !== 1 || input.before.vaultCount !== 1) {
+    return { kind: 'terminal-failure', reason: 'owner-mismatch' };
+  }
+  if (input.deletedAccountCount !== 1 || !stateIsEmpty(input.after)) {
+    return { kind: 'retryable-failure', reason: 'incomplete-finalization' };
+  }
+  return { kind: 'confirmed', outcome: 'deleted' };
 }
 
 export type OwnershipPlan =
@@ -154,4 +216,18 @@ export function planSessionRevocation(
 
 function validCount(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0;
+}
+
+function stateCounts(value: AccountLiveStateCounts): readonly number[] {
+  return [
+    value.ownerCount,
+    value.accountCount,
+    value.vaultCount,
+    value.identityCount,
+    value.sessionCount,
+  ];
+}
+
+function stateIsEmpty(value: AccountLiveStateCounts): boolean {
+  return stateCounts(value).every((count) => count === 0);
 }

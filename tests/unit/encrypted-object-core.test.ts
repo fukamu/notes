@@ -12,6 +12,7 @@ import {
 } from '@/server/crypto/core';
 import {
   evaluateEncryptedObjectMetadataPurge,
+  evaluateVaultPrivateObjectDeletionBarrier,
   evaluateVaultPrivateObjectPurge,
   parseEncryptedWriteId,
   parseOpaqueObjectKey,
@@ -311,5 +312,48 @@ describe('encrypted object pure core', () => {
         reason: 'delete-confirmation-unavailable',
       });
     }
+  });
+
+  it('reconfirms an empty object outbox before irreversible Account finalization', () => {
+    expect(
+      evaluateVaultPrivateObjectDeletionBarrier({
+        ownerCount: 1,
+        accountCount: 1,
+        vaultCount: 1,
+        pendingObjectCount: 0,
+      }),
+    ).toEqual({ kind: 'confirmed', outcome: 'empty' });
+    expect(
+      evaluateVaultPrivateObjectDeletionBarrier({
+        ownerCount: 1,
+        accountCount: 1,
+        vaultCount: 1,
+        pendingObjectCount: 1,
+      }),
+    ).toEqual({ kind: 'retryable-failure', reason: 'objects-remaining' });
+    expect(
+      evaluateVaultPrivateObjectDeletionBarrier({
+        ownerCount: 0,
+        accountCount: 0,
+        vaultCount: 0,
+        pendingObjectCount: 0,
+      }),
+    ).toEqual({ kind: 'confirmed', outcome: 'already-finalized' });
+    expect(
+      evaluateVaultPrivateObjectDeletionBarrier({
+        ownerCount: 0,
+        accountCount: 1,
+        vaultCount: 1,
+        pendingObjectCount: 0,
+      }),
+    ).toEqual({ kind: 'terminal-failure', reason: 'owner-mismatch' });
+    expect(
+      evaluateVaultPrivateObjectDeletionBarrier({
+        ownerCount: 2,
+        accountCount: 1,
+        vaultCount: 1,
+        pendingObjectCount: 0,
+      }),
+    ).toEqual({ kind: 'retryable-failure', reason: 'invalid-result' });
   });
 });

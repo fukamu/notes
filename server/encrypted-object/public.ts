@@ -1,5 +1,8 @@
 import type { AccountId, VaultId } from '../../lib/domain/identity';
-import type { EncryptedObjectMetadataPurgeEvaluation } from './core';
+import type {
+  EncryptedObjectMetadataPurgeEvaluation,
+  VaultPrivateObjectDeletionBarrierEvaluation,
+} from './core';
 
 export type EncryptedObjectMetadataPurgeScope = {
   readonly accountId: AccountId;
@@ -41,4 +44,13 @@ export type VaultPrivateObjectPurgePort = {
     readonly scope: VaultPrivateObjectPurgeScope;
     readonly attemptedAt: number;
   }): Promise<VaultPrivateObjectPurgeResult>;
+};
+
+export type VaultPrivateObjectDeletionBarrierResult =
+  VaultPrivateObjectDeletionBarrierEvaluation;
+
+export type VaultPrivateObjectDeletionBarrierPort = {
+  confirmVaultPrivateObjectDeletion(
+    scope: VaultPrivateObjectPurgeScope,
+  ): Promise<VaultPrivateObjectDeletionBarrierResult>;
 };

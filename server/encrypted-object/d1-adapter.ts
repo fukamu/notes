@@ -12,6 +12,7 @@ import type { VaultContentDirectory } from '../vault-content/public';
 import type { VaultPartitionRoute } from '../vault-content/records';
 import {
   evaluateEncryptedObjectMetadataPurge,
+  evaluateVaultPrivateObjectDeletionBarrier,
   type DeleteOutboxEntry,
   type EncryptedObjectMetadata,
   type EncryptedWriteId,
@@ -21,6 +22,7 @@ import {
 import type {
   EncryptedObjectMetadataPurgePort,
   EncryptedObjectMetadataPurgeScope,
+  VaultPrivateObjectDeletionBarrierPort,
   VaultPrivateObjectPurgeScope,
 } from './public';
 import type {
@@ -82,6 +84,15 @@ const deleteOutboxMutationResultDecoder = objectDecoder(
       { changes: safeIntegerDecoder({ minimum: 0, maximum: 1 }) },
       { unknownFields: 'allow' },
     ),
+  },
+  { unknownFields: 'allow' },
+);
+const deletionBarrierDecoder = objectDecoder(
+  {
+    owner_count: safeIntegerDecoder({ minimum: 0 }),
+    account_count: safeIntegerDecoder({ minimum: 0 }),
+    vault_count: safeIntegerDecoder({ minimum: 0 }),
+    pending_count: safeIntegerDecoder({ minimum: 0 }),
   },
   { unknownFields: 'allow' },
 );
@@ -227,6 +238,44 @@ export class D1VaultObjectDeleteOutboxDirectory implements VaultObjectDeleteOutb
       kind: 'opened',
       repository: new D1VaultObjectDeleteOutboxRepository(this.database, scope),
     };
+  }
+}
+
+export class D1VaultPrivateObjectDeletionBarrier implements VaultPrivateObjectDeletionBarrierPort {
+  constructor(private readonly database: D1DatabaseBinding) {}
+
+  async confirmVaultPrivateObjectDeletion(scope: VaultPrivateObjectPurgeScope) {
+    const raw: unknown = await this.database
+      .prepare(
+        `SELECT
+          (SELECT COUNT(*) FROM personal_vaults owner
+           WHERE owner.account_id = ? AND owner.vault_id = ?) AS owner_count,
+          (SELECT COUNT(*) FROM accounts account
+           WHERE account.account_id = ?) AS account_count,
+          (SELECT COUNT(*) FROM personal_vaults vault
+           WHERE vault.vault_id = ?) AS vault_count,
+          (SELECT COUNT(*) FROM vault_object_delete_outbox pending
+           WHERE pending.vault_id = ?) AS pending_count`,
+      )
+      .bind(
+        scope.accountId,
+        scope.vaultId,
+        scope.accountId,
+        scope.vaultId,
+        scope.vaultId,
+      )
+      .first();
+    const inventory = decodeOrThrow(
+      deletionBarrierDecoder,
+      raw,
+      'D1 private object deletion barrier',
+    );
+    return evaluateVaultPrivateObjectDeletionBarrier({
+      ownerCount: inventory.owner_count,
+      accountCount: inventory.account_count,
+      vaultCount: inventory.vault_count,
+      pendingObjectCount: inventory.pending_count,
+    });
   }
 }
 

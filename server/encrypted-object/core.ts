@@ -127,6 +127,20 @@ export type VaultPrivateObjectPurgeEvaluation =
       readonly reason: 'delete-confirmation-unavailable';
     };
 
+export type VaultPrivateObjectDeletionBarrierEvaluation =
+  | {
+      readonly kind: 'confirmed';
+      readonly outcome: 'empty' | 'already-finalized';
+    }
+  | {
+      readonly kind: 'retryable-failure';
+      readonly reason: 'objects-remaining' | 'invalid-result';
+    }
+  | {
+      readonly kind: 'terminal-failure';
+      readonly reason: 'owner-mismatch';
+    };
+
 export type EncryptedObjectMetadataPurgeEvaluation =
   | {
       readonly kind: 'confirmed';
@@ -244,6 +258,41 @@ export function evaluateVaultPrivateObjectPurge(input: {
     return { kind: 'retryable-failure', reason: 'storage-unavailable' };
   }
   return { kind: 'retryable-failure', reason: 'objects-remaining' };
+}
+
+export function evaluateVaultPrivateObjectDeletionBarrier(input: {
+  readonly ownerCount: number;
+  readonly accountCount: number;
+  readonly vaultCount: number;
+  readonly pendingObjectCount: number;
+}): VaultPrivateObjectDeletionBarrierEvaluation {
+  const counts = [
+    input.ownerCount,
+    input.accountCount,
+    input.vaultCount,
+    input.pendingObjectCount,
+  ];
+  if (
+    counts.some((count) => !validNonNegativeCount(count)) ||
+    input.ownerCount > 1 ||
+    input.accountCount > 1 ||
+    input.vaultCount > 1
+  ) {
+    return { kind: 'retryable-failure', reason: 'invalid-result' };
+  }
+  if (input.ownerCount === 1) {
+    if (input.accountCount !== 1 || input.vaultCount !== 1) {
+      return { kind: 'terminal-failure', reason: 'owner-mismatch' };
+    }
+    return input.pendingObjectCount === 0
+      ? { kind: 'confirmed', outcome: 'empty' }
+      : { kind: 'retryable-failure', reason: 'objects-remaining' };
+  }
+  return input.accountCount === 0 &&
+    input.vaultCount === 0 &&
+    input.pendingObjectCount === 0
+    ? { kind: 'confirmed', outcome: 'already-finalized' }
+    : { kind: 'terminal-failure', reason: 'owner-mismatch' };
 }
 
 function validNonNegativeCount(value: number): boolean {

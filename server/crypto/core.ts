@@ -69,6 +69,27 @@ export type EnvelopeCiphertext = {
   readonly sealedPayload: SealedPayload;
 };
 
+export type VaultWrappedKeyFinalizationResult =
+  | {
+      readonly kind: 'confirmed';
+      readonly outcome: 'deleted' | 'already-finalized';
+    }
+  | {
+      readonly kind: 'retryable-failure';
+      readonly reason: 'incomplete-finalization' | 'invalid-result';
+    }
+  | {
+      readonly kind: 'terminal-failure';
+      readonly reason: 'owner-mismatch';
+    };
+
+export type VaultWrappedKeyFinalizationCounts = {
+  readonly ownerCount: number;
+  readonly accountCount: number;
+  readonly vaultCount: number;
+  readonly wrappedKeyCount: number;
+};
+
 const positiveVersionDecoder = safeIntegerDecoder({
   minimum: 1,
   maximum: 2_147_483_647,
@@ -264,4 +285,56 @@ export function serializeEnvelopeAad(input: {
     ENVELOPE_CRYPTO_VERSION,
     input.dekVersion,
   ]);
+}
+
+export function evaluateVaultWrappedKeyFinalization(input: {
+  readonly before: VaultWrappedKeyFinalizationCounts;
+  readonly deletedCount: number;
+  readonly remainingCount: number;
+}): VaultWrappedKeyFinalizationResult {
+  const counts = [
+    input.before.ownerCount,
+    input.before.accountCount,
+    input.before.vaultCount,
+    input.before.wrappedKeyCount,
+    input.deletedCount,
+    input.remainingCount,
+  ];
+  if (counts.some((count) => !validCount(count))) {
+    return { kind: 'retryable-failure', reason: 'invalid-result' };
+  }
+  if (
+    input.before.ownerCount > 1 ||
+    input.before.accountCount > 1 ||
+    input.before.vaultCount > 1
+  ) {
+    return { kind: 'retryable-failure', reason: 'invalid-result' };
+  }
+  if (input.before.ownerCount === 0) {
+    return input.before.accountCount === 0 &&
+      input.before.vaultCount === 0 &&
+      input.before.wrappedKeyCount === 0 &&
+      input.deletedCount === 0 &&
+      input.remainingCount === 0
+      ? { kind: 'confirmed', outcome: 'already-finalized' }
+      : { kind: 'terminal-failure', reason: 'owner-mismatch' };
+  }
+  if (input.before.accountCount !== 1 || input.before.vaultCount !== 1) {
+    return { kind: 'terminal-failure', reason: 'owner-mismatch' };
+  }
+  if (
+    input.remainingCount !== 0 ||
+    input.deletedCount !== input.before.wrappedKeyCount
+  ) {
+    return { kind: 'retryable-failure', reason: 'incomplete-finalization' };
+  }
+  return {
+    kind: 'confirmed',
+    outcome:
+      input.before.wrappedKeyCount === 0 ? 'already-finalized' : 'deleted',
+  };
+}
+
+function validCount(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
 }
