@@ -222,6 +222,32 @@ describe('application and presentation architecture', () => {
     expect(store).not.toMatch(/pushState|replaceState|popstate|pathname/);
   });
 
+  it('injects data effects through runtime ports at the composition root', async () => {
+    const [ports, store, composition] = await Promise.all([
+      readFile('lib/application/notes-runtime.ts', 'utf8'),
+      readFile('lib/client/notes-store.tsx', 'utf8'),
+      readFile('lib/client/legacy-notes-runtime.ts', 'utf8'),
+    ]);
+
+    for (const contract of [
+      'NotesRepository',
+      'SyncTransport',
+      'Clock',
+      'IdGenerator',
+      'ConnectivityPort',
+      'OfflineAppPort',
+    ]) {
+      expect(ports).toContain(`type ${contract}`);
+    }
+    expect(store).not.toMatch(
+      /indexed-db|id-generator|Date\.now|navigator\.|fetch\(/,
+    );
+    expect(composition).toContain('LEGACY_NOTES_SCOPE');
+    expect(composition).toContain('createIndexedDbNotesRepository');
+    expect(composition).toContain('createV1SyncTransport');
+    expect(composition).toContain('browserOfflineApp');
+  });
+
   it('exposes only the documented deep application routes', async () => {
     await expect(readFile('app/(notes)/layout.tsx', 'utf8')).resolves.toContain(
       '<NotesApp />',
