@@ -12,3 +12,9 @@ inward.
 The OIDC core follows the same rule: transaction, claim, linking, and session
 decisions are deterministic. Entropy, clocks, code exchange, signature/JWKS
 verification, persistence, and Web Crypto remain behind server ports/adapters.
+
+The Email OTP core likewise owns only challenge, resend, guessing-limit,
+rate-limit, and identity-linking decisions. Clocks, UUID/code/salt generation,
+peppered hashing, CAS persistence, network-key derivation, and mail delivery
+remain behind ports. The fake mail and hashing adapters are test-only and send
+nothing externally.
