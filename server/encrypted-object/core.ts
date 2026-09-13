@@ -101,6 +101,32 @@ export type DeleteAttemptPlan =
   | { readonly kind: 'complete' }
   | { readonly kind: 'retry'; readonly entry: DeleteOutboxEntry };
 
+export type VaultPrivateObjectPurgeAttemptPlan =
+  | {
+      readonly kind: 'accepted';
+      readonly attemptedAt: number;
+      readonly retryDelayMs: number;
+      readonly batchLimit: number;
+    }
+  | {
+      readonly kind: 'rejected';
+      readonly reason: 'invalid-command' | 'scope-mismatch';
+    };
+
+export type VaultPrivateObjectPurgeEvaluation =
+  | {
+      readonly kind: 'confirmed';
+      readonly outcome: 'deleted' | 'already-empty';
+    }
+  | {
+      readonly kind: 'retryable-failure';
+      readonly reason: 'objects-remaining' | 'storage-unavailable';
+    }
+  | {
+      readonly kind: 'retryable-failure';
+      readonly reason: 'delete-confirmation-unavailable';
+    };
+
 export type EncryptedObjectMetadataPurgeEvaluation =
   | {
       readonly kind: 'confirmed';
@@ -158,6 +184,66 @@ export function evaluateEncryptedObjectMetadataPurge(input: {
     kind: 'confirmed',
     outcome: input.sourceRowsBefore === 0 ? 'already-empty' : 'purged',
   };
+}
+
+export function planVaultPrivateObjectPurgeAttempt(input: {
+  readonly scopeMatches: boolean;
+  readonly attemptedAt: number;
+  readonly retryDelayMs: number;
+  readonly batchLimit: number;
+}): VaultPrivateObjectPurgeAttemptPlan {
+  if (!input.scopeMatches) {
+    return { kind: 'rejected', reason: 'scope-mismatch' };
+  }
+  if (
+    !validNonNegativeCount(input.attemptedAt) ||
+    !validNonNegativeCount(input.retryDelayMs) ||
+    !Number.isSafeInteger(input.batchLimit) ||
+    input.batchLimit < 1 ||
+    input.batchLimit > 100
+  ) {
+    return { kind: 'rejected', reason: 'invalid-command' };
+  }
+  return {
+    kind: 'accepted',
+    attemptedAt: input.attemptedAt,
+    retryDelayMs: input.retryDelayMs,
+    batchLimit: input.batchLimit,
+  };
+}
+
+export function evaluateVaultPrivateObjectPurge(input: {
+  readonly pendingBefore: number;
+  readonly selected: number;
+  readonly confirmed: number;
+  readonly storageFailures: number;
+  readonly pendingAfter: number;
+}): VaultPrivateObjectPurgeEvaluation {
+  if (
+    !validNonNegativeCount(input.pendingBefore) ||
+    !validNonNegativeCount(input.selected) ||
+    !validNonNegativeCount(input.confirmed) ||
+    !validNonNegativeCount(input.storageFailures) ||
+    !validNonNegativeCount(input.pendingAfter) ||
+    input.selected > input.pendingBefore ||
+    input.pendingAfter > input.pendingBefore ||
+    input.confirmed + input.storageFailures !== input.selected
+  ) {
+    return {
+      kind: 'retryable-failure',
+      reason: 'delete-confirmation-unavailable',
+    };
+  }
+  if (input.pendingAfter === 0) {
+    return {
+      kind: 'confirmed',
+      outcome: input.pendingBefore === 0 ? 'already-empty' : 'deleted',
+    };
+  }
+  if (input.storageFailures > 0) {
+    return { kind: 'retryable-failure', reason: 'storage-unavailable' };
+  }
+  return { kind: 'retryable-failure', reason: 'objects-remaining' };
 }
 
 function validNonNegativeCount(value: number): boolean {

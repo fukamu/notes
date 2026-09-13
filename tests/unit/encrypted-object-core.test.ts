@@ -12,6 +12,7 @@ import {
 } from '@/server/crypto/core';
 import {
   evaluateEncryptedObjectMetadataPurge,
+  evaluateVaultPrivateObjectPurge,
   parseEncryptedWriteId,
   parseOpaqueObjectKey,
   planDeleteAttempt,
@@ -19,6 +20,7 @@ import {
   planOrphanCollection,
   planPendingWriteResume,
   planStoredCiphertext,
+  planVaultPrivateObjectPurgeAttempt,
 } from '@/server/encrypted-object/core';
 
 describe('encrypted object pure core', () => {
@@ -212,6 +214,101 @@ describe('encrypted object pure core', () => {
       expect(evaluateEncryptedObjectMetadataPurge(input)).toEqual({
         kind: 'retryable-failure',
         reason: 'incomplete-inventory',
+      });
+    }
+  });
+
+  it('plans bounded Vault deletion and confirms only an empty durable outbox', () => {
+    expect(
+      planVaultPrivateObjectPurgeAttempt({
+        scopeMatches: true,
+        attemptedAt: 10_000,
+        retryDelayMs: 5_000,
+        batchLimit: 100,
+      }),
+    ).toEqual({
+      kind: 'accepted',
+      attemptedAt: 10_000,
+      retryDelayMs: 5_000,
+      batchLimit: 100,
+    });
+    for (const input of [
+      { attemptedAt: -1, retryDelayMs: 5_000, batchLimit: 100 },
+      { attemptedAt: 10_000, retryDelayMs: -1, batchLimit: 100 },
+      { attemptedAt: 10_000, retryDelayMs: 5_000, batchLimit: 0 },
+      { attemptedAt: 10_000, retryDelayMs: 5_000, batchLimit: 101 },
+    ]) {
+      expect(
+        planVaultPrivateObjectPurgeAttempt({ ...input, scopeMatches: true }),
+      ).toEqual({
+        kind: 'rejected',
+        reason: 'invalid-command',
+      });
+    }
+    expect(
+      planVaultPrivateObjectPurgeAttempt({
+        scopeMatches: false,
+        attemptedAt: 10_000,
+        retryDelayMs: 5_000,
+        batchLimit: 100,
+      }),
+    ).toEqual({ kind: 'rejected', reason: 'scope-mismatch' });
+
+    expect(
+      evaluateVaultPrivateObjectPurge({
+        pendingBefore: 0,
+        selected: 0,
+        confirmed: 0,
+        storageFailures: 0,
+        pendingAfter: 0,
+      }),
+    ).toEqual({ kind: 'confirmed', outcome: 'already-empty' });
+    expect(
+      evaluateVaultPrivateObjectPurge({
+        pendingBefore: 2,
+        selected: 2,
+        confirmed: 2,
+        storageFailures: 0,
+        pendingAfter: 0,
+      }),
+    ).toEqual({ kind: 'confirmed', outcome: 'deleted' });
+    expect(
+      evaluateVaultPrivateObjectPurge({
+        pendingBefore: 2,
+        selected: 1,
+        confirmed: 1,
+        storageFailures: 0,
+        pendingAfter: 1,
+      }),
+    ).toEqual({ kind: 'retryable-failure', reason: 'objects-remaining' });
+    expect(
+      evaluateVaultPrivateObjectPurge({
+        pendingBefore: 2,
+        selected: 2,
+        confirmed: 1,
+        storageFailures: 1,
+        pendingAfter: 1,
+      }),
+    ).toEqual({ kind: 'retryable-failure', reason: 'storage-unavailable' });
+    for (const input of [
+      {
+        pendingBefore: 1,
+        selected: 2,
+        confirmed: 2,
+        storageFailures: 0,
+        pendingAfter: 0,
+      },
+      {
+        pendingBefore: 1,
+        selected: 1,
+        confirmed: 1,
+        storageFailures: 0,
+        pendingAfter: 2,
+      },
+    ]) {
+      expect(evaluateVaultPrivateObjectPurge(input)).toEqual({
+        kind: 'retryable-failure',
+        reason: 'delete-confirmation-unavailable',
       });
     }
   });

@@ -7,6 +7,7 @@ import {
 import type { VaultContext } from '../../lib/domain/identity';
 import type { D1DatabaseBinding } from '../../db/d1-types';
 import type { CryptoObjectRevision, EnvelopeObject } from '../crypto/core';
+import type { IdentityVaultControlPlane } from '../control-plane/public';
 import type { VaultContentDirectory } from '../vault-content/public';
 import type { VaultPartitionRoute } from '../vault-content/records';
 import {
@@ -20,6 +21,7 @@ import {
 import type {
   EncryptedObjectMetadataPurgePort,
   EncryptedObjectMetadataPurgeScope,
+  VaultPrivateObjectPurgeScope,
 } from './public';
 import type {
   EncryptedObjectMetadataDirectory,
@@ -27,6 +29,10 @@ import type {
   EncryptedObjectRepositoryOpenResult,
   IntentReservationResult,
   MetadataCommitResult,
+  DeleteOutboxMutationResult,
+  VaultObjectDeleteOutboxDirectory,
+  VaultObjectDeleteOutboxOpenResult,
+  VaultObjectDeleteOutboxRepository,
 } from './ports';
 import {
   deleteOutboxRowDecoder,
@@ -60,6 +66,22 @@ const purgeInventoryDecoder = objectDecoder(
   {
     route_present: safeIntegerDecoder({ minimum: 0, maximum: 1 }),
     source_rows: safeIntegerDecoder({ minimum: 0 }),
+  },
+  { unknownFields: 'allow' },
+);
+const deleteOutboxInventoryDecoder = objectDecoder(
+  {
+    owner_present: safeIntegerDecoder({ minimum: 0, maximum: 1 }),
+    pending_count: safeIntegerDecoder({ minimum: 0 }),
+  },
+  { unknownFields: 'allow' },
+);
+const deleteOutboxMutationResultDecoder = objectDecoder(
+  {
+    meta: objectDecoder(
+      { changes: safeIntegerDecoder({ minimum: 0, maximum: 1 }) },
+      { unknownFields: 'allow' },
+    ),
   },
   { unknownFields: 'allow' },
 );
@@ -179,6 +201,185 @@ export class D1EncryptedObjectMetadataPurge implements EncryptedObjectMetadataPu
       raw,
       'D1 encrypted object metadata purge inventory',
     );
+  }
+}
+
+export class D1VaultObjectDeleteOutboxDirectory implements VaultObjectDeleteOutboxDirectory {
+  constructor(
+    private readonly database: D1DatabaseBinding,
+    private readonly controlPlane: IdentityVaultControlPlane,
+  ) {}
+
+  async open(
+    scope: VaultPrivateObjectPurgeScope,
+  ): Promise<VaultObjectDeleteOutboxOpenResult> {
+    const account = await this.controlPlane.findPersonalAccount(
+      scope.accountId,
+    );
+    if (
+      account === undefined ||
+      account.account.accountId !== scope.accountId ||
+      account.vault.vaultId !== scope.vaultId
+    ) {
+      return { kind: 'owner-mismatch' };
+    }
+    return {
+      kind: 'opened',
+      repository: new D1VaultObjectDeleteOutboxRepository(this.database, scope),
+    };
+  }
+}
+
+class D1VaultObjectDeleteOutboxRepository implements VaultObjectDeleteOutboxRepository {
+  constructor(
+    private readonly database: D1DatabaseBinding,
+    private readonly scope: VaultPrivateObjectPurgeScope,
+  ) {}
+
+  async countPending(): Promise<number> {
+    const raw: unknown = await this.database
+      .prepare(
+        `SELECT
+          EXISTS(
+            SELECT 1 FROM personal_vaults owner
+            WHERE owner.account_id = ? AND owner.vault_id = ?
+          ) AS owner_present,
+          (
+            SELECT COUNT(*) FROM vault_object_delete_outbox pending
+            WHERE pending.vault_id = ?
+              AND ${ownerGuard('pending.vault_id')}
+          ) AS pending_count`,
+      )
+      .bind(
+        this.scope.accountId,
+        this.scope.vaultId,
+        this.scope.vaultId,
+        ...this.ownerGuardBindings(),
+      )
+      .first();
+    const inventory = decodeOrThrow(
+      deleteOutboxInventoryDecoder,
+      raw,
+      'D1 Vault delete outbox inventory',
+    );
+    if (inventory.owner_present !== 1) {
+      throw new Error('Vault delete outbox owner is unavailable');
+    }
+    return inventory.pending_count;
+  }
+
+  async listReady(input: {
+    readonly now: number;
+    readonly limit: number;
+  }): Promise<readonly DeleteOutboxEntry[]> {
+    const limit = decodeOrThrow(
+      deleteLimitDecoder,
+      input.limit,
+      'Vault object delete batch limit',
+    );
+    const now = decodeOrThrow(
+      safeIntegerDecoder({ minimum: 0 }),
+      input.now,
+      'Vault object delete attempt timestamp',
+    );
+    const raw: unknown = await this.database
+      .prepare(
+        `SELECT object_key, attempt_count, next_attempt_at, created_at
+         FROM vault_object_delete_outbox pending
+         WHERE pending.vault_id = ? AND pending.next_attempt_at <= ?
+           AND ${ownerGuard('pending.vault_id')}
+         ORDER BY pending.next_attempt_at, pending.object_key LIMIT ?`,
+      )
+      .bind(this.scope.vaultId, now, ...this.ownerGuardBindings(), limit)
+      .all();
+    return decodeOrThrow(
+      deleteOutboxResultDecoder,
+      raw,
+      'D1 Vault object delete outbox rows',
+    ).results.map(mapDeleteOutboxRow);
+  }
+
+  async confirmDelete(
+    entry: DeleteOutboxEntry,
+  ): Promise<DeleteOutboxMutationResult> {
+    const raw: unknown = await this.database
+      .prepare(
+        `DELETE FROM vault_object_delete_outbox
+         WHERE vault_id = ? AND object_key = ? AND attempt_count = ?
+           AND ${ownerGuard('vault_object_delete_outbox.vault_id')}`,
+      )
+      .bind(
+        this.scope.vaultId,
+        entry.objectKey,
+        entry.attemptCount,
+        ...this.ownerGuardBindings(),
+      )
+      .run();
+    return this.classifyMutation(entry.objectKey, raw);
+  }
+
+  async rescheduleDelete(
+    entry: DeleteOutboxEntry,
+  ): Promise<DeleteOutboxMutationResult> {
+    const raw: unknown = await this.database
+      .prepare(
+        `UPDATE vault_object_delete_outbox
+         SET attempt_count = ?, next_attempt_at = ?
+         WHERE vault_id = ? AND object_key = ? AND attempt_count = ?
+           AND ${ownerGuard('vault_object_delete_outbox.vault_id')}`,
+      )
+      .bind(
+        entry.attemptCount,
+        entry.nextAttemptAt,
+        this.scope.vaultId,
+        entry.objectKey,
+        entry.attemptCount - 1,
+        ...this.ownerGuardBindings(),
+      )
+      .run();
+    return this.classifyMutation(entry.objectKey, raw);
+  }
+
+  private async classifyMutation(
+    objectKey: OpaqueObjectKey,
+    raw: unknown,
+  ): Promise<DeleteOutboxMutationResult> {
+    const result = decodeOrThrow(
+      deleteOutboxMutationResultDecoder,
+      raw,
+      'D1 Vault object delete outbox mutation',
+    );
+    if (result.meta.changes === 1) return { kind: 'applied' };
+    return (await this.find(objectKey)) === undefined
+      ? { kind: 'replayed' }
+      : { kind: 'conflict' };
+  }
+
+  private async find(
+    objectKey: OpaqueObjectKey,
+  ): Promise<DeleteOutboxEntry | undefined> {
+    const raw: unknown = await this.database
+      .prepare(
+        `SELECT object_key, attempt_count, next_attempt_at, created_at
+         FROM vault_object_delete_outbox pending
+         WHERE pending.vault_id = ? AND pending.object_key = ?
+           AND ${ownerGuard('pending.vault_id')}`,
+      )
+      .bind(this.scope.vaultId, objectKey, ...this.ownerGuardBindings())
+      .first();
+    return raw === null
+      ? undefined
+      : mapDeleteOutboxRow(
+          decodeOrThrow(
+            deleteOutboxRowDecoder,
+            raw,
+            'D1 Vault object delete outbox row',
+          ),
+        );
+  }
+
+  private ownerGuardBindings(): readonly [string, string] {
+    return [this.scope.accountId, this.scope.vaultId];
   }
 }
 
@@ -644,5 +845,13 @@ function routeGuard(vaultExpression: string): string {
     WHERE route.account_id = ? AND route.vault_id = ?
       AND route.vault_id = ${vaultExpression}
       AND route.partition_id = ? AND route.routing_revision = ?
+  )`;
+}
+
+function ownerGuard(vaultExpression: string): string {
+  return `EXISTS (
+    SELECT 1 FROM personal_vaults owner
+    WHERE owner.account_id = ? AND owner.vault_id = ?
+      AND owner.vault_id = ${vaultExpression}
   )`;
 }

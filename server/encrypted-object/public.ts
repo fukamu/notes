@@ -15,3 +15,30 @@ export type EncryptedObjectMetadataPurgePort = {
     readonly requestedAt: number;
   }): Promise<EncryptedObjectMetadataPurgeResult>;
 };
+
+export type VaultPrivateObjectPurgeScope = EncryptedObjectMetadataPurgeScope;
+
+export type VaultPrivateObjectPurgeResult =
+  | {
+      readonly kind: 'confirmed';
+      readonly outcome: 'deleted' | 'already-empty';
+    }
+  | {
+      readonly kind: 'retryable-failure';
+      readonly reason:
+        | 'objects-remaining'
+        | 'storage-unavailable'
+        | 'outbox-unavailable'
+        | 'delete-confirmation-unavailable';
+    }
+  | {
+      readonly kind: 'terminal-failure';
+      readonly reason: 'owner-mismatch' | 'invalid-command';
+    };
+
+export type VaultPrivateObjectPurgePort = {
+  purgeVaultPrivateObjects(input: {
+    readonly scope: VaultPrivateObjectPurgeScope;
+    readonly attemptedAt: number;
+  }): Promise<VaultPrivateObjectPurgeResult>;
+};
