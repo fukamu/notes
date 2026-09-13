@@ -3,6 +3,7 @@ import type {
   CardCompareAndSwap,
   PartitionAssignment,
   PartitionCompareAndSwap,
+  VaultLiveDataPurgeResult,
 } from './public';
 import type { VaultCardIndexRecord, VaultPartitionRoute } from './records';
 import { parseRoutingRevision } from './records';
@@ -35,6 +36,50 @@ export type CardCompareAndSwapPlan =
         | 'invalid-next-revision'
         | 'invalid-timeline';
     };
+
+export function evaluateVaultLiveDataPurge(input: {
+  readonly ownerMatches: boolean;
+  readonly routePresentBefore: boolean;
+  readonly remaining: {
+    readonly routes: number;
+    readonly cards: number;
+    readonly mutationReceipts: number;
+    readonly conflicts: number;
+    readonly syncStates: number;
+    readonly displayIds: number;
+    readonly syncCommits: number;
+    readonly syncChanges: number;
+    readonly encryptedObjects: number;
+    readonly encryptedWriteIntents: number;
+  };
+}): VaultLiveDataPurgeResult {
+  if (!input.ownerMatches) {
+    return { kind: 'terminal-failure', reason: 'owner-mismatch' };
+  }
+  const counts = Object.values(input.remaining);
+  if (
+    counts.some((count) => !Number.isSafeInteger(count) || count < 0) ||
+    input.remaining.routes > 1
+  ) {
+    return { kind: 'retryable-failure', reason: 'incomplete-delete' };
+  }
+  if (
+    input.remaining.encryptedObjects !== 0 ||
+    input.remaining.encryptedWriteIntents !== 0
+  ) {
+    return {
+      kind: 'retryable-failure',
+      reason: 'object-inventory-not-empty',
+    };
+  }
+  if (Object.values(input.remaining).some((count) => count !== 0)) {
+    return { kind: 'retryable-failure', reason: 'incomplete-delete' };
+  }
+  return {
+    kind: 'confirmed',
+    outcome: input.routePresentBefore ? 'purged' : 'already-purged',
+  };
+}
 
 export function planPartitionAssignment(
   context: VaultContext,

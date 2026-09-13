@@ -101,6 +101,17 @@ export type DeleteAttemptPlan =
   | { readonly kind: 'complete' }
   | { readonly kind: 'retry'; readonly entry: DeleteOutboxEntry };
 
+export type EncryptedObjectMetadataPurgeEvaluation =
+  | {
+      readonly kind: 'confirmed';
+      readonly outcome: 'purged' | 'already-empty';
+    }
+  | { readonly kind: 'route-not-found' }
+  | {
+      readonly kind: 'retryable-failure';
+      readonly reason: 'incomplete-inventory';
+    };
+
 const uuidDecoder = refineDecoder(
   stringDecoder({ minLength: 36, maxLength: 36 }),
   (value) =>
@@ -127,6 +138,31 @@ export const storedByteCountDecoder = safeIntegerDecoder({
   minimum: 0,
   maximum: 134_217_728,
 });
+
+export function evaluateEncryptedObjectMetadataPurge(input: {
+  readonly routePresent: boolean;
+  readonly sourceRowsBefore: number;
+  readonly sourceRowsAfter: number;
+}): EncryptedObjectMetadataPurgeEvaluation {
+  if (
+    !validNonNegativeCount(input.sourceRowsBefore) ||
+    !validNonNegativeCount(input.sourceRowsAfter)
+  ) {
+    return { kind: 'retryable-failure', reason: 'incomplete-inventory' };
+  }
+  if (!input.routePresent) return { kind: 'route-not-found' };
+  if (input.sourceRowsAfter !== 0) {
+    return { kind: 'retryable-failure', reason: 'incomplete-inventory' };
+  }
+  return {
+    kind: 'confirmed',
+    outcome: input.sourceRowsBefore === 0 ? 'already-empty' : 'purged',
+  };
+}
+
+function validNonNegativeCount(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
+}
 
 export function parseEncryptedWriteId(input: unknown): EncryptedWriteId {
   return decodeOrThrow(encryptedWriteIdDecoder, input, 'EncryptedWriteId');

@@ -11,6 +11,7 @@ import {
   ENVELOPE_CRYPTO_VERSION,
 } from '@/server/crypto/core';
 import {
+  evaluateEncryptedObjectMetadataPurge,
   parseEncryptedWriteId,
   parseOpaqueObjectKey,
   planDeleteAttempt,
@@ -175,5 +176,43 @@ describe('encrypted object pure core', () => {
     );
     expect(() => parseEncryptedWriteId('write-a')).toThrow();
     expect(() => parseOpaqueObjectKey('vault-a/card-a')).toThrow();
+  });
+
+  it('confirms metadata purge only after every source row has an outbox-backed delete', () => {
+    expect(
+      evaluateEncryptedObjectMetadataPurge({
+        routePresent: true,
+        sourceRowsBefore: 3,
+        sourceRowsAfter: 0,
+      }),
+    ).toEqual({ kind: 'confirmed', outcome: 'purged' });
+    expect(
+      evaluateEncryptedObjectMetadataPurge({
+        routePresent: true,
+        sourceRowsBefore: 0,
+        sourceRowsAfter: 0,
+      }),
+    ).toEqual({ kind: 'confirmed', outcome: 'already-empty' });
+    expect(
+      evaluateEncryptedObjectMetadataPurge({
+        routePresent: false,
+        sourceRowsBefore: 0,
+        sourceRowsAfter: 0,
+      }),
+    ).toEqual({ kind: 'route-not-found' });
+    for (const input of [
+      { routePresent: true, sourceRowsBefore: 3, sourceRowsAfter: 1 },
+      { routePresent: true, sourceRowsBefore: -1, sourceRowsAfter: 0 },
+      {
+        routePresent: true,
+        sourceRowsBefore: 0,
+        sourceRowsAfter: Number.NaN,
+      },
+    ]) {
+      expect(evaluateEncryptedObjectMetadataPurge(input)).toEqual({
+        kind: 'retryable-failure',
+        reason: 'incomplete-inventory',
+      });
+    }
   });
 });

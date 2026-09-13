@@ -1,4 +1,5 @@
 import type { VaultContext } from '../../lib/domain/identity';
+import type { AccountId, VaultId } from '../../lib/domain/identity';
 import type { CardId, ConflictId, MutationId } from '../../lib/domain/id';
 import type {
   ContentRevision,
@@ -34,6 +35,28 @@ export type ConflictIndexWrite = VaultConflictIndexRecord;
 export type ScopedWriteResult =
   | { readonly kind: 'applied' }
   | { readonly kind: 'not-applied' };
+
+export type VaultLiveDataPurgeScope = {
+  readonly accountId: AccountId;
+  readonly vaultId: VaultId;
+};
+
+export type VaultLiveDataPurgeResult =
+  | {
+      readonly kind: 'confirmed';
+      readonly outcome: 'purged' | 'already-purged';
+    }
+  | {
+      readonly kind: 'retryable-failure';
+      readonly reason: 'object-inventory-not-empty' | 'incomplete-delete';
+    }
+  | { readonly kind: 'terminal-failure'; readonly reason: 'owner-mismatch' };
+
+export type VaultLiveDataPurgePort = {
+  purgeVaultLiveData(
+    scope: VaultLiveDataPurgeScope,
+  ): Promise<VaultLiveDataPurgeResult>;
+};
 
 export type VaultContentRepository = {
   findCard(cardId: CardId): Promise<VaultCardIndexRecord | undefined>;
