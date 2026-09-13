@@ -79,12 +79,23 @@ export function NotesApp({
   runtimePorts,
 }: {
   configuration?: NotesAppConfiguration;
-  runtimePorts?: NotesRuntimePorts;
+  runtimePorts: NotesRuntimePorts;
+}) {
+  return (
+    <NotesProvider ports={runtimePorts}>
+      <NotesConnector configuration={configuration} />
+    </NotesProvider>
+  );
+}
+
+/** Explicit compatibility harness until the authenticated route is composed. */
+export function LegacyNotesApp({
+  configuration = defaultNotesAppConfiguration,
+}: {
+  configuration?: NotesAppConfiguration;
 }) {
   const [legacyRuntimePorts] = useState(createLegacyNotesRuntimePorts);
   return (
-    <NotesProvider ports={runtimePorts ?? legacyRuntimePorts}>
-      <NotesConnector configuration={configuration} />
-    </NotesProvider>
+    <NotesApp configuration={configuration} runtimePorts={legacyRuntimePorts} />
   );
 }

@@ -52,8 +52,12 @@ The IndexedDB adapter still opens schema version 1 with the same four stores,
 decodes all values from `unknown`, and performs the same read/write transaction
 plans. The HTTP adapter sends the same POST, content type, and JSON field order.
 No storage migration or wire migration occurs in this extraction. Account and
-Vault ownership will be represented by a session-derived scope-bound
-repository in later Issues, not by adding fields to `CardRecord` or its body.
+Vault ownership is represented by a session-derived `VaultContext` and
+scope-bound runtime, not by adding fields to `CardRecord` or its body.
+`SessionNotesApp` refuses to construct or mount the runtime while anonymous;
+the current route names `LegacyNotesApp` explicitly as the local compatibility
+harness until authenticated vault adapters replace it. The session boundary is
+documented in [`session-boundary.md`](session-boundary.md).
 
 ## Navigation contract
 

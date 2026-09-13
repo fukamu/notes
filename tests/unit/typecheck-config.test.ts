@@ -40,10 +40,12 @@ describe('runtime typecheck configuration', () => {
     ]);
 
     expect(apiConfig).toContain('"server/**/*.ts"');
+    expect(apiConfig).toContain('"lib/codec/**/*.ts"');
+    expect(apiConfig).toContain('"lib/shared/**/*.ts"');
     expect(packageSource).toContain('app/api db server');
     expect(architecture).toContain("'server'");
     expect(architecture).toContain("'server/core'");
-    expect(vitest).toContain("'server/core/**/*.ts'");
+    expect(vitest).toContain("'server/**/*.ts'");
   });
 
   it('includes the extracted data ports and adapters in coverage', async () => {
@@ -51,6 +53,9 @@ describe('runtime typecheck configuration', () => {
 
     for (const target of [
       'lib/application/notes-runtime.ts',
+      'lib/application/notes-access.ts',
+      'components/session-notes-app.tsx',
+      'server/**/*.ts',
       'lib/client/browser-clock.ts',
       'lib/client/browser-connectivity.ts',
       'lib/client/http-sync-transport.ts',

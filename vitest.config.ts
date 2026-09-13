@@ -14,6 +14,8 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json-summary'],
       include: [
+        'components/session-notes-app.tsx',
+        'lib/application/notes-access.ts',
         'lib/application/notes-runtime.ts',
         'lib/client/browser-clock.ts',
         'lib/client/browser-connectivity.ts',
@@ -24,7 +26,7 @@ export default defineConfig({
         'lib/domain/**/*.ts',
         'lib/editor/body-document.ts',
         'lib/storage/**/*.ts',
-        'server/core/**/*.ts',
+        'server/**/*.ts',
       ],
     },
   },
