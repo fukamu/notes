@@ -117,6 +117,7 @@ describe('pure-core dependency direction', () => {
     'server/core',
   ];
   const coreFiles = [
+    'server/billing/core.ts',
     'server/crypto/core.ts',
     'server/encrypted-object/core.ts',
   ];
@@ -451,6 +452,85 @@ describe('Vault-scoped server repository ownership', () => {
     expect(adapter).toContain("return { kind: 'not-found' }");
     expect(records).toContain('partitionRouteRowDecoder');
     expect(records).toContain('mapMutationReceiptRow');
+  });
+});
+
+function billingBoundaryViolation(file: string, source: string): boolean {
+  if (
+    file.startsWith('server/billing/') ||
+    file.startsWith('server/migrations/')
+  ) {
+    return false;
+  }
+  return (
+    /(?:(?:@\/)?server\/billing|(?:\.\.?\/)+billing)\/(?:core|d1-adapter|d1-schema|fake|migration|ports|records|service)/.test(
+      source,
+    ) ||
+    /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:billing_subscriptions|billing_checkout_intents|billing_provider_event_receipts|billing_reconciliation_checkpoints)\b/i.test(
+      source,
+    )
+  );
+}
+
+describe('Billing module ownership', () => {
+  it('keeps Billing internals and table mutations inside their owner module', async () => {
+    const files = (await Promise.all(roots.map(sourceFiles))).flat();
+    const violations: string[] = [];
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (billingBoundaryViolation(file, source)) violations.push(file);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('detects representative private imports and direct writes without leaving a violation', () => {
+    expect(
+      billingBoundaryViolation(
+        'server/entitlement/read.ts',
+        "import type { BillingSubscriptionRecord } from '../billing/records'",
+      ),
+    ).toBe(true);
+    expect(
+      billingBoundaryViolation(
+        'app/api/billing/handler.ts',
+        "UPDATE billing_subscriptions SET status = 'active'",
+      ),
+    ).toBe(true);
+    expect(
+      billingBoundaryViolation(
+        'server/entitlement/read.ts',
+        "import type { BillingApi } from '../billing/public'",
+      ),
+    ).toBe(false);
+  });
+
+  it('exposes provider-neutral facts while keeping effects in explicit adapters', async () => {
+    const [core, publicContract, service, adapter, fake, testConfig] =
+      await Promise.all([
+        readFile('server/billing/core.ts', 'utf8'),
+        readFile('server/billing/public.ts', 'utf8'),
+        readFile('server/billing/service.ts', 'utf8'),
+        readFile('server/billing/d1-adapter.ts', 'utf8'),
+        readFile('server/billing/fake.ts', 'utf8'),
+        readFile('vitest.config.ts', 'utf8'),
+      ]);
+    expect(core).toContain('planVerifiedProviderFact');
+    expect(core).toContain('planReconciliationSnapshot');
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise/,
+    );
+    expect(publicContract).toContain('type BillingApi');
+    expect(publicContract).toContain('invoice-payment-action-required');
+    expect(publicContract).not.toMatch(
+      /Stripe|D1Database|BillingSubscriptionRow/,
+    );
+    expect(service).toContain('createBillingApi');
+    expect(service).not.toMatch(/\.prepare\(|process\.env|fetch\(/);
+    expect(adapter).toContain('createD1BillingApi');
+    expect(adapter).toContain('controlPlane.findPersonalAccount');
+    expect(fake).toContain('createFakeBillingModule');
+    expect(fake).not.toMatch(/process\.env|D1Database|fetch\(/);
+    expect(testConfig).toContain("'server/**/*.ts'");
   });
 });
 
