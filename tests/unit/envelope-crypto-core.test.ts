@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ENVELOPE_CRYPTO_VERSION,
   decodeEnvelopeCiphertext,
+  evaluateVaultWrappedKeyFinalization,
   planDekRotation,
   selectDekForRead,
   selectDekForWrite,
@@ -103,5 +104,83 @@ describe('Envelope encryption pure contract', () => {
     expect(() =>
       decodeEnvelopeCiphertext({ ...valid, plaintext: 'secret' }),
     ).toThrow();
+  });
+
+  it('confirms wrapped-key destruction only for the exact owner and zero remaining metadata', () => {
+    expect(
+      evaluateVaultWrappedKeyFinalization({
+        before: {
+          ownerCount: 1,
+          accountCount: 1,
+          vaultCount: 1,
+          wrappedKeyCount: 2,
+        },
+        deletedCount: 2,
+        remainingCount: 0,
+      }),
+    ).toEqual({ kind: 'confirmed', outcome: 'deleted' });
+    expect(
+      evaluateVaultWrappedKeyFinalization({
+        before: {
+          ownerCount: 1,
+          accountCount: 1,
+          vaultCount: 1,
+          wrappedKeyCount: 0,
+        },
+        deletedCount: 0,
+        remainingCount: 0,
+      }),
+    ).toEqual({ kind: 'confirmed', outcome: 'already-finalized' });
+    expect(
+      evaluateVaultWrappedKeyFinalization({
+        before: {
+          ownerCount: 0,
+          accountCount: 0,
+          vaultCount: 0,
+          wrappedKeyCount: 0,
+        },
+        deletedCount: 0,
+        remainingCount: 0,
+      }),
+    ).toEqual({ kind: 'confirmed', outcome: 'already-finalized' });
+    expect(
+      evaluateVaultWrappedKeyFinalization({
+        before: {
+          ownerCount: 0,
+          accountCount: 1,
+          vaultCount: 1,
+          wrappedKeyCount: 1,
+        },
+        deletedCount: 0,
+        remainingCount: 1,
+      }),
+    ).toEqual({ kind: 'terminal-failure', reason: 'owner-mismatch' });
+    expect(
+      evaluateVaultWrappedKeyFinalization({
+        before: {
+          ownerCount: 1,
+          accountCount: 1,
+          vaultCount: 1,
+          wrappedKeyCount: 2,
+        },
+        deletedCount: 1,
+        remainingCount: 1,
+      }),
+    ).toEqual({
+      kind: 'retryable-failure',
+      reason: 'incomplete-finalization',
+    });
+    expect(
+      evaluateVaultWrappedKeyFinalization({
+        before: {
+          ownerCount: 1,
+          accountCount: 1,
+          vaultCount: 1,
+          wrappedKeyCount: -1,
+        },
+        deletedCount: 0,
+        remainingCount: 0,
+      }),
+    ).toEqual({ kind: 'retryable-failure', reason: 'invalid-result' });
   });
 });

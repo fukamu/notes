@@ -121,6 +121,7 @@ describe('pure-core dependency direction', () => {
   const coreFiles = [
     'server/account-deletion/core.ts',
     'server/account-deletion/delete-vault-data-core.ts',
+    'server/account-deletion/finalize-account-core.ts',
     'server/billing/cancellation-core.ts',
     'server/billing/core.ts',
     'server/crypto/core.ts',
@@ -395,7 +396,7 @@ describe('Identity/Vault control-plane ownership', () => {
     expect(violations).toEqual([]);
   });
 
-  it('keeps Account-wide session revocation pure, public, and tenant-scoped', async () => {
+  it('keeps Account-wide session revocation and finalization pure, public, and tenant-scoped', async () => {
     const [core, publicContract, adapter] = await Promise.all([
       readFile('server/control-plane/core.ts', 'utf8'),
       readFile('server/control-plane/public.ts', 'utf8'),
@@ -403,13 +404,19 @@ describe('Identity/Vault control-plane ownership', () => {
     ]);
     expect(core).toContain('planAccountSessionRevocation');
     expect(core).toContain('evaluateAccountSessionRevocation');
+    expect(core).toContain('evaluateAccountLiveStateFinalization');
     expect(core).not.toMatch(/D1Database|\.prepare\(|Date\.now|fetch\(/);
     expect(publicContract).toContain('type AccountSessionRevocationPort');
+    expect(publicContract).toContain('type AccountLiveStateFinalizationPort');
     expect(publicContract).not.toMatch(/D1Database/);
     expect(adapter).toContain('revokeAccountSessions');
     expect(adapter).toContain('plan.command.accountId');
     expect(adapter).toContain('plan.command.vaultId');
     expect(adapter).toContain("revocation_reason = 'security'");
+    expect(adapter).toContain('finalizeAccountLiveState');
+    expect(adapter).toContain('DELETE FROM identities');
+    expect(adapter).toContain('DELETE FROM personal_vaults');
+    expect(adapter).toContain('DELETE FROM accounts');
   });
 
   it('keeps migration planning pure and request handlers free of schema DDL', async () => {
@@ -428,6 +435,49 @@ describe('Identity/Vault control-plane ownership', () => {
   });
 });
 
+function wrappedKeyBoundaryViolation(file: string, source: string): boolean {
+  if (
+    file.startsWith('server/crypto/') ||
+    file.startsWith('server/migrations/')
+  ) {
+    return false;
+  }
+  return (
+    /server\/crypto\/(?:d1-finalization|d1-schema|migration)/.test(source) ||
+    /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+vault_dek_versions\b/i.test(
+      source,
+    )
+  );
+}
+
+describe('Wrapped DEK metadata finalization ownership', () => {
+  it('keeps wrapped-key mutations inside crypto and exposes a provider-neutral port', async () => {
+    const files = (await Promise.all(roots.map(sourceFiles))).flat();
+    const violations: string[] = [];
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (wrappedKeyBoundaryViolation(file, source)) violations.push(file);
+    }
+    expect(violations).toEqual([]);
+
+    const [core, publicContract, adapter] = await Promise.all([
+      readFile('server/crypto/core.ts', 'utf8'),
+      readFile('server/crypto/public.ts', 'utf8'),
+      readFile('server/crypto/d1-finalization.ts', 'utf8'),
+    ]);
+    expect(core).toContain('evaluateVaultWrappedKeyFinalization');
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|fetch\(|Promise/,
+    );
+    expect(publicContract).toContain('type VaultWrappedKeyFinalizationPort');
+    expect(publicContract).not.toMatch(/D1Database|KMS|R2Bucket/);
+    expect(adapter).toContain('DELETE FROM vault_dek_versions');
+    expect(adapter).toContain('personal_vaults owner');
+    expect(adapter).toContain('scope.accountId');
+    expect(adapter).toContain('scope.vaultId');
+  });
+});
+
 function accountDeletionBoundaryViolation(
   file: string,
   source: string,
@@ -439,7 +489,7 @@ function accountDeletionBoundaryViolation(
     return false;
   }
   return (
-    /server\/account-deletion\/(?:cancel-subscription|core|d1-adapter|d1-schema|delete-private-objects|delete-private-objects-core|delete-vault-data|delete-vault-data-core|migration|records|revoke-sessions)/.test(
+    /server\/account-deletion\/(?:cancel-subscription|core|d1-adapter|d1-schema|delete-private-objects|delete-private-objects-core|delete-vault-data|delete-vault-data-core|finalize-account|finalize-account-core|migration|records|revoke-sessions)/.test(
       source,
     ) ||
     /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:account_deletion_operations|account_deletion_step_receipts)\b/i.test(
@@ -472,6 +522,8 @@ describe('Account deletion saga ownership', () => {
       deleteVaultData,
       deletePrivateObjectsCore,
       deletePrivateObjects,
+      finalizeAccountCore,
+      finalizeAccount,
       testConfig,
     ] = await Promise.all([
       readFile('server/account-deletion/core.ts', 'utf8'),
@@ -488,6 +540,8 @@ describe('Account deletion saga ownership', () => {
         'utf8',
       ),
       readFile('server/account-deletion/delete-private-objects.ts', 'utf8'),
+      readFile('server/account-deletion/finalize-account-core.ts', 'utf8'),
+      readFile('server/account-deletion/finalize-account.ts', 'utf8'),
       readFile('vitest.config.ts', 'utf8'),
     ]);
     expect(core).toContain('planAccountDeletionStepClaim');
@@ -529,6 +583,19 @@ describe('Account deletion saga ownership', () => {
     expect(deletePrivateObjects).toContain('../encrypted-object/public');
     expect(deletePrivateObjects).not.toMatch(
       /encrypted-object\/(?:core|d1-adapter|d1-schema|delete-vault-objects|migration|ports|records|service)|D1Database|\.prepare\(|Date\.now|R2|KMS|Stripe|fetch\(/,
+    );
+    expect(finalizeAccountCore).toContain('planFinalizeAccountStep');
+    expect(finalizeAccountCore).toContain(
+      'evaluatePrivateObjectReconfirmation',
+    );
+    expect(finalizeAccountCore).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise|R2|KMS|Stripe/,
+    );
+    expect(finalizeAccount).toContain('../encrypted-object/public');
+    expect(finalizeAccount).toContain('../crypto/public');
+    expect(finalizeAccount).toContain('../control-plane/public');
+    expect(finalizeAccount).not.toMatch(
+      /(?:encrypted-object|crypto|control-plane)\/(?:core|d1-adapter|d1-finalization|d1-schema|migration|ports|records)|D1Database|\.prepare\(|Date\.now|R2|KMS|Stripe|fetch\(/,
     );
     expect(testConfig).toContain("'server/**/*.ts'");
   });
@@ -664,18 +731,23 @@ describe('Encrypted object metadata ownership', () => {
     ]);
     expect(core).toContain('evaluateEncryptedObjectMetadataPurge');
     expect(core).toContain('evaluateVaultPrivateObjectPurge');
+    expect(core).toContain('evaluateVaultPrivateObjectDeletionBarrier');
     expect(core).toContain('planVaultPrivateObjectPurgeAttempt');
     expect(core).not.toMatch(
       /D1Database|\.prepare\(|Date\.now|fetch\(|Promise|R2Bucket|KMS/,
     );
     expect(publicContract).toContain('type EncryptedObjectMetadataPurgePort');
     expect(publicContract).toContain('type VaultPrivateObjectPurgePort');
+    expect(publicContract).toContain(
+      'type VaultPrivateObjectDeletionBarrierPort',
+    );
     expect(publicContract).not.toMatch(/D1Database|R2Bucket|Stripe|objectKey/);
     expect(adapter).toContain('D1EncryptedObjectMetadataPurge');
     expect(adapter).toContain('INSERT INTO vault_object_delete_outbox');
     expect(adapter).toContain('DELETE FROM vault_encrypted_objects');
     expect(adapter).toContain('DELETE FROM vault_encrypted_write_intents');
     expect(adapter).toContain('D1VaultObjectDeleteOutboxDirectory');
+    expect(adapter).toContain('D1VaultPrivateObjectDeletionBarrier');
     expect(adapter).toContain('personal_vaults owner');
     expect(deletionService).toContain('createVaultPrivateObjectPurge');
     expect(deletionService).toContain(

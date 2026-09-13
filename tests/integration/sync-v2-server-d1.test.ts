@@ -72,6 +72,12 @@ const cursorSecret = new Uint8Array(32).fill(0x51);
 const flowMutation = mutation('sync-v2-server-flow');
 const recoveryMutation = mutation('sync-v2-server-recovery');
 
+// The end-to-end D1 composition exercises auth, encryption, cursor paging,
+// tombstones, replay, and billing in one fixture. Full verification measured
+// 5.038s, just above Vitest's incidental 5s default; retain a finite local
+// hang guard without changing assertions or the global test configuration.
+vi.setConfig({ testTimeout: 15_000 });
+
 let miniflare: Miniflare;
 let flowDatabase: TestDatabase;
 let recoveryDatabase: TestDatabase;

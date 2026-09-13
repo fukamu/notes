@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  evaluateAccountLiveStateFinalization,
   evaluateAccountSessionRevocation,
   planAccountSessionRevocation,
   planIdentityLink,
@@ -114,5 +115,60 @@ describe('Identity/Vault ownership plans', () => {
         reason: 'invalid-result',
       });
     }
+  });
+
+  it('confirms Account live-state finalization only after every owned row is absent', () => {
+    const present = {
+      ownerCount: 1,
+      accountCount: 1,
+      vaultCount: 1,
+      identityCount: 2,
+      sessionCount: 3,
+    } as const;
+    const empty = {
+      ownerCount: 0,
+      accountCount: 0,
+      vaultCount: 0,
+      identityCount: 0,
+      sessionCount: 0,
+    } as const;
+    expect(
+      evaluateAccountLiveStateFinalization({
+        before: present,
+        deletedAccountCount: 1,
+        after: empty,
+      }),
+    ).toEqual({ kind: 'confirmed', outcome: 'deleted' });
+    expect(
+      evaluateAccountLiveStateFinalization({
+        before: empty,
+        deletedAccountCount: 0,
+        after: empty,
+      }),
+    ).toEqual({ kind: 'confirmed', outcome: 'already-finalized' });
+    expect(
+      evaluateAccountLiveStateFinalization({
+        before: { ...present, ownerCount: 0 },
+        deletedAccountCount: 0,
+        after: { ...present, ownerCount: 0 },
+      }),
+    ).toEqual({ kind: 'terminal-failure', reason: 'owner-mismatch' });
+    expect(
+      evaluateAccountLiveStateFinalization({
+        before: present,
+        deletedAccountCount: 1,
+        after: { ...empty, identityCount: 1 },
+      }),
+    ).toEqual({
+      kind: 'retryable-failure',
+      reason: 'incomplete-finalization',
+    });
+    expect(
+      evaluateAccountLiveStateFinalization({
+        before: { ...present, ownerCount: 2 },
+        deletedAccountCount: 0,
+        after: present,
+      }),
+    ).toEqual({ kind: 'retryable-failure', reason: 'invalid-result' });
   });
 });
