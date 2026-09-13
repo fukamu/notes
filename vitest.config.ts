@@ -16,6 +16,7 @@ export default defineConfig({
       include: [
         'components/session-notes-app.tsx',
         'lib/application/notes-access.ts',
+        'lib/application/notes-database-scope.ts',
         'lib/application/notes-runtime.ts',
         'lib/client/browser-clock.ts',
         'lib/client/browser-connectivity.ts',
