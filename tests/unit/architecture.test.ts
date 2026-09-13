@@ -77,6 +77,8 @@ describe('trust-boundary architecture', () => {
         'server/oidc-boundary.ts',
         'verifiedOidcClaimsDecoder.decode(rawClaims)',
       ],
+      ['server/email-otp-boundary.ts', 'emailOtpChallengeDecoder.decode('],
+      ['server/email-otp-boundary.ts', 'emailOtpDigestDecoder.decode('],
       ['lib/editor/card-link-attributes.ts', 'cardLinkAttributesDecoder'],
     ] as const;
     for (const [file, marker] of expectations) {
@@ -166,6 +168,23 @@ describe('pure-core dependency direction', () => {
     expect(boundary).not.toMatch(/request\.(?:json|text|formData)\(/);
     expect(webAdapter).toContain('crypto.subtle.digest');
     expect(webAdapter).toContain("'SHA-256'");
+  });
+
+  it('keeps Email OTP effects behind ports and never accepts abuse keys from request input', async () => {
+    const [core, boundary, fakeAdapter] = await Promise.all([
+      readFile('server/core/email-otp.ts', 'utf8'),
+      readFile('server/email-otp-boundary.ts', 'utf8'),
+      readFile('server/adapters/fake-email-otp.ts', 'utf8'),
+    ]);
+
+    expect(core).toContain('verifyEmailOtpChallenge');
+    expect(core).toContain('reserveEmailOtpRateLimit');
+    expect(core).not.toMatch(/crypto\.|fetch\(|process\.env|server\/adapters/);
+    expect(boundary).toContain('input.abuseKeys.deriveKeys');
+    expect(boundary).toContain('input.vaultContext');
+    expect(boundary).not.toContain('input.rateLimitKeys');
+    expect(boundary).not.toMatch(/request\.(?:json|text|formData)\(/);
+    expect(fakeAdapter).not.toMatch(/console\.|fetch\(/);
   });
 });
 

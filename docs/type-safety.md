@@ -91,6 +91,7 @@ Cloudflare bindingは `getD1Binding(unknown)` だけが `DB` をD1互換object�
 | D1 row / JSON column          | first／allとJSON parseをunknownからrow／Body codecでdecode            | Phase 3 (#12) |
 | Cloudflare environment        | DB bindingをvalidated accessorで取得し、Sites／型／Wranglerを照合     | Phase 3 (#12) |
 | public URL environment        | absolute HTTP(S) URLとしてparse、未設定時の既定値を明文化             | Phase 3 (#12) |
+| Email OTP challenge／adapter  | branded ID・8桁code・digest・CAS state・rate keyをunknownからdecode   | Issue #112    |
 
 Phase 1〜3でcompiler、codec／brand、client／IndexedDB、API／D1／environmentと全面unsafe ruleを完成させました。親 #9 の要件1–30の証跡は `docs/type-safety-audit.md` に記録します。
 
