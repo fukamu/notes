@@ -1,3 +1,4 @@
+import { billingSubscriptionMigration } from '../billing/migration';
 import { identityVaultControlPlaneMigration } from '../control-plane/migration';
 import { envelopeEncryptionMetadataMigration } from '../crypto/migration';
 import { encryptedObjectRepositoryMigration } from '../encrypted-object/migration';
@@ -8,4 +9,5 @@ export const productionMigrationManifest = [
   vaultContentMigration,
   envelopeEncryptionMetadataMigration,
   encryptedObjectRepositoryMigration,
+  billingSubscriptionMigration,
 ] as const;
