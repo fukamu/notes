@@ -7,6 +7,7 @@ import type {
   SessionId,
   VaultId,
 } from '@/lib/domain/identity';
+import type { OidcNonce, OidcState } from '@/lib/domain/oidc';
 import {
   pendingMutationDecoder,
   type PendingMutation,
@@ -23,6 +24,7 @@ type CardIsNotDevice = ExpectFalse<IsAssignable<CardId, DeviceId>>;
 type ConflictIsNotMutation = ExpectFalse<IsAssignable<ConflictId, MutationId>>;
 type AccountIsNotVault = ExpectFalse<IsAssignable<AccountId, VaultId>>;
 type SessionIsNotIdentity = ExpectFalse<IsAssignable<SessionId, IdentityId>>;
+type OidcStateIsNotNonce = ExpectFalse<IsAssignable<OidcState, OidcNonce>>;
 
 describe('type-level contracts', () => {
   it('keeps schema inference, brands, and mutation variants aligned', () => {
@@ -44,8 +46,9 @@ describe('type-level contracts', () => {
       ConflictIsNotMutation,
       AccountIsNotVault,
       SessionIsNotIdentity,
-    ] = [false, false, false, false, false];
-    expect(brandChecks).toEqual([false, false, false, false, false]);
+      OidcStateIsNotNonce,
+    ] = [false, false, false, false, false, false];
+    expect(brandChecks).toEqual([false, false, false, false, false, false]);
   });
 
   it('uses a never helper as the exhaustive branch sink', () => {

@@ -68,6 +68,15 @@ describe('trust-boundary architecture', () => {
       ['lib/client/notes-store.tsx', 'reconcileVisibleCardsAfterSync'],
       ['service-worker/sw.ts', 'workerCommandFromMessage(event.data)'],
       ['server/session-boundary.ts', 'sessionRecordDecoder.decode(candidate)'],
+      ['server/oidc-boundary.ts', 'oidcCallbackDecoder.decode(input.callback)'],
+      [
+        'server/oidc-boundary.ts',
+        'pendingOidcTransactionDecoder.decode(rawTransaction)',
+      ],
+      [
+        'server/oidc-boundary.ts',
+        'verifiedOidcClaimsDecoder.decode(rawClaims)',
+      ],
       ['lib/editor/card-link-attributes.ts', 'cardLinkAttributesDecoder'],
     ] as const;
     for (const [file, marker] of expectations) {
@@ -141,6 +150,22 @@ describe('pure-core dependency direction', () => {
     expect(domainIds).not.toMatch(/uuidv7|create(?:Card|Mutation|Device)Id/);
     expect(generator).toContain('v7 as uuidv7');
     expect(generator).toContain('parseCardId(uuidv7())');
+  });
+
+  it('keeps OIDC effects behind ports and derives link ownership from VaultContext', async () => {
+    const [core, boundary, webAdapter] = await Promise.all([
+      readFile('server/core/oidc.ts', 'utf8'),
+      readFile('server/oidc-boundary.ts', 'utf8'),
+      readFile('server/adapters/web-oidc.ts', 'utf8'),
+    ]);
+
+    expect(core).toContain('decideOidcIdentityResolution');
+    expect(core).toContain('establishOidcSession');
+    expect(core).not.toMatch(/crypto\.|fetch\(|process\.env|server\/adapters/);
+    expect(boundary).toContain('input.vaultContext');
+    expect(boundary).not.toMatch(/request\.(?:json|text|formData)\(/);
+    expect(webAdapter).toContain('crypto.subtle.digest');
+    expect(webAdapter).toContain("'SHA-256'");
   });
 });
 
