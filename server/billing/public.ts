@@ -1,15 +1,20 @@
 import {
   decodeOrThrow,
+  literalDecoder,
+  objectDecoder,
   refineDecoder,
   safeIntegerDecoder,
   stringDecoder,
   transformDecoder,
+  unionDecoder,
   type Decoder,
 } from '../../lib/codec/core';
-import type {
-  AccountId,
-  VaultContext,
-  VaultId,
+import {
+  accountIdDecoder,
+  vaultIdDecoder,
+  type AccountId,
+  type VaultContext,
+  type VaultId,
 } from '../../lib/domain/identity';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
@@ -17,6 +22,7 @@ declare const billingIdentifierBrand: unique symbol;
 declare const billingProviderBrand: unique symbol;
 declare const providerReferenceBrand: unique symbol;
 declare const billingVersionBrand: unique symbol;
+declare const subscriptionCancellationIdempotencyKeyBrand: unique symbol;
 
 type BillingIdentifier<TName extends string> = string & {
   readonly [billingIdentifierBrand]: TName;
@@ -45,6 +51,10 @@ export type ReconciliationSnapshotId =
 export type BillingVersion = number & {
   readonly [billingVersionBrand]: 'BillingVersion';
 };
+export type SubscriptionCancellationIdempotencyKey = string & {
+  readonly [subscriptionCancellationIdempotencyKeyBrand]: 'SubscriptionCancellationIdempotencyKey';
+};
+export type BillingOwnerScope = Pick<VaultContext, 'accountId' | 'vaultId'>;
 
 const uuidV7Decoder = refineDecoder(
   stringDecoder({ minLength: 36, maxLength: 36 }),
@@ -95,6 +105,15 @@ export const billingVersionDecoder: Decoder<BillingVersion> = transformDecoder(
   safeIntegerDecoder({ minimum: 1, maximum: 2_147_483_647 }),
   (value) => value as BillingVersion,
 );
+export const subscriptionCancellationIdempotencyKeyDecoder: Decoder<SubscriptionCancellationIdempotencyKey> =
+  transformDecoder(
+    refineDecoder(
+      stringDecoder({ minLength: 1, maxLength: 255 }),
+      (value) => /^[A-Za-z0-9][A-Za-z0-9:_-]*$/.test(value),
+      'expected a non-sensitive provider idempotency key',
+    ),
+    (value) => value as SubscriptionCancellationIdempotencyKey,
+  );
 
 export function parseBillingSubscriptionId(
   input: unknown,
@@ -165,6 +184,16 @@ export function parseReconciliationSnapshotId(
     reconciliationSnapshotIdDecoder,
     input,
     'ReconciliationSnapshotId',
+  );
+}
+
+export function parseSubscriptionCancellationIdempotencyKey(
+  input: unknown,
+): SubscriptionCancellationIdempotencyKey {
+  return decodeOrThrow(
+    subscriptionCancellationIdempotencyKeyDecoder,
+    input,
+    'SubscriptionCancellationIdempotencyKey',
   );
 }
 
@@ -310,6 +339,80 @@ export type ProviderFactResult =
     }
   | { readonly kind: 'duplicate'; readonly facts: BillingSubscriptionFacts }
   | Extract<BillingCommandResult, { kind: 'rejected' }>;
+
+export type SubscriptionCancellationCommand = BillingOwnerScope & {
+  readonly idempotencyKey: SubscriptionCancellationIdempotencyKey;
+  readonly requestedAt: number;
+};
+
+export type SubscriptionCancellationResult =
+  | {
+      readonly kind: 'confirmed';
+      readonly outcome: 'cancelled' | 'already-cancelled';
+      readonly confirmedAt: number;
+    }
+  | {
+      readonly kind: 'retryable-failure';
+      readonly reason:
+        | 'provider-unavailable'
+        | 'malformed-provider-response'
+        | 'provider-result-mismatch';
+    }
+  | {
+      readonly kind: 'terminal-failure';
+      readonly reason:
+        | 'invalid-command'
+        | 'owner-mismatch'
+        | 'subscription-not-found'
+        | 'provider-not-linked'
+        | 'provider-terminal';
+    };
+
+const timestampDecoder = safeIntegerDecoder({ minimum: 0 });
+
+export const subscriptionCancellationCommandDecoder: Decoder<SubscriptionCancellationCommand> =
+  objectDecoder({
+    accountId: accountIdDecoder,
+    vaultId: vaultIdDecoder,
+    idempotencyKey: subscriptionCancellationIdempotencyKeyDecoder,
+    requestedAt: timestampDecoder,
+  });
+
+export const subscriptionCancellationResultDecoder: Decoder<SubscriptionCancellationResult> =
+  unionDecoder(
+    objectDecoder({
+      kind: literalDecoder('confirmed'),
+      outcome: unionDecoder(
+        literalDecoder('cancelled'),
+        literalDecoder('already-cancelled'),
+      ),
+      confirmedAt: timestampDecoder,
+    }),
+    objectDecoder({
+      kind: literalDecoder('retryable-failure'),
+      reason: unionDecoder(
+        literalDecoder('provider-unavailable'),
+        literalDecoder('malformed-provider-response'),
+        literalDecoder('provider-result-mismatch'),
+      ),
+    }),
+    objectDecoder({
+      kind: literalDecoder('terminal-failure'),
+      reason: unionDecoder(
+        literalDecoder('invalid-command'),
+        literalDecoder('owner-mismatch'),
+        literalDecoder('subscription-not-found'),
+        literalDecoder('provider-not-linked'),
+        literalDecoder('provider-terminal'),
+      ),
+    }),
+  );
+
+export type SubscriptionCancellationPort = {
+  cancelSubscription(
+    command: SubscriptionCancellationCommand,
+  ): Promise<SubscriptionCancellationResult>;
+};
 
 export type BillingApi = {
   beginCheckout(
