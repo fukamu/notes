@@ -49,12 +49,13 @@ It treats non-boolean adapter results and thrown failures as unavailable. The
 in-memory fake adapter exercises persistence failure, concurrent revision,
 reload resume, and final clear without becoming a production fallback.
 
-Issue #147 now owns the typed BroadcastChannel/Web Locks protocol, peer
+Issue #147 owns the typed BroadcastChannel/Web Locks protocol, peer
 acknowledgement, single-owner coordination, and authenticated runtime-fencing
-composition. Issue #148 owns the browser progress adapter, IndexedDB,
-Service Worker, graph worker, navigation, and logout E2E. Until both are
-integrated, the current `LegacyNotesApp` remains the explicit local harness and
-does not require authentication or billing.
+composition. Issue #148 adds the browser progress adapter, IndexedDB, Service
+Worker, graph worker, navigation, and logout E2E described in
+[Browser logout purge](browser-logout-purge.md). The current `LegacyNotesApp`
+remains the explicit local harness and does not require authentication or
+billing.
 
 ## Verification and rollback
 

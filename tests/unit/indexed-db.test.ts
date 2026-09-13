@@ -19,6 +19,7 @@ import {
   createIndexedDbNotesRepository,
   deleteNotesDatabase,
   openNotesDatabase,
+  verifyNotesDatabaseDeleted,
 } from '@/lib/storage/indexed-db';
 import {
   encodeStoredConflict,
@@ -202,6 +203,25 @@ describe('local persistence', () => {
     unmanagedDatabase.close();
     await expect(deleteNotesDatabase(vaultScopeA)).resolves.toEqual({
       kind: 'deleted',
+    });
+    await expect(verifyNotesDatabaseDeleted(vaultScopeA)).resolves.toEqual({
+      kind: 'verified-deleted',
+    });
+  });
+
+  it('verifies database presence without recreating the deleted Vault', async () => {
+    await openNotesDatabase(vaultScopeA);
+    await expect(verifyNotesDatabaseDeleted(vaultScopeA)).resolves.toEqual({
+      kind: 'still-present',
+    });
+    await expect(deleteNotesDatabase(vaultScopeA)).resolves.toEqual({
+      kind: 'deleted',
+    });
+    await expect(verifyNotesDatabaseDeleted(vaultScopeA)).resolves.toEqual({
+      kind: 'verified-deleted',
+    });
+    await expect(verifyNotesDatabaseDeleted(vaultScopeA)).resolves.toEqual({
+      kind: 'verified-deleted',
     });
   });
 

@@ -8,6 +8,7 @@ import {
   type DeleteNotesDatabaseResult,
   type IndexedDbNotesScope,
   type NotesDatabaseName,
+  type VerifyNotesDatabaseDeletionResult,
 } from '@/lib/application/notes-database-scope';
 import {
   createPendingMutation,
@@ -163,6 +164,35 @@ export async function deleteNotesDatabase(
       },
     );
   });
+}
+
+export function notesDatabaseConnectionIsClosed(
+  scope: IndexedDbNotesScope,
+): boolean {
+  return !databasePromises.has(notesDatabaseName(scope));
+}
+
+/** Verifies absence without opening (and therefore recreating) the database. */
+export async function verifyNotesDatabaseDeleted(
+  scope: IndexedDbNotesScope,
+  factory: IDBFactory = indexedDB,
+): Promise<VerifyNotesDatabaseDeletionResult> {
+  const databasesValue: unknown = Reflect.get(factory, 'databases');
+  if (typeof databasesValue !== 'function') {
+    return { kind: 'unsupported-capability' };
+  }
+  try {
+    const input: unknown = await Reflect.apply(databasesValue, factory, []);
+    if (!Array.isArray(input)) return { kind: 'failed' };
+    const expectedName = notesDatabaseName(scope);
+    for (const value of input) {
+      if (!isDatabaseInfo(value)) return { kind: 'failed' };
+      if (value.name === expectedName) return { kind: 'still-present' };
+    }
+    return { kind: 'verified-deleted' };
+  } catch {
+    return { kind: 'failed' };
+  }
 }
 
 async function loadCards(scope: IndexedDbNotesScope): Promise<CardRecord[]> {
@@ -336,4 +366,12 @@ export async function clearNotesDatabaseForTests(
     default:
       return assertNever(result, 'Unsupported database deletion result');
   }
+}
+
+function isDatabaseInfo(value: unknown): value is { readonly name?: string } {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  if (!('name' in value)) return true;
+  return value.name === undefined || typeof value.name === 'string';
 }
