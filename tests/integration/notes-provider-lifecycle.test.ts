@@ -169,7 +169,8 @@ async function renderRuntime(
       children: createElement(StoreProbe),
     };
     root?.render(createElement(NotesProvider, providerProperties));
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    // Keep the Provider's zero-delay initial-sync callback inside React act.
+    await new Promise((resolve) => window.setTimeout(resolve, 25));
   });
 }
 
