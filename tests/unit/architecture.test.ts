@@ -623,6 +623,82 @@ describe('Entitlement module ownership', () => {
   });
 });
 
+function stripeBoundaryViolation(file: string, source: string): boolean {
+  if (file.startsWith('server/stripe/')) return false;
+  return /(?:(?:@\/)?server\/stripe|(?:\.\.?\/)+stripe)\/(?:core|fake|ports|service|webhook-signature)/.test(
+    source,
+  );
+}
+
+describe('Stripe provider adapter boundary', () => {
+  it('keeps provider internals inside the adapter module', async () => {
+    const files = (await Promise.all(roots.map(sourceFiles))).flat();
+    const violations: string[] = [];
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (stripeBoundaryViolation(file, source)) violations.push(file);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('detects private provider imports while allowing its public port', () => {
+    expect(
+      stripeBoundaryViolation(
+        'app/api/billing/webhook.ts',
+        "import { decodeStripeEventPlan } from '../../../server/stripe/core'",
+      ),
+    ).toBe(true);
+    expect(
+      stripeBoundaryViolation(
+        'app/api/billing/webhook.ts',
+        "import type { StripeBillingAdapter } from '../../../server/stripe/public'",
+      ),
+    ).toBe(false);
+  });
+
+  it('depends only on Billing public facts and keeps pure decisions free of effects', async () => {
+    const [core, publicContract, service, verifier, fake, testConfig] =
+      await Promise.all([
+        readFile('server/stripe/core.ts', 'utf8'),
+        readFile('server/stripe/public.ts', 'utf8'),
+        readFile('server/stripe/service.ts', 'utf8'),
+        readFile('server/stripe/webhook-signature.ts', 'utf8'),
+        readFile('server/stripe/fake.ts', 'utf8'),
+        readFile('vitest.config.ts', 'utf8'),
+      ]);
+    const stripeSources = [core, publicContract, service, verifier, fake].join(
+      '\n',
+    );
+    expect(stripeSources).not.toMatch(
+      /billing\/(?:core|d1-adapter|d1-schema|fake|migration|ports|records|service)/,
+    );
+    expect(core).toContain('planStripeCheckout');
+    expect(core).toContain('decodeStripeEventPlan');
+    expect(core).toContain('decodeStripeReconciliationSnapshot');
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise/,
+    );
+    expect(publicContract).toContain('type StripeBillingAdapter');
+    expect(publicContract).not.toMatch(/Stripe\.Event|Stripe\.Subscription/);
+    expect(service).toContain('billing.ingestVerifiedProviderFact');
+    expect(service).toContain('billing.reconcileVerifiedSnapshot');
+    expect(service).not.toMatch(/process\.env|fetch\(|\.prepare\(/);
+    expect(verifier).toContain('crypto.subtle.verify');
+    expect(verifier).toContain('input.rawBody');
+    expect(fake).not.toMatch(/process\.env|fetch\(|D1Database/);
+    expect(testConfig).toContain("'server/**/*.ts'");
+
+    const productionFiles = (await Promise.all(roots.map(sourceFiles))).flat();
+    const fakeConsumers: string[] = [];
+    for (const file of productionFiles) {
+      if (file === 'server/stripe/fake.ts') continue;
+      const source = await readFile(file, 'utf8');
+      if (/stripe\/fake/.test(source)) fakeConsumers.push(file);
+    }
+    expect(fakeConsumers).toEqual([]);
+  });
+});
+
 describe('application and presentation architecture', () => {
   it('uses one typed lifecycle as the initialization source of truth', async () => {
     const lifecycle = await readFile(
