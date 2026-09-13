@@ -64,7 +64,9 @@ describe('trust-boundary architecture', () => {
       ['lib/storage/indexed-db.ts', 'decodeStoredCard'],
       ['lib/storage/indexed-db.ts', 'decodeStoredMutation'],
       ['lib/storage/indexed-db.ts', 'decodeStoredConflict'],
+      ['lib/storage/indexed-db.ts', 'decodeStoredSyncV2Checkpoint'],
       ['lib/storage/indexed-db.ts', 'planSyncResponseApplication'],
+      ['lib/storage/indexed-db.ts', 'planSyncV2ReplicaCommit'],
       ['lib/client/notes-store.tsx', 'reconcileVisibleCardsAfterSync'],
       ['service-worker/sw.ts', 'workerCommandFromMessage(event.data)'],
       ['server/session-boundary.ts', 'sessionRecordDecoder.decode(candidate)'],
@@ -870,6 +872,22 @@ describe('application and presentation architecture', () => {
     expect(composition).toContain('createIndexedDbNotesRepository');
     expect(composition).toContain('createV1SyncTransport');
     expect(composition).toContain('browserOfflineApp');
+  });
+
+  it('keeps Sync v2 replica decisions pure and IndexedDB behind its scoped port', async () => {
+    const [core, adapter] = await Promise.all([
+      readFile('lib/sync/v2-replica.ts', 'utf8'),
+      readFile('lib/storage/indexed-db.ts', 'utf8'),
+    ]);
+
+    expect(core).toContain('type SyncV2ReplicaRepository');
+    expect(core).toContain('planSyncV2ReplicaCommit');
+    expect(core).not.toMatch(/indexedDB|IDBDatabase|IDBTransaction/);
+    expect(adapter).toContain('createIndexedDbSyncV2ReplicaRepository');
+    expect(adapter).toContain(
+      "['cards', 'mutations', 'conflicts', SYNC_V2_STORE_NAME]",
+    );
+    expect(adapter).toContain('encodeStoredSyncV2Checkpoint');
   });
 
   it('exposes only the documented deep application routes', async () => {
