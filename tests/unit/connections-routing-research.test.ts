@@ -22,6 +22,10 @@ const candidateFixture = {
   ] as [string, string][],
 };
 
+// The full fixture corpus is a correctness check. Performance evidence and
+// thresholds live in the dedicated benchmark suite, not Vitest's 5s default.
+const routingCorrectnessTimeoutMs = 20_000;
+
 describe('connections routing research functions', () => {
   it.each(connectionsBenchmarkFixtures)(
     'keeps every hard constraint on the production FREE default corpus: $name',
@@ -53,6 +57,7 @@ describe('connections routing research functions', () => {
         expect(quality.mutualReverseExcessLength).toBe(18);
       }
     },
+    routingCorrectnessTimeoutMs,
   );
 
   it('selects relative sides deterministically for horizontal, vertical, diagonal, and self edges', () => {
