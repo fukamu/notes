@@ -8,6 +8,7 @@ import type {
   PendingEncryptedWrite,
   PrivateObjectDescriptor,
 } from './core';
+import type { VaultPrivateObjectPurgeScope } from './public';
 import type { EnvelopeObject } from '../crypto/core';
 import type { CryptoObjectRevision } from '../crypto/core';
 
@@ -16,6 +17,10 @@ export type ImmutableObjectPutResult =
   | { readonly kind: 'already-present' }
   | { readonly kind: 'conflict' };
 
+export type PrivateObjectDeleteResult =
+  | { readonly kind: 'deleted' }
+  | { readonly kind: 'not-found' };
+
 export type PrivateObjectStoragePort = {
   get(objectKey: OpaqueObjectKey): Promise<Uint8Array | undefined>;
   putIfAbsent(input: {
@@ -23,7 +28,7 @@ export type PrivateObjectStoragePort = {
     readonly bytes: Uint8Array;
     readonly createdAt: number;
   }): Promise<ImmutableObjectPutResult>;
-  delete(objectKey: OpaqueObjectKey): Promise<void>;
+  delete(objectKey: OpaqueObjectKey): Promise<PrivateObjectDeleteResult>;
   list(): Promise<readonly PrivateObjectDescriptor[]>;
 };
 
@@ -88,4 +93,34 @@ export type EncryptedObjectRepositoryOpenResult =
 
 export type EncryptedObjectMetadataDirectory = {
   open(context: VaultContext): Promise<EncryptedObjectRepositoryOpenResult>;
+};
+
+export type DeleteOutboxMutationResult =
+  | { readonly kind: 'applied' }
+  | { readonly kind: 'replayed' }
+  | { readonly kind: 'conflict' };
+
+export type VaultObjectDeleteOutboxRepository = {
+  countPending(): Promise<number>;
+  listReady(input: {
+    readonly now: number;
+    readonly limit: number;
+  }): Promise<readonly DeleteOutboxEntry[]>;
+  confirmDelete(entry: DeleteOutboxEntry): Promise<DeleteOutboxMutationResult>;
+  rescheduleDelete(
+    entry: DeleteOutboxEntry,
+  ): Promise<DeleteOutboxMutationResult>;
+};
+
+export type VaultObjectDeleteOutboxOpenResult =
+  | {
+      readonly kind: 'opened';
+      readonly repository: VaultObjectDeleteOutboxRepository;
+    }
+  | { readonly kind: 'owner-mismatch' };
+
+export type VaultObjectDeleteOutboxDirectory = {
+  open(
+    scope: VaultPrivateObjectPurgeScope,
+  ): Promise<VaultObjectDeleteOutboxOpenResult>;
 };

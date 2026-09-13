@@ -1,6 +1,14 @@
 import { Miniflare } from 'miniflare';
 import { readFile } from 'node:fs/promises';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { handleSyncRequest } from '@/app/api/sync/handler';
 import { synchronize } from '@/db/d1-sync';
 import {
@@ -39,6 +47,12 @@ type TestDatabase = Awaited<ReturnType<Miniflare['getD1Database']>>;
 let miniflare: Miniflare;
 let database: TestDatabase;
 let migrationDatabase: TestDatabase;
+
+// These two composite cases intentionally run several Miniflare transactions
+// and resets. CI/coverage measured 5.3-5.8s, above Vitest's incidental 5s
+// default; 15s keeps a finite hang guard without changing any assertion.
+const compositeD1TestTimeoutMs = 15_000;
+vi.setConfig({ testTimeout: compositeD1TestTimeoutMs });
 
 function upsert(
   mutationId: MutationId,

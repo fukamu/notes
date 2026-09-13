@@ -27,6 +27,7 @@ export type FakePrivateObjectStorage = PrivateObjectStoragePort & {
     list: number;
   }>;
   failNext(operation: 'get' | 'put' | 'delete' | 'list'): void;
+  failDeleteForTest(objectKey: OpaqueObjectKey): void;
   replaceForTest(objectKey: OpaqueObjectKey, bytes: Uint8Array): void;
 };
 
@@ -45,6 +46,7 @@ export function createFakePrivateObjectStorage(
   );
   const counts = { get: 0, put: 0, delete: 0, list: 0 };
   const failures = { get: 0, put: 0, delete: 0, list: 0 };
+  const deleteFailures = new Set<OpaqueObjectKey>();
 
   function consumeFailure(operation: keyof typeof failures): void {
     if (failures[operation] === 0) return;
@@ -76,7 +78,12 @@ export function createFakePrivateObjectStorage(
     async delete(objectKey) {
       counts.delete += 1;
       consumeFailure('delete');
-      objects.delete(objectKey);
+      if (deleteFailures.delete(objectKey)) {
+        throw new FakePrivateObjectStorageError();
+      }
+      return objects.delete(objectKey)
+        ? { kind: 'deleted' }
+        : { kind: 'not-found' };
     },
     async list(): Promise<readonly PrivateObjectDescriptor[]> {
       counts.list += 1;
@@ -93,6 +100,9 @@ export function createFakePrivateObjectStorage(
     },
     failNext(operation) {
       failures[operation] += 1;
+    },
+    failDeleteForTest(objectKey) {
+      deleteFailures.add(objectKey);
     },
     replaceForTest(objectKey, bytes) {
       const existing = objects.get(objectKey);

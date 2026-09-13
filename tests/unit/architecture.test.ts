@@ -439,7 +439,7 @@ function accountDeletionBoundaryViolation(
     return false;
   }
   return (
-    /server\/account-deletion\/(?:cancel-subscription|core|d1-adapter|d1-schema|delete-vault-data|delete-vault-data-core|migration|records|revoke-sessions)/.test(
+    /server\/account-deletion\/(?:cancel-subscription|core|d1-adapter|d1-schema|delete-private-objects|delete-private-objects-core|delete-vault-data|delete-vault-data-core|migration|records|revoke-sessions)/.test(
       source,
     ) ||
     /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:account_deletion_operations|account_deletion_step_receipts)\b/i.test(
@@ -470,6 +470,8 @@ describe('Account deletion saga ownership', () => {
       cancelSubscription,
       deleteVaultDataCore,
       deleteVaultData,
+      deletePrivateObjectsCore,
+      deletePrivateObjects,
       testConfig,
     ] = await Promise.all([
       readFile('server/account-deletion/core.ts', 'utf8'),
@@ -481,6 +483,11 @@ describe('Account deletion saga ownership', () => {
       readFile('server/account-deletion/cancel-subscription.ts', 'utf8'),
       readFile('server/account-deletion/delete-vault-data-core.ts', 'utf8'),
       readFile('server/account-deletion/delete-vault-data.ts', 'utf8'),
+      readFile(
+        'server/account-deletion/delete-private-objects-core.ts',
+        'utf8',
+      ),
+      readFile('server/account-deletion/delete-private-objects.ts', 'utf8'),
       readFile('vitest.config.ts', 'utf8'),
     ]);
     expect(core).toContain('planAccountDeletionStepClaim');
@@ -514,6 +521,14 @@ describe('Account deletion saga ownership', () => {
     expect(deleteVaultData).toContain('../vault-content/public');
     expect(deleteVaultData).not.toMatch(
       /(?:encrypted-object|vault-content)\/(?:core|d1-adapter|d1-schema|migration|ports|records|service)|D1Database|\.prepare\(|Date\.now|R2|KMS|Stripe|fetch\(/,
+    );
+    expect(deletePrivateObjectsCore).toContain('planDeletePrivateObjectsStep');
+    expect(deletePrivateObjectsCore).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise|R2|KMS|Stripe/,
+    );
+    expect(deletePrivateObjects).toContain('../encrypted-object/public');
+    expect(deletePrivateObjects).not.toMatch(
+      /encrypted-object\/(?:core|d1-adapter|d1-schema|delete-vault-objects|migration|ports|records|service)|D1Database|\.prepare\(|Date\.now|R2|KMS|Stripe|fetch\(/,
     );
     expect(testConfig).toContain("'server/**/*.ts'");
   });
@@ -640,22 +655,36 @@ describe('Encrypted object metadata ownership', () => {
     ).toBe(true);
   });
 
-  it('exposes only the provider-neutral purge port and keeps D1 effects in its adapter', async () => {
-    const [core, publicContract, adapter] = await Promise.all([
+  it('exposes only provider-neutral purge ports and keeps D1/storage effects inside the owner module', async () => {
+    const [core, publicContract, adapter, deletionService] = await Promise.all([
       readFile('server/encrypted-object/core.ts', 'utf8'),
       readFile('server/encrypted-object/public.ts', 'utf8'),
       readFile('server/encrypted-object/d1-adapter.ts', 'utf8'),
+      readFile('server/encrypted-object/delete-vault-objects.ts', 'utf8'),
     ]);
     expect(core).toContain('evaluateEncryptedObjectMetadataPurge');
+    expect(core).toContain('evaluateVaultPrivateObjectPurge');
+    expect(core).toContain('planVaultPrivateObjectPurgeAttempt');
     expect(core).not.toMatch(
       /D1Database|\.prepare\(|Date\.now|fetch\(|Promise|R2Bucket|KMS/,
     );
     expect(publicContract).toContain('type EncryptedObjectMetadataPurgePort');
+    expect(publicContract).toContain('type VaultPrivateObjectPurgePort');
     expect(publicContract).not.toMatch(/D1Database|R2Bucket|Stripe|objectKey/);
     expect(adapter).toContain('D1EncryptedObjectMetadataPurge');
     expect(adapter).toContain('INSERT INTO vault_object_delete_outbox');
     expect(adapter).toContain('DELETE FROM vault_encrypted_objects');
     expect(adapter).toContain('DELETE FROM vault_encrypted_write_intents');
+    expect(adapter).toContain('D1VaultObjectDeleteOutboxDirectory');
+    expect(adapter).toContain('personal_vaults owner');
+    expect(deletionService).toContain('createVaultPrivateObjectPurge');
+    expect(deletionService).toContain(
+      'command.scope.accountId === input.scope.accountId',
+    );
+    expect(deletionService).toContain('input.objects.delete');
+    expect(deletionService).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|R2Bucket|fetch\(/,
+    );
   });
 });
 
