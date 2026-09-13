@@ -24,6 +24,12 @@ export type DeleteNotesDatabaseResult =
       readonly reason: 'request-error' | 'request-threw';
     };
 
+export type VerifyNotesDatabaseDeletionResult =
+  | { readonly kind: 'verified-deleted' }
+  | { readonly kind: 'still-present' }
+  | { readonly kind: 'unsupported-capability' }
+  | { readonly kind: 'failed' };
+
 export function vaultNotesDatabaseName(
   scope: Pick<VaultNotesScope, 'accountId' | 'vaultId'>,
 ): VaultNotesDatabaseName {

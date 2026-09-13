@@ -70,7 +70,8 @@ protocol, coordination
 ports/adapter, and authenticated fence while preserving #109, #113, #143, and
 #144. It changes no server schema or data.
 
-#148 must supply durable browser progress storage, retain the exclusive runtime
-lease across actual cache/worker/database deletion, verify deletion, clear the
-marker, update navigation/session composition, and prove that back/forward,
-another tab, workers, and reload cannot resurrect content.
+#148 supplies durable browser progress storage, retains the exclusive runtime
+lease across actual cache/worker/database deletion, verifies deletion, and
+clears the marker. Its browser E2E proves that back/forward, another tab,
+workers, and a later Vault login cannot resurrect the deleted content. See
+[Browser logout purge](browser-logout-purge.md).

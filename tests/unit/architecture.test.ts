@@ -315,6 +315,41 @@ describe('pure-core dependency direction', () => {
       expect(testConfig).toContain(`'${path}'`);
     }
   });
+
+  it('keeps logout purge sequencing provider-neutral and browser deletion effects in adapters', async () => {
+    const [runner, browser, progress, serviceWorker, graphWorker, testConfig] =
+      await Promise.all([
+        readFile('lib/application/logout-purge-runner.ts', 'utf8'),
+        readFile('lib/client/browser-logout-purge.ts', 'utf8'),
+        readFile('lib/client/browser-logout-purge-progress.ts', 'utf8'),
+        readFile('lib/client/browser-service-worker-purge.ts', 'utf8'),
+        readFile('lib/client/connections-layout-worker.ts', 'utf8'),
+        readFile('vitest.config.ts', 'utf8'),
+      ]);
+
+    expect(runner).toContain('createLogoutPurgeRunner');
+    expect(runner).toContain('applyLogoutPurgeEvent');
+    expect(runner).not.toMatch(
+      /indexedDB|caches\.|serviceWorker|new Worker|BroadcastChannel|navigator\.|window\.|document\./,
+    );
+    expect(browser).toContain('createBrowserLogoutPurgeService');
+    expect(browser).toContain('verifyNotesDatabaseDeleted');
+    expect(browser).not.toContain('fake-logout-purge-progress');
+    expect(progress).toContain('createBrowserLogoutPurgeProgressPort');
+    expect(progress).toContain('transaction');
+    expect(serviceWorker).toContain('LOGOUT_CACHE_PURGE_RESULT');
+    expect(graphWorker).toContain('terminateWorker');
+    expect(graphWorker).toContain('resetConnectionsLayoutWorker');
+    for (const path of [
+      'lib/application/logout-purge-runner.ts',
+      'lib/client/browser-logout-purge-progress.ts',
+      'lib/client/browser-logout-purge.ts',
+      'lib/client/browser-service-worker-purge.ts',
+      'lib/client/connections-layout-worker.ts',
+    ]) {
+      expect(testConfig).toContain(`'${path}'`);
+    }
+  });
 });
 
 describe('application and presentation architecture', () => {

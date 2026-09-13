@@ -25,8 +25,10 @@ application starts.
 cache in the `fukamu-notes-` namespace, verifies that none remain, and only then
 returns the typed `LOGOUT_CACHE_PURGE_RESULT/purged` acknowledgement. A delete
 error or acknowledgement timeout is a failure, not successful logout cleanup.
-Issue #148 will compose this port with vault-scoped IndexedDB and worker
-cleanup after #147 establishes multi-tab quiescence.
+Issue #148 composes this protocol with vault-scoped IndexedDB and worker
+cleanup after #147 establishes multi-tab quiescence. The page adapter accepts
+only the exact acknowledgement and lists CacheStorage again before allowing
+the pure purge state machine to advance.
 
 Activation of `fukamu-notes-static-v3` removes older FUKAMU cache versions but
 does not touch another application's caches. This is the forward migration from
