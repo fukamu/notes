@@ -274,6 +274,47 @@ describe('pure-core dependency direction', () => {
     expect(testConfig).toContain("'lib/application/logout-purge-progress.ts'");
     expect(testConfig).toContain("'lib/client/fake-logout-purge-progress.ts'");
   });
+
+  it('keeps logout coordination decisions pure and browser effects in one adapter', async () => {
+    const [core, runtime, browser, sessionApp, store, testConfig] =
+      await Promise.all([
+        readFile('lib/application/logout-coordination.ts', 'utf8'),
+        readFile('lib/application/logout-runtime-coordination.ts', 'utf8'),
+        readFile('lib/client/browser-logout-coordination.ts', 'utf8'),
+        readFile('components/session-notes-app.tsx', 'utf8'),
+        readFile('lib/client/notes-store.tsx', 'utf8'),
+        readFile('vitest.config.ts', 'utf8'),
+      ]);
+
+    expect(core).toContain('transitionLogoutPeerRuntime');
+    expect(core).toContain('logoutCoordinationMessageDecoder');
+    expect(core).not.toMatch(
+      /Promise|BroadcastChannel|navigator\.|indexedDB|caches\.|new Worker|window\.|document\.|crypto\.|Date\.now|Math\.random|console\./,
+    );
+    expect(core).not.toMatch(
+      /CardRecord|PendingMutation|ConflictRecord|SessionToken/,
+    );
+    expect(runtime).toContain('LogoutCoordinationPlatformPort');
+    expect(runtime).toContain('createLogoutRuntimeFence');
+    expect(runtime).not.toMatch(
+      /new BroadcastChannel|navigator\.locks|crypto\.randomUUID|window\.|document\./,
+    );
+    expect(browser).toContain('new BroadcastChannel(name)');
+    expect(browser).toContain('navigator.locks');
+    expect(browser).toContain('crypto.randomUUID()');
+    expect(sessionApp).toMatch(/runtimeFence\s*\.enter/);
+    expect(sessionApp).toContain("current.kind === 'entered'");
+    expect(sessionApp).toContain('runtimeFenced={runtimeFenced}');
+    expect(store).toContain('useLayoutEffect(() =>');
+    expect(store).toContain('stopNotesOperationLifecycle');
+    for (const path of [
+      'lib/application/logout-coordination.ts',
+      'lib/application/logout-runtime-coordination.ts',
+      'lib/client/browser-logout-coordination.ts',
+    ]) {
+      expect(testConfig).toContain(`'${path}'`);
+    }
+  });
 });
 
 describe('application and presentation architecture', () => {

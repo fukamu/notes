@@ -44,6 +44,11 @@ they can affect only the old Vault namespace and cannot be redirected to a new
 repository. Issue #144 owns crash-resumable progress decisions, #147 owns tab
 coordination, and #148 owns worker shutdown and deletion of that old namespace.
 
+The #147 runtime fence applies the lifecycle stop in a React layout effect
+before its passive effect releases the shared Vault runtime Web Lock. A purge
+owner can therefore acquire its exclusive runtime lock only after old Provider
+operations have been fenced. Browser data deletion remains #148.
+
 ## Compatibility, verification, and rollback
 
 The same active generation still accepts ordinary autosave and sync. Visible

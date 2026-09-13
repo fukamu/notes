@@ -41,18 +41,20 @@ must remain read-only.
 ## Client initialization gate
 
 `SessionNotesApp` returns the unauthenticated view before constructing runtime
-ports. For authenticated access it derives a vault scope, constructs the
-runtime behind a session/epoch React key, and checks that the returned
-repository/transport scope matches the VaultContext before mounting
-`NotesProvider`. This prevents IndexedDB, sync, or Service Worker preparation
-from starting for anonymous access.
+ports. For authenticated access it derives a vault scope, enters the injected
+logout runtime fence, then constructs the runtime behind a session/epoch React
+key. It checks that the returned repository/transport scope matches the
+VaultContext before mounting `NotesProvider`. This prevents IndexedDB, sync, or
+Service Worker preparation from starting for anonymous or purge-blocked access.
 
 The current route deliberately mounts `LegacyNotesApp` as an explicit local
 compatibility harness. A vault-scoped IndexedDB repository now exists, but it
 is not mounted in the route. The Provider now rejects stale load/save/sync
-completion by trusted scope and operation epoch; crash-resumable logout purge
-decisions now exist in #144, while multi-tab and browser deletion composition
-remain in #147 and #148. This preserves current local development and E2E
+completion by trusted scope and operation epoch. The authenticated composition
+requires an injected logout runtime fence, stops operations in the layout
+phase, and uses the typed BroadcastChannel/Web Locks coordination from #147.
+Actual browser deletion remains in #148. This preserves current local
+development and E2E
 behavior without Google, email, billing, or production configuration; it is
 not the production public-service composition. See
 [Notes operation lifecycle boundary](notes-operation-lifecycle.md).
