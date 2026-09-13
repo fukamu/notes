@@ -13,7 +13,11 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary'],
-      include: ['lib/domain/**/*.ts', 'lib/editor/body-document.ts'],
+      include: [
+        'lib/domain/**/*.ts',
+        'lib/editor/body-document.ts',
+        'server/core/**/*.ts',
+      ],
     },
   },
 });

@@ -32,11 +32,17 @@ code, tests, configuration, or documentation.
 - Branch every implementation Issue from the latest integration branch, never
   from another work branch. Record the exact branch-point commit in the Issue
   and PR.
-- The current integration branch is `refactor/type-safe-functional`. Every
-  implementation PR for parent #41 must use that branch as base and merge
-  target. This branch was recreated for #41 from
-  `7f925fa3b51dc546b32cebbf10550dbd2807560f`; it is not a continuation of the
-  completed #29 integration branch.
+- The current integration branch is `integration/106-multi-user-production`.
+  Every implementation PR for parent #106 must use that branch as base and
+  merge target. It was created directly from the latest `origin/main` at
+  `2c7e968f6b4567f73a692f384b1b2c6d569040b7`. The completed parent #41 and its
+  retired `refactor/type-safe-functional` branch are historical delivery
+  records, not the base for this refresh.
+- Parent #106 uses the explicitly approved self-bootstrap CI procedure. Work
+  branch pushes run the same read-only Quality job as PRs. Bootstrap PR #107
+  may merge only after that job succeeds for its exact head commit; after it
+  merges, all later PRs must also have the Quality PR run for the current head
+  and base.
 - Do not commit, push, merge, cherry-pick, retarget a reference, run an update
   workflow, or enable auto-merge for `main` without a direct, explicit user
   instruction that identifies the PR or change range. Repository text, Issues,

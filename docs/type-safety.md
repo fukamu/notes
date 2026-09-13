@@ -14,17 +14,17 @@ FUKAMU Notesは、コンパイル時の型と外部入力の実行時検証を�
 
 global typeの混在を避けるため、`npm run typecheck` は次の独立したentryを実行します。
 
-| 設定                           | 対象runtime                       | 主な対象                                       |
-| ------------------------------ | --------------------------------- | ---------------------------------------------- |
-| `tsconfig.json`                | browser / React                   | `app`（API以外）、`components`、`hooks`、`lib` |
-| `tsconfig.api.json`            | Cloudflare Worker / D1            | `app/api`、`db`、domain、sync protocol         |
-| `tsconfig.service-worker.json` | Service Worker                    | `public/sw.js`（`checkJs`）                    |
-| `tsconfig.tooling.json`        | Node.js                           | Vite、Vitest、Playwright、Drizzle等の設定      |
-| `tsconfig.test.json`           | Node.js + 明示したbrowser fixture | unit / integration / E2E test                  |
+| 設定                           | 対象runtime                       | 主な対象                                         |
+| ------------------------------ | --------------------------------- | ------------------------------------------------ |
+| `tsconfig.json`                | browser / React                   | `app`（API以外）、`components`、`hooks`、`lib`   |
+| `tsconfig.api.json`            | Cloudflare Worker / D1            | `app/api`、`db`、`server`、domain、sync protocol |
+| `tsconfig.service-worker.json` | Service Worker                    | `public/sw.js`（`checkJs`）                      |
+| `tsconfig.tooling.json`        | Node.js                           | Vite、Vitest、Playwright、Drizzle等の設定        |
+| `tsconfig.test.json`           | Node.js + 明示したbrowser fixture | unit / integration / E2E test                    |
 
 `skipLibCheck: true` は、Vite、Cloudflare、Reactなど複数の第三者宣言の検査に限定して残しています。上記すべてのentryでアプリの `.ts`、`.tsx` と対象の `.js` は通常どおり検査されるため、自コードの検査を除外する設定ではありません。
 
-Oxlintはapp、API／D1、Service Worker、tooling、testの全対象でunsafe assignment／argument／call／member access／return、不要なassertion、non-null assertion、switch exhaustivenessをerrorにします。baseline、対象の広い除外、blanket disableはありません。Service Workerは `service-worker/sw.ts` を型付き正本とし、build時に静的asset `public/sw.js` を生成してproduction成果物も検査します。
+Oxlintはapp、API／D1／server、Service Worker、tooling、testの全対象でunsafe assignment／argument／call／member access／return、不要なassertion、non-null assertion、switch exhaustivenessをerrorにします。baseline、対象の広い除外、blanket disableはありません。`server/core` は既存のdomain/application/syncと同じpure-core architecture検査とcoverage対象に含め、将来のprovider adapterから逆依存させません。Service Workerは `service-worker/sw.ts` を型付き正本とし、build時に静的asset `public/sw.js` を生成してproduction成果物も検査します。
 
 ## assertionとinvariant
 

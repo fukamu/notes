@@ -30,4 +30,19 @@ describe('runtime typecheck configuration', () => {
       expect(source, config).toContain('"extends": "./tsconfig.base.json"');
     }
   });
+
+  it('includes the server boundary in typecheck, lint, architecture and coverage', async () => {
+    const [apiConfig, packageSource, architecture, vitest] = await Promise.all([
+      readFile('tsconfig.api.json', 'utf8'),
+      readFile('package.json', 'utf8'),
+      readFile('tests/unit/architecture.test.ts', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+    ]);
+
+    expect(apiConfig).toContain('"server/**/*.ts"');
+    expect(packageSource).toContain('app/api db server');
+    expect(architecture).toContain("'server'");
+    expect(architecture).toContain("'server/core'");
+    expect(vitest).toContain("'server/core/**/*.ts'");
+  });
 });

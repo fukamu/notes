@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const roots = ['app', 'components', 'db', 'lib', 'service-worker'];
+const roots = ['app', 'components', 'db', 'lib', 'server', 'service-worker'];
 
 async function sourceFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -98,12 +98,17 @@ describe('trust-boundary architecture', () => {
 });
 
 describe('pure-core dependency direction', () => {
-  const coreRoots = ['lib/domain', 'lib/sync', 'lib/application'];
+  const coreRoots = [
+    'lib/domain',
+    'lib/sync',
+    'lib/application',
+    'server/core',
+  ];
 
   it('keeps core imports independent of concrete effect adapters', async () => {
     const files = (await Promise.all(coreRoots.map(sourceFiles))).flat();
     const concreteEffectDependency =
-      /from ['"]@\/(?:app|components|db|service-worker)\/|from ['"]@\/lib\/(?:client|storage)\//;
+      /from ['"]@\/(?:app|components|db|service-worker)\/|from ['"]@\/lib\/(?:client|storage)\/|from ['"]@\/server\/adapters\//;
     const violations: string[] = [];
 
     for (const file of files) {
