@@ -5,12 +5,19 @@ import {
   LEGACY_NOTES_SCOPE,
   type IdGenerator,
 } from '@/lib/application/notes-runtime';
-import { isUuidV7 } from '@/lib/domain/id';
+import type { VaultNotesScope } from '@/lib/application/notes-access';
+import {
+  notesDatabaseName,
+  type IndexedDbNotesScope,
+} from '@/lib/application/notes-database-scope';
+import { isUuidV7, parseDeviceId, parseMutationId } from '@/lib/domain/id';
 import type { CardRecord } from '@/lib/domain/types';
 import { invariant } from '@/lib/shared/invariant';
 import {
   clearNotesDatabaseForTests,
+  closeNotesDatabase,
   createIndexedDbNotesRepository,
+  deleteNotesDatabase,
   openNotesDatabase,
 } from '@/lib/storage/indexed-db';
 import {
@@ -21,6 +28,30 @@ import {
   compatibilityIds,
   createCompatibilityFixture,
 } from '@/tests/fixtures/compatibility';
+import { sessionFixtureIds } from '@/tests/fixtures/session';
+
+const vaultScopeA: VaultNotesScope = {
+  kind: 'vault',
+  accountId: sessionFixtureIds.accountId,
+  vaultId: sessionFixtureIds.vaultId,
+  sessionId: sessionFixtureIds.sessionId,
+  sessionEpoch: sessionFixtureIds.epoch,
+};
+
+const vaultScopeB: VaultNotesScope = {
+  kind: 'vault',
+  accountId: sessionFixtureIds.otherAccountId,
+  vaultId: sessionFixtureIds.otherVaultId,
+  sessionId: sessionFixtureIds.nextSessionId,
+  sessionEpoch: sessionFixtureIds.nextEpoch,
+};
+
+const vaultIdGeneratorB: IdGenerator = {
+  createCardId: () => compatibilityIds.cardB,
+  createMutationId: () =>
+    parseMutationId('01991f20-61d2-7000-8000-000000000015'),
+  createDeviceId: () => parseDeviceId('01991f20-61d2-7000-8000-000000000014'),
+};
 
 const {
   applySyncResponse,
@@ -43,15 +74,22 @@ async function transactionDone(transaction: IDBTransaction): Promise<void> {
   });
 }
 
-async function putRaw(storeName: string, value: unknown): Promise<void> {
-  const database = await openNotesDatabase(LEGACY_NOTES_SCOPE);
+async function putRaw(
+  storeName: string,
+  value: unknown,
+  scope: IndexedDbNotesScope = LEGACY_NOTES_SCOPE,
+): Promise<void> {
+  const database = await openNotesDatabase(scope);
   const transaction = database.transaction(storeName, 'readwrite');
   transaction.objectStore(storeName).put(value);
   await transactionDone(transaction);
 }
 
-async function getRaw(storeName: string): Promise<unknown[]> {
-  const database = await openNotesDatabase(LEGACY_NOTES_SCOPE);
+async function getRaw(
+  storeName: string,
+  scope: IndexedDbNotesScope = LEGACY_NOTES_SCOPE,
+): Promise<unknown[]> {
+  const database = await openNotesDatabase(scope);
   const transaction = database.transaction(storeName, 'readonly');
   const request = transaction.objectStore(storeName).getAll();
   const result = await new Promise<unknown[]>((resolve, reject) => {
@@ -67,10 +105,129 @@ async function getRaw(storeName: string): Promise<unknown[]> {
 }
 
 afterEach(async () => {
-  await clearNotesDatabaseForTests(LEGACY_NOTES_SCOPE);
+  vi.restoreAllMocks();
+  await Promise.all([
+    clearNotesDatabaseForTests(LEGACY_NOTES_SCOPE),
+    clearNotesDatabaseForTests(vaultScopeA),
+    clearNotesDatabaseForTests(vaultScopeB),
+  ]);
 });
 
 describe('local persistence', () => {
+  it('fully separates identical CardIds across two Vault repositories', async () => {
+    const fixture = createCompatibilityFixture();
+    const original = fixture.cards[0];
+    invariant(original, 'Compatibility card is missing');
+    const repositoryA = createIndexedDbNotesRepository(
+      vaultScopeA,
+      browserIdGenerator,
+    );
+    const repositoryB = createIndexedDbNotesRepository(
+      vaultScopeB,
+      vaultIdGeneratorB,
+    );
+    const cardA = { ...original, title: 'Vault A content' };
+    const cardB = { ...original, title: 'Vault B content' };
+
+    await Promise.all([
+      repositoryA.persistCardAndMutation(cardA),
+      repositoryB.persistCardAndMutation(cardB),
+    ]);
+    await putRaw(
+      'conflicts',
+      encodeStoredConflict(fixture.conflict),
+      vaultScopeA,
+    );
+
+    await expect(repositoryA.loadCards()).resolves.toEqual([cardA]);
+    await expect(repositoryB.loadCards()).resolves.toEqual([cardB]);
+    await expect(repositoryA.loadPendingMutations()).resolves.toMatchObject([
+      { cardId: original.id, title: 'Vault A content' },
+    ]);
+    await expect(repositoryB.loadPendingMutations()).resolves.toMatchObject([
+      { cardId: original.id, title: 'Vault B content' },
+    ]);
+    await expect(repositoryA.loadConflicts()).resolves.toEqual([
+      fixture.conflict,
+    ]);
+    await expect(repositoryB.loadConflicts()).resolves.toEqual([]);
+    await expect(repositoryA.loadOrCreateDeviceId()).resolves.not.toBe(
+      vaultIdGeneratorB.createDeviceId(),
+    );
+    await expect(repositoryB.loadOrCreateDeviceId()).resolves.toBe(
+      vaultIdGeneratorB.createDeviceId(),
+    );
+  });
+
+  it('reuses connections per database and can close and reopen one Vault', async () => {
+    const first = await openNotesDatabase(vaultScopeA);
+    const sameVault = await openNotesDatabase({
+      ...vaultScopeA,
+      sessionId: sessionFixtureIds.nextSessionId,
+      sessionEpoch: sessionFixtureIds.nextEpoch,
+    });
+    const otherVault = await openNotesDatabase(vaultScopeB);
+
+    expect(sameVault).toBe(first);
+    expect(otherVault).not.toBe(first);
+    await expect(closeNotesDatabase(vaultScopeA)).resolves.toEqual({
+      kind: 'closed',
+    });
+    await expect(closeNotesDatabase(vaultScopeA)).resolves.toEqual({
+      kind: 'not-open',
+    });
+    await expect(openNotesDatabase(vaultScopeA)).resolves.not.toBe(first);
+  });
+
+  it('reports blocked deletion instead of treating it as success', async () => {
+    const unmanagedRequest = indexedDB.open(notesDatabaseName(vaultScopeA), 1);
+    const unmanagedDatabase = await new Promise<IDBDatabase>(
+      (resolve, reject) => {
+        unmanagedRequest.addEventListener(
+          'success',
+          () => resolve(unmanagedRequest.result),
+          { once: true },
+        );
+        unmanagedRequest.addEventListener(
+          'error',
+          () => reject(unmanagedRequest.error),
+          { once: true },
+        );
+      },
+    );
+
+    await expect(deleteNotesDatabase(vaultScopeA)).resolves.toEqual({
+      kind: 'blocked',
+    });
+    unmanagedDatabase.close();
+    await expect(deleteNotesDatabase(vaultScopeA)).resolves.toEqual({
+      kind: 'deleted',
+    });
+  });
+
+  it('normalizes a synchronous IndexedDB deletion failure', async () => {
+    vi.spyOn(indexedDB, 'deleteDatabase').mockImplementation(() => {
+      throw new Error('injected delete failure');
+    });
+    await expect(deleteNotesDatabase(vaultScopeA)).resolves.toEqual({
+      kind: 'failed',
+      reason: 'request-threw',
+    });
+  });
+
+  it('does not retain a failed synchronous open in the connection registry', async () => {
+    vi.spyOn(indexedDB, 'open').mockImplementationOnce(() => {
+      throw new Error('injected open failure');
+    });
+
+    await expect(openNotesDatabase(vaultScopeA)).rejects.toThrow(
+      'injected open failure',
+    );
+    await expect(openNotesDatabase(vaultScopeA)).resolves.toBeInstanceOf(
+      IDBDatabase,
+    );
+  });
+
   it('uses injected identifiers while keeping the fixed legacy database', async () => {
     const fixture = createCompatibilityFixture();
     const idGenerator: IdGenerator = {

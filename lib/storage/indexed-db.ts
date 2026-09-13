@@ -1,8 +1,14 @@
 import type {
   IdGenerator,
-  LegacyNotesScope,
   NotesRepository,
 } from '@/lib/application/notes-runtime';
+import {
+  notesDatabaseName,
+  type CloseNotesDatabaseResult,
+  type DeleteNotesDatabaseResult,
+  type IndexedDbNotesScope,
+  type NotesDatabaseName,
+} from '@/lib/application/notes-database-scope';
 import {
   createPendingMutation,
   type PendingMutationMode,
@@ -29,7 +35,7 @@ import {
 
 const DATABASE_VERSION = 1;
 
-let databasePromise: Promise<IDBDatabase> | undefined;
+const databasePromises = new Map<NotesDatabaseName, Promise<IDBDatabase>>();
 
 function requestResult<T>(request: IDBRequest<T>): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -55,11 +61,20 @@ function transactionComplete(transaction: IDBTransaction): Promise<void> {
 }
 
 export function openNotesDatabase(
-  scope: LegacyNotesScope,
+  scope: IndexedDbNotesScope,
 ): Promise<IDBDatabase> {
-  if (databasePromise) return databasePromise;
-  databasePromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(scope.databaseName, DATABASE_VERSION);
+  const databaseName = notesDatabaseName(scope);
+  const existing = databasePromises.get(databaseName);
+  if (existing) return existing;
+
+  let request: IDBOpenDBRequest;
+  try {
+    request = indexedDB.open(databaseName, DATABASE_VERSION);
+  } catch (error) {
+    return Promise.reject(error);
+  }
+
+  const opening = new Promise<IDBDatabase>((resolve, reject) => {
     request.addEventListener('upgradeneeded', () => {
       const database = request.result;
       if (!database.objectStoreNames.contains('cards')) {
@@ -75,17 +90,82 @@ export function openNotesDatabase(
         database.createObjectStore('meta', { keyPath: 'key' });
       }
     });
-    request.addEventListener('success', () => resolve(request.result), {
-      once: true,
+    request.addEventListener('success', () => {
+      const database = request.result;
+      database.addEventListener(
+        'versionchange',
+        () => {
+          database.close();
+          if (databasePromises.get(databaseName) === opening) {
+            databasePromises.delete(databaseName);
+          }
+        },
+        { once: true },
+      );
+      resolve(database);
     });
-    request.addEventListener('error', () => reject(request.error), {
-      once: true,
+    request.addEventListener('error', () => {
+      if (databasePromises.get(databaseName) === opening) {
+        databasePromises.delete(databaseName);
+      }
+      reject(request.error);
     });
   });
-  return databasePromise;
+  databasePromises.set(databaseName, opening);
+  return opening;
 }
 
-async function loadCards(scope: LegacyNotesScope): Promise<CardRecord[]> {
+export async function closeNotesDatabase(
+  scope: IndexedDbNotesScope,
+): Promise<CloseNotesDatabaseResult> {
+  const databaseName = notesDatabaseName(scope);
+  const opening = databasePromises.get(databaseName);
+  if (!opening) return { kind: 'not-open' };
+
+  try {
+    const database = await opening;
+    if (databasePromises.get(databaseName) === opening) {
+      databasePromises.delete(databaseName);
+    }
+    database.close();
+    return { kind: 'closed' };
+  } catch {
+    if (databasePromises.get(databaseName) === opening) {
+      databasePromises.delete(databaseName);
+    }
+    return { kind: 'not-open' };
+  }
+}
+
+export async function deleteNotesDatabase(
+  scope: IndexedDbNotesScope,
+): Promise<DeleteNotesDatabaseResult> {
+  await closeNotesDatabase(scope);
+  let request: IDBOpenDBRequest;
+  try {
+    request = indexedDB.deleteDatabase(notesDatabaseName(scope));
+  } catch {
+    return { kind: 'failed', reason: 'request-threw' };
+  }
+
+  return new Promise((resolve) => {
+    request.addEventListener('success', () => resolve({ kind: 'deleted' }), {
+      once: true,
+    });
+    request.addEventListener('blocked', () => resolve({ kind: 'blocked' }), {
+      once: true,
+    });
+    request.addEventListener(
+      'error',
+      () => resolve({ kind: 'failed', reason: 'request-error' }),
+      {
+        once: true,
+      },
+    );
+  });
+}
+
+async function loadCards(scope: IndexedDbNotesScope): Promise<CardRecord[]> {
   const database = await openNotesDatabase(scope);
   const transaction = database.transaction('cards', 'readonly');
   return decodeStoredCards(
@@ -94,7 +174,7 @@ async function loadCards(scope: LegacyNotesScope): Promise<CardRecord[]> {
 }
 
 async function loadPendingMutations(
-  scope: LegacyNotesScope,
+  scope: IndexedDbNotesScope,
 ): Promise<PendingMutation[]> {
   const database = await openNotesDatabase(scope);
   const transaction = database.transaction('mutations', 'readonly');
@@ -104,7 +184,7 @@ async function loadPendingMutations(
 }
 
 async function loadConflicts(
-  scope: LegacyNotesScope,
+  scope: IndexedDbNotesScope,
 ): Promise<ConflictRecord[]> {
   const database = await openNotesDatabase(scope);
   const transaction = database.transaction('conflicts', 'readonly');
@@ -114,7 +194,7 @@ async function loadConflicts(
 }
 
 async function loadOrCreateDeviceId(
-  scope: LegacyNotesScope,
+  scope: IndexedDbNotesScope,
   idGenerator: IdGenerator,
 ): Promise<DeviceId> {
   const database = await openNotesDatabase(scope);
@@ -129,7 +209,7 @@ async function loadOrCreateDeviceId(
 }
 
 async function persistCardAndMutation(
-  scope: LegacyNotesScope,
+  scope: IndexedDbNotesScope,
   idGenerator: IdGenerator,
   card: CardRecord,
   options: PendingMutationMode = {
@@ -154,7 +234,7 @@ async function persistCardAndMutation(
 }
 
 async function applySyncResponse(
-  scope: LegacyNotesScope,
+  scope: IndexedDbNotesScope,
   input: unknown,
   sentMutations: PendingMutation[],
 ): Promise<{ cards: CardRecord[]; conflicts: ConflictRecord[] }> {
@@ -226,10 +306,9 @@ async function applySyncResponse(
   }
 }
 
-export function createIndexedDbNotesRepository(
-  scope: LegacyNotesScope,
-  idGenerator: IdGenerator,
-): NotesRepository<LegacyNotesScope> {
+export function createIndexedDbNotesRepository<
+  TScope extends IndexedDbNotesScope,
+>(scope: TScope, idGenerator: IdGenerator): NotesRepository<TScope> {
   return {
     scope,
     loadCards: () => loadCards(scope),
@@ -244,19 +323,17 @@ export function createIndexedDbNotesRepository(
 }
 
 export async function clearNotesDatabaseForTests(
-  scope: LegacyNotesScope,
+  scope: IndexedDbNotesScope,
 ): Promise<void> {
-  if (databasePromise) {
-    const database = await databasePromise;
-    database.close();
+  const result = await deleteNotesDatabase(scope);
+  switch (result.kind) {
+    case 'deleted':
+      return;
+    case 'blocked':
+      throw new Error('Test database deletion was blocked');
+    case 'failed':
+      throw new Error(`Test database deletion failed: ${result.reason}`);
+    default:
+      return assertNever(result, 'Unsupported database deletion result');
   }
-  databasePromise = undefined;
-  await new Promise<void>((resolve, reject) => {
-    const request = indexedDB.deleteDatabase(scope.databaseName);
-    request.addEventListener('success', () => resolve(), { once: true });
-    request.addEventListener('blocked', () => resolve(), { once: true });
-    request.addEventListener('error', () => reject(request.error), {
-      once: true,
-    });
-  });
 }

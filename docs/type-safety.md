@@ -92,6 +92,7 @@ Cloudflare bindingは `getD1Binding(unknown)` だけが `DB` をD1互換object�
 | Cloudflare environment        | DB bindingをvalidated accessorで取得し、Sites／型／Wranglerを照合     | Phase 3 (#12) |
 | public URL environment        | absolute HTTP(S) URLとしてparse、未設定時の既定値を明文化             | Phase 3 (#12) |
 | Email OTP challenge／adapter  | branded ID・8桁code・digest・CAS state・rate keyをunknownからdecode   | Issue #112    |
+| Vault別IndexedDB namespace    | session由来scopeから純粋導出し、DB別connection・削除結果を分離        | Issue #113    |
 
 Phase 1〜3でcompiler、codec／brand、client／IndexedDB、API／D1／environmentと全面unsafe ruleを完成させました。親 #9 の要件1–30の証跡は `docs/type-safety-audit.md` に記録します。
 
@@ -123,6 +124,8 @@ Phase 1〜3でcompiler、codec／brand、client／IndexedDB、API／D1／environ
 業務判断、変換、状態遷移はtyped pure coreへ置き、React、clock、UUID、network、IndexedDB、D1、DOM等はadapterから検証・生成済み値を渡します。core→concrete effectの逆依存はarchitecture testで機械検査し、意味論的な純粋性と入力非変更はunit test/reviewで補います。
 
 client data pathは `lib/application/notes-runtime.ts` の `NotesRepository`、`SyncTransport`、`Clock`、`IdGenerator`、connectivity、offline preparation portを境界とします。`lib/client/notes-store.tsx` はこれらを注入され、IndexedDB、fetch、Date、UUID、navigator、Service Workerのconcrete実装をimportしません。現行互換adapterはcomposition rootで明示的な `LEGACY_NOTES_SCOPE` に束ねます。このscopeは既存DB名とv1 endpointだけを固定し、`CardRecord` や本文へAccount/Vault情報を追加しません。
+
+認証済みlocal storageは `VaultNotesScope` のbranded AccountId/VaultIdからpure functionでversioned database名を導出し、scope-bound `NotesRepository`を構築します。IndexedDB adapterはdatabase名ごとのconnection registryを持ち、異なるVaultでpromiseやconnectionを共有しません。session rotationでは同じoffline replicaを使うためSessionId/EpochはDB名へ含めません。close/deleteは対象scopeだけに作用し、`deleteDatabase`のblockedとfailureをtyped resultとしてsuccessから分離します。現在のrouteは引き続きlegacy compositionであり、#143のstale effect guardと#144のmulti-tab logout purgeが完了する前にproduction loginへ接続しません。詳細は [Vault-scoped IndexedDB boundary](vault-indexeddb.md) を参照してください。
 
 Service Workerのcache policyはmethod、origin、query、request mode、明示pathname allowlistだけから決まるpure predicateです。CacheStorageへ入るのは非個人化app shellとmanifest/favicon、`/_next/static/` build assetだけで、API、auth/OAuth、billing/account、query付きまたはallowlist外requestはnetwork-onlyです。canonical deep navigationは個別HTMLを保存せず共通shellへfallbackします。logout purge commandは外部messageをdecodeし、全FUKAMU cacheが消えたことを再確認してからだけtyped ackを返します。
 

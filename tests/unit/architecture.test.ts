@@ -186,6 +186,27 @@ describe('pure-core dependency direction', () => {
     expect(boundary).not.toMatch(/request\.(?:json|text|formData)\(/);
     expect(fakeAdapter).not.toMatch(/console\.|fetch\(/);
   });
+
+  it('derives Vault database namespaces in pure core and confines IndexedDB to its adapter', async () => {
+    const [scope, storage, records, testConfig] = await Promise.all([
+      readFile('lib/application/notes-database-scope.ts', 'utf8'),
+      readFile('lib/storage/indexed-db.ts', 'utf8'),
+      readFile('lib/domain/types.ts', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+    ]);
+
+    expect(scope).toContain('vaultNotesDatabaseName');
+    expect(scope).toContain('DeleteNotesDatabaseResult');
+    expect(scope).toContain("case 'legacy':");
+    expect(scope).toContain("case 'vault':");
+    expect(scope).toContain("{ readonly kind: 'blocked' }");
+    expect(scope).not.toMatch(/indexedDB|IDBDatabase|window\.|sessionStorage/);
+    expect(storage).toContain('new Map<NotesDatabaseName');
+    expect(storage).toContain('DeleteNotesDatabaseResult');
+    expect(storage).not.toContain('let databasePromise');
+    expect(records).not.toMatch(/accountId|vaultId/);
+    expect(testConfig).toContain("'lib/application/notes-database-scope.ts'");
+  });
 });
 
 describe('application and presentation architecture', () => {

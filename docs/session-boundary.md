@@ -48,9 +48,11 @@ repository/transport scope matches the VaultContext before mounting
 from starting for anonymous access.
 
 The current route deliberately mounts `LegacyNotesApp` as an explicit local
-compatibility harness until the login UI and vault-scoped adapters exist. It
-preserves current local development and E2E behavior; it is not the production
-public-service composition.
+compatibility harness. A vault-scoped IndexedDB repository now exists, but it
+is not mounted until the stale-operation guard and crash-resumable logout purge
+are integrated. This preserves current local development and E2E behavior
+without Google, email, billing, or production configuration; it is not the
+production public-service composition.
 
 ## Migration and rollback
 
