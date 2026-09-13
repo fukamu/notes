@@ -1,13 +1,22 @@
-import { decodeOrThrow } from '../../lib/codec/core';
+import {
+  arrayDecoder,
+  decodeOrThrow,
+  objectDecoder,
+  safeIntegerDecoder,
+} from '../../lib/codec/core';
 import type { AccountId, VaultContext } from '../../lib/domain/identity';
 import type { D1DatabaseBinding } from '../../db/d1-types';
 import type { ActiveSession, RevokedSession } from '../core/session';
 import {
+  evaluateAccountSessionRevocation,
+  planAccountSessionRevocation,
   planIdentityLink,
   planPersonalAccountProvision,
   planSessionRevocation,
   planSessionStorage,
   type PersonalAccountProvision,
+  type AccountSessionRevocationCommand,
+  type AccountSessionRevocationResult,
 } from './core';
 import type {
   ControlPlaneCommandResult,
@@ -25,6 +34,26 @@ import {
   type SessionTokenHash,
   type StoredSessionRecord,
 } from './records';
+
+const countResultDecoder = objectDecoder(
+  {
+    results: arrayDecoder(
+      objectDecoder({ count: safeIntegerDecoder({ minimum: 0 }) }),
+      { minLength: 1, maxLength: 1 },
+    ),
+  },
+  { unknownFields: 'allow' },
+);
+
+const mutationResultDecoder = objectDecoder(
+  {
+    meta: objectDecoder(
+      { changes: safeIntegerDecoder({ minimum: 0 }) },
+      { unknownFields: 'allow' },
+    ),
+  },
+  { unknownFields: 'allow' },
+);
 
 export class D1IdentityVaultControlPlane implements IdentityVaultControlPlane {
   constructor(private readonly database: D1DatabaseBinding) {}
@@ -215,4 +244,55 @@ export class D1IdentityVaultControlPlane implements IdentityVaultControlPlane {
       ? { kind: 'applied' }
       : { kind: 'rejected', reason: 'session-mismatch' };
   }
+
+  async revokeAccountSessions(
+    command: AccountSessionRevocationCommand,
+  ): Promise<AccountSessionRevocationResult> {
+    const plan = planAccountSessionRevocation(command);
+    if (plan.kind === 'rejected') return plan;
+
+    const results = await this.database.batch([
+      this.database
+        .prepare(
+          `SELECT COUNT(*) AS count FROM personal_vaults
+           WHERE account_id = ? AND vault_id = ?`,
+        )
+        .bind(plan.command.accountId, plan.command.vaultId),
+      this.database
+        .prepare(
+          `UPDATE sessions SET revoked_at = ?, revocation_reason = 'security'
+           WHERE account_id = ? AND vault_id = ? AND revoked_at IS NULL`,
+        )
+        .bind(
+          plan.command.revokedAt,
+          plan.command.accountId,
+          plan.command.vaultId,
+        ),
+      this.database
+        .prepare(
+          `SELECT COUNT(*) AS count FROM sessions
+           WHERE account_id = ? AND vault_id = ? AND revoked_at IS NULL`,
+        )
+        .bind(plan.command.accountId, plan.command.vaultId),
+    ]);
+    const mutation = decodeOrThrow(
+      mutationResultDecoder,
+      results[1],
+      'D1 account session revocation result',
+    );
+    return evaluateAccountSessionRevocation({
+      ownerCount: countFromResult(results[0], 'D1 account session owner count'),
+      revokedSessionCount: mutation.meta.changes,
+      remainingActiveSessionCount: countFromResult(
+        results[2],
+        'D1 remaining active session count',
+      ),
+    });
+  }
+}
+
+function countFromResult(input: unknown, context: string): number {
+  const decoded = decodeOrThrow(countResultDecoder, input, context);
+  const row = decoded.results[0];
+  return decodeOrThrow(safeIntegerDecoder({ minimum: 0 }), row?.count, context);
 }
