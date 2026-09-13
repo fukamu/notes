@@ -116,9 +116,13 @@ describe('pure-core dependency direction', () => {
     'lib/application',
     'server/core',
   ];
+  const coreFiles = ['server/crypto/core.ts'];
 
   it('keeps core imports independent of concrete effect adapters', async () => {
-    const files = (await Promise.all(coreRoots.map(sourceFiles))).flat();
+    const files = [
+      ...(await Promise.all(coreRoots.map(sourceFiles))).flat(),
+      ...coreFiles,
+    ];
     const concreteEffectDependency =
       /from ['"]@\/(?:app|components|db|service-worker)\/|from ['"]@\/lib\/(?:client|storage)\/|from ['"]@\/server\/adapters\//;
     const violations: string[] = [];
@@ -132,7 +136,10 @@ describe('pure-core dependency direction', () => {
   });
 
   it('keeps direct runtime effects out of core', async () => {
-    const files = (await Promise.all(coreRoots.map(sourceFiles))).flat();
+    const files = [
+      ...(await Promise.all(coreRoots.map(sourceFiles))).flat(),
+      ...coreFiles,
+    ];
     const directEffect =
       /\b(?:fetch|indexedDB)\s*\(|\b(?:window|document|localStorage|sessionStorage)\.|\bnavigator\.(?:onLine|serviceWorker)|\b(?:Date\.now|Math\.random|crypto\.|uuidv7\s*\()|\bprocess\.env\b|\bconsole\./;
     const violations: string[] = [];
