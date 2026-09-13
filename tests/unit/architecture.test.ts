@@ -393,6 +393,23 @@ describe('Identity/Vault control-plane ownership', () => {
     expect(violations).toEqual([]);
   });
 
+  it('keeps Account-wide session revocation pure, public, and tenant-scoped', async () => {
+    const [core, publicContract, adapter] = await Promise.all([
+      readFile('server/control-plane/core.ts', 'utf8'),
+      readFile('server/control-plane/public.ts', 'utf8'),
+      readFile('server/control-plane/d1-adapter.ts', 'utf8'),
+    ]);
+    expect(core).toContain('planAccountSessionRevocation');
+    expect(core).toContain('evaluateAccountSessionRevocation');
+    expect(core).not.toMatch(/D1Database|\.prepare\(|Date\.now|fetch\(/);
+    expect(publicContract).toContain('type AccountSessionRevocationPort');
+    expect(publicContract).not.toMatch(/D1Database/);
+    expect(adapter).toContain('revokeAccountSessions');
+    expect(adapter).toContain('plan.command.accountId');
+    expect(adapter).toContain('plan.command.vaultId');
+    expect(adapter).toContain("revocation_reason = 'security'");
+  });
+
   it('keeps migration planning pure and request handlers free of schema DDL', async () => {
     const [core, runner, sync, handler] = await Promise.all([
       readFile('server/migrations/core.ts', 'utf8'),
@@ -420,7 +437,7 @@ function accountDeletionBoundaryViolation(
     return false;
   }
   return (
-    /server\/account-deletion\/(?:core|d1-adapter|d1-schema|migration|records)/.test(
+    /server\/account-deletion\/(?:core|d1-adapter|d1-schema|migration|records|revoke-sessions)/.test(
       source,
     ) ||
     /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:account_deletion_operations|account_deletion_step_receipts)\b/i.test(
@@ -441,15 +458,23 @@ describe('Account deletion saga ownership', () => {
   });
 
   it('keeps sequencing pure, persistence scope-bound, and provider effects out of the foundation', async () => {
-    const [core, publicContract, adapter, schema, migration, testConfig] =
-      await Promise.all([
-        readFile('server/account-deletion/core.ts', 'utf8'),
-        readFile('server/account-deletion/public.ts', 'utf8'),
-        readFile('server/account-deletion/d1-adapter.ts', 'utf8'),
-        readFile('server/account-deletion/d1-schema.ts', 'utf8'),
-        readFile('server/account-deletion/migration.ts', 'utf8'),
-        readFile('vitest.config.ts', 'utf8'),
-      ]);
+    const [
+      core,
+      publicContract,
+      adapter,
+      schema,
+      migration,
+      revokeSessions,
+      testConfig,
+    ] = await Promise.all([
+      readFile('server/account-deletion/core.ts', 'utf8'),
+      readFile('server/account-deletion/public.ts', 'utf8'),
+      readFile('server/account-deletion/d1-adapter.ts', 'utf8'),
+      readFile('server/account-deletion/d1-schema.ts', 'utf8'),
+      readFile('server/account-deletion/migration.ts', 'utf8'),
+      readFile('server/account-deletion/revoke-sessions.ts', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+    ]);
     expect(core).toContain('planAccountDeletionStepClaim');
     expect(core).toContain('planAccountDeletionStepResult');
     expect(core).toContain('planAccountDeletionExpiredLeaseRecovery');
@@ -464,6 +489,10 @@ describe('Account deletion saga ownership', () => {
     expect(schema).not.toMatch(/accounts\.accountId|personalVaults/);
     expect(migration).not.toMatch(
       /title|body_json|plaintext|ciphertext|stripe/i,
+    );
+    expect(revokeSessions).toContain('../control-plane/public');
+    expect(revokeSessions).not.toMatch(
+      /control-plane\/(?:core|d1-adapter|d1-schema|migration|records)|D1Database|\.prepare\(|Date\.now/,
     );
     expect(testConfig).toContain("'server/**/*.ts'");
   });

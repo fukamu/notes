@@ -1,6 +1,11 @@
 import type { AccountId, VaultContext } from '../../lib/domain/identity';
 import type { ActiveSession, RevokedSession } from '../core/session';
-import type { OwnershipPlan, PersonalAccountProvision } from './core';
+import type {
+  AccountSessionRevocationCommand,
+  AccountSessionRevocationResult,
+  OwnershipPlan,
+  PersonalAccountProvision,
+} from './core';
 import type {
   AccountRecord,
   IdentityProvider,
@@ -25,7 +30,18 @@ export type ControlPlaneCommandResult =
   | { readonly kind: 'applied' }
   | Extract<OwnershipPlan, { kind: 'rejected' }>;
 
-export type IdentityVaultControlPlane = {
+export type {
+  AccountSessionRevocationCommand,
+  AccountSessionRevocationResult,
+} from './core';
+
+export type AccountSessionRevocationPort = {
+  revokeAccountSessions(
+    command: AccountSessionRevocationCommand,
+  ): Promise<AccountSessionRevocationResult>;
+};
+
+export type IdentityVaultControlPlane = AccountSessionRevocationPort & {
   findPersonalAccount(
     accountId: AccountId,
   ): Promise<PersonalAccount | undefined>;
