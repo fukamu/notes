@@ -215,6 +215,19 @@ describe('local persistence', () => {
     });
   });
 
+  it('does not retain a failed synchronous open in the connection registry', async () => {
+    vi.spyOn(indexedDB, 'open').mockImplementationOnce(() => {
+      throw new Error('injected open failure');
+    });
+
+    await expect(openNotesDatabase(vaultScopeA)).rejects.toThrow(
+      'injected open failure',
+    );
+    await expect(openNotesDatabase(vaultScopeA)).resolves.toBeInstanceOf(
+      IDBDatabase,
+    );
+  });
+
   it('uses injected identifiers while keeping the fixed legacy database', async () => {
     const fixture = createCompatibilityFixture();
     const idGenerator: IdGenerator = {

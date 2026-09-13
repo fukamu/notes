@@ -67,8 +67,14 @@ export function openNotesDatabase(
   const existing = databasePromises.get(databaseName);
   if (existing) return existing;
 
+  let request: IDBOpenDBRequest;
+  try {
+    request = indexedDB.open(databaseName, DATABASE_VERSION);
+  } catch (error) {
+    return Promise.reject(error);
+  }
+
   const opening = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(databaseName, DATABASE_VERSION);
     request.addEventListener('upgradeneeded', () => {
       const database = request.result;
       if (!database.objectStoreNames.contains('cards')) {
