@@ -60,7 +60,7 @@ describe('Entitlement-owned schema', () => {
     ]) {
       expect(source.toLowerCase()).not.toContain(excluded);
     }
-    expect(productionMigrationManifest.at(-1)).toBe(entitlementMigration);
+    expect(productionMigrationManifest.at(-2)).toBe(entitlementMigration);
   });
 
   it('pins immutable migration statements to their SHA-256 checksum', () => {
