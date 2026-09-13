@@ -39,6 +39,7 @@ export default defineConfig({
         'lib/client/offline.ts',
         'lib/domain/**/*.ts',
         'lib/editor/body-document.ts',
+        'lib/sync/**/*.ts',
         'lib/storage/**/*.ts',
         'server/**/*.ts',
       ],
