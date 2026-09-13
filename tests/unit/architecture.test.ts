@@ -207,6 +207,35 @@ describe('pure-core dependency direction', () => {
     expect(records).not.toMatch(/accountId|vaultId/);
     expect(testConfig).toContain("'lib/application/notes-database-scope.ts'");
   });
+
+  it('keeps stale operation decisions pure and checks sync authority before repository apply', async () => {
+    const [lifecycle, store, testConfig] = await Promise.all([
+      readFile('lib/application/notes-operation-lifecycle.ts', 'utf8'),
+      readFile('lib/client/notes-store.tsx', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+    ]);
+    const applyIndex = store.indexOf(
+      'const merged = await ports.repository.applySyncResponse',
+    );
+    const guardIndex = store.lastIndexOf(
+      'operationIsCurrent(operationLifecycleRef.current, operationToken)',
+      applyIndex,
+    );
+
+    expect(lifecycle).toContain('decideNotesOperationContinuation');
+    expect(lifecycle).toContain("reason: 'scope-changed'");
+    expect(lifecycle).toContain("reason: 'operation-epoch-changed'");
+    expect(lifecycle).not.toMatch(
+      /Promise|react|fetch|indexedDB|window\.|Date\.now|Math\.random|console\./,
+    );
+    expect(applyIndex).toBeGreaterThan(0);
+    expect(guardIndex).toBeGreaterThan(0);
+    expect(guardIndex).toBeLessThan(applyIndex);
+    expect(testConfig).toContain(
+      "'lib/application/notes-operation-lifecycle.ts'",
+    );
+    expect(testConfig).toContain("'lib/client/notes-store.tsx'");
+  });
 });
 
 describe('application and presentation architecture', () => {

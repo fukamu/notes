@@ -49,10 +49,12 @@ from starting for anonymous access.
 
 The current route deliberately mounts `LegacyNotesApp` as an explicit local
 compatibility harness. A vault-scoped IndexedDB repository now exists, but it
-is not mounted until the stale-operation guard and crash-resumable logout purge
-are integrated. This preserves current local development and E2E behavior
+is not mounted in the route. The Provider now rejects stale load/save/sync
+completion by trusted scope and operation epoch; crash-resumable logout purge
+remains in #144. This preserves current local development and E2E behavior
 without Google, email, billing, or production configuration; it is not the
-production public-service composition.
+production public-service composition. See
+[Notes operation lifecycle boundary](notes-operation-lifecycle.md).
 
 ## Migration and rollback
 
