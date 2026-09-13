@@ -229,9 +229,7 @@ describe('pure-core dependency direction', () => {
       readFile('lib/client/notes-store.tsx', 'utf8'),
       readFile('vitest.config.ts', 'utf8'),
     ]);
-    const applyIndex = store.indexOf(
-      'const merged = await ports.repository.applySyncResponse',
-    );
+    const applyIndex = store.indexOf('ports.repository.applySyncResponse');
     const guardIndex = store.lastIndexOf(
       'operationIsCurrent(operationLifecycleRef.current, operationToken)',
       applyIndex,
@@ -849,15 +847,18 @@ describe('application and presentation architecture', () => {
   });
 
   it('injects data effects through runtime ports at the composition root', async () => {
-    const [ports, store, composition] = await Promise.all([
-      readFile('lib/application/notes-runtime.ts', 'utf8'),
-      readFile('lib/client/notes-store.tsx', 'utf8'),
-      readFile('lib/client/legacy-notes-runtime.ts', 'utf8'),
-    ]);
+    const [ports, store, legacyComposition, vaultComposition] =
+      await Promise.all([
+        readFile('lib/application/notes-runtime.ts', 'utf8'),
+        readFile('lib/client/notes-store.tsx', 'utf8'),
+        readFile('lib/client/legacy-notes-runtime.ts', 'utf8'),
+        readFile('lib/client/vault-notes-runtime.ts', 'utf8'),
+      ]);
 
     for (const contract of [
       'NotesRepository',
       'SyncTransport',
+      'NotesSyncRuntime',
       'Clock',
       'IdGenerator',
       'ConnectivityPort',
@@ -868,21 +869,31 @@ describe('application and presentation architecture', () => {
     expect(store).not.toMatch(
       /indexed-db|id-generator|Date\.now|navigator\.|fetch\(/,
     );
-    expect(composition).toContain('LEGACY_NOTES_SCOPE');
-    expect(composition).toContain('createIndexedDbNotesRepository');
-    expect(composition).toContain('createV1SyncTransport');
-    expect(composition).toContain('browserOfflineApp');
+    expect(legacyComposition).toContain('LEGACY_NOTES_SCOPE');
+    expect(legacyComposition).toContain('createIndexedDbNotesRepository');
+    expect(legacyComposition).toContain('createV1SyncTransport');
+    expect(legacyComposition).toContain('browserOfflineApp');
+    expect(vaultComposition).toContain('vaultNotesScope(context)');
+    expect(vaultComposition).toContain(
+      'createIndexedDbSyncV2ReplicaRepository',
+    );
+    expect(vaultComposition).toContain('createV2SyncTransport');
+    expect(vaultComposition).toContain('createSyncV2Client');
   });
 
   it('keeps Sync v2 replica decisions pure and IndexedDB behind its scoped port', async () => {
-    const [core, adapter] = await Promise.all([
+    const [core, client, adapter] = await Promise.all([
       readFile('lib/sync/v2-replica.ts', 'utf8'),
+      readFile('lib/application/sync-v2-client.ts', 'utf8'),
       readFile('lib/storage/indexed-db.ts', 'utf8'),
     ]);
 
     expect(core).toContain('type SyncV2ReplicaRepository');
     expect(core).toContain('planSyncV2ReplicaCommit');
     expect(core).not.toMatch(/indexedDB|IDBDatabase|IDBTransaction/);
+    expect(client).toContain('type SyncV2Transport');
+    expect(client).toContain('planSyncV2Page');
+    expect(client).not.toMatch(/fetch\(|indexedDB|IDBDatabase/);
     expect(adapter).toContain('createIndexedDbSyncV2ReplicaRepository');
     expect(adapter).toContain(
       "['cards', 'mutations', 'conflicts', SYNC_V2_STORE_NAME]",

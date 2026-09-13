@@ -44,6 +44,7 @@ import {
 } from '@/lib/domain/types';
 import { encodeSyncRequest } from '@/lib/sync/protocol';
 import { reconcileVisibleCardsAfterSync } from '@/lib/sync/client-reconciliation';
+import { assertNever } from '@/lib/shared/invariant';
 
 export type NotesDataStore = {
   cards: CardRecord[];
@@ -171,15 +172,51 @@ export function NotesProvider({
         const revisionsAtRequest = new Map(
           cardsRef.current.map((card) => [card.id, card.localRevision]),
         );
-        const requestBody = encodeSyncRequest({ deviceId, mutations });
-        const result = await ports.syncTransport.send(requestBody);
-        // A stale response must never reach the mutation ack/cursor boundary.
-        if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
-          return;
-        const merged = await ports.repository.applySyncResponse(
-          result,
-          mutations,
-        );
+        let merged: {
+          readonly cards: readonly CardRecord[];
+          readonly conflicts: readonly ConflictRecord[];
+        };
+        switch (ports.sync.kind) {
+          case 'v1': {
+            const requestBody = encodeSyncRequest({ deviceId, mutations });
+            const result = await ports.sync.transport.send(requestBody);
+            // A stale response must never reach the mutation ack boundary.
+            if (
+              !operationIsCurrent(operationLifecycleRef.current, operationToken)
+            )
+              return;
+            merged = await ports.repository.applySyncResponse(
+              result,
+              mutations,
+            );
+            break;
+          }
+          case 'v2': {
+            const result = await ports.sync.client.synchronize({
+              deviceId,
+              sentMutations: mutations,
+              isCurrent: () =>
+                operationIsCurrent(
+                  operationLifecycleRef.current,
+                  operationToken,
+                ),
+            });
+            switch (result.kind) {
+              case 'cancelled':
+                return;
+              case 'rejected':
+                throw new Error(`Sync v2 rejected: ${result.reason}`);
+              case 'completed':
+                merged = result;
+                break;
+              default:
+                return assertNever(result, 'Unsupported Sync v2 client result');
+            }
+            break;
+          }
+          default:
+            return assertNever(ports.sync, 'Unsupported notes sync runtime');
+        }
         if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
           return;
         const visibleCards = reconcileVisibleCardsAfterSync({
@@ -189,7 +226,7 @@ export function NotesProvider({
         });
         cardsRef.current = visibleCards;
         setCards(visibleCards);
-        setConflicts(merged.conflicts);
+        setConflicts([...merged.conflicts]);
       } while (
         operationIsCurrent(operationLifecycleRef.current, operationToken) &&
         syncRequestedRef.current &&
@@ -208,7 +245,7 @@ export function NotesProvider({
         syncRunningRef.current = undefined;
       }
     }
-  }, [initialized, ports.connectivity, ports.repository, ports.syncTransport]);
+  }, [initialized, ports.connectivity, ports.repository, ports.sync]);
 
   useEffect(() => {
     const capture = captureNotesOperation(

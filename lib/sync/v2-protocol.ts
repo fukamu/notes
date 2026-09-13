@@ -374,3 +374,5 @@ export function encodeSyncV2Response(response: SyncV2Response) {
     },
   };
 }
+
+export type SyncV2RequestWire = ReturnType<typeof encodeSyncV2Request>;
