@@ -25,6 +25,11 @@ import {
 
 const layoutConnectionsGraph = createMainThreadConnectionsLayoutRunner();
 
+// This loop verifies correctness over the complete CPU-heavy fixture corpus;
+// performance evidence and thresholds live in the dedicated benchmark suite.
+// The explicit budget avoids treating Vitest's 5s default as a product SLO.
+const layoutCorrectnessTimeoutMs = 20_000;
+
 function overlaps(
   left: ConnectionsLayoutNode,
   right: ConnectionsLayoutNode,
@@ -332,57 +337,61 @@ describe('ELK connections layout', () => {
       ['compact', compactConnectionsMetrics],
       ['spacious', spaciousConnectionsMetrics],
     ] as const) {
-      it(`returns deterministic, finite, node-safe ${density} geometry for ${fixture.name}`, async () => {
-        const graph = connectionsFixtureGraph(fixture);
-        const inputSnapshot = structuredClone(graph);
-        const first = await layoutConnectionsGraph(graph, metrics);
-        const second = await layoutConnectionsGraph(graph, metrics);
+      it(
+        `returns deterministic, finite, node-safe ${density} geometry for ${fixture.name}`,
+        async () => {
+          const graph = connectionsFixtureGraph(fixture);
+          const inputSnapshot = structuredClone(graph);
+          const first = await layoutConnectionsGraph(graph, metrics);
+          const second = await layoutConnectionsGraph(graph, metrics);
 
-        expect(graph).toEqual(inputSnapshot);
-        expect(first).toEqual(second);
-        expect(first.nodes.map((node) => node.id)).toEqual(
-          graph.nodes.map((node) => node.id),
-        );
-        expect(first.edges).toHaveLength(fixture.edges.length);
-        expect(
-          first.edges.map(({ sourceCardId, targetCardId }) => ({
-            sourceCardId,
-            targetCardId,
-          })),
-        ).toEqual(graph.edges);
-        expect(
-          first.nodes.every((node) => node.width === metrics.nodeWidth),
-        ).toBe(true);
-        expect(
-          first.nodes.every((node) => node.height === metrics.nodeHeight),
-        ).toBe(true);
-        expect(
-          first.nodes
-            .flatMap((node) => node.ports)
-            .every(
-              (port) =>
-                port.width === metrics.portSize &&
-                port.height === metrics.portSize,
-            ),
-        ).toBe(true);
-        expectFiniteLayout(first);
-        expectNoNodeOrEdgeIntrusions(first);
-        expectEdgePortsApplied(first);
-        expectCurvedPathsNodeSafe(first, metrics.edgeNodeSpacing);
-        for (const edge of first.edges) {
-          const firstSection = edge.sections[0];
-          invariant(firstSection, `Missing section for ${edge.id}`);
-          expect(firstSection.incomingShape).toBe(edge.sourcePortId);
-          expect(edge.sections.at(-1)?.outgoingShape).toBe(edge.targetPortId);
-          for (let index = 1; index < edge.sections.length; index += 1) {
-            const previous = edge.sections[index - 1];
-            const current = edge.sections[index];
-            invariant(previous, `Missing previous section ${index - 1}`);
-            invariant(current, `Missing current section ${index}`);
-            expect(current.startPoint).toEqual(previous.endPoint);
+          expect(graph).toEqual(inputSnapshot);
+          expect(first).toEqual(second);
+          expect(first.nodes.map((node) => node.id)).toEqual(
+            graph.nodes.map((node) => node.id),
+          );
+          expect(first.edges).toHaveLength(fixture.edges.length);
+          expect(
+            first.edges.map(({ sourceCardId, targetCardId }) => ({
+              sourceCardId,
+              targetCardId,
+            })),
+          ).toEqual(graph.edges);
+          expect(
+            first.nodes.every((node) => node.width === metrics.nodeWidth),
+          ).toBe(true);
+          expect(
+            first.nodes.every((node) => node.height === metrics.nodeHeight),
+          ).toBe(true);
+          expect(
+            first.nodes
+              .flatMap((node) => node.ports)
+              .every(
+                (port) =>
+                  port.width === metrics.portSize &&
+                  port.height === metrics.portSize,
+              ),
+          ).toBe(true);
+          expectFiniteLayout(first);
+          expectNoNodeOrEdgeIntrusions(first);
+          expectEdgePortsApplied(first);
+          expectCurvedPathsNodeSafe(first, metrics.edgeNodeSpacing);
+          for (const edge of first.edges) {
+            const firstSection = edge.sections[0];
+            invariant(firstSection, `Missing section for ${edge.id}`);
+            expect(firstSection.incomingShape).toBe(edge.sourcePortId);
+            expect(edge.sections.at(-1)?.outgoingShape).toBe(edge.targetPortId);
+            for (let index = 1; index < edge.sections.length; index += 1) {
+              const previous = edge.sections[index - 1];
+              const current = edge.sections[index];
+              invariant(previous, `Missing previous section ${index - 1}`);
+              invariant(current, `Missing current section ${index}`);
+              expect(current.startPoint).toEqual(previous.endPoint);
+            }
           }
-        }
-      });
+        },
+        layoutCorrectnessTimeoutMs,
+      );
     }
   }
 
