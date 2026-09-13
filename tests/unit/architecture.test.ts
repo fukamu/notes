@@ -66,7 +66,7 @@ describe('trust-boundary architecture', () => {
       ['lib/storage/indexed-db.ts', 'decodeStoredConflict'],
       ['lib/storage/indexed-db.ts', 'planSyncResponseApplication'],
       ['lib/client/notes-store.tsx', 'reconcileVisibleCardsAfterSync'],
-      ['service-worker/sw.ts', 'cacheUrlsFromMessage(event.data)'],
+      ['service-worker/sw.ts', 'workerCommandFromMessage(event.data)'],
       ['lib/editor/card-link-attributes.ts', 'cardLinkAttributesDecoder'],
     ] as const;
     for (const [file, marker] of expectations) {

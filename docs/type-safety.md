@@ -123,6 +123,8 @@ Phase 1〜3でcompiler、codec／brand、client／IndexedDB、API／D1／environ
 
 client data pathは `lib/application/notes-runtime.ts` の `NotesRepository`、`SyncTransport`、`Clock`、`IdGenerator`、connectivity、offline preparation portを境界とします。`lib/client/notes-store.tsx` はこれらを注入され、IndexedDB、fetch、Date、UUID、navigator、Service Workerのconcrete実装をimportしません。現行互換adapterはcomposition rootで明示的な `LEGACY_NOTES_SCOPE` に束ねます。このscopeは既存DB名とv1 endpointだけを固定し、`CardRecord` や本文へAccount/Vault情報を追加しません。
 
+Service Workerのcache policyはmethod、origin、query、request mode、明示pathname allowlistだけから決まるpure predicateです。CacheStorageへ入るのは非個人化app shellとmanifest/favicon、`/_next/static/` build assetだけで、API、auth/OAuth、billing/account、query付きまたはallowlist外requestはnetwork-onlyです。canonical deep navigationは個別HTMLを保存せず共通shellへfallbackします。logout purge commandは外部messageをdecodeし、全FUKAMU cacheが消えたことを再確認してからだけtyped ackを返します。
+
 カード作成・編集・競合解決・pending mutation構築は `lib/domain/card-transitions.ts` のpure functionが担当します。時刻とbranded IDは外側で一度生成して入力し、UUIDv7生成は `lib/client/id-generator.ts` に限定します。編集とmutation mode、予期可能なresolve失敗はdiscriminated unionで区別し、IndexedDB adapterだけが既存の例外へ変換します。
 
 同期応答のack、送信中に生じた編集のrebase、server cardとの統合、conflict置換順序は `lib/sync/client-reconciliation.ts` がI/Oなしの適用計画として決定します。IndexedDB adapterは検証済み応答と同一transaction内で読んだsnapshotを渡し、返された操作を順番どおり実行します。要求後の画面編集との再統合も同moduleのpure functionが担当し、network待機中の内容を失わずserver側の正式IDとrevisionだけを取り込みます。transactionの開始位置、read/write順序、abort条件は変更しません。

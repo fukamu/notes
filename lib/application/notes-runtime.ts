@@ -64,6 +64,7 @@ export type ConnectivityPort = {
 
 export type OfflineAppPort = {
   prepare: () => Promise<void>;
+  purge: () => Promise<void>;
 };
 
 export type NotesRuntimePorts<TScope extends NotesScope = NotesScope> = {

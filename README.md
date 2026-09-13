@@ -68,6 +68,10 @@ Issue、統合／作業ブランチ、PR、merge後検証、型付き純粋ロ�
 
 初回だけはオンラインでアプリを開き、画面と実行資源をService Workerへ保存してください。以後は通信がなくても、カードの作成・編集・自動保存・リンク・一覧・つながりを、この端末のIndexedDBだけで利用できます。
 
+Service Workerが保存するのは非個人化された `/` のapp shell、manifest、favicon、`/_next/static/` 配下のbuild assetだけです。カードURLのonline response、query付きnavigation、API、認証/OAuth callback、課金・account経路、allowlist外resourceはCacheStorageへ保存しません。offlineのcanonical card/history/connections navigationは、個別responseではなく共通app shellから起動してIndexedDBを読みます。logout cache purgeは対象cacheの消去を再確認したackが返るまで完了扱いにしません。
+
+詳しいcache境界、migration、rollback方針は [`docs/service-worker-cache.md`](docs/service-worker-cache.md) を参照してください。
+
 開発サーバーは差し替え用の仮想モジュールを使うため、オフライン再読み込みの確認には `npm run build` と `npm start -- --port 3100`、または `npm run test:e2e` を使ってください。ブラウザのサイトデータを消すと、その端末の未同期データとオフライン用キャッシュも消えます。
 
 ## URLとブラウザ履歴
