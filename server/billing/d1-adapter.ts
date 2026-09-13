@@ -30,6 +30,7 @@ import {
 import { createBillingApi } from './service';
 import type {
   BillingApi,
+  BillingOwnerScope,
   BillingProvider,
   BillingSubscriptionId,
   CheckoutIntentId,
@@ -66,7 +67,7 @@ export class D1BillingRepository implements BillingRepository {
   constructor(private readonly database: D1DatabaseBinding) {}
 
   async findByOwner(
-    context: VaultContext,
+    context: BillingOwnerScope,
   ): Promise<BillingSubscriptionRecord | undefined> {
     return this.findByOwnerIds(context.accountId, context.vaultId);
   }

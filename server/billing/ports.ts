@@ -1,5 +1,6 @@
 import type { VaultContext } from '../../lib/domain/identity';
 import type { BillingSubscriptionRecord } from './core';
+import type { ProviderSubscriptionCancellationCommand } from './cancellation-core';
 import type {
   CheckoutIntentRecord,
   ProviderEventReceipt,
@@ -7,6 +8,7 @@ import type {
 } from './records';
 import type {
   BillingProvider,
+  BillingOwnerScope,
   BillingSubscriptionId,
   CheckoutIntentId,
   ProviderCustomerReference,
@@ -44,7 +46,7 @@ export type ReceiptRecordResult =
 
 export type BillingRepository = {
   findByOwner(
-    context: VaultContext,
+    context: BillingOwnerScope,
   ): Promise<BillingSubscriptionRecord | undefined>;
   findById(
     subscriptionId: BillingSubscriptionId,
@@ -93,4 +95,10 @@ export type BillingRepository = {
   recordIgnoredReconciliation(
     checkpoint: ReconciliationCheckpoint,
   ): Promise<ReceiptRecordResult>;
+};
+
+export type SubscriptionCancellationProviderPort = {
+  cancelSubscription(
+    command: ProviderSubscriptionCancellationCommand,
+  ): Promise<unknown>;
 };

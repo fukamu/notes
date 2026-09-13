@@ -120,6 +120,7 @@ describe('pure-core dependency direction', () => {
   ];
   const coreFiles = [
     'server/account-deletion/core.ts',
+    'server/billing/cancellation-core.ts',
     'server/billing/core.ts',
     'server/crypto/core.ts',
     'server/encrypted-object/core.ts',
@@ -437,7 +438,7 @@ function accountDeletionBoundaryViolation(
     return false;
   }
   return (
-    /server\/account-deletion\/(?:core|d1-adapter|d1-schema|migration|records|revoke-sessions)/.test(
+    /server\/account-deletion\/(?:cancel-subscription|core|d1-adapter|d1-schema|migration|records|revoke-sessions)/.test(
       source,
     ) ||
     /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:account_deletion_operations|account_deletion_step_receipts)\b/i.test(
@@ -465,6 +466,7 @@ describe('Account deletion saga ownership', () => {
       schema,
       migration,
       revokeSessions,
+      cancelSubscription,
       testConfig,
     ] = await Promise.all([
       readFile('server/account-deletion/core.ts', 'utf8'),
@@ -473,6 +475,7 @@ describe('Account deletion saga ownership', () => {
       readFile('server/account-deletion/d1-schema.ts', 'utf8'),
       readFile('server/account-deletion/migration.ts', 'utf8'),
       readFile('server/account-deletion/revoke-sessions.ts', 'utf8'),
+      readFile('server/account-deletion/cancel-subscription.ts', 'utf8'),
       readFile('vitest.config.ts', 'utf8'),
     ]);
     expect(core).toContain('planAccountDeletionStepClaim');
@@ -493,6 +496,10 @@ describe('Account deletion saga ownership', () => {
     expect(revokeSessions).toContain('../control-plane/public');
     expect(revokeSessions).not.toMatch(
       /control-plane\/(?:core|d1-adapter|d1-schema|migration|records)|D1Database|\.prepare\(|Date\.now/,
+    );
+    expect(cancelSubscription).toContain('../billing/public');
+    expect(cancelSubscription).not.toMatch(
+      /billing\/(?:cancellation-core|cancellation-service|core|d1-adapter|d1-schema|fake|fake-cancellation|migration|ports|records|service)|D1Database|\.prepare\(|Date\.now|Stripe|fetch\(/,
     );
     expect(testConfig).toContain("'server/**/*.ts'");
   });
@@ -585,7 +592,7 @@ function billingBoundaryViolation(file: string, source: string): boolean {
     return false;
   }
   return (
-    /(?:(?:@\/)?server\/billing|(?:\.\.?\/)+billing)\/(?:core|d1-adapter|d1-schema|fake|migration|ports|records|service)/.test(
+    /(?:(?:@\/)?server\/billing|(?:\.\.?\/)+billing)\/(?:cancellation-core|cancellation-service|core|d1-adapter|d1-schema|fake|fake-cancellation|migration|ports|records|service)/.test(
       source,
     ) ||
     /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:billing_subscriptions|billing_checkout_intents|billing_provider_event_receipts|billing_reconciliation_checkpoints)\b/i.test(
@@ -627,31 +634,61 @@ describe('Billing module ownership', () => {
   });
 
   it('exposes provider-neutral facts while keeping effects in explicit adapters', async () => {
-    const [core, publicContract, service, adapter, fake, testConfig] =
-      await Promise.all([
-        readFile('server/billing/core.ts', 'utf8'),
-        readFile('server/billing/public.ts', 'utf8'),
-        readFile('server/billing/service.ts', 'utf8'),
-        readFile('server/billing/d1-adapter.ts', 'utf8'),
-        readFile('server/billing/fake.ts', 'utf8'),
-        readFile('vitest.config.ts', 'utf8'),
-      ]);
+    const [
+      core,
+      cancellationCore,
+      publicContract,
+      service,
+      cancellationService,
+      adapter,
+      fake,
+      fakeCancellation,
+      testConfig,
+    ] = await Promise.all([
+      readFile('server/billing/core.ts', 'utf8'),
+      readFile('server/billing/cancellation-core.ts', 'utf8'),
+      readFile('server/billing/public.ts', 'utf8'),
+      readFile('server/billing/service.ts', 'utf8'),
+      readFile('server/billing/cancellation-service.ts', 'utf8'),
+      readFile('server/billing/d1-adapter.ts', 'utf8'),
+      readFile('server/billing/fake.ts', 'utf8'),
+      readFile('server/billing/fake-cancellation.ts', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+    ]);
     expect(core).toContain('planVerifiedProviderFact');
     expect(core).toContain('planReconciliationSnapshot');
     expect(core).not.toMatch(
       /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise/,
     );
+    expect(cancellationCore).toContain('planSubscriptionCancellation');
+    expect(cancellationCore).toContain(
+      'evaluateProviderSubscriptionCancellation',
+    );
+    expect(cancellationCore).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise|Stripe/,
+    );
     expect(publicContract).toContain('type BillingApi');
+    expect(publicContract).toContain('type SubscriptionCancellationPort');
     expect(publicContract).toContain('invoice-payment-action-required');
     expect(publicContract).not.toMatch(
       /Stripe|D1Database|BillingSubscriptionRow/,
     );
     expect(service).toContain('createBillingApi');
     expect(service).not.toMatch(/\.prepare\(|process\.env|fetch\(/);
+    expect(cancellationService).toContain('createSubscriptionCancellationPort');
+    expect(cancellationService).not.toMatch(
+      /\.prepare\(|process\.env|Stripe|Date\.now/,
+    );
     expect(adapter).toContain('createD1BillingApi');
     expect(adapter).toContain('controlPlane.findPersonalAccount');
     expect(fake).toContain('createFakeBillingModule');
     expect(fake).not.toMatch(/process\.env|D1Database|fetch\(/);
+    expect(fakeCancellation).toContain(
+      'createFakeSubscriptionCancellationProvider',
+    );
+    expect(fakeCancellation).not.toMatch(
+      /process\.env|D1Database|fetch\(|Stripe/,
+    );
     expect(testConfig).toContain("'server/**/*.ts'");
   });
 });

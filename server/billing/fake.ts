@@ -15,6 +15,7 @@ import type {
 import { createBillingApi } from './service';
 import type {
   BillingApi,
+  BillingOwnerScope,
   BillingProvider,
   BillingSubscriptionId,
   CheckoutIntentId,
@@ -45,7 +46,7 @@ export class FakeBillingRepository implements BillingRepository {
   private readonly checkpoints = new Map<string, ReconciliationCheckpoint>();
 
   async findByOwner(
-    context: VaultContext,
+    context: BillingOwnerScope,
   ): Promise<BillingSubscriptionRecord | undefined> {
     return [...this.subscriptions.values()].find(
       (record) =>
