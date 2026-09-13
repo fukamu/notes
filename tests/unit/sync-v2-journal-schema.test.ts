@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { getTableConfig } from 'drizzle-orm/sqlite-core';
 import { describe, expect, it } from 'vitest';
 import { productionMigrationManifest } from '@/server/migrations/production';
+import { entitlementMigration } from '@/server/entitlement/migration';
 import {
   vaultCardDisplayIds,
   vaultSyncV2Changes,
@@ -82,7 +83,12 @@ describe('Vault Sync v2 journal schema', () => {
     ]) {
       expect(source.toLowerCase()).not.toContain(excluded);
     }
-    expect(productionMigrationManifest.at(-1)).toBe(syncV2JournalMigration);
+    expect(productionMigrationManifest).toContain(syncV2JournalMigration);
+    expect(
+      productionMigrationManifest.indexOf(syncV2JournalMigration),
+    ).toBeGreaterThan(
+      productionMigrationManifest.indexOf(entitlementMigration),
+    );
   });
 
   it('pins immutable migration statements to their SHA-256 checksum', () => {

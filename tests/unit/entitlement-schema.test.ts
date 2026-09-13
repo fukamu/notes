@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { getTableConfig } from 'drizzle-orm/sqlite-core';
 import { describe, expect, it } from 'vitest';
+import { billingSubscriptionMigration } from '@/server/billing/migration';
 import {
   entitlementOfflineLeases,
   entitlementProjections,
@@ -60,7 +61,12 @@ describe('Entitlement-owned schema', () => {
     ]) {
       expect(source.toLowerCase()).not.toContain(excluded);
     }
-    expect(productionMigrationManifest.at(-2)).toBe(entitlementMigration);
+    expect(productionMigrationManifest).toContain(entitlementMigration);
+    expect(
+      productionMigrationManifest.indexOf(entitlementMigration),
+    ).toBeGreaterThan(
+      productionMigrationManifest.indexOf(billingSubscriptionMigration),
+    );
   });
 
   it('pins immutable migration statements to their SHA-256 checksum', () => {
