@@ -12,6 +12,18 @@ export type NotesDatabaseName =
 
 export type IndexedDbNotesScope = LegacyNotesScope | VaultNotesScope;
 
+export type CloseNotesDatabaseResult =
+  | { readonly kind: 'closed' }
+  | { readonly kind: 'not-open' };
+
+export type DeleteNotesDatabaseResult =
+  | { readonly kind: 'deleted' }
+  | { readonly kind: 'blocked' }
+  | {
+      readonly kind: 'failed';
+      readonly reason: 'request-error' | 'request-threw';
+    };
+
 export function vaultNotesDatabaseName(
   scope: Pick<VaultNotesScope, 'accountId' | 'vaultId'>,
 ): VaultNotesDatabaseName {

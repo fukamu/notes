@@ -4,6 +4,8 @@ import type {
 } from '@/lib/application/notes-runtime';
 import {
   notesDatabaseName,
+  type CloseNotesDatabaseResult,
+  type DeleteNotesDatabaseResult,
   type IndexedDbNotesScope,
   type NotesDatabaseName,
 } from '@/lib/application/notes-database-scope';
@@ -34,18 +36,6 @@ import {
 const DATABASE_VERSION = 1;
 
 const databasePromises = new Map<NotesDatabaseName, Promise<IDBDatabase>>();
-
-export type CloseNotesDatabaseResult =
-  | { readonly kind: 'closed' }
-  | { readonly kind: 'not-open' };
-
-export type DeleteNotesDatabaseResult =
-  | { readonly kind: 'deleted' }
-  | { readonly kind: 'blocked' }
-  | {
-      readonly kind: 'failed';
-      readonly reason: 'request-error' | 'request-threw';
-    };
 
 function requestResult<T>(request: IDBRequest<T>): Promise<unknown> {
   return new Promise((resolve, reject) => {

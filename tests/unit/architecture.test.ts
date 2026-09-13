@@ -196,12 +196,13 @@ describe('pure-core dependency direction', () => {
     ]);
 
     expect(scope).toContain('vaultNotesDatabaseName');
+    expect(scope).toContain('DeleteNotesDatabaseResult');
     expect(scope).toContain("case 'legacy':");
     expect(scope).toContain("case 'vault':");
+    expect(scope).toContain("{ readonly kind: 'blocked' }");
     expect(scope).not.toMatch(/indexedDB|IDBDatabase|window\.|sessionStorage/);
     expect(storage).toContain('new Map<NotesDatabaseName');
     expect(storage).toContain('DeleteNotesDatabaseResult');
-    expect(storage).toContain("{ readonly kind: 'blocked' }");
     expect(storage).not.toContain('let databasePromise');
     expect(records).not.toMatch(/accountId|vaultId/);
     expect(testConfig).toContain("'lib/application/notes-database-scope.ts'");
