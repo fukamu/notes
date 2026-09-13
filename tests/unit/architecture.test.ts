@@ -67,6 +67,7 @@ describe('trust-boundary architecture', () => {
       ['lib/storage/indexed-db.ts', 'planSyncResponseApplication'],
       ['lib/client/notes-store.tsx', 'reconcileVisibleCardsAfterSync'],
       ['service-worker/sw.ts', 'workerCommandFromMessage(event.data)'],
+      ['server/session-boundary.ts', 'sessionRecordDecoder.decode(candidate)'],
       ['lib/editor/card-link-attributes.ts', 'cardLinkAttributesDecoder'],
     ] as const;
     for (const [file, marker] of expectations) {
@@ -250,7 +251,7 @@ describe('application and presentation architecture', () => {
 
   it('exposes only the documented deep application routes', async () => {
     await expect(readFile('app/(notes)/layout.tsx', 'utf8')).resolves.toContain(
-      '<NotesApp />',
+      '<LegacyNotesApp />',
     );
     for (const route of [
       'app/(notes)/page.tsx',
@@ -261,6 +262,23 @@ describe('application and presentation architecture', () => {
     ]) {
       await expect(readFile(route, 'utf8')).resolves.toContain('return null');
     }
+  });
+
+  it('gates vault runtime construction on authenticated session context', async () => {
+    const [gate, app, boundary, requestAdapter] = await Promise.all([
+      readFile('components/session-notes-app.tsx', 'utf8'),
+      readFile('components/notes-app.tsx', 'utf8'),
+      readFile('server/session-boundary.ts', 'utf8'),
+      readFile('server/adapters/web-session.ts', 'utf8'),
+    ]);
+
+    expect(gate).toContain('planNotesRuntimeLaunch(access)');
+    expect(gate).toContain("case 'do-not-start':");
+    expect(gate).toContain('createRuntimePorts(context)');
+    expect(gate).toContain('scopeMatchesVaultContext');
+    expect(app).toContain('function LegacyNotesApp');
+    expect(boundary).not.toMatch(/request\.(?:json|text|formData)\(/);
+    expect(requestAdapter).toContain("request.headers.get('cookie')");
   });
 
   it('keeps the default presentation behind model/actions props', async () => {

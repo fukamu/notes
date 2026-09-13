@@ -1,6 +1,12 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { InferDecoder } from '@/lib/codec/core';
 import type { CardId, ConflictId, DeviceId, MutationId } from '@/lib/domain/id';
+import type {
+  AccountId,
+  IdentityId,
+  SessionId,
+  VaultId,
+} from '@/lib/domain/identity';
 import {
   pendingMutationDecoder,
   type PendingMutation,
@@ -15,6 +21,8 @@ type ExpectFalse<TValue extends false> = TValue;
 type CardIsNotMutation = ExpectFalse<IsAssignable<CardId, MutationId>>;
 type CardIsNotDevice = ExpectFalse<IsAssignable<CardId, DeviceId>>;
 type ConflictIsNotMutation = ExpectFalse<IsAssignable<ConflictId, MutationId>>;
+type AccountIsNotVault = ExpectFalse<IsAssignable<AccountId, VaultId>>;
+type SessionIsNotIdentity = ExpectFalse<IsAssignable<SessionId, IdentityId>>;
 
 describe('type-level contracts', () => {
   it('keeps schema inference, brands, and mutation variants aligned', () => {
@@ -34,8 +42,10 @@ describe('type-level contracts', () => {
       CardIsNotMutation,
       CardIsNotDevice,
       ConflictIsNotMutation,
-    ] = [false, false, false];
-    expect(brandChecks).toEqual([false, false, false]);
+      AccountIsNotVault,
+      SessionIsNotIdentity,
+    ] = [false, false, false, false, false];
+    expect(brandChecks).toEqual([false, false, false, false, false]);
   });
 
   it('uses a never helper as the exhaustive branch sink', () => {

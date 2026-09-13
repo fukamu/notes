@@ -125,6 +125,8 @@ client data pathは `lib/application/notes-runtime.ts` の `NotesRepository`、`
 
 Service Workerのcache policyはmethod、origin、query、request mode、明示pathname allowlistだけから決まるpure predicateです。CacheStorageへ入るのは非個人化app shellとmanifest/favicon、`/_next/static/` build assetだけで、API、auth/OAuth、billing/account、query付きまたはallowlist外requestはnetwork-onlyです。canonical deep navigationは個別HTMLを保存せず共通shellへfallbackします。logout purge commandは外部messageをdecodeし、全FUKAMU cacheが消えたことを再確認してからだけtyped ackを返します。
 
+Identity/session境界はAccount/Vault/Session/Identity IDとSessionEpochを別brandで表し、storage/cookie/headerを`unknown`からdecodeします。pure session coreはactive/revoked、expiry、rotation、revocation、operation epochを判定し、clock・token/UUID生成・cookie/storage accessを行いません。server requestからの`VaultContext`はverified sessionだけから導出し、request bodyのtenant fieldを読みません。unsafe methodはexact Originと`Sec-Fetch-Site: same-origin`を必須とし、`__Host-fukamu_session`はSecure/HttpOnly/SameSite=Strict/Path=/を固定します。clientのauthenticated composition gateはanonymous時にruntime factory、NotesProvider、IndexedDB、sync、Service Worker preparationを起動しません。
+
 カード作成・編集・競合解決・pending mutation構築は `lib/domain/card-transitions.ts` のpure functionが担当します。時刻とbranded IDは外側で一度生成して入力し、UUIDv7生成は `lib/client/id-generator.ts` に限定します。編集とmutation mode、予期可能なresolve失敗はdiscriminated unionで区別し、IndexedDB adapterだけが既存の例外へ変換します。
 
 同期応答のack、送信中に生じた編集のrebase、server cardとの統合、conflict置換順序は `lib/sync/client-reconciliation.ts` がI/Oなしの適用計画として決定します。IndexedDB adapterは検証済み応答と同一transaction内で読んだsnapshotを渡し、返された操作を順番どおり実行します。要求後の画面編集との再統合も同moduleのpure functionが担当し、network待機中の内容を失わずserver側の正式IDとrevisionだけを取り込みます。transactionの開始位置、read/write順序、abort条件は変更しません。

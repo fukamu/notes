@@ -8,7 +8,9 @@
     "app/api/**/*.ts",
     "db/**/*.ts",
     "server/**/*.ts",
+    "lib/codec/**/*.ts",
     "lib/domain/**/*.ts",
+    "lib/shared/**/*.ts",
     "lib/sync/**/*.ts"
   ],
   "exclude": ["node_modules"]
