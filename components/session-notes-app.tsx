@@ -7,9 +7,8 @@ import {
   scopeMatchesVaultContext,
   vaultContextFromNotesScope,
   type NotesAccess,
-  type VaultNotesScope,
 } from '@/lib/application/notes-access';
-import type { NotesRuntimePorts } from '@/lib/application/notes-runtime';
+import type { VaultNotesRuntimePorts } from '@/lib/application/notes-runtime';
 import type {
   LogoutRuntimeFenceLease,
   LogoutRuntimeFencePort,
@@ -18,7 +17,7 @@ import type { VaultContext } from '@/lib/domain/identity';
 
 export type VaultNotesRuntimeFactory = (
   context: VaultContext,
-) => NotesRuntimePorts<VaultNotesScope>;
+) => VaultNotesRuntimePorts;
 
 export function SessionNotesApp({
   access,

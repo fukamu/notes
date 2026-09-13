@@ -1,0 +1,56 @@
+# Sync v2 client runtime
+
+Issue #122 connects the authenticated Vault browser runtime to the incremental
+Sync v2 protocol and the transactional local replica introduced by #165. It
+does not enable production providers or change the local legacy application.
+
+## Runtime separation
+
+The runtime sync dependency is a discriminated union. `LegacyNotesApp` still
+constructs the fixed legacy scope with the v1 `/api/sync` transport. Local
+development and the existing Sites test environment therefore do not require a
+login, subscription, KMS, R2, or Stripe setup.
+
+An authenticated `SessionNotesApp` may construct
+`createVaultNotesRuntimePorts` from its server-derived `VaultContext`. That
+factory binds a per-Vault IndexedDB repository to the v2 `/api/v2/sync`
+transport. The Vault runtime type only permits v2, so a public paid runtime
+cannot silently fall back to the unauthenticated v1 endpoint.
+
+The production v2 route remains fail-closed with HTTP 503 until real encrypted
+content providers are approved and composed. No production deployment is part
+of this Issue.
+
+## Page and commit boundary
+
+The application client loads the persisted checkpoint, keeps changes and
+mutation receipts from intermediate pages in memory, and resends the same
+mutation snapshot on every page request. Each response is decoded by the pure
+page planner. Cursor mismatch, a non-advancing cursor, sequence reordering, a
+changed high-watermark, changed receipts, or malformed data rejects the attempt.
+
+Only a valid terminal page produces a replica commit. The #165 adapter then
+updates cards, pending mutations, conflicts, receipts, and the checkpoint in a
+single IndexedDB transaction. A lost response or malformed intermediate page
+does not advance the checkpoint, so the next attempt starts from the last
+committed position and relies on mutation-receipt idempotency.
+
+## Session epoch and visible edits
+
+`NotesProvider` supplies a current-operation predicate backed by the active
+scope and operation epoch. The v2 client checks it after checkpoint load, after
+each HTTP response, immediately before the terminal transaction, and after the
+transaction. A logout fence, unmount, session rotation, or Vault switch makes
+the operation stale and prevents later effects from being exposed to the UI.
+
+After a successful commit, the existing visible-card reconciler preserves an
+edit made while the request was in flight while retaining the server display ID
+and revision progress. Existing autosave, offline editing, conflict resolution,
+URL behavior, and presentation remain shared with the v1 runtime.
+
+## Rollback
+
+The change can be reverted by removing the v2 Vault composition and client
+orchestrator. The fixed legacy runtime and v1 wire compatibility remain intact.
+Rollback must not enable v1 for an authenticated paid runtime. Storage schema
+rollback and checkpoint handling belong to #165.

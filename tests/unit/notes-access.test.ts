@@ -5,9 +5,8 @@ import { SessionNotesApp } from '@/components/session-notes-app';
 import {
   planNotesRuntimeLaunch,
   scopeMatchesVaultContext,
-  type VaultNotesScope,
 } from '@/lib/application/notes-access';
-import type { NotesRuntimePorts } from '@/lib/application/notes-runtime';
+import type { VaultNotesRuntimePorts } from '@/lib/application/notes-runtime';
 import type { LogoutRuntimeFencePort } from '@/lib/application/logout-runtime-coordination';
 import type { VaultContext } from '@/lib/domain/identity';
 import { sessionFixtureIds } from '@/tests/fixtures/session';
@@ -26,7 +25,7 @@ const blockedFence: LogoutRuntimeFencePort = {
 describe('authenticated notes composition', () => {
   it('does not create or mount a notes runtime for anonymous access', () => {
     const createRuntimePorts = vi.fn(
-      (_context: VaultContext): NotesRuntimePorts<VaultNotesScope> => {
+      (_context: VaultContext): VaultNotesRuntimePorts => {
         throw new Error('anonymous runtime must not be created');
       },
     );
@@ -66,7 +65,7 @@ describe('authenticated notes composition', () => {
 
   it('does not construct an authenticated runtime before the async fence enters', () => {
     const createRuntimePorts = vi.fn(
-      (_context: VaultContext): NotesRuntimePorts<VaultNotesScope> => {
+      (_context: VaultContext): VaultNotesRuntimePorts => {
         throw new Error('authenticated runtime constructed');
       },
     );

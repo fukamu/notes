@@ -10,12 +10,23 @@ import type {
   SyncTransport,
 } from '@/lib/application/notes-runtime';
 import {
+  createSyncV2Client,
+  type SyncV2Client,
+  type SyncV2ClientResult,
+} from '@/lib/application/sync-v2-client';
+import {
   NotesProvider,
   useNotesDataStore,
   type NotesDataStore,
 } from '@/lib/client/notes-store';
 import { createPendingMutation } from '@/lib/domain/card-transitions';
 import type { CardRecord, PendingMutation } from '@/lib/domain/types';
+import { initialSyncV2Checkpoint } from '@/lib/sync/v2-replica';
+import {
+  parseSyncSequence,
+  parseSyncV2Cursor,
+  SYNC_V2_VERSION,
+} from '@/lib/sync/v2-protocol';
 import { compatibilityIds } from '@/tests/fixtures/compatibility';
 import { fixtureCardId, fixtureMutationId } from '@/tests/fixtures/ids';
 import { sessionFixtureIds } from '@/tests/fixtures/session';
@@ -120,7 +131,7 @@ function createRuntimeHarness(
     ports: {
       scope,
       repository,
-      syncTransport: transport,
+      sync: { kind: 'v1', transport },
       clock: { now: () => 2_000 + cardSequence },
       idGenerator: {
         createCardId: () => fixtureCardId(`provider-card-${++cardSequence}`),
@@ -136,6 +147,20 @@ function createRuntimeHarness(
         prepare: vi.fn(async () => undefined),
         purge: vi.fn(async () => undefined),
       },
+    },
+  };
+}
+
+function createV2RuntimeHarness(
+  client: SyncV2Client<VaultNotesScope>,
+  overrides: RuntimeOverrides = {},
+): RuntimeHarness {
+  const harness = createRuntimeHarness(overrides);
+  return {
+    ...harness,
+    ports: {
+      ...harness.ports,
+      sync: { kind: 'v2', client },
     },
   };
 }
@@ -331,5 +356,101 @@ describe('NotesProvider operation lifecycle', () => {
         localRevision: 2,
       }),
     ]);
+  });
+
+  it('reconciles v2 replica results without routing them through the v1 decoder', async () => {
+    const initialCard = card('provider-v2-rebase', 'before v2 request');
+    const serverCard = {
+      ...initialCard,
+      title: 'v2 server acknowledgement',
+      updatedAt: 2_100,
+      serverRevision: 2,
+    };
+    const response = Promise.withResolvers<SyncV2ClientResult>();
+    const client: SyncV2Client<VaultNotesScope> = {
+      scope: vaultScope,
+      synchronize: vi.fn(async () => response.promise),
+    };
+    const runtime = createV2RuntimeHarness(client, {
+      online: true,
+      loadCards: async () => [initialCard],
+    });
+
+    await renderRuntime(runtime, 'v2-rebase-runtime');
+    await vi.waitFor(() => expect(client.synchronize).toHaveBeenCalledOnce());
+    act(() =>
+      currentStore().updateCard(initialCard.id, {
+        type: 'title',
+        title: 'edit during v2 request',
+      }),
+    );
+
+    await act(async () => {
+      response.resolve({
+        kind: 'completed',
+        cards: [serverCard],
+        conflicts: [],
+      });
+      await flushAsyncCompletion();
+    });
+
+    expect(runtime.repository.applySyncResponse).not.toHaveBeenCalled();
+    expect(currentStore().cards).toEqual([
+      expect.objectContaining({
+        id: initialCard.id,
+        title: 'edit during v2 request',
+        localRevision: 2,
+        serverRevision: 2,
+      }),
+    ]);
+  });
+
+  it('prevents a v2 terminal replica commit after the logout fence activates', async () => {
+    const terminalResponse = Promise.withResolvers<unknown>();
+    const send = vi.fn(async () => terminalResponse.promise);
+    const applyCommit = vi.fn(async () => ({
+      kind: 'applied' as const,
+      checkpoint: {
+        cursor: parseSyncV2Cursor(
+          'sync.v2.provider.commit.aaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        ),
+        highWatermark: parseSyncSequence(0),
+      },
+      cards: [],
+      conflicts: [],
+    }));
+    const client = createSyncV2Client({
+      scope: vaultScope,
+      transport: {
+        scope: vaultScope,
+        send,
+      },
+      replica: {
+        scope: vaultScope,
+        loadCheckpoint: vi.fn(async () => initialSyncV2Checkpoint()),
+        applyCommit,
+      },
+    });
+    const runtime = createV2RuntimeHarness(client, { online: true });
+
+    await renderRuntime(runtime, 'v2-fenced-runtime');
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    await renderRuntime(runtime, 'v2-fenced-runtime', true);
+
+    await act(async () => {
+      terminalResponse.resolve({
+        version: SYNC_V2_VERSION,
+        highWatermark: 0,
+        changes: [],
+        receipts: [],
+        page: {
+          kind: 'complete',
+          nextCursor: 'sync.v2.provider.commit.aaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+      });
+      await flushAsyncCompletion();
+    });
+
+    expect(applyCommit).not.toHaveBeenCalled();
   });
 });

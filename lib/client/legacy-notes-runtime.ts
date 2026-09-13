@@ -18,7 +18,10 @@ export function createLegacyNotesRuntimePorts(): NotesRuntimePorts<LegacyNotesSc
       LEGACY_NOTES_SCOPE,
       browserIdGenerator,
     ),
-    syncTransport: createV1SyncTransport(LEGACY_NOTES_SCOPE),
+    sync: {
+      kind: 'v1',
+      transport: createV1SyncTransport(LEGACY_NOTES_SCOPE),
+    },
     clock: browserClock,
     idGenerator: browserIdGenerator,
     connectivity: browserConnectivity,

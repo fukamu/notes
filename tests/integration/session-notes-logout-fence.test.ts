@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { SessionNotesApp } from '@/components/session-notes-app';
 import { vaultNotesScope } from '@/lib/application/notes-access';
-import type { NotesRuntimePorts } from '@/lib/application/notes-runtime';
+import type { VaultNotesRuntimePorts } from '@/lib/application/notes-runtime';
 import type {
   LogoutRuntimeFenceEnterResult,
   LogoutRuntimeFencePort,
@@ -101,9 +101,7 @@ describe('SessionNotesApp logout runtime fence', () => {
 
 async function renderSessionNotesApp(
   runtimeFence: LogoutRuntimeFencePort,
-  createRuntimePorts: () => NotesRuntimePorts<
-    ReturnType<typeof vaultNotesScope>
-  >,
+  createRuntimePorts: () => VaultNotesRuntimePorts,
 ): Promise<void> {
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -122,9 +120,7 @@ async function renderSessionNotesApp(
   });
 }
 
-function createRuntime(): NotesRuntimePorts<
-  ReturnType<typeof vaultNotesScope>
-> {
+function createRuntime(): VaultNotesRuntimePorts {
   const scope = vaultNotesScope(context);
   return {
     scope,
@@ -139,7 +135,17 @@ function createRuntime(): NotesRuntimePorts<
       },
       applySyncResponse: async () => ({ cards: [], conflicts: [] }),
     },
-    syncTransport: { scope, send: async () => ({}) },
+    sync: {
+      kind: 'v2',
+      client: {
+        scope,
+        synchronize: async () => ({
+          kind: 'completed',
+          cards: [],
+          conflicts: [],
+        }),
+      },
+    },
     clock: { now: () => 1_000 },
     idGenerator: {
       createCardId: () => fixtureCardId('logout-fence'),

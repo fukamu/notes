@@ -7,6 +7,7 @@ import type {
   PendingMutation,
 } from '@/lib/domain/types';
 import type { SyncRequestWire } from '@/lib/sync/protocol';
+import type { SyncV2Client } from '@/lib/application/sync-v2-client';
 
 /**
  * The only scope understood by the pre-account v1 adapters. Later vault-aware
@@ -44,6 +45,16 @@ export type SyncTransport<TScope extends NotesScope = NotesScope> = {
   send: (request: SyncRequestWire) => Promise<unknown>;
 };
 
+export type NotesSyncRuntime<TScope extends NotesScope = NotesScope> =
+  | {
+      readonly kind: 'v1';
+      readonly transport: SyncTransport<TScope>;
+    }
+  | {
+      readonly kind: 'v2';
+      readonly client: SyncV2Client<TScope>;
+    };
+
 export type Clock = {
   now: () => number;
 };
@@ -70,9 +81,19 @@ export type OfflineAppPort = {
 export type NotesRuntimePorts<TScope extends NotesScope = NotesScope> = {
   readonly scope: TScope;
   readonly repository: NotesRepository<TScope>;
-  readonly syncTransport: SyncTransport<TScope>;
+  readonly sync: NotesSyncRuntime<TScope>;
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
   readonly connectivity: ConnectivityPort;
   readonly offlineApp: OfflineAppPort;
+};
+
+export type VaultNotesRuntimePorts = Omit<
+  NotesRuntimePorts<VaultNotesScope>,
+  'sync'
+> & {
+  readonly sync: Extract<
+    NotesSyncRuntime<VaultNotesScope>,
+    { readonly kind: 'v2' }
+  >;
 };
