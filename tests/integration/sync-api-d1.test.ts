@@ -2,7 +2,7 @@ import { Miniflare } from 'miniflare';
 import { readFile } from 'node:fs/promises';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { handleSyncRequest } from '@/app/api/sync/handler';
-import { ensureSyncSchema, synchronize } from '@/db/d1-sync';
+import { synchronize } from '@/db/d1-sync';
 import {
   parseCardId,
   parseConflictId,
@@ -126,7 +126,11 @@ async function resetDatabase(): Promise<void> {
     DROP TABLE IF EXISTS cards;
     DROP TABLE IF EXISTS sync_state;
   `);
-  await ensureSyncSchema(database);
+  await applyMigration(database, 'drizzle/0000_sticky_gamora.sql');
+  await applyMigration(database, 'drizzle/0001_amazing_cannonball.sql');
+  await database
+    .prepare('INSERT INTO sync_state(singleton, next_display_id) VALUES (1, 1)')
+    .run();
 }
 
 async function applyMigration(
@@ -393,6 +397,11 @@ describe('D1 row and saved JSON boundaries', () => {
       DROP TABLE IF EXISTS sync_state;
     `);
     await applyMigration(migrationDatabase, 'drizzle/0000_sticky_gamora.sql');
+    await migrationDatabase
+      .prepare(
+        'INSERT INTO sync_state(singleton, next_display_id) VALUES (1, 1)',
+      )
+      .run();
     const mutation = upsert(ids.createA, ids.cardA, 'migration fixture', null);
     const before = await synchronize(migrationDatabase, [mutation]);
     await applyMigration(
