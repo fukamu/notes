@@ -150,7 +150,7 @@ async function expectMapNodeFullyVisible(node: Locator, graph: Locator) {
 async function replaceLocalCards(page: Page, cards: LocalFixtureCard[]) {
   await page.evaluate(async (fixtureCards) => {
     await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open('fukamu-notes', 1);
+      const request = indexedDB.open('fukamu-notes', 2);
       request.addEventListener('error', () => reject(request.error), {
         once: true,
       });
