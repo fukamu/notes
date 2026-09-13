@@ -6,6 +6,7 @@ export default defineConfig({
     './db/schema.ts',
     './server/control-plane/d1-schema.ts',
     './server/crypto/d1-schema.ts',
+    './server/encrypted-object/d1-schema.ts',
     './server/vault-content/d1-schema.ts',
   ],
   dialect: 'sqlite',
