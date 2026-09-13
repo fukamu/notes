@@ -9,6 +9,7 @@ import type {
   PrivateObjectDescriptor,
 } from './core';
 import type { EnvelopeObject } from '../crypto/core';
+import type { CryptoObjectRevision } from '../crypto/core';
 
 export type ImmutableObjectPutResult =
   | { readonly kind: 'stored' }
@@ -42,6 +43,10 @@ export type MetadataCommitResult =
 export type EncryptedObjectMetadataRepository = {
   findCurrent(
     object: EnvelopeObject,
+  ): Promise<EncryptedObjectMetadata | undefined>;
+  findRevision(
+    object: EnvelopeObject,
+    objectRevision: CryptoObjectRevision,
   ): Promise<EncryptedObjectMetadata | undefined>;
   findByWriteId(
     writeId: EncryptedWriteId,

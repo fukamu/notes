@@ -126,6 +126,16 @@ describe('encrypted object application service', () => {
       kind: 'stored',
       metadata: { objectRevision: envelopeCryptoIds.objectRevision2 },
     });
+    await expect(
+      service.readRevision({
+        object: command.object,
+        objectRevision: envelopeCryptoIds.objectRevision1,
+        keyring: command.keyring,
+      }),
+    ).resolves.toEqual({
+      kind: 'found',
+      plaintext: command.plaintext,
+    });
     const beforeMissingRead = objects.calls();
     await expect(
       service.read({
@@ -497,6 +507,8 @@ function failFirstCommit(
   let shouldFail = true;
   return {
     findCurrent: (object) => repository.findCurrent(object),
+    findRevision: (object, revision) =>
+      repository.findRevision(object, revision),
     findByWriteId: (writeId) => repository.findByWriteId(writeId),
     findIntent: (writeId) => repository.findIntent(writeId),
     reserveIntent: (intent) => repository.reserveIntent(intent),
@@ -521,6 +533,8 @@ function rejectCommit(
 ): EncryptedObjectMetadataRepository {
   return {
     findCurrent: (object) => repository.findCurrent(object),
+    findRevision: (object, revision) =>
+      repository.findRevision(object, revision),
     findByWriteId: (writeId) => repository.findByWriteId(writeId),
     findIntent: (writeId) => repository.findIntent(writeId),
     reserveIntent: (intent) => repository.reserveIntent(intent),

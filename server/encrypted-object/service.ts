@@ -76,6 +76,11 @@ export type EncryptedObjectService = {
     readonly object: EnvelopeObject;
     readonly keyring: VaultDekKeyring;
   }): Promise<EncryptedObjectReadResult>;
+  readRevision(input: {
+    readonly object: EnvelopeObject;
+    readonly objectRevision: CryptoObjectRevision;
+    readonly keyring: VaultDekKeyring;
+  }): Promise<EncryptedObjectReadResult>;
   collectOrphans(input: {
     readonly scanStartedAt: number;
     readonly gracePeriodMs: number;
@@ -246,29 +251,15 @@ export function createEncryptedObjectService(input: {
 
     async read(command) {
       const metadata = await input.metadata.findCurrent(command.object);
-      if (metadata === undefined) return { kind: 'not-found' };
-      const bytes = await input.objects.get(metadata.objectKey);
-      if (bytes === undefined) throw new EncryptedObjectIntegrityError();
-      const ciphertext = decodeCiphertextBytes(bytes);
-      const plan = planStoredCiphertext({
-        metadata,
-        ciphertext,
-        actualCiphertextBytes: bytes.byteLength,
-      });
-      if (plan.kind === 'rejected') throw new EncryptedObjectIntegrityError();
-      const plaintext = await input.encryption.decrypt({
-        keyring: command.keyring,
-        context: {
-          vaultId: input.context.vaultId,
-          object: metadata.object,
-          objectRevision: metadata.objectRevision,
-        },
-        ciphertext,
-      });
-      if (plaintext.byteLength !== metadata.plaintextBytes) {
-        throw new EncryptedObjectIntegrityError();
-      }
-      return { kind: 'found', plaintext };
+      return readMetadata(input, command.keyring, metadata);
+    },
+
+    async readRevision(command) {
+      const metadata = await input.metadata.findRevision(
+        command.object,
+        command.objectRevision,
+      );
+      return readMetadata(input, command.keyring, metadata);
     },
 
     async collectOrphans(command) {
@@ -322,6 +313,40 @@ export function createEncryptedObjectService(input: {
       return { completed, retried };
     },
   };
+}
+
+async function readMetadata(
+  input: {
+    readonly context: VaultContext;
+    readonly objects: PrivateObjectStoragePort;
+    readonly encryption: EnvelopeEncryptionService;
+  },
+  keyring: VaultDekKeyring,
+  metadata: EncryptedObjectMetadata | undefined,
+): Promise<EncryptedObjectReadResult> {
+  if (metadata === undefined) return { kind: 'not-found' };
+  const bytes = await input.objects.get(metadata.objectKey);
+  if (bytes === undefined) throw new EncryptedObjectIntegrityError();
+  const ciphertext = decodeCiphertextBytes(bytes);
+  const plan = planStoredCiphertext({
+    metadata,
+    ciphertext,
+    actualCiphertextBytes: bytes.byteLength,
+  });
+  if (plan.kind === 'rejected') throw new EncryptedObjectIntegrityError();
+  const plaintext = await input.encryption.decrypt({
+    keyring,
+    context: {
+      vaultId: input.context.vaultId,
+      object: metadata.object,
+      objectRevision: metadata.objectRevision,
+    },
+    ciphertext,
+  });
+  if (plaintext.byteLength !== metadata.plaintextBytes) {
+    throw new EncryptedObjectIntegrityError();
+  }
+  return { kind: 'found', plaintext };
 }
 
 function encodeCiphertext(ciphertext: EnvelopeCiphertext): Uint8Array {

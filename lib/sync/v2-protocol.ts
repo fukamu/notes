@@ -13,7 +13,7 @@ import {
   type DecodeIssue,
   type Decoder,
   type InferDecoder,
-} from '@/lib/codec/core';
+} from '../codec/core';
 import {
   conflictRecordDecoder,
   CONTRACT_LIMITS,
@@ -21,16 +21,16 @@ import {
   type BodySegment,
   type ConflictRecord,
   type PendingMutation,
-} from '@/lib/domain/types';
+} from '../domain/types';
 import {
   cardIdDecoder,
   conflictIdDecoder,
   deviceIdDecoder,
   mutationIdDecoder,
   type DeviceId,
-} from '@/lib/domain/id';
-import { assertNever } from '@/lib/shared/invariant';
-import { serverCardDecoder, type ServerCard } from '@/lib/sync/protocol';
+} from '../domain/id';
+import { assertNever } from '../shared/invariant';
+import { serverCardDecoder, type ServerCard } from './protocol';
 
 export const SYNC_V2_VERSION = 'sync/v2' as const;
 
@@ -156,7 +156,12 @@ const syncV2ResponseShapeDecoder = objectDecoder({
   page: syncV2PageDecoder,
 });
 
-export type SyncV2Request = InferDecoder<typeof syncV2RequestDecoder>;
+export type SyncV2Request = {
+  version: typeof SYNC_V2_VERSION;
+  deviceId: DeviceId;
+  cursor: SyncV2Cursor | null;
+  mutations: PendingMutation[];
+};
 export type SyncV2Change = InferDecoder<typeof syncV2ChangeDecoder>;
 export type SyncV2MutationReceipt = InferDecoder<
   typeof syncV2MutationReceiptDecoder

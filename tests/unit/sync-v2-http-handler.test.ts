@@ -1,0 +1,186 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  createSyncV2HttpHandler,
+  type SyncV2HttpDependencies,
+} from '@/app/api/v2/sync/handler';
+import {
+  encodeSyncV2Request,
+  parseSyncSequence,
+  parseSyncV2Cursor,
+} from '@/lib/sync/v2-protocol';
+import { createCompatibilityFixture } from '@/tests/fixtures/compatibility';
+import { cookieHeader, fixtureActiveSession } from '@/tests/fixtures/session';
+import type { SyncV2ApplicationInput } from '@/server/sync-v2/public';
+
+const expectedOrigin = 'https://notes.example';
+const nextCursor = parseSyncV2Cursor(
+  'sync.v2.page.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+);
+
+function request(
+  input: {
+    readonly cookie?: string;
+    readonly origin?: string;
+    readonly site?: string;
+    readonly body?: string;
+    readonly contentLength?: string;
+  } = {},
+): Request {
+  const fixture = createCompatibilityFixture();
+  const body =
+    input.body ??
+    JSON.stringify(
+      encodeSyncV2Request({
+        deviceId: fixture.request.deviceId,
+        cursor: null,
+        mutations: [],
+      }),
+    );
+  const headers = new Headers({
+    'content-type': 'application/json',
+    cookie: input.cookie ?? cookieHeader(),
+    origin: input.origin ?? expectedOrigin,
+    'sec-fetch-site': input.site ?? 'same-origin',
+  });
+  if (input.contentLength !== undefined) {
+    headers.set('content-length', input.contentLength);
+  }
+  return new Request(`${expectedOrigin}/api/v2/sync`, {
+    method: 'POST',
+    headers,
+    body,
+  });
+}
+
+function dependencies(
+  overrides: Partial<SyncV2HttpDependencies> = {},
+): SyncV2HttpDependencies {
+  return {
+    expectedOrigin,
+    clock: { now: () => 1_500 },
+    sessions: {
+      findSessionByToken: async () => fixtureActiveSession(),
+    },
+    entitlement: {
+      authorizeCapability: async (_context, capability) => ({
+        kind: 'allowed',
+        capability,
+        basis: 'trial',
+        validUntil: 2_000,
+      }),
+    },
+    application: {
+      synchronize: async () => ({
+        kind: 'synchronized',
+        response: {
+          version: 'sync/v2',
+          highWatermark: parseSyncSequence(0),
+          changes: [],
+          receipts: [],
+          page: { kind: 'complete', nextCursor },
+        },
+      }),
+    },
+    ...overrides,
+  };
+}
+
+function synchronizeSpy() {
+  const application = dependencies().application;
+  return vi.fn((input: SyncV2ApplicationInput) =>
+    application.synchronize(input),
+  );
+}
+
+describe('authenticated Sync v2 HTTP handler', () => {
+  it('derives VaultContext, checks notes-sync, and returns no-store JSON', async () => {
+    const entitlement = vi.fn(dependencies().entitlement.authorizeCapability);
+    const synchronize = synchronizeSpy();
+    const response = await createSyncV2HttpHandler(
+      dependencies({
+        entitlement: { authorizeCapability: entitlement },
+        application: { synchronize },
+      }),
+    )(request());
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(entitlement).toHaveBeenCalledWith(
+      expect.objectContaining({ vaultId: fixtureActiveSession().vaultId }),
+      'notes-sync',
+      1_500,
+    );
+    expect(synchronize).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toMatchObject({
+      version: 'sync/v2',
+      page: { kind: 'complete' },
+    });
+  });
+
+  it('rejects anonymous and cross-site requests before application work', async () => {
+    const synchronize = synchronizeSpy();
+    const anonymous = await createSyncV2HttpHandler(
+      dependencies({
+        sessions: { findSessionByToken: async () => undefined },
+        application: { synchronize },
+      }),
+    )(request());
+    expect(anonymous.status).toBe(401);
+
+    const lookup = vi.fn(dependencies().sessions.findSessionByToken);
+    const csrf = await createSyncV2HttpHandler(
+      dependencies({
+        sessions: { findSessionByToken: lookup },
+        application: { synchronize },
+      }),
+    )(request({ origin: 'https://attacker.example', site: 'cross-site' }));
+    expect(csrf.status).toBe(403);
+    expect(lookup).not.toHaveBeenCalled();
+    expect(synchronize).not.toHaveBeenCalled();
+  });
+
+  it('locks online sync immediately for denied entitlement', async () => {
+    const synchronize = synchronizeSpy();
+    const response = await createSyncV2HttpHandler(
+      dependencies({
+        entitlement: {
+          authorizeCapability: async (_context, capability) => ({
+            kind: 'denied',
+            capability,
+            reason: 'payment-failed',
+          }),
+        },
+        application: { synchronize },
+      }),
+    )(request());
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toEqual({
+      error: 'online-access-locked',
+    });
+    expect(synchronize).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed and oversized bodies without weakening the boundary', async () => {
+    const handler = createSyncV2HttpHandler(dependencies());
+    expect((await handler(request({ body: '{' }))).status).toBe(400);
+    expect(
+      (await handler(request({ body: '{}', contentLength: '4000001' }))).status,
+    ).toBe(413);
+  });
+
+  it('maps expected application rejection without exposing tenant details', async () => {
+    const response = await createSyncV2HttpHandler(
+      dependencies({
+        application: {
+          synchronize: async () => ({
+            kind: 'rejected',
+            reason: 'invalid-cursor',
+          }),
+        },
+      }),
+    )(request());
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid-request',
+    });
+  });
+});
