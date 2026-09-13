@@ -3,6 +3,7 @@ import { synchronize } from '@/db/d1-sync';
 import { BoundaryDecodeError } from '@/lib/codec/core';
 import { CONTRACT_LIMITS } from '@/lib/domain/types';
 import { decodeSyncRequest, decodeSyncResponse } from '@/lib/sync/protocol';
+import { legacySyncIsEnabled } from '@/server/runtime-mode';
 
 class PayloadTooLargeError extends Error {}
 
@@ -31,6 +32,12 @@ export async function handleSyncRequest(
   request: Request,
   environment: unknown,
 ): Promise<Response> {
+  if (!legacySyncIsEnabled(environment)) {
+    return Response.json(
+      { error: 'この同期経路は利用できません。' },
+      { status: 404, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
   let input: ReturnType<typeof decodeSyncRequest>;
   try {
     input = decodeSyncRequest(await readJson(request));

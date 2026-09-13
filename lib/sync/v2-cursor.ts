@@ -4,14 +4,14 @@ import {
   objectDecoder,
   refineDecoder,
   type InferDecoder,
-} from '@/lib/codec/core';
-import { vaultIdDecoder, type VaultContext } from '@/lib/domain/identity';
-import { deviceIdDecoder, type DeviceId } from '@/lib/domain/id';
+} from '../codec/core';
+import { vaultIdDecoder, type VaultContext } from '../domain/identity';
+import { deviceIdDecoder, type DeviceId } from '../domain/id';
 import {
   syncSequenceDecoder,
   type SyncSequence,
   type SyncV2Cursor,
-} from '@/lib/sync/v2-protocol';
+} from './v2-protocol';
 
 export const SYNC_V2_CURSOR_VERSION = 'sync-cursor/v2' as const;
 

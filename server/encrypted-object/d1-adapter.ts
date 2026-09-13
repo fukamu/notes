@@ -6,7 +6,7 @@ import {
 } from '../../lib/codec/core';
 import type { VaultContext } from '../../lib/domain/identity';
 import type { D1DatabaseBinding } from '../../db/d1-types';
-import type { EnvelopeObject } from '../crypto/core';
+import type { CryptoObjectRevision, EnvelopeObject } from '../crypto/core';
 import type { VaultContentDirectory } from '../vault-content/public';
 import type { VaultPartitionRoute } from '../vault-content/records';
 import {
@@ -107,6 +107,37 @@ class D1ScopedEncryptedObjectMetadataRepository implements EncryptedObjectMetada
             encryptedObjectMetadataRowDecoder,
             input,
             'D1 encrypted object metadata row',
+          ),
+        );
+  }
+
+  async findRevision(
+    object: EnvelopeObject,
+    objectRevision: CryptoObjectRevision,
+  ): Promise<EncryptedObjectMetadata | undefined> {
+    const input: unknown = await this.database
+      .prepare(
+        `SELECT ${metadataColumns}
+         FROM vault_encrypted_objects stored
+         WHERE stored.vault_id = ? AND stored.object_type = ?
+           AND stored.object_id = ? AND stored.object_revision = ?
+           AND ${routeGuard('stored.vault_id')}`,
+      )
+      .bind(
+        this.context.vaultId,
+        object.kind,
+        object.objectId,
+        objectRevision,
+        ...this.routeGuardBindings(),
+      )
+      .first();
+    return input === null
+      ? undefined
+      : mapEncryptedObjectMetadataRow(
+          decodeOrThrow(
+            encryptedObjectMetadataRowDecoder,
+            input,
+            'D1 encrypted object revision row',
           ),
         );
   }

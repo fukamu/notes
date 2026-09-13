@@ -121,6 +121,7 @@ describe('pure-core dependency direction', () => {
     'server/crypto/core.ts',
     'server/encrypted-object/core.ts',
     'server/entitlement/core.ts',
+    'server/sync-v2/core.ts',
   ];
 
   it('keeps core imports independent of concrete effect adapters', async () => {
@@ -371,6 +372,7 @@ describe('Identity/Vault control-plane ownership', () => {
     for (const file of files) {
       if (
         file.startsWith('server/control-plane/') ||
+        file === 'server/composition/sync-v2.ts' ||
         file.startsWith('server/migrations/')
       ) {
         continue;
@@ -413,6 +415,7 @@ describe('Vault-scoped server repository ownership', () => {
     for (const file of files) {
       if (
         file.startsWith('server/vault-content/') ||
+        file === 'server/composition/sync-v2.ts' ||
         file.startsWith('server/migrations/')
       ) {
         continue;
@@ -486,6 +489,7 @@ describe('Vault-scoped server repository ownership', () => {
 function billingBoundaryViolation(file: string, source: string): boolean {
   if (
     file.startsWith('server/billing/') ||
+    file === 'server/composition/sync-v2.ts' ||
     file.startsWith('server/migrations/')
   ) {
     return false;
@@ -565,6 +569,7 @@ describe('Billing module ownership', () => {
 function entitlementBoundaryViolation(file: string, source: string): boolean {
   if (
     file.startsWith('server/entitlement/') ||
+    file === 'server/composition/sync-v2.ts' ||
     file.startsWith('server/migrations/')
   ) {
     return false;
@@ -647,6 +652,42 @@ describe('Entitlement module ownership', () => {
       if (/entitlement\/fake/.test(source)) fakeConsumers.push(file);
     }
     expect(fakeConsumers).toEqual([]);
+  });
+});
+
+describe('authenticated Sync v2 composition', () => {
+  it('keeps decisions pure, handlers on public ports, and concrete wiring in one root', async () => {
+    const [core, service, publicContract, handler, composition, route] =
+      await Promise.all([
+        readFile('server/sync-v2/core.ts', 'utf8'),
+        readFile('server/sync-v2/service.ts', 'utf8'),
+        readFile('server/sync-v2/public.ts', 'utf8'),
+        readFile('app/api/v2/sync/handler.ts', 'utf8'),
+        readFile('server/composition/sync-v2.ts', 'utf8'),
+        readFile('app/api/v2/sync/route.ts', 'utf8'),
+      ]);
+    expect(core).toContain('planSyncV2Mutation');
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise|TextEncoder|TextDecoder/,
+    );
+    expect(service).toContain('createSyncV2Application');
+    expect(service).toContain('authorizeSyncV2Cursor');
+    expect(service).not.toMatch(
+      /billing\/|stripe\/|entitlement\/(?:core|d1-adapter|records|service)/,
+    );
+    expect(publicContract).toContain('type SyncV2ContentDirectory');
+    expect(publicContract).not.toMatch(/D1Database|R2Bucket|Stripe/);
+    expect(handler).toContain("'notes-sync'");
+    expect(handler).toContain('entitlement/public');
+    expect(handler).not.toMatch(
+      /billing\/|stripe\/|entitlement\/(?:core|d1-adapter|records|service)/,
+    );
+    expect(composition).toContain('createD1SyncV2HttpHandler');
+    expect(composition).toContain('D1SyncV2JournalDirectory');
+    expect(composition).toContain('EncryptedSyncV2ContentDirectory');
+    expect(composition).not.toMatch(/\/fake|allowAll|\.prepare\(/);
+    expect(route).toContain('return unavailable(503)');
+    expect(route).not.toMatch(/\/fake|createFake|allowAll/);
   });
 });
 
