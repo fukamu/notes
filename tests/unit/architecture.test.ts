@@ -116,7 +116,10 @@ describe('pure-core dependency direction', () => {
     'lib/application',
     'server/core',
   ];
-  const coreFiles = ['server/crypto/core.ts'];
+  const coreFiles = [
+    'server/crypto/core.ts',
+    'server/encrypted-object/core.ts',
+  ];
 
   it('keeps core imports independent of concrete effect adapters', async () => {
     const files = [
