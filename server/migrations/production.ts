@@ -1,3 +1,4 @@
+import { accountDeletionSagaMigration } from '../account-deletion/migration';
 import { billingSubscriptionMigration } from '../billing/migration';
 import { identityVaultControlPlaneMigration } from '../control-plane/migration';
 import { envelopeEncryptionMetadataMigration } from '../crypto/migration';
@@ -14,4 +15,5 @@ export const productionMigrationManifest = [
   billingSubscriptionMigration,
   entitlementMigration,
   syncV2JournalMigration,
+  accountDeletionSagaMigration,
 ] as const;

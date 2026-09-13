@@ -119,6 +119,7 @@ describe('pure-core dependency direction', () => {
     'server/core',
   ];
   const coreFiles = [
+    'server/account-deletion/core.ts',
     'server/billing/core.ts',
     'server/crypto/core.ts',
     'server/encrypted-object/core.ts',
@@ -405,6 +406,66 @@ describe('Identity/Vault control-plane ownership', () => {
     expect(runner).toContain('planMigrations');
     expect(sync).not.toMatch(/CREATE\s+(?:TABLE|INDEX)|ensureSyncSchema/i);
     expect(handler).not.toMatch(/CREATE\s+(?:TABLE|INDEX)|ensureSyncSchema/i);
+  });
+});
+
+function accountDeletionBoundaryViolation(
+  file: string,
+  source: string,
+): boolean {
+  if (
+    file.startsWith('server/account-deletion/') ||
+    file.startsWith('server/migrations/')
+  ) {
+    return false;
+  }
+  return (
+    /server\/account-deletion\/(?:core|d1-adapter|d1-schema|migration|records)/.test(
+      source,
+    ) ||
+    /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:account_deletion_operations|account_deletion_step_receipts)\b/i.test(
+      source,
+    )
+  );
+}
+
+describe('Account deletion saga ownership', () => {
+  it('keeps private state, D1 mutations, and migrations inside their owner module', async () => {
+    const files = (await Promise.all(roots.map(sourceFiles))).flat();
+    const violations: string[] = [];
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (accountDeletionBoundaryViolation(file, source)) violations.push(file);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps sequencing pure, persistence scope-bound, and provider effects out of the foundation', async () => {
+    const [core, publicContract, adapter, schema, migration, testConfig] =
+      await Promise.all([
+        readFile('server/account-deletion/core.ts', 'utf8'),
+        readFile('server/account-deletion/public.ts', 'utf8'),
+        readFile('server/account-deletion/d1-adapter.ts', 'utf8'),
+        readFile('server/account-deletion/d1-schema.ts', 'utf8'),
+        readFile('server/account-deletion/migration.ts', 'utf8'),
+        readFile('vitest.config.ts', 'utf8'),
+      ]);
+    expect(core).toContain('planAccountDeletionStepClaim');
+    expect(core).toContain('planAccountDeletionStepResult');
+    expect(core).toContain('planAccountDeletionExpiredLeaseRecovery');
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise|R2|KMS|Stripe|indexedDB|window\.|document\./,
+    );
+    expect(publicContract).toContain('type AccountDeletionRepository');
+    expect(publicContract).not.toMatch(/D1Database|R2Bucket|Stripe/);
+    expect(adapter).toContain('scope.accountId');
+    expect(adapter).toContain('scope.vaultId');
+    expect(adapter).toContain('isValidAccountDeletionTransition');
+    expect(schema).not.toMatch(/accounts\.accountId|personalVaults/);
+    expect(migration).not.toMatch(
+      /title|body_json|plaintext|ciphertext|stripe/i,
+    );
+    expect(testConfig).toContain("'server/**/*.ts'");
   });
 });
 
