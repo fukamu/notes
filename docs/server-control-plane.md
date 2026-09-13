@@ -17,8 +17,10 @@ Session lookup accepts only a validated SHA-256 token digest; raw cookie tokens
 are not stored by this module. Identity linking and session revocation take a
 verified `VaultContext`, so tenant ownership is not accepted from request JSON.
 
-Billing, entitlement, content partitioning, wrapped keys, and deletion saga
-state remain owned by their later Issues and have no tables in this migration.
+Billing, entitlement, wrapped keys, and deletion saga state remain owned by
+their later Issues and have no tables in this migration. Content partitioning
+is owned separately by the scope-bound repository documented in
+[Vault-scoped server repository and tenant routing](vault-content-repository.md).
 
 ## Explicit migration flow
 
@@ -34,6 +36,10 @@ A failed batch leaves neither a ledger entry nor partial feature DDL. Running
 the same manifest again is idempotent. The checked-in Drizzle migration and
 snapshot are schema-review artifacts; production application requires a
 separate explicit approval.
+
+`server/migrations/production.ts` is the composition point that orders the
+Identity/Vault migration before feature-owned later migrations. Feature
+modules do not import the control-plane ORM tables or mutation adapter.
 
 `/api/sync` no longer creates tables on a request. Its legacy v1 tables are
 created only by compatibility-test fixtures. A runtime whose schema was not

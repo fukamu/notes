@@ -394,6 +394,56 @@ describe('Identity/Vault control-plane ownership', () => {
   });
 });
 
+describe('Vault-scoped server repository ownership', () => {
+  it('keeps Vault content tables and D1 mutations inside their owner module', async () => {
+    const files = (await Promise.all(roots.map(sourceFiles))).flat();
+    const violations: string[] = [];
+    for (const file of files) {
+      if (
+        file.startsWith('server/vault-content/') ||
+        file.startsWith('server/migrations/')
+      ) {
+        continue;
+      }
+      const source = await readFile(file, 'utf8');
+      if (
+        /server\/vault-content\/(?:core|d1-adapter|d1-schema|migration|records)/.test(
+          source,
+        ) ||
+        /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:vault_partition_mappings|vault_cards|vault_mutation_receipts|vault_conflicts)\b/i.test(
+          source,
+        )
+      ) {
+        violations.push(file);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps routing and CAS plans pure and content operations scope-bound', async () => {
+    const [core, publicContract, adapter, records] = await Promise.all([
+      readFile('server/vault-content/core.ts', 'utf8'),
+      readFile('server/vault-content/public.ts', 'utf8'),
+      readFile('server/vault-content/d1-adapter.ts', 'utf8'),
+      readFile('server/vault-content/records.ts', 'utf8'),
+    ]);
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise/,
+    );
+    expect(publicContract).toContain('open(context: VaultContext)');
+    expect(publicContract).toContain('type VaultContentRepository');
+    expect(publicContract).not.toMatch(
+      /findCard\([^)]*(?:VaultId|VaultContext)|compareAndSwapCard\([^)]*(?:VaultId|VaultContext)|deleteCard\([^)]*(?:VaultId|VaultContext)/,
+    );
+    expect(adapter).toContain('class D1ScopedVaultContentRepository');
+    expect(adapter).toContain('this.context.vaultId');
+    expect(adapter).toContain('this.route.routingRevision');
+    expect(adapter).toContain("return { kind: 'not-found' }");
+    expect(records).toContain('partitionRouteRowDecoder');
+    expect(records).toContain('mapMutationReceiptRow');
+  });
+});
+
 describe('application and presentation architecture', () => {
   it('uses one typed lifecycle as the initialization source of truth', async () => {
     const lifecycle = await readFile(
