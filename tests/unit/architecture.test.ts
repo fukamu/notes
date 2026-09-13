@@ -120,6 +120,7 @@ describe('pure-core dependency direction', () => {
     'server/billing/core.ts',
     'server/crypto/core.ts',
     'server/encrypted-object/core.ts',
+    'server/entitlement/core.ts',
   ];
 
   it('keeps core imports independent of concrete effect adapters', async () => {
@@ -531,6 +532,94 @@ describe('Billing module ownership', () => {
     expect(fake).toContain('createFakeBillingModule');
     expect(fake).not.toMatch(/process\.env|D1Database|fetch\(/);
     expect(testConfig).toContain("'server/**/*.ts'");
+  });
+});
+
+function entitlementBoundaryViolation(file: string, source: string): boolean {
+  if (
+    file.startsWith('server/entitlement/') ||
+    file.startsWith('server/migrations/')
+  ) {
+    return false;
+  }
+  return (
+    /(?:(?:@\/)?server\/entitlement|(?:\.\.?\/)+entitlement)\/(?:core|d1-adapter|d1-schema|fake|migration|ports|records|service)/.test(
+      source,
+    ) ||
+    /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:entitlement_projections|entitlement_offline_leases)\b/i.test(
+      source,
+    )
+  );
+}
+
+describe('Entitlement module ownership', () => {
+  it('keeps Entitlement internals and table mutations inside their owner module', async () => {
+    const files = (await Promise.all(roots.map(sourceFiles))).flat();
+    const violations: string[] = [];
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (entitlementBoundaryViolation(file, source)) violations.push(file);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('detects representative private imports and direct writes', () => {
+    expect(
+      entitlementBoundaryViolation(
+        'server/vault-content/access.ts',
+        "import type { EntitlementProjectionRecord } from '../entitlement/core'",
+      ),
+    ).toBe(true);
+    expect(
+      entitlementBoundaryViolation(
+        'app/api/v2/sync/handler.ts',
+        "UPDATE entitlement_projections SET state = 'paid-active'",
+      ),
+    ).toBe(true);
+    expect(
+      entitlementBoundaryViolation(
+        'server/vault-content/access.ts',
+        "import type { EntitlementPort } from '../entitlement/public'",
+      ),
+    ).toBe(false);
+  });
+
+  it('exposes a read-only provider-neutral contract and no production fake fallback', async () => {
+    const [core, publicContract, service, adapter, fake, testConfig] =
+      await Promise.all([
+        readFile('server/entitlement/core.ts', 'utf8'),
+        readFile('server/entitlement/public.ts', 'utf8'),
+        readFile('server/entitlement/service.ts', 'utf8'),
+        readFile('server/entitlement/d1-adapter.ts', 'utf8'),
+        readFile('server/entitlement/fake.ts', 'utf8'),
+        readFile('vitest.config.ts', 'utf8'),
+      ]);
+    expect(core).toContain('evaluateSubscriptionFacts');
+    expect(core).toContain('planOfflineLease');
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise/,
+    );
+    expect(publicContract).toContain('type EntitlementPort');
+    expect(publicContract).toContain("'lease-policy-undecided'");
+    expect(publicContract).not.toMatch(
+      /Stripe|D1Database|BillingApi|BillingSubscriptionId|BillingVersion|EntitlementProjectionRecord/,
+    );
+    expect(service).toContain('dependencies.billing.readSubscription(context)');
+    expect(service).toContain("offlineLeasePolicy.kind === 'undecided'");
+    expect(adapter).toContain('createD1EntitlementPort');
+    expect(adapter).toContain('controlPlane.findPersonalAccount');
+    expect(fake).toContain('createFakeEntitlementModule');
+    expect(fake).not.toMatch(/process\.env|D1Database|fetch\(/);
+    expect(testConfig).toContain("'server/**/*.ts'");
+
+    const productionFiles = (await Promise.all(roots.map(sourceFiles))).flat();
+    const fakeConsumers: string[] = [];
+    for (const file of productionFiles) {
+      if (file === 'server/entitlement/fake.ts') continue;
+      const source = await readFile(file, 'utf8');
+      if (/entitlement\/fake/.test(source)) fakeConsumers.push(file);
+    }
+    expect(fakeConsumers).toEqual([]);
   });
 });
 
