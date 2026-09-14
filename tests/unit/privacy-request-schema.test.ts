@@ -60,7 +60,7 @@ describe('privacy request journal schema', () => {
 
   it('adds an empty-schema migration after contract evidence', async () => {
     const source = await readFile(
-      'drizzle/0014_privacy_request_journal.sql',
+      'drizzle/0015_privacy_request_journal.sql',
       'utf8',
     );
     for (const marker of [

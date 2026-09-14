@@ -50,7 +50,7 @@ describe('terms consent ledger schema', () => {
 
   it('adds an immutable empty-schema migration after privacy requests', async () => {
     const source = await readFile(
-      'drizzle/0015_terms_consent_ledger.sql',
+      'drizzle/0016_terms_consent_ledger.sql',
       'utf8',
     );
     for (const marker of [
