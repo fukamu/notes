@@ -1,3 +1,9 @@
+import {
+  isPrivacyDataCategoryId,
+  privacyDataCategoryIds,
+  type PrivacyDataCategoryId,
+} from '../domain/privacy-processing.ts';
+
 export const PRIVACY_DISCLOSURE_SCHEMA_VERSION = 1;
 export const PRIVACY_BACKUP_RETENTION_MAXIMUM_DAYS = 30;
 
@@ -10,6 +16,7 @@ export type PrivacyRequestKind =
   | 'third-party-provision-suspension';
 
 export type PrivacyCollectionItem = Readonly<{
+  categoryId: PrivacyDataCategoryId;
   category: string;
   source: string;
   purposes: readonly string[];
@@ -92,11 +99,19 @@ export const localPrivacyDisclosureFixture: PrivacyDisclosure = {
   },
   collection: [
     {
+      categoryId: 'account-identity',
       category: '開発用サンプル：account・identity情報',
       source: '開発用サンプル：利用者による登録と認証provider',
       purposes: ['開発用サンプル：本人認証、account管理、不正利用防止'],
     },
     {
+      categoryId: 'authentication-security',
+      category: '開発用サンプル：認証・security情報',
+      source: '開発用サンプル：認証操作とserviceによる生成',
+      purposes: ['開発用サンプル：session管理、OTP検証、不正利用防止'],
+    },
+    {
+      categoryId: 'billing-contract',
       category: '開発用サンプル：契約・請求状態',
       source: '開発用サンプル：利用者の申込みと決済provider',
       purposes: [
@@ -104,9 +119,22 @@ export const localPrivacyDisclosureFixture: PrivacyDisclosure = {
       ],
     },
     {
+      categoryId: 'vault-content',
       category: '開発用サンプル：Personal Vaultの利用者content',
       source: '開発用サンプル：利用者による入力と同期',
       purposes: ['開発用サンプル：notes保存、同期、競合解決、関連表示の提供'],
+    },
+    {
+      categoryId: 'device-offline-replica',
+      category: '開発用サンプル：端末内offline replica',
+      source: '開発用サンプル：利用者の入力と端末内の編集状態',
+      purposes: ['開発用サンプル：offline編集と再接続後の同期'],
+    },
+    {
+      categoryId: 'operational-audit',
+      category: '開発用サンプル：運用・監査metadata',
+      source: '開発用サンプル：service利用とsecurity event',
+      purposes: ['開発用サンプル：不正利用防止、障害対応、service品質維持'],
     },
   ],
   personalVaultModel: 'one-account-one-personal-vault',
@@ -443,7 +471,16 @@ function decodeCollection(
       issues.push(`${path} must be an object`);
       continue;
     }
-    rejectUnknownFields(item, ['category', 'source', 'purposes'], path, issues);
+    rejectUnknownFields(
+      item,
+      ['categoryId', 'category', 'source', 'purposes'],
+      path,
+      issues,
+    );
+    const categoryId = item.categoryId;
+    if (!isPrivacyDataCategoryId(categoryId)) {
+      issues.push(`${path}.categoryId is unsupported`);
+    }
     const category = requiredString(
       item,
       'category',
@@ -471,7 +508,15 @@ function decodeCollection(
       issues.push(`${path}.category must be unique`);
     }
     categories.add(category);
-    items.push({ category, source, purposes });
+    if (isPrivacyDataCategoryId(categoryId)) {
+      items.push({ categoryId, category, source, purposes });
+    }
+  }
+  const categoryIds = new Set(items.map((item) => item.categoryId));
+  for (const required of privacyDataCategoryIds) {
+    if (!categoryIds.has(required)) {
+      issues.push(`$.collection must include ${required}`);
+    }
   }
   return items;
 }

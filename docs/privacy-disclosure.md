@@ -37,8 +37,8 @@ used.
 ## Production configuration
 
 `public-paid` mode requires `FUKAMU_PRIVACY_DISCLOSURE_JSON`. The value is decoded
-from `unknown` and must contain the versioned policy/controller fields, one or
-more collection entries with sources and purposes, fixed product invariants,
+from `unknown` and must contain the versioned policy/controller fields, every
+stable processing category ID with its sources and purposes, fixed product invariants,
 retention text, security summary, processor/third-party and foreign-transfer
 statements, every supported data-subject request kind, request procedure/contact,
 change notice, and an effective date. `policyVersion` must equal
@@ -53,7 +53,8 @@ The fixed product invariants are:
 - `retention.backupMaximumDays`: `30`
 
 The decoder rejects unknown/missing fields, malformed dates and URLs, duplicate
-categories/items, incomplete request actions, and drift from those invariants.
+categories/items, missing stable processing categories, incomplete request actions,
+and drift from those invariants.
 Production validation additionally rejects development/placeholder markers,
 non-HTTPS/local/example contact URLs, and a controller name without the verified
 `株式会社` name.

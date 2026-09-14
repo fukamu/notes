@@ -23,19 +23,40 @@ function productionDisclosure(): PrivacyDisclosure {
     },
     collection: [
       {
+        categoryId: 'account-identity',
         category: 'account・identity情報',
         source: '利用者による登録および認証service',
         purposes: ['本人認証、account管理および不正利用防止'],
       },
       {
+        categoryId: 'authentication-security',
+        category: '認証・security情報',
+        source: '認証操作およびserviceによる生成',
+        purposes: ['session管理、OTP検証および不正利用防止'],
+      },
+      {
+        categoryId: 'billing-contract',
         category: '契約・請求状態',
         source: '利用者による申込みおよび決済service',
         purposes: ['subscription管理、利用権判定および問い合わせ対応'],
       },
       {
+        categoryId: 'vault-content',
         category: 'Personal Vaultの利用者content',
         source: '利用者による入力および同期',
         purposes: ['notesの保存、同期、競合解決および関連表示の提供'],
+      },
+      {
+        categoryId: 'device-offline-replica',
+        category: '端末内offline replica',
+        source: '利用者の入力および端末内の編集状態',
+        purposes: ['offline編集および再接続後の同期'],
+      },
+      {
+        categoryId: 'operational-audit',
+        category: '運用・監査metadata',
+        source: 'service利用およびsecurity event',
+        purposes: ['不正利用防止、障害対応およびservice品質維持'],
       },
     ],
     personalVaultModel: 'one-account-one-personal-vault',
