@@ -35,6 +35,7 @@
     "benchmark:client": "vitest run --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
     "benchmark:client:presentation": "vitest run tests/benchmarks/client-demand-driven-presentation.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
     "benchmark:client:link-index": "vitest run tests/benchmarks/client-link-candidate-index.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
+    "benchmark:client:history-index": "vitest run tests/benchmarks/client-history-preview-index.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build",
     "check:environment": "node scripts/verify-environment.mjs",
     "verify": "npm run format:check && npm run check && npm run test:e2e",

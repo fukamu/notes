@@ -143,6 +143,17 @@ only result bound is 9,999 candidates: the product limit of 10,000 active cards
 minus the excluded current card. No smaller UI cap or interaction behavior is
 introduced by this optimization.
 
+History and conflict previews resolve card links through a
+`CardBodyTextLookup` built once per pure selector invocation. The lookup keeps
+the legacy last-card-wins behavior for duplicate `CardId` fixture data and the
+same official/provisional display labels, `Untitled` fallback, and missing-link
+text. History therefore performs one O(cards) lookup build, its existing
+O(cards log cards) sort, and O(total body segments) preview work instead of
+rebuilding an all-card `Map` for every history item. All current-card conflicts
+and their two options share one lookup within the batch selector call; an empty
+conflict batch builds none. The lookup is not cached across selector, provider,
+Vault, session, or logout boundaries.
+
 `NotesPresentationActions` exposes semantic operations only:
 `createCard`, `openCard`, `showCurrentCard`, `showHistory`, `showConnections`,
 `updateTitle`, `updateBody`, `retrySync`, and `resolveConflict`. It deliberately
