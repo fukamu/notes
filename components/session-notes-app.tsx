@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AccountDeletionBoundary } from '@/components/account-deletion-boundary';
 import { NotesApp, type NotesAppConfiguration } from '@/components/notes-app';
+import type { AccountDeletionHandoffRunner } from '@/lib/application/account-deletion-handoff';
 import {
   planNotesRuntimeLaunch,
   scopeMatchesVaultContext,
@@ -20,6 +22,55 @@ export type VaultNotesRuntimeFactory = (
 ) => VaultNotesRuntimePorts;
 
 export function SessionNotesApp({
+  access,
+  createRuntimePorts,
+  unauthenticated,
+  unavailable,
+  runtimeFence,
+  configuration,
+  accountDeletion,
+}: {
+  access: NotesAccess;
+  createRuntimePorts: VaultNotesRuntimeFactory;
+  unauthenticated: ReactNode;
+  unavailable: ReactNode;
+  runtimeFence: LogoutRuntimeFencePort;
+  configuration?: NotesAppConfiguration;
+  accountDeletion?: AccountDeletionHandoffRunner;
+}) {
+  const content = configuration ? (
+    <SessionNotesRuntime
+      access={access}
+      createRuntimePorts={createRuntimePorts}
+      unauthenticated={unauthenticated}
+      unavailable={unavailable}
+      runtimeFence={runtimeFence}
+      configuration={configuration}
+    />
+  ) : (
+    <SessionNotesRuntime
+      access={access}
+      createRuntimePorts={createRuntimePorts}
+      unauthenticated={unauthenticated}
+      unavailable={unavailable}
+      runtimeFence={runtimeFence}
+    />
+  );
+  if (!accountDeletion) return content;
+  const generation =
+    access.kind === 'authenticated' ? access.context : undefined;
+  return generation ? (
+    <AccountDeletionBoundary runner={accountDeletion} generation={generation}>
+      {content}
+    </AccountDeletionBoundary>
+  ) : (
+    <AccountDeletionBoundary runner={accountDeletion}>
+      {content}
+    </AccountDeletionBoundary>
+  );
+}
+
+function SessionNotesRuntime({
   access,
   createRuntimePorts,
   unauthenticated,

@@ -3,8 +3,9 @@
 Issue #175 defines the pure browser handoff state machine and runner between the
 server boundary from #174 and the existing crash-resumable logout purge from
 #148. Issue #183 supplies browser persistence, HTTP, entropy, and clock adapters.
-Authenticated UI and end-to-end composition remain in dependent Issue #184.
-Neither Issue deploys a route or performs a production deletion.
+Issue #184 adds an optional authenticated UI/reload boundary and browser E2E
+coverage. None of these Issues deploys a route or performs a production
+deletion.
 
 ## Durable order and crash recovery
 
@@ -61,6 +62,28 @@ does not duplicate cache, Service Worker, graph worker, tab-lock, or Vault
 database deletion. `LegacyNotesApp` still does not construct this composition,
 so local development and the current test Sites environment remain free of
 authentication, billing, and deletion requirements unless explicitly composed.
+
+## UI and access behavior
+
+`AccountDeletionBoundary` checks durable state before rendering
+`SessionNotesApp`, entering its runtime fence, or constructing Notes runtime
+ports. It wraps the authenticated and anonymous branches when explicitly
+injected, so a reload after server session revocation continues the stored
+handoff instead of showing anonymous content or starting Notes state.
+
+An authenticated user must open an alert dialog and explicitly confirm the
+irreversible operation. Status distinguishes data retained while revocation is
+waiting from data deleted after local purge. Pending and failed states never
+render Notes. Server progress is user-driven and performs one HTTP step per
+action; `retryAt` prevents an early request without adding a client polling
+timeout. The recovery path does not consult content entitlement, matching the
+server policy that keeps deletion available to payment-locked accounts.
+
+The browser E2E starts the production browser composition with test-only HTTP
+responses, uses two tabs, gives two Vaults the same CardId, and verifies that
+session revocation handoff, local database/cache/worker deletion, reload,
+back/forward navigation, and continuation completion cannot resurrect the
+deleted Vault or affect the other Vault.
 
 ## Security and rollback
 

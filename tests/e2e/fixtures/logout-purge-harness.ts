@@ -1,6 +1,8 @@
 import { vaultNotesDatabaseName } from '@/lib/application/notes-database-scope';
 import type { LogoutRuntimeFenceLease } from '@/lib/application/logout-runtime-coordination';
 import type { LogoutPurgeGeneration } from '@/lib/application/logout-purge';
+import { createBrowserAccountDeletionRunner } from '@/lib/client/browser-account-deletion';
+import { createBrowserAccountDeletionProgressPort } from '@/lib/client/browser-account-deletion-progress';
 import { createBrowserLogoutPurgeService } from '@/lib/client/browser-logout-purge';
 import { createBrowserLogoutPurgeProgressPort } from '@/lib/client/browser-logout-purge-progress';
 import {
@@ -36,6 +38,11 @@ type LogoutPurgeHarness = {
   closeFence: () => Promise<void>;
   runPurge: (generation: unknown) => Promise<unknown>;
   progressMarker: () => Promise<unknown>;
+  beginAccountDeletion: (generation: unknown) => Promise<unknown>;
+  recoverAccountDeletion: () => Promise<unknown>;
+  resumeAccountDeletion: () => Promise<unknown>;
+  accountDeletionMarker: () => Promise<unknown>;
+  accountDeletionRemoteCalls: () => readonly string[];
 };
 
 declare global {
@@ -47,6 +54,12 @@ declare global {
 const service = createBrowserLogoutPurgeService({
   lockTimeoutMs: 5_000,
   serviceWorkerTimeoutMs: 5_000,
+});
+const accountDeletionRemoteCalls: string[] = [];
+const accountDeletion = createBrowserAccountDeletionRunner(service, {
+  fetchRequest: accountDeletionFetch,
+  randomValues: (bytes) => bytes.fill(0),
+  clock: { now: () => 2_000 },
 });
 let fenceLease: LogoutRuntimeFenceLease | undefined;
 let fenceState = 'idle';
@@ -125,7 +138,64 @@ window.__fukamuLogoutPurgeHarness = {
   },
   runPurge: (input) => service.purge.run(decodeGeneration(input)),
   progressMarker: () => createBrowserLogoutPurgeProgressPort().read(),
+  beginAccountDeletion: (input) =>
+    accountDeletion.begin(decodeGeneration(input)),
+  recoverAccountDeletion: () => accountDeletion.recover(),
+  resumeAccountDeletion: () => accountDeletion.resumeServer(),
+  accountDeletionMarker: () =>
+    createBrowserAccountDeletionProgressPort().read(),
+  accountDeletionRemoteCalls: () => [...accountDeletionRemoteCalls],
 };
+
+async function accountDeletionFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const endpoint =
+    typeof input === 'string'
+      ? input
+      : input instanceof URL
+        ? input.pathname
+        : new URL(input.url).pathname;
+  if (init?.method !== 'POST' || typeof init.body !== 'string') {
+    return Response.json({ error: 'invalid-fixture-request' }, { status: 400 });
+  }
+  const body: unknown = JSON.parse(init.body);
+  if (!isRecord(body)) {
+    return Response.json({ error: 'invalid-fixture-request' }, { status: 400 });
+  }
+  if (endpoint === '/api/account/deletion') {
+    if (body.idempotencyKey !== 'A'.repeat(43)) {
+      return Response.json({ error: 'invalid-fixture-key' }, { status: 400 });
+    }
+    accountDeletionRemoteCalls.push('start');
+    return Response.json(
+      {
+        status: 'in-progress',
+        continuationToken: `ad1.${'S'.repeat(43)}.0`,
+      },
+      { status: 202 },
+    );
+  }
+  if (endpoint !== '/api/account/deletion/status') {
+    return Response.json({ error: 'unknown-fixture-route' }, { status: 404 });
+  }
+  if (body.continuationToken === `ad1.${'S'.repeat(43)}.0`) {
+    accountDeletionRemoteCalls.push('resume:0');
+    return Response.json(
+      {
+        status: 'in-progress',
+        continuationToken: `ad1.${'S'.repeat(43)}.1`,
+      },
+      { status: 202 },
+    );
+  }
+  if (body.continuationToken === `ad1.${'S'.repeat(43)}.1`) {
+    accountDeletionRemoteCalls.push('resume:1');
+    return Response.json({ status: 'completed' });
+  }
+  return Response.json({ error: 'invalid-fixture-token' }, { status: 401 });
+}
 
 async function quiesceFence(lease: LogoutRuntimeFenceLease): Promise<void> {
   await lease.quiesce();
