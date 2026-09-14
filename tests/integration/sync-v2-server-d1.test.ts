@@ -111,36 +111,43 @@ beforeAll(async () => {
       'TENANTS',
     ],
   });
-  flowDatabase = await miniflare.getD1Database('FLOW');
-  recoveryDatabase = await miniflare.getD1Database('RECOVERY');
-  limitsDatabase = await miniflare.getD1Database('LIMITS');
-  conflictDatabase = await miniflare.getD1Database('CONFLICT');
-  concurrencyDatabase = await miniflare.getD1Database('CONCURRENCY');
-  tenantsDatabase = await miniflare.getD1Database('TENANTS');
-  for (const database of [
+  [
     flowDatabase,
     recoveryDatabase,
     limitsDatabase,
     conflictDatabase,
     concurrencyDatabase,
     tenantsDatabase,
-  ]) {
-    await runD1Migrations({
-      database,
-      manifest: productionMigrationManifest,
-      appliedAt: 1_000,
-    });
-    await database.prepare('PRAGMA foreign_keys = ON').run();
-  }
-  for (const database of [
+  ] = await Promise.all([
+    miniflare.getD1Database('FLOW'),
+    miniflare.getD1Database('RECOVERY'),
+    miniflare.getD1Database('LIMITS'),
+    miniflare.getD1Database('CONFLICT'),
+    miniflare.getD1Database('CONCURRENCY'),
+    miniflare.getD1Database('TENANTS'),
+  ]);
+  const singleVaultDatabases = [
     flowDatabase,
     recoveryDatabase,
     limitsDatabase,
     conflictDatabase,
     concurrencyDatabase,
-  ]) {
-    await provision(database);
-  }
+  ] as const;
+  const databases = [...singleVaultDatabases, tenantsDatabase];
+
+  // The databases are isolated fixtures with no setup ordering dependency.
+  // Initialize them concurrently instead of weakening the finite hook guard.
+  await Promise.all(
+    databases.map(async (database) => {
+      await runD1Migrations({
+        database,
+        manifest: productionMigrationManifest,
+        appliedAt: 1_000,
+      });
+      await database.prepare('PRAGMA foreign_keys = ON').run();
+    }),
+  );
+  await Promise.all(singleVaultDatabases.map(provision));
   await provisionTwoVaults(tenantsDatabase);
 });
 
