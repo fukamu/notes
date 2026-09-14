@@ -133,6 +133,7 @@ describe('pure-core dependency direction', () => {
     'server/entitlement/core.ts',
     'server/legal-checkout/checkout-core.ts',
     'server/legal-checkout/core.ts',
+    'server/privacy-request/application-core.ts',
     'server/privacy-request/core.ts',
     'server/operations/core.ts',
     'server/quota/core.ts',
@@ -734,6 +735,38 @@ describe('Account deletion saga ownership', () => {
     for (const route of [startRoute, statusRoute]) {
       expect(route).toContain('return unavailable(503)');
       expect(route).not.toMatch(/\/fake|createFake|allowAll/);
+    }
+  });
+
+  it('keeps privacy request HTTP scope session-derived and provider routes fail closed', async () => {
+    const [core, application, handler, fake, startRoute, statusRoute] =
+      await Promise.all([
+        readFile('server/privacy-request/application-core.ts', 'utf8'),
+        readFile('server/privacy-request/application.ts', 'utf8'),
+        readFile('app/api/account/privacy-requests/handler.ts', 'utf8'),
+        readFile('server/privacy-request/fake.ts', 'utf8'),
+        readFile('app/api/account/privacy-requests/route.ts', 'utf8'),
+        readFile('app/api/account/privacy-requests/status/route.ts', 'utf8'),
+      ]);
+    expect(core).toContain('privacyRequestSubmitCommandDecoder');
+    expect(core).toContain('privacyRequestPublicStatus');
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Promise|Date\.now|crypto\.|fetch\(|\b(?:Request|Response)\b/,
+    );
+    expect(application).toContain('startExistingAccountDeletionSaga');
+    expect(application).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|fetch\(|account-deletion\/(?:core|d1-adapter|migration)/,
+    );
+    expect(handler).toContain('deriveVaultContext');
+    expect(handler).toContain('privacyRequestScope(session.context)');
+    expect(handler).toContain('privacyRequestSubmitCommandDecoder.decode');
+    expect(handler).not.toMatch(
+      /entitlement|accountId:\s*decoded|vaultId:\s*decoded/,
+    );
+    expect(fake).not.toMatch(/D1Database|process\.env|fetch\(/);
+    for (const route of [startRoute, statusRoute]) {
+      expect(route).toContain("mode.mode === 'legacy-test' ? 404 : 503");
+      expect(route).not.toMatch(/privacy-request\/fake|createFake|allowAll/);
     }
   });
 });

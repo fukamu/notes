@@ -13,6 +13,7 @@ export const privacyRequestIds = {
   requestA: parsePrivacyRequestId('01991f20-61d2-7000-8000-000000002501'),
   requestB: parsePrivacyRequestId('01991f20-61d2-7000-8000-000000002502'),
   requestC: parsePrivacyRequestId('01991f20-61d2-7000-8000-000000002503'),
+  requestD: parsePrivacyRequestId('01991f20-61d2-7000-8000-000000002504'),
   submissionA: parsePrivacyRequestSubmissionId(
     '01991f20-61d2-7000-8000-000000002601',
   ),
@@ -22,8 +23,14 @@ export const privacyRequestIds = {
   submissionC: parsePrivacyRequestSubmissionId(
     '01991f20-61d2-7000-8000-000000002603',
   ),
+  submissionD: parsePrivacyRequestSubmissionId(
+    '01991f20-61d2-7000-8000-000000002604',
+  ),
   verificationA: parsePrivacyRequestVerificationReceiptId(
     '01991f20-61d2-7000-8000-000000002701',
+  ),
+  verificationB: parsePrivacyRequestVerificationReceiptId(
+    '01991f20-61d2-7000-8000-000000002702',
   ),
   failureA: parsePrivacyRequestFailureCode('executor-unavailable'),
 } as const;
