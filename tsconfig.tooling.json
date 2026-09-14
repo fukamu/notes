@@ -12,7 +12,8 @@
     "vite.config.ts",
     "vitest.config.ts",
     "vitest.benchmark.config.ts",
-    "vitest.client-benchmark.config.ts"
+    "vitest.client-benchmark.config.ts",
+    "vitest.server-load.config.ts"
   ],
   "exclude": ["node_modules"]
 }
