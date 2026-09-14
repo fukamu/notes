@@ -30,6 +30,7 @@ import type {
   SaveState,
   SyncState,
 } from '@/lib/domain/types';
+import type { CardEditorCandidateIndex } from '@/lib/application/card-editor-index';
 
 export type NotesStorePort = {
   cards: CardRecord[];
@@ -123,6 +124,9 @@ export function createNotesApplicationController(
 export function createNotesPresentationModel(
   store: NotesStorePort,
   location: NotesLocation,
+  options: Readonly<{
+    cardEditorIndex: CardEditorCandidateIndex | null;
+  }> = { cardEditorIndex: null },
 ): NotesPresentationModel {
   const currentCardId = notesLocationCardId(location);
   const currentCard =
@@ -151,7 +155,11 @@ export function createNotesPresentationModel(
         ...common,
         activeView: view,
         cardEditor: currentCard
-          ? selectCardEditorInputModel(store.cards, currentCard)
+          ? selectCardEditorInputModel(
+              store.cards,
+              currentCard,
+              options.cardEditorIndex,
+            )
           : null,
         history: null,
         conflicts: currentCard

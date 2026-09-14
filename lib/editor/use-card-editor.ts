@@ -17,12 +17,12 @@ import type {
   NotesPresentationActions,
 } from '@/lib/application/presentation';
 import type { CardId } from '@/lib/domain/id';
+import { queryCardEditorCandidates } from '@/lib/application/card-editor-index';
 import {
   classifyCardEditorDocumentUpdate,
   cardEditorCandidateToken,
   clampCardEditorCandidate,
   closeCardEditorCandidates,
-  filterCardEditorCandidates,
   handleCardEditorCandidateKey,
   isCardEditorDeletionInput,
   isTypedCardEditorInput,
@@ -43,7 +43,7 @@ export type CardEditorModel = {
   selectionEmpty: boolean;
   canUndo: boolean;
   canRedo: boolean;
-  candidates: CardEditorCandidateModel[];
+  candidates: readonly CardEditorCandidateModel[];
   suggestionOpen: boolean;
   activeCandidate: number;
 };
@@ -133,8 +133,8 @@ export function useCardEditor({
     useState<CardEditorCandidateState>(closeCardEditorCandidates);
   const triggerPositionRef = useRef<number | undefined>(undefined);
   const compositionInputRef = useRef(false);
-  const candidates: CardEditorCandidateModel[] = filterCardEditorCandidates(
-    input.candidates,
+  const candidates = queryCardEditorCandidates(
+    input.candidateIndex,
     candidateState.numberPrefix,
   );
   const normalizedCandidateState = clampCardEditorCandidate(

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NotesPresentation } from '@/components/notes-presentation';
+import { queryCardEditorCandidates } from '@/lib/application/card-editor-index';
 import {
   createNotesApplicationController,
   createNotesPresentationModel,
@@ -219,7 +220,11 @@ describe('notes application controller', () => {
     });
 
     expect(model.activeView).toBe('card');
-    expect(model.cardEditor?.candidates).toHaveLength(1);
+    expect(
+      model.cardEditor
+        ? queryCardEditorCandidates(model.cardEditor.candidateIndex, '')
+        : [],
+    ).toHaveLength(1);
     expect(model.history).toBeNull();
     expect(model.connections).toBeNull();
   });

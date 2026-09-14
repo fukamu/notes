@@ -124,6 +124,25 @@ to every presentation implementation. View navigation still computes the
 selected projection synchronously from the same full local replica, so URL,
 back/forward, offline, and renderer output contracts do not change.
 
+The card projection carries a pure `CardEditorCandidateIndex` instead of a
+freshly filtered candidate array. The index preserves the existing numeric
+descending order, official/provisional tie break, created-at/card-id/source
+order, current-card exclusion, labels, and `#` link format. Numeric-prefix
+interaction is a direct lookup and does not scan or sort the replica on every
+keystroke. Reconciliation rebuilds only when card identity/order, display ID,
+title, created-at tie-break, or current-card identity changes; body, update
+time, and local/server revision changes reuse the same index.
+
+`useNotesApplication` owns the mutable reconciliation cache as an
+instance-local client adapter and clears it when the mounted application hook
+is destroyed. It is neither module-global nor persisted, and the authenticated
+session boundary unmounts the notes application during fencing/logout. This
+keeps cached labels and candidates within the mounted provider/session while
+the application index construction and query remain typed pure functions. The
+only result bound is 9,999 candidates: the product limit of 10,000 active cards
+minus the excluded current card. No smaller UI cap or interaction behavior is
+introduced by this optimization.
+
 `NotesPresentationActions` exposes semantic operations only:
 `createCard`, `openCard`, `showCurrentCard`, `showHistory`, `showConnections`,
 `updateTitle`, `updateBody`, `retrySync`, and `resolveConflict`. It deliberately

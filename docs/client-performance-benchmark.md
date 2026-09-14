@@ -94,6 +94,35 @@ history or connections projection, while the other two variants materialize
 only their selected projection. History itself remains intentionally unchanged
 and is still the target of #203.
 
+## Issue #202 link-candidate index
+
+`docs/benchmarks/10k-link-candidate-index.json` compares the previous
+per-interaction replica scan/sort with the pure prefix index on the same
+10,000-card fixture and host:
+
+| Boundary                        |    Median |       p95 |
+| ------------------------------- | --------: | --------: |
+| Previous four-prefix scan/sort  |  3.153 ms |  3.333 ms |
+| Candidate index rebuild         | 10.432 ms | 10.889 ms |
+| Four indexed prefix lookups     |  0.001 ms |  0.001 ms |
+| Body-only 10,000-card reconcile |  0.394 ms |  0.403 ms |
+
+The rebuild is intentionally paid when candidate-visible metadata or ordering
+changes. Body, update-time, and revision-only edits reuse the same index
+identity, so ordinary editor input performs the reconcile scan without a
+candidate sort or prefix-bucket rebuild. Prefix interaction itself is one
+`ReadonlyMap` lookup and does not scan the card replica.
+
+Focused compatibility tests compare all indexed results with the existing
+`linkCandidates` implementation for empty, matching, missing, ASCII-invalid,
+duplicate-number, provisional, and stable-tie cases. The optimization does not
+alter IME, keyboard selection, link insertion, current-card exclusion, or label
+formatting. Results are bounded at 9,999—the 10,000 active-card product limit
+minus the excluded current card—without adding a smaller UI cap. As with the
+earlier benchmark, timings are review evidence rather than absolute CI gates;
+exact output equivalence, body-only index reuse, and the lookup mechanism are
+the stable gates.
+
 ## Known boundary
 
 The baseline measures connections input construction only. Whether 10,000-card
