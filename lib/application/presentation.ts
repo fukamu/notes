@@ -67,19 +67,37 @@ export type CardEditorInputModel = {
 
 export type ConnectionsViewModel = ConnectionsInputModel;
 
-export type NotesPresentationModel = {
+type NotesPresentationModelBase = {
   initialized: boolean;
   location: NotesLocation;
-  activeView: NotesViewName;
   availableViews: Record<NotesViewName, boolean>;
   currentCard: CardRecord | null;
   currentCardDisplayLabel: string | null;
-  cardEditor: CardEditorInputModel | null;
-  history: HistoryViewModel;
   conflicts: ConflictViewModel[];
-  connections: ConnectionsViewModel | null;
   status: NotesStatusViewModel;
 };
+
+export type NotesPresentationModel = NotesPresentationModelBase &
+  (
+    | {
+        activeView: 'card';
+        cardEditor: CardEditorInputModel | null;
+        history: null;
+        connections: null;
+      }
+    | {
+        activeView: 'history';
+        cardEditor: null;
+        history: HistoryViewModel;
+        connections: null;
+      }
+    | {
+        activeView: 'connections';
+        cardEditor: null;
+        history: null;
+        connections: ConnectionsViewModel | null;
+      }
+  );
 
 export type NotesPresentationActions = {
   createCard: () => Promise<void>;

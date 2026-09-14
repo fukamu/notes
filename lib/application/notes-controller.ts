@@ -130,10 +130,9 @@ export function createNotesPresentationModel(
   const view = activeView(location);
   const hasCurrentCard = currentCard !== null;
 
-  return {
+  const common = {
     initialized: isNotesInitialized(store.initialization),
     location,
-    activeView: view,
     availableViews: {
       card: hasCurrentCard,
       history: true,
@@ -143,18 +142,44 @@ export function createNotesPresentationModel(
     currentCardDisplayLabel: currentCard
       ? formatDisplayId(currentCard.displayId)
       : null,
-    cardEditor: currentCard
-      ? selectCardEditorInputModel(store.cards, currentCard)
-      : null,
-    history: selectHistoryViewModel(store.cards, currentCardId),
-    conflicts: currentCard
-      ? store.conflicts
-          .filter((conflict) => conflict.cardId === currentCard.id)
-          .map((conflict) => selectConflictViewModel(conflict, store.cards))
-      : [],
-    connections: currentCard
-      ? selectConnectionsViewModel(store.cards, currentCard.id)
-      : null,
     status: selectNotesStatus(store.saveState, store.syncState),
   };
+
+  switch (view) {
+    case 'card':
+      return {
+        ...common,
+        activeView: view,
+        cardEditor: currentCard
+          ? selectCardEditorInputModel(store.cards, currentCard)
+          : null,
+        history: null,
+        conflicts: currentCard
+          ? store.conflicts
+              .filter((conflict) => conflict.cardId === currentCard.id)
+              .map((conflict) => selectConflictViewModel(conflict, store.cards))
+          : [],
+        connections: null,
+      };
+    case 'history':
+      return {
+        ...common,
+        activeView: view,
+        cardEditor: null,
+        history: selectHistoryViewModel(store.cards, currentCardId),
+        conflicts: [],
+        connections: null,
+      };
+    case 'connections':
+      return {
+        ...common,
+        activeView: view,
+        cardEditor: null,
+        history: null,
+        conflicts: [],
+        connections: currentCard
+          ? selectConnectionsViewModel(store.cards, currentCard.id)
+          : null,
+      };
+  }
 }

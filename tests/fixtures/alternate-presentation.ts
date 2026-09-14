@@ -24,7 +24,7 @@ function locationLabel(props: NotesPresentationProps): string {
 export function createAlternatePresentationProbe(
   props: NotesPresentationProps,
 ) {
-  const firstHistory = props.model.history.items[0];
+  const firstHistory = props.model.history?.items[0];
   const firstConflict = props.model.conflicts[0];
   const editor = props.model.cardEditor;
   const connections = props.model.connections;
@@ -35,7 +35,7 @@ export function createAlternatePresentationProbe(
       props.model.status.kind,
       props.model.status.label,
       props.model.status.retryable ? 'retryable' : 'settled',
-      props.model.history.currentCardId ?? 'no-current-history',
+      props.model.history?.currentCardId ?? 'no-current-history',
       firstHistory?.current ? 'current-history-item' : 'other-history-item',
       firstHistory?.title ?? 'no-history',
       firstConflict?.options.map((option) => option.heading).join('|') ??

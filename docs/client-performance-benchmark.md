@@ -75,6 +75,25 @@ characters. The roughly 5.4-second history selector is the concrete baseline
 for #203; it is not a newly accepted user-facing limit. The artifact remains
 the source of truth for raw samples and host metadata.
 
+## Issue #201 demand-driven projection
+
+`docs/benchmarks/10k-demand-driven-presentation.json` compares the previous
+eager card-view work with the discriminated active-view model on the same
+fixture and host:
+
+| Projection                     |       Median |          p95 |
+| ------------------------------ | -----------: | -----------: |
+| Previous eager card-view proxy | 5,311.330 ms | 5,311.330 ms |
+| Demand-driven card             |     1.865 ms |     3.575 ms |
+| Demand-driven history          | 5,384.287 ms | 5,384.287 ms |
+| Demand-driven connections      |    11.334 ms |    11.882 ms |
+
+The observed card-view median ratio is 2,847.898×. That ratio is evidence, not
+a timing assertion: the stable gate is that the `card` model cannot contain a
+history or connections projection, while the other two variants materialize
+only their selected projection. History itself remains intentionally unchanged
+and is still the target of #203.
+
 ## Known boundary
 
 The baseline measures connections input construction only. Whether 10,000-card
