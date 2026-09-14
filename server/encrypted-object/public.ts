@@ -4,6 +4,25 @@ import type {
   VaultPrivateObjectDeletionBarrierEvaluation,
 } from './core';
 
+export {
+  decodeVaultRecoveryManifest,
+  evaluateVaultKeyRetirement,
+  parseVaultRecoveryBackupId,
+} from './recovery-core';
+export { createVaultRecoveryDrillService } from './recovery-service';
+export type {
+  VaultBackupRetentionReference,
+  VaultKeyRetirementEvaluation,
+  VaultRecoveryDrillReceipt,
+  VaultRecoveryManifest,
+  VaultRecoveryScope,
+} from './recovery-core';
+export type { VaultRecoveryBackupPort } from './recovery-ports';
+export type {
+  VaultRecoveryDrillResult,
+  VaultRecoveryDrillService,
+} from './recovery-service';
+
 export type EncryptedObjectMetadataPurgeScope = {
   readonly accountId: AccountId;
   readonly vaultId: VaultId;
