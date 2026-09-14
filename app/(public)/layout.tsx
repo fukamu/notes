@@ -31,6 +31,12 @@ export default function PublicRouteLayout({
             <PublicRouteLink className="hover:text-foreground" href={legalHref}>
               特定商取引法に基づく表記
             </PublicRouteLink>
+            <PublicRouteLink
+              className="hover:text-foreground"
+              href="/account/billing"
+            >
+              契約管理
+            </PublicRouteLink>
           </nav>
         </div>
       </header>
@@ -47,6 +53,12 @@ export default function PublicRouteLayout({
             </PublicRouteLink>
             <PublicRouteLink className="hover:text-foreground" href={legalHref}>
               特定商取引法に基づく表記
+            </PublicRouteLink>
+            <PublicRouteLink
+              className="hover:text-foreground"
+              href="/account/billing"
+            >
+              契約管理
             </PublicRouteLink>
           </nav>
         </div>
