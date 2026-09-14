@@ -11,6 +11,7 @@ import {
   vaultQuotaLedgerMigration,
   vaultQuotaLedgerStatements,
 } from '@/server/quota/migration';
+import { dekRotationMigration } from '@/server/crypto/rotation-migration';
 
 describe('Vault quota ledger schema', () => {
   it('scopes usage and reservations by Account and Vault', () => {
@@ -77,6 +78,8 @@ describe('Vault quota ledger schema', () => {
       .update(vaultQuotaLedgerStatements.join('\n'))
       .digest('hex');
     expect(vaultQuotaLedgerMigration.checksum).toBe(`sha256:${checksum}`);
-    expect(productionMigrationManifest.at(-1)).toBe(vaultQuotaLedgerMigration);
+    expect(productionMigrationManifest.indexOf(vaultQuotaLedgerMigration)).toBe(
+      productionMigrationManifest.indexOf(dekRotationMigration) + 1,
+    );
   });
 });
