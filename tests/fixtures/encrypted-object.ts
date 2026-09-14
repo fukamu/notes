@@ -19,6 +19,8 @@ export const encryptedObjectIds = {
   objectKeyB: parseOpaqueObjectKey(`obj_v1_${'B'.repeat(43)}`),
   objectKeyC: parseOpaqueObjectKey(`obj_v1_${'C'.repeat(43)}`),
   objectKeyD: parseOpaqueObjectKey(`obj_v1_${'D'.repeat(43)}`),
+  objectKeyE: parseOpaqueObjectKey(`obj_v1_${'E'.repeat(43)}`),
+  objectKeyF: parseOpaqueObjectKey(`obj_v1_${'F'.repeat(43)}`),
 } as const;
 
 export function pendingEncryptedWrite(
