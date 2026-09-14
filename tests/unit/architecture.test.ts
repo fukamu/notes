@@ -1653,6 +1653,29 @@ describe('swappable presentation architecture', () => {
 });
 
 describe('headless card editor architecture', () => {
+  it('keeps candidate indexing pure and its cache instance-scoped', async () => {
+    const index = await readFile(
+      'lib/application/card-editor-index.ts',
+      'utf8',
+    );
+    const cache = await readFile(
+      'lib/client/card-editor-index-cache.ts',
+      'utf8',
+    );
+    const hook = await readFile('lib/client/use-notes-application.ts', 'utf8');
+    const coverage = await readFile('vitest.config.ts', 'utf8');
+
+    expect(index).not.toMatch(
+      /(?:React|window|document|indexedDB|fetch\(|Date\.|Math\.random|crypto\.|process\.|console\.)/,
+    );
+    expect(cache).toContain('@/lib/application/card-editor-index');
+    expect(cache).not.toMatch(/^(?:const|let)\s+current\s*=/mu);
+    expect(hook).toContain('useState(createCardEditorIndexCache)');
+    expect(hook).toContain('cardEditorIndexCache.clear()');
+    expect(coverage).toContain('lib/application/card-editor-index.ts');
+    expect(coverage).toContain('lib/client/card-editor-index-cache.ts');
+  });
+
   it('keeps editor state and Tiptap lifecycle free of renderer and data infrastructure', async () => {
     const files = [
       'lib/editor/card-editor-state.ts',

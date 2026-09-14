@@ -3,6 +3,11 @@ import type { ConflictResolutionChoice } from '@/lib/domain/card-transitions';
 import type { BodySegment, CardRecord } from '@/lib/domain/types';
 import type { NotesLocation } from '@/lib/application/navigation';
 import type { ConnectionsInputModel } from '@/lib/graph/connections-contract';
+import type {
+  CardEditorCandidateIndex,
+  CardEditorIndexCandidate,
+  CardEditorIndexLabel,
+} from '@/lib/application/card-editor-index';
 
 export type NotesViewName = 'card' | 'history' | 'connections';
 
@@ -46,23 +51,15 @@ export type ConflictViewModel = {
   options: [ConflictOptionViewModel, ConflictOptionViewModel];
 };
 
-export type CardEditorLabelModel = {
-  cardId: CardId;
-  label: string;
-};
+export type CardEditorLabelModel = CardEditorIndexLabel;
 
-export type CardEditorCandidateModel = {
-  cardId: CardId;
-  displayLabel: string;
-  displayValue: number;
-  title: string;
-};
+export type CardEditorCandidateModel = CardEditorIndexCandidate;
 
 export type CardEditorInputModel = {
   cardId: CardId;
   body: BodySegment[];
-  labels: CardEditorLabelModel[];
-  candidates: CardEditorCandidateModel[];
+  labels: readonly CardEditorLabelModel[];
+  candidateIndex: CardEditorCandidateIndex;
 };
 
 export type ConnectionsViewModel = ConnectionsInputModel;

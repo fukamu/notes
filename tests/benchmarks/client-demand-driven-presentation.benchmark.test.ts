@@ -12,6 +12,7 @@ import {
 } from '@/lib/application/view-models';
 import type { NotesLocation } from '@/lib/application/navigation';
 import type { NotesPresentationModel } from '@/lib/application/presentation';
+import { queryCardEditorCandidates } from '@/lib/application/card-editor-index';
 import type { CardRecord } from '@/lib/domain/types';
 import { invariant } from '@/lib/shared/invariant';
 import {
@@ -88,7 +89,10 @@ function activeProjectionChecksum(
       }
       return (
         (model.cardEditor?.labels.length ?? 0) +
-        (model.cardEditor?.candidates.length ?? 0)
+        (model.cardEditor
+          ? queryCardEditorCandidates(model.cardEditor.candidateIndex, '')
+              .length
+          : 0)
       );
     case 'history':
       if (model.cardEditor !== null || model.connections !== null) {
@@ -136,7 +140,7 @@ describe('10,000-card demand-driven presentation benchmark', () => {
         const connections = selectConnectionsViewModel(cards, currentCard.id);
         return (
           editor.labels.length +
-          editor.candidates.length +
+          queryCardEditorCandidates(editor.candidateIndex, '').length +
           history.items.length +
           connections.nodes.length
         );

@@ -6,6 +6,7 @@ import type {
   NotesPresentationProps,
 } from '@/components/presentation-contract';
 import type { BodySegment } from '@/lib/domain/types';
+import { queryCardEditorCandidates } from '@/lib/application/card-editor-index';
 
 function locationLabel(props: NotesPresentationProps): string {
   const location = props.model.location;
@@ -40,8 +41,11 @@ export function createAlternatePresentationProbe(
       firstHistory?.title ?? 'no-history',
       firstConflict?.options.map((option) => option.heading).join('|') ??
         'no-conflict',
-      editor?.candidates.map((candidate) => candidate.title).join('|') ??
-        'no-candidates',
+      editor
+        ? queryCardEditorCandidates(editor.candidateIndex, '')
+            .map((candidate) => candidate.title)
+            .join('|')
+        : 'no-candidates',
       connections?.nodes.map((node) => node.title).join('|') ??
         'no-connections',
     ].join(';'),

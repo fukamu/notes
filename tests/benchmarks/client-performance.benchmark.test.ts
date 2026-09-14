@@ -6,6 +6,7 @@ import {
   selectConnectionsViewModel,
   selectHistoryViewModel,
 } from '@/lib/application/view-models';
+import { queryCardEditorCandidates } from '@/lib/application/card-editor-index';
 import { outgoingCardIds } from '@/lib/domain/body';
 import { formatDisplayId } from '@/lib/domain/display-id';
 import {
@@ -13,7 +14,6 @@ import {
   visibleTitle,
   type CardRecord,
 } from '@/lib/domain/types';
-import { filterCardEditorCandidates } from '@/lib/editor/card-editor-state';
 import { invariant } from '@/lib/shared/invariant';
 import {
   clientPerformanceFixtureDefaults,
@@ -159,19 +159,22 @@ describe('10,000-card client benchmark artifact', () => {
         expectedChecksum: cards.length * 2 - 1,
         run: () => {
           const input = selectCardEditorInputModel(cards, currentCard);
-          return input.labels.length + input.candidates.length;
+          return (
+            input.labels.length +
+            queryCardEditorCandidates(input.candidateIndex, '').length
+          );
         },
       }),
       measureBenchmarkCase({
         name: 'link-prefix-interaction-99',
         warmupIterations: 10,
         measuredIterations: 30,
-        expectedChecksum: filterCardEditorCandidates(
-          editorInput.candidates,
+        expectedChecksum: queryCardEditorCandidates(
+          editorInput.candidateIndex,
           '99',
         ).length,
         run: () =>
-          filterCardEditorCandidates(editorInput.candidates, '99').length,
+          queryCardEditorCandidates(editorInput.candidateIndex, '99').length,
       }),
       measureBenchmarkCase({
         name: 'history-view-model',

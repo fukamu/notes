@@ -10,6 +10,7 @@ import type {
   NotesPresentationModel,
 } from '@/lib/application/presentation';
 import type { ConnectionsControllerState } from '@/lib/graph/connections-contract';
+import { createCardEditorCandidateIndex } from '@/lib/application/card-editor-index';
 import { invariant } from '@/lib/shared/invariant';
 import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
 import {
@@ -50,6 +51,14 @@ function model(
     localRevision: 1,
     serverRevision: 1,
   };
+  const candidateCard = {
+    ...currentCard,
+    id: secondId,
+    displayId: { kind: 'official' as const, value: 2 },
+    title: 'Second',
+    createdAt: 2,
+    updatedAt: 2,
+  };
   const activeView = location.kind === 'empty' ? 'card' : location.kind;
   const common = {
     initialized: true,
@@ -66,15 +75,14 @@ function model(
   const cardEditor = {
     cardId: firstId,
     body: [],
-    labels: [{ cardId: firstId, label: '#1 First' }],
-    candidates: [
-      {
-        cardId: secondId,
-        displayLabel: '#2',
-        displayValue: 2,
-        title: 'Second',
-      },
+    labels: [
+      { cardId: firstId, label: '#1 First' },
+      { cardId: secondId, label: '#2 Second' },
     ],
+    candidateIndex: createCardEditorCandidateIndex(
+      [currentCard, candidateCard],
+      firstId,
+    ),
   };
   const history = {
     currentCardId: firstId,

@@ -1,4 +1,4 @@
-import { bodyToPlainText, linkCandidates } from '@/lib/domain/body';
+import { bodyToPlainText } from '@/lib/domain/body';
 import { formatDisplayId } from '@/lib/domain/display-id';
 import { buildConnectionsGraph } from '@/lib/domain/graph';
 import type { CardId } from '@/lib/domain/id';
@@ -18,24 +18,23 @@ import type {
   HistoryViewModel,
   NotesStatusViewModel,
 } from '@/lib/application/presentation';
+import {
+  createCardEditorCandidateIndex,
+  type CardEditorCandidateIndex,
+} from '@/lib/application/card-editor-index';
 
 export function selectCardEditorInputModel(
   cards: CardRecord[],
   currentCard: CardRecord,
+  candidateIndex: CardEditorCandidateIndex | null = null,
 ): CardEditorInputModel {
+  const resolvedCandidateIndex =
+    candidateIndex ?? createCardEditorCandidateIndex(cards, currentCard.id);
   return {
     cardId: currentCard.id,
     body: currentCard.body,
-    labels: cards.map((card) => ({
-      cardId: card.id,
-      label: `${formatDisplayId(card.displayId)} ${visibleTitle(card.title)}`,
-    })),
-    candidates: linkCandidates(cards, currentCard.id).map((card) => ({
-      cardId: card.id,
-      displayLabel: formatDisplayId(card.displayId),
-      displayValue: card.displayId.value,
-      title: visibleTitle(card.title),
-    })),
+    labels: resolvedCandidateIndex.labels,
+    candidateIndex: resolvedCandidateIndex,
   };
 }
 

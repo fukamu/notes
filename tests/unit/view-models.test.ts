@@ -13,6 +13,7 @@ import type {
   SyncState,
 } from '@/lib/domain/types';
 import type { NotesStatusViewModel } from '@/lib/application/presentation';
+import { queryCardEditorCandidates } from '@/lib/application/card-editor-index';
 import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
 
 function card(label: string, options: Partial<CardRecord> = {}): CardRecord {
@@ -105,9 +106,12 @@ describe('card editor input view model', () => {
       displayId: { kind: 'provisional', value: 2 },
     });
 
-    expect(
-      selectCardEditorInputModel([current, provisional, earlier], current),
-    ).toEqual({
+    const model = selectCardEditorInputModel(
+      [current, provisional, earlier],
+      current,
+    );
+
+    expect(model).toMatchObject({
       cardId: current.id,
       body: current.body,
       labels: [
@@ -118,21 +122,21 @@ describe('card editor input view model', () => {
         },
         { cardId: earlier.id, label: '#1 Untitled' },
       ],
-      candidates: [
-        {
-          cardId: provisional.id,
-          displayLabel: '仮 #2',
-          displayValue: 2,
-          title: 'editor-provisional',
-        },
-        {
-          cardId: earlier.id,
-          displayLabel: '#1',
-          displayValue: 1,
-          title: 'Untitled',
-        },
-      ],
     });
+    expect(queryCardEditorCandidates(model.candidateIndex, '')).toEqual([
+      {
+        cardId: provisional.id,
+        displayLabel: '仮 #2',
+        displayValue: 2,
+        title: 'editor-provisional',
+      },
+      {
+        cardId: earlier.id,
+        displayLabel: '#1',
+        displayValue: 1,
+        title: 'Untitled',
+      },
+    ]);
   });
 });
 
