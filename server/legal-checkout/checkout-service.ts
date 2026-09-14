@@ -3,6 +3,7 @@ import { planContractHostedCheckout } from './checkout-core';
 import type {
   ContractCheckoutApplication,
   ContractCheckoutResult,
+  ContractCheckoutTermsVerifier,
   ContractEvidenceService,
   ContractOfferSourcePort,
   PrepareContractOfferResult,
@@ -12,6 +13,7 @@ export function createContractCheckoutApplication(dependencies: {
   readonly evidence: ContractEvidenceService;
   readonly offerSource: ContractOfferSourcePort;
   readonly provider: Pick<StripeBillingAdapter, 'beginHostedCheckout'>;
+  readonly terms: ContractCheckoutTermsVerifier;
 }): ContractCheckoutApplication {
   function readOffer():
     | { readonly kind: 'read'; readonly value: unknown }
@@ -37,6 +39,17 @@ export function createContractCheckoutApplication(dependencies: {
     },
 
     async confirm(input): Promise<ContractCheckoutResult> {
+      let terms;
+      try {
+        terms = await dependencies.terms.verify({
+          context: input.context,
+          submissionId: input.command.submissionId,
+        });
+      } catch {
+        return { kind: 'rejected', reason: 'unavailable' };
+      }
+      if (terms.kind === 'rejected') return terms;
+
       const offer = readOffer();
       if (offer.kind === 'unavailable') {
         return { kind: 'rejected', reason: 'invalid-offer' };

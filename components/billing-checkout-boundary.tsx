@@ -12,17 +12,25 @@ import {
   type BillingCheckoutReview,
   type BillingUiOffer,
 } from '@/lib/application/billing-ui';
+import type { TermsConsentUiReference } from '@/lib/application/terms-consent-ui';
 import {
   createBillingCheckoutSubmissionId,
   createBillingUiHttpTransport,
   type BillingOfferLoadResult,
 } from '@/lib/client/http-billing-ui';
+import {
+  createLocalTermsConsentUiTransport,
+  createTermsConsentUiHttpTransport,
+  type TermsConsentStatusLoadResult,
+  type TermsConsentUiTransport,
+} from '@/lib/client/terms-consent-ui';
 
 export type BillingCheckoutSource =
   | {
       readonly kind: 'local-fixture';
       readonly offer: BillingUiOffer;
       readonly offerHash: string;
+      readonly terms: TermsConsentUiReference;
     }
   | { readonly kind: 'server' };
 
@@ -32,6 +40,13 @@ export function BillingCheckoutBoundary({
   readonly source: BillingCheckoutSource;
 }) {
   const transport = useMemo(() => createBillingUiHttpTransport(), []);
+  const termsTransport = useMemo(
+    () =>
+      source.kind === 'local-fixture'
+        ? createLocalTermsConsentUiTransport(source.terms)
+        : createTermsConsentUiHttpTransport(),
+    [source],
+  );
   const [state, dispatch] = useReducer(
     billingCheckoutUiReducer,
     initialBillingCheckoutUiState,
@@ -40,10 +55,18 @@ export function BillingCheckoutBoundary({
   const loadGeneration = useRef(0);
 
   const loadOffer = useCallback(
-    async (refresh: boolean) => {
+    async (
+      refresh: boolean,
+      changed: 'offer-changed' | 'terms-changed' = 'offer-changed',
+    ) => {
       const generation = loadGeneration.current + 1;
       loadGeneration.current = generation;
-      const result = await resolveOffer(source, transport.loadOffer, refresh);
+      const result = await resolveCheckout(
+        source,
+        transport.loadOffer,
+        termsTransport,
+        refresh,
+      );
       if (generation !== loadGeneration.current) return;
       if (result.kind === 'available') {
         dispatch({
@@ -51,9 +74,10 @@ export function BillingCheckoutBoundary({
           review: {
             offer: result.offer,
             offerHash: result.offerHash,
+            terms: result.terms.current,
             submissionId: createBillingCheckoutSubmissionId(),
           },
-          notice: refresh ? 'offer-changed' : null,
+          notice: refresh ? changed : null,
         });
         return;
       }
@@ -65,7 +89,7 @@ export function BillingCheckoutBoundary({
             : 'unavailable',
       });
     },
-    [source, transport],
+    [source, termsTransport, transport],
   );
 
   useEffect(() => {
@@ -79,6 +103,32 @@ export function BillingCheckoutBoundary({
     if (pending.current) return;
     pending.current = true;
     dispatch({ type: 'submit-requested' });
+    const termsResult = await termsTransport.accept({
+      current: review.terms,
+      submissionId: review.submissionId,
+    });
+    if (termsResult.kind !== 'accepted') {
+      pending.current = false;
+      switch (termsResult.kind) {
+        case 'terms-changed':
+          dispatch({ type: 'terms-changed' });
+          await loadOffer(true, 'terms-changed');
+          return;
+        case 'authentication-required':
+          dispatch({
+            type: 'submit-failed',
+            failure: 'authentication-required',
+          });
+          return;
+        case 'request-conflict':
+          dispatch({ type: 'submit-failed', failure: 'request-conflict' });
+          return;
+        case 'not-found':
+        case 'unavailable':
+          dispatch({ type: 'submit-failed', failure: 'unavailable' });
+          return;
+      }
+    }
     const result = await transport.submitCheckout(review);
     pending.current = false;
     switch (result.kind) {
@@ -98,7 +148,11 @@ export function BillingCheckoutBoundary({
         return;
       case 'offer-changed':
         dispatch({ type: 'offer-changed' });
-        await loadOffer(true);
+        await loadOffer(true, 'offer-changed');
+        return;
+      case 'terms-changed':
+        dispatch({ type: 'terms-changed' });
+        await loadOffer(true, 'terms-changed');
         return;
       case 'authentication-required':
         dispatch({
@@ -121,7 +175,9 @@ export function BillingCheckoutBoundary({
         <output className="block text-sm text-muted-foreground">
           {state.reason === 'offer-changed'
             ? '最新の申込み条件を読み直しています。'
-            : '申込み条件を確認しています。'}
+            : state.reason === 'terms-changed'
+              ? '最新の利用規約を読み直しています。'
+              : '申込み条件を確認しています。'}
         </output>
       </BillingPage>
     );
@@ -150,6 +206,7 @@ export function BillingCheckoutBoundary({
           ここに表示した申込み内容と同意を記録しました。まだ利用権は付与されていません。Stripeでカード情報を登録し、支払い確認が完了するまでお待ちください。
         </output>
         <BillingTerms offer={state.review.offer} />
+        <TermsReference current={state.review.terms} />
         <div className="mt-7 flex flex-wrap gap-3">
           <a
             className={buttonVariants({ size: 'lg' })}
@@ -182,6 +239,7 @@ export function BillingCheckoutBoundary({
           サンプルの確認操作が完了しました。契約、カード登録、課金、利用権の変更は行われていません。
         </output>
         <BillingTerms offer={state.review.offer} />
+        <TermsReference current={state.review.terms} />
         <div className="mt-7 flex flex-wrap gap-3">
           <Button
             type="button"
@@ -204,7 +262,8 @@ export function BillingCheckoutBoundary({
 
   const submitting = state.kind === 'submitting';
   const review = state.review;
-  const consent = submitting ? true : state.consent;
+  const subscriptionConsent = submitting ? true : state.subscriptionConsent;
+  const termsConsent = submitting ? true : state.termsConsent;
   const failure = submitting ? null : state.failure;
   const notice = submitting ? null : state.notice;
   return (
@@ -217,19 +276,28 @@ export function BillingCheckoutBoundary({
         >
           申込み条件が更新されました。最新内容を確認し、チェックを入れ直してください。
         </p>
+      ) : notice === 'terms-changed' ? (
+        <p
+          role="alert"
+          className="rounded-2xl border border-amber-700/25 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+        >
+          利用規約が更新されました。最新内容を確認し、両方のチェックを入れ直してください。
+        </p>
       ) : null}
       <BillingTerms offer={review.offer} />
+      <TermsReference current={review.terms} />
       {failure ? <CheckoutFailureMessage failure={failure} /> : null}
       <div className="mt-7 rounded-2xl border bg-card px-5 py-5 sm:px-6">
         <label className="flex items-start gap-3 text-sm leading-7">
           <input
             type="checkbox"
             className="mt-1.5 size-4 shrink-0 accent-primary"
-            checked={consent}
+            checked={subscriptionConsent}
             disabled={submitting}
             onChange={(event) =>
               dispatch({
                 type: 'consent-changed',
+                subject: 'subscription',
                 consent: event.currentTarget.checked,
               })
             }
@@ -238,11 +306,35 @@ export function BillingCheckoutBoundary({
             上記の料金、14日間の無料期間、15日目からの自動課金、解約・返金条件、支払い失敗時のオンライン停止を確認し、有料サブスクリプションの申込みに同意します。
           </span>
         </label>
+        <label className="mt-4 flex items-start gap-3 border-t pt-4 text-sm leading-7">
+          <input
+            type="checkbox"
+            className="mt-1.5 size-4 shrink-0 accent-primary"
+            checked={termsConsent}
+            disabled={submitting}
+            onChange={(event) =>
+              dispatch({
+                type: 'consent-changed',
+                subject: 'terms',
+                consent: event.currentTarget.checked,
+              })
+            }
+          />
+          <span>
+            <PublicRouteLink
+              className="text-primary underline underline-offset-4"
+              href="/legal/terms"
+            >
+              利用規約
+            </PublicRouteLink>
+            （{review.terms.termsVersion}）を確認し、同意します。
+          </span>
+        </label>
         <Button
           type="button"
           size="lg"
           className="mt-5 min-h-11 w-full whitespace-normal px-4 py-2"
-          disabled={!consent || submitting}
+          disabled={!subscriptionConsent || !termsConsent || submitting}
           onClick={() => void submit(review)}
           data-testid="confirm-subscription"
         >
@@ -352,6 +444,35 @@ function BillingTerms({ offer }: { readonly offer: BillingUiOffer }) {
   );
 }
 
+function TermsReference({
+  current,
+}: {
+  readonly current: TermsConsentUiReference;
+}) {
+  return (
+    <section
+      aria-labelledby="checkout-terms-title"
+      className="rounded-2xl border bg-card px-5 py-5 sm:px-6"
+      data-testid="checkout-terms-reference"
+    >
+      <h2 id="checkout-terms-title" className="text-base font-semibold">
+        利用規約
+      </h2>
+      <p className="mt-2 text-sm leading-7 text-muted-foreground">
+        規約本文は{' '}
+        <PublicRouteLink
+          className="text-primary underline underline-offset-4"
+          href="/legal/terms"
+        >
+          独立した利用規約ページ
+        </PublicRouteLink>
+        で確認できます。適用版: {current.termsVersion}（{current.effectiveDate}
+        ）
+      </p>
+    </section>
+  );
+}
+
 function CheckoutFailureMessage({
   failure,
 }: {
@@ -415,4 +536,39 @@ async function resolveOffer(
         offerHash: source.offerHash,
       }
     : remote;
+}
+
+type BillingCheckoutLoadResult =
+  | {
+      readonly kind: 'available';
+      readonly offer: BillingUiOffer;
+      readonly offerHash: string;
+      readonly terms: Extract<
+        TermsConsentStatusLoadResult,
+        { readonly kind: 'available' }
+      >['status'];
+    }
+  | { readonly kind: 'authentication-required' }
+  | { readonly kind: 'unavailable' };
+
+async function resolveCheckout(
+  source: BillingCheckoutSource,
+  loadRemoteOffer: () => Promise<BillingOfferLoadResult>,
+  termsTransport: TermsConsentUiTransport,
+  refresh: boolean,
+): Promise<BillingCheckoutLoadResult> {
+  const [offer, terms] = await Promise.all([
+    resolveOffer(source, loadRemoteOffer, refresh),
+    termsTransport.loadStatus(),
+  ]);
+  if (offer.kind === 'available' && terms.kind === 'available') {
+    return { ...offer, terms: terms.status };
+  }
+  if (
+    offer.kind === 'authentication-required' ||
+    terms.kind === 'authentication-required'
+  ) {
+    return { kind: 'authentication-required' };
+  }
+  return { kind: 'unavailable' };
 }

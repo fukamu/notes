@@ -1,4 +1,5 @@
 import type { LegalCommerceDisclosure } from '@/lib/application/legal-commerce';
+import type { TermsConsentUiReference } from '@/lib/application/terms-consent-ui';
 
 export type BillingUiOffer = Readonly<{
   offerVersion: string;
@@ -28,6 +29,7 @@ export type BillingUiOffer = Readonly<{
 export type BillingCheckoutReview = Readonly<{
   offer: BillingUiOffer;
   offerHash: string;
+  terms: TermsConsentUiReference;
   submissionId: string;
 }>;
 
@@ -39,14 +41,15 @@ export type BillingCheckoutFailure =
 export type BillingCheckoutUiState =
   | {
       readonly kind: 'loading';
-      readonly reason: 'initial' | 'offer-changed';
+      readonly reason: 'initial' | 'offer-changed' | 'terms-changed';
     }
   | {
       readonly kind: 'review';
       readonly review: BillingCheckoutReview;
-      readonly consent: boolean;
+      readonly subscriptionConsent: boolean;
+      readonly termsConsent: boolean;
       readonly failure: BillingCheckoutFailure | null;
-      readonly notice: 'offer-changed' | null;
+      readonly notice: 'offer-changed' | 'terms-changed' | null;
     }
   | {
       readonly kind: 'submitting';
@@ -71,19 +74,24 @@ export type BillingCheckoutUiAction =
   | {
       readonly type: 'offer-loaded';
       readonly review: BillingCheckoutReview;
-      readonly notice: 'offer-changed' | null;
+      readonly notice: 'offer-changed' | 'terms-changed' | null;
     }
   | {
       readonly type: 'offer-load-failed';
       readonly failure: 'authentication-required' | 'unavailable';
     }
-  | { readonly type: 'consent-changed'; readonly consent: boolean }
+  | {
+      readonly type: 'consent-changed';
+      readonly subject: 'subscription' | 'terms';
+      readonly consent: boolean;
+    }
   | { readonly type: 'submit-requested' }
   | {
       readonly type: 'submit-failed';
       readonly failure: BillingCheckoutFailure;
     }
   | { readonly type: 'offer-changed' }
+  | { readonly type: 'terms-changed' }
   | {
       readonly type: 'provider-ready';
       readonly checkoutUrl: string;
@@ -106,7 +114,8 @@ export function billingCheckoutUiReducer(
       return {
         kind: 'review',
         review: action.review,
-        consent: false,
+        subscriptionConsent: false,
+        termsConsent: false,
         failure: null,
         notice: action.notice,
       };
@@ -114,10 +123,18 @@ export function billingCheckoutUiReducer(
       return { kind: 'unavailable', failure: action.failure };
     case 'consent-changed':
       return state.kind === 'review'
-        ? { ...state, consent: action.consent, failure: null }
+        ? {
+            ...state,
+            [action.subject === 'subscription'
+              ? 'subscriptionConsent'
+              : 'termsConsent']: action.consent,
+            failure: null,
+          }
         : state;
     case 'submit-requested':
-      return state.kind === 'review' && state.consent
+      return state.kind === 'review' &&
+        state.subscriptionConsent &&
+        state.termsConsent
         ? { kind: 'submitting', review: state.review }
         : state;
     case 'submit-failed':
@@ -125,7 +142,8 @@ export function billingCheckoutUiReducer(
         ? {
             kind: 'review',
             review: state.review,
-            consent: true,
+            subscriptionConsent: true,
+            termsConsent: true,
             failure: action.failure,
             notice: null,
           }
@@ -133,6 +151,10 @@ export function billingCheckoutUiReducer(
     case 'offer-changed':
       return state.kind === 'submitting'
         ? { kind: 'loading', reason: 'offer-changed' }
+        : state;
+    case 'terms-changed':
+      return state.kind === 'submitting'
+        ? { kind: 'loading', reason: 'terms-changed' }
         : state;
     case 'provider-ready':
       return state.kind === 'submitting'
@@ -152,7 +174,8 @@ export function billingCheckoutUiReducer(
         ? {
             kind: 'review',
             review: state.review,
-            consent: false,
+            subscriptionConsent: false,
+            termsConsent: false,
             failure: null,
             notice: null,
           }

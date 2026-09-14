@@ -44,6 +44,7 @@ export type BillingCheckoutSubmitResult =
       readonly evidenceOutcome: 'recorded' | 'replayed';
     }
   | { readonly kind: 'offer-changed' }
+  | { readonly kind: 'terms-changed' }
   | { readonly kind: 'authentication-required' }
   | { readonly kind: 'request-conflict' }
   | { readonly kind: 'not-found' }
@@ -105,6 +106,8 @@ const errorResponseDecoder = objectDecoder({
     literalDecoder('forbidden'),
     literalDecoder('not-found'),
     literalDecoder('offer-changed'),
+    literalDecoder('terms-changed'),
+    literalDecoder('terms-consent-required'),
     literalDecoder('request-conflict'),
     literalDecoder('consent-required'),
     literalDecoder('cancellation-unavailable'),
@@ -240,6 +243,12 @@ function checkoutFailure(
   if (status === 404 && error === 'not-found') return { kind: 'not-found' };
   if (status === 409 && error === 'offer-changed') {
     return { kind: 'offer-changed' };
+  }
+  if (
+    (status === 409 && error === 'terms-changed') ||
+    (status === 422 && error === 'terms-consent-required')
+  ) {
+    return { kind: 'terms-changed' };
   }
   if (status === 409 && error === 'request-conflict') {
     return { kind: 'request-conflict' };

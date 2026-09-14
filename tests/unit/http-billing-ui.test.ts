@@ -76,6 +76,13 @@ describe('billing UI HTTP adapter', () => {
     await expect(stale.submitCheckout(review())).resolves.toEqual({
       kind: 'offer-changed',
     });
+
+    const missingTerms = createBillingUiHttpTransport(async () =>
+      Response.json({ error: 'terms-consent-required' }, { status: 422 }),
+    );
+    await expect(missingTerms.submitCheckout(review())).resolves.toEqual({
+      kind: 'terms-changed',
+    });
   });
 
   it('keeps cancellation confirmation, retry, and local not-found distinct', async () => {
@@ -123,6 +130,11 @@ function review(): BillingCheckoutReview {
   return {
     offer: contractOffer(),
     offerHash: contractIds.offerHashA,
+    terms: {
+      termsVersion: 'terms-v1:2026-09-15',
+      termsHash: `sha256:${'a'.repeat(64)}`,
+      effectiveDate: '2026-09-15',
+    },
     submissionId: contractIds.submissionA,
   };
 }

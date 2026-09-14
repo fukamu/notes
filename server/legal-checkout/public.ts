@@ -11,6 +11,7 @@ import {
   type Decoder,
 } from '../../lib/codec/core';
 import type { VaultContext } from '../../lib/domain/identity';
+import type { TermsConsentCheckoutVerifierPort } from '../terms-consent/public';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
 declare const contractIdentifierBrand: unique symbol;
@@ -282,7 +283,9 @@ export type ContractCheckoutResult =
         | 'provider-unavailable'
         | 'malformed-provider-response'
         | 'provider-mapping-mismatch'
-        | 'billing-rejected';
+        | 'billing-rejected'
+        | 'terms-consent-required'
+        | 'terms-changed';
     };
 
 export type ContractCheckoutApplication = {
@@ -294,3 +297,5 @@ export type ContractCheckoutApplication = {
     readonly confirmedAt: number;
   }): Promise<ContractCheckoutResult>;
 };
+
+export type ContractCheckoutTermsVerifier = TermsConsentCheckoutVerifierPort;

@@ -160,6 +160,12 @@ export function BillingAccountBoundary({
         </PublicRouteLink>
         <PublicRouteLink
           className="text-primary underline underline-offset-4"
+          href="/account/terms"
+        >
+          利用規約の同意状態
+        </PublicRouteLink>
+        <PublicRouteLink
+          className="text-primary underline underline-offset-4"
           href="/account/privacy"
         >
           個人情報に関する請求

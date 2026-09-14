@@ -145,6 +145,8 @@ describe('contract checkout HTTP handlers', () => {
     for (const [reason, status, error] of [
       ['consent-required', 422, 'consent-required'],
       ['stale-offer', 409, 'offer-changed'],
+      ['terms-changed', 409, 'terms-changed'],
+      ['terms-consent-required', 422, 'terms-consent-required'],
       ['identifier-conflict', 409, 'request-conflict'],
       ['provider-mapping-mismatch', 503, 'unavailable'],
     ] as const) {

@@ -2086,6 +2086,63 @@ describe('terms consent server gate architecture', () => {
   });
 });
 
+describe('terms consent presentation architecture', () => {
+  it('keeps consent on dedicated checkout/account routes and correlates evidence without tenant input', async () => {
+    const [
+      core,
+      client,
+      checkout,
+      account,
+      accountPage,
+      verifier,
+      checkoutService,
+      notes,
+      coverage,
+      documentation,
+    ] = await Promise.all([
+      readFile('lib/application/terms-consent-ui.ts', 'utf8'),
+      readFile('lib/client/terms-consent-ui.ts', 'utf8'),
+      readFile('components/billing-checkout-boundary.tsx', 'utf8'),
+      readFile('components/terms-consent-boundary.tsx', 'utf8'),
+      readFile('app/(public)/account/terms/page.tsx', 'utf8'),
+      readFile('server/terms-consent/checkout-verifier.ts', 'utf8'),
+      readFile('server/legal-checkout/checkout-service.ts', 'utf8'),
+      readFile('components/notes-presentation.tsx', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+      readFile('docs/terms-consent-ui.md', 'utf8'),
+    ]);
+
+    expect(core).toContain('termsConsentUiReducer');
+    expect(core).not.toMatch(
+      /Promise|fetch\(|indexedDB|window\.|document\.|localStorage|sessionStorage|Date\.now|uuidv7|console\./,
+    );
+    expect(client).toContain('termsConsentSubmissionIdDecoder.decode');
+    expect(client).toContain("credentials: 'same-origin'");
+    expect(client).not.toMatch(/accountId|vaultId/);
+    expect(checkout).toContain('submissionId: review.submissionId');
+    expect(checkout).toContain("subject: 'subscription'");
+    expect(checkout).toContain("subject: 'terms'");
+    expect(account).toContain('createLocalTermsConsentUiTransport');
+    expect(accountPage).toContain('TermsConsentBoundary');
+    expect(verifier).toContain('findBySubmission');
+    expect(checkoutService).toContain('dependencies.terms.verify');
+    expect(checkoutService.indexOf('dependencies.terms.verify')).toBeLessThan(
+      checkoutService.indexOf('dependencies.evidence.confirm'),
+    );
+    expect(notes).not.toMatch(/terms-consent|account\/terms|利用規約/);
+    for (const path of [
+      'components/billing-checkout-boundary.tsx',
+      'components/terms-consent-boundary.tsx',
+      'lib/application/terms-consent-ui.ts',
+      'lib/client/terms-consent-ui.ts',
+    ]) {
+      expect(coverage).toContain(`'${path}'`);
+    }
+    expect(documentation).toContain('/account/terms');
+    expect(documentation).toContain('通常の Notes UI には追加しない');
+  });
+});
+
 describe('privacy disclosure architecture', () => {
   it('keeps production values fail-closed and the policy outside the Notes UI', async () => {
     const [

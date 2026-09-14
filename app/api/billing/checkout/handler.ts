@@ -165,6 +165,10 @@ function checkoutResponse(result: ContractCheckoutResult): Response {
       return billingErrorResponse(422, 'consent-required');
     case 'stale-offer':
       return billingErrorResponse(409, 'offer-changed');
+    case 'terms-changed':
+      return billingErrorResponse(409, 'terms-changed');
+    case 'terms-consent-required':
+      return billingErrorResponse(422, 'terms-consent-required');
     case 'identifier-conflict':
     case 'billing-rejected':
       return billingErrorResponse(409, 'request-conflict');
