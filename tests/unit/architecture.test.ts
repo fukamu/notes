@@ -126,6 +126,7 @@ describe('pure-core dependency direction', () => {
     'server/billing/cancellation-core.ts',
     'server/billing/core.ts',
     'server/crypto/core.ts',
+    'server/crypto/rotation-core.ts',
     'server/encrypted-object/core.ts',
     'server/entitlement/core.ts',
     'server/sync-v2/core.ts',
@@ -545,6 +546,32 @@ describe('Wrapped DEK metadata finalization ownership', () => {
     expect(adapter).toContain('personal_vaults owner');
     expect(adapter).toContain('scope.accountId');
     expect(adapter).toContain('scope.vaultId');
+  });
+
+  it('keeps DEK rotation decisions pure and KMS/D1 effects in explicit adapters', async () => {
+    const [core, service, adapter, publicContract, testConfig] =
+      await Promise.all([
+        readFile('server/crypto/rotation-core.ts', 'utf8'),
+        readFile('server/crypto/rotation-service.ts', 'utf8'),
+        readFile('server/crypto/rotation-d1-adapter.ts', 'utf8'),
+        readFile('server/crypto/public.ts', 'utf8'),
+        readFile('vitest.config.ts', 'utf8'),
+      ]);
+
+    expect(core).toContain('planDekRotationStart');
+    expect(core).toContain('planDekRotationGenerated');
+    expect(core).toContain('planDekRotationPromotion');
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Promise|Date\.now|crypto\.|fetch\(|process\.env/,
+    );
+    expect(service).toContain('keyManagement.generateDataKey');
+    expect(service).toContain('generated.key.destroy()');
+    expect(adapter).toContain('class D1DekRotationRepository');
+    expect(adapter).toContain('scope.accountId');
+    expect(adapter).toContain('scope.vaultId');
+    expect(publicContract).toContain('createDekRotationService');
+    expect(publicContract).not.toMatch(/D1Database|\.prepare\(/);
+    expect(testConfig).toContain("'server/**/*.ts'");
   });
 });
 
