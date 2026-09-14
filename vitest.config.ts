@@ -27,6 +27,7 @@ export default defineConfig({
         'lib/application/card-editor-index.ts',
         'lib/application/history-window.ts',
         'lib/application/legal-commerce.ts',
+        'lib/application/legal-terms.ts',
         'lib/application/privacy-disclosure.ts',
         'lib/application/privacy-processing-registry.ts',
         'lib/application/privacy-request-ui.ts',
