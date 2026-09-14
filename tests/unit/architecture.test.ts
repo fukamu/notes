@@ -1819,3 +1819,39 @@ describe('provider-neutral operations architecture', () => {
     expect(coverage).toContain("'server/**/*.ts'");
   });
 });
+
+describe('legal commerce disclosure architecture', () => {
+  it('keeps production values fail-closed and legal pages outside the Notes UI', async () => {
+    const [
+      core,
+      adapter,
+      script,
+      packageSource,
+      coverage,
+      notes,
+      documentation,
+    ] = await Promise.all([
+      readFile('lib/application/legal-commerce.ts', 'utf8'),
+      readFile('lib/environment/legal-commerce.ts', 'utf8'),
+      readFile('scripts/verify-legal-commerce.mjs', 'utf8'),
+      readFile('package.json', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+      readFile('components/notes-presentation.tsx', 'utf8'),
+      readFile('docs/legal-commerce-disclosure.md', 'utf8'),
+    ]);
+
+    expect(core).toContain('decodeLegalCommerceDisclosure');
+    expect(core).toContain('resolveLegalCommerceDisclosure');
+    expect(core).not.toMatch(
+      /process\.env|fetch\(|indexedDB|window\.|document\.|localStorage|console\./,
+    );
+    expect(adapter).toContain('process.env');
+    expect(script).toContain('resolveLegalCommerceDisclosure(process.env)');
+    expect(packageSource).toContain('npm run check:legal-commerce');
+    expect(packageSource).toContain("'app/(public)'");
+    expect(coverage).toContain("'lib/application/legal-commerce.ts'");
+    expect(notes).not.toMatch(/legal-fixture|commercial-transactions|特商法/);
+    expect(documentation).toContain('do not mount the Notes application');
+    expect(documentation).toContain('fails before a deployable build exists');
+  });
+});
