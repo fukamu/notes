@@ -3,6 +3,7 @@ import { PublicRouteLink } from '@/components/public-route-link';
 
 const legalHref = '/legal/commercial-transactions';
 const privacyHref = '/legal/privacy';
+const termsHref = '/legal/terms';
 
 export default function PublicRouteLayout({
   children,
@@ -38,6 +39,9 @@ export default function PublicRouteLayout({
             >
               個人情報保護方針
             </PublicRouteLink>
+            <PublicRouteLink className="hover:text-foreground" href={termsHref}>
+              利用規約
+            </PublicRouteLink>
             <PublicRouteLink
               className="hover:text-foreground"
               href="/account/billing"
@@ -66,6 +70,9 @@ export default function PublicRouteLayout({
               href={privacyHref}
             >
               個人情報保護方針
+            </PublicRouteLink>
+            <PublicRouteLink className="hover:text-foreground" href={termsHref}>
+              利用規約
             </PublicRouteLink>
             <PublicRouteLink
               className="hover:text-foreground"

@@ -2020,6 +2020,36 @@ describe('legal commerce disclosure architecture', () => {
   });
 });
 
+describe('legal terms disclosure architecture', () => {
+  it('keeps terms decisions pure, production fail-closed, and content outside Notes', async () => {
+    const [core, adapter, script, packageSource, coverage, page, notes, docs] =
+      await Promise.all([
+        readFile('lib/application/legal-terms.ts', 'utf8'),
+        readFile('lib/environment/legal-terms.ts', 'utf8'),
+        readFile('scripts/verify-legal-terms.mjs', 'utf8'),
+        readFile('package.json', 'utf8'),
+        readFile('vitest.config.ts', 'utf8'),
+        readFile('app/(public)/legal/terms/page.tsx', 'utf8'),
+        readFile('components/notes-presentation.tsx', 'utf8'),
+        readFile('docs/legal-terms.md', 'utf8'),
+      ]);
+
+    expect(core).toContain('decodeLegalTermsDisclosure');
+    expect(core).toContain('evaluateLegalTermsConsistency');
+    expect(core).not.toMatch(
+      /process\.env|fetch\(|indexedDB|window\.|document\.|localStorage|console\.|Promise/,
+    );
+    expect(adapter).toContain('process.env');
+    expect(script).toContain('evaluateLegalTermsConsistency');
+    expect(packageSource).toContain('npm run check:legal-terms');
+    expect(coverage).toContain("'lib/application/legal-terms.ts'");
+    expect(page).toContain('title="利用規約"');
+    expect(notes).not.toMatch(/legal\/terms|利用規約/);
+    expect(docs).toContain('does not mount the Notes');
+    expect(docs).toContain('FUKAMU_LEGAL_TERMS_JSON');
+  });
+});
+
 describe('privacy disclosure architecture', () => {
   it('keeps production values fail-closed and the policy outside the Notes UI', async () => {
     const [
