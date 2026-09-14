@@ -393,6 +393,34 @@ describe('pure-core dependency direction', () => {
       expect(testConfig).toContain(`'${path}'`);
     }
   });
+
+  it('keeps account deletion browser effects in explicit covered adapters', async () => {
+    const [browser, progress, controlDatabase, http, testConfig] =
+      await Promise.all([
+        readFile('lib/client/browser-account-deletion.ts', 'utf8'),
+        readFile('lib/client/browser-account-deletion-progress.ts', 'utf8'),
+        readFile('lib/client/browser-control-database.ts', 'utf8'),
+        readFile('lib/client/http-account-deletion.ts', 'utf8'),
+        readFile('vitest.config.ts', 'utf8'),
+      ]);
+
+    expect(browser).toContain('crypto.getRandomValues');
+    expect(browser).toContain('Date.now()');
+    expect(progress).toContain('ACCOUNT_DELETION_CONTROL_STORE');
+    expect(progress).toContain('sameAccountDeletionGeneration');
+    expect(controlDatabase).toContain('LOGOUT_PURGE_CONTROL_STORE');
+    expect(controlDatabase).toContain('ACCOUNT_DELETION_CONTROL_STORE');
+    expect(http).toContain('accountDeletionWireStatusDecoder.decode');
+    expect(http).not.toMatch(/accountId|vaultId/);
+    for (const path of [
+      'lib/client/browser-account-deletion-progress.ts',
+      'lib/client/browser-account-deletion.ts',
+      'lib/client/browser-control-database.ts',
+      'lib/client/http-account-deletion.ts',
+    ]) {
+      expect(testConfig).toContain(`'${path}'`);
+    }
+  });
 });
 
 describe('Identity/Vault control-plane ownership', () => {

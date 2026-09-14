@@ -1,44 +1,36 @@
 'use client';
 
 import {
-  inspectLogoutPurgeProgress,
-  sameLogoutPurgeGeneration,
-} from '@/lib/application/logout-purge';
-import type {
-  LogoutPurgeProgressClear,
-  LogoutPurgeProgressPort,
-  LogoutPurgeProgressWrite,
-} from '@/lib/application/logout-purge-progress';
+  inspectAccountDeletionHandoff,
+  sameAccountDeletionGeneration,
+  type AccountDeletionHandoffClear,
+  type AccountDeletionHandoffProgressPort,
+  type AccountDeletionHandoffWrite,
+} from '@/lib/application/account-deletion-handoff';
 import {
-  BROWSER_CONTROL_DATABASE_NAME,
+  ACCOUNT_DELETION_CONTROL_STORE,
   CURRENT_CONTROL_MARKER_KEY,
-  LOGOUT_PURGE_CONTROL_STORE,
   abortBrowserControlTransaction,
   browserControlRequestValue,
   browserControlTransactionCompletion,
   openBrowserControlDatabase,
 } from '@/lib/client/browser-control-database';
 
-export const LOGOUT_PURGE_CONTROL_DATABASE_NAME = BROWSER_CONTROL_DATABASE_NAME;
-
-/**
- * Stores the global non-content logout marker outside every Vault database.
- * Each compare-and-swap is one IndexedDB transaction across tabs.
- */
-export function createBrowserLogoutPurgeProgressPort(
+/** Stores only the deletion capability handoff; it never contains note data. */
+export function createBrowserAccountDeletionProgressPort(
   factory: IDBFactory = indexedDB,
-): LogoutPurgeProgressPort {
+): AccountDeletionHandoffProgressPort {
   return {
     async read() {
       const database = await openBrowserControlDatabase(factory);
       try {
         const transaction = database.transaction(
-          LOGOUT_PURGE_CONTROL_STORE,
+          ACCOUNT_DELETION_CONTROL_STORE,
           'readonly',
         );
         const marker = await browserControlRequestValue(
           transaction
-            .objectStore(LOGOUT_PURGE_CONTROL_STORE)
+            .objectStore(ACCOUNT_DELETION_CONTROL_STORE)
             .get(CURRENT_CONTROL_MARKER_KEY),
         );
         await browserControlTransactionCompletion(transaction);
@@ -47,30 +39,30 @@ export function createBrowserLogoutPurgeProgressPort(
         database.close();
       }
     },
-    write: (input) => writeMarker(factory, input),
-    clear: (input) => clearMarker(factory, input),
+    write: (write) => writeMarker(factory, write),
+    clear: (clear) => clearMarker(factory, clear),
   };
 }
 
 async function writeMarker(
   factory: IDBFactory,
-  input: LogoutPurgeProgressWrite,
+  write: AccountDeletionHandoffWrite,
 ): Promise<unknown> {
   const database = await openBrowserControlDatabase(factory);
   try {
     const transaction = database.transaction(
-      LOGOUT_PURGE_CONTROL_STORE,
+      ACCOUNT_DELETION_CONTROL_STORE,
       'readwrite',
     );
-    const store = transaction.objectStore(LOGOUT_PURGE_CONTROL_STORE);
+    const store = transaction.objectStore(ACCOUNT_DELETION_CONTROL_STORE);
     const marker = await browserControlRequestValue(
       store.get(CURRENT_CONTROL_MARKER_KEY),
     );
-    if (!canWrite(marker, input)) {
+    if (!canWrite(marker, write)) {
       await abortBrowserControlTransaction(transaction);
       return false;
     }
-    store.put(input.progress, CURRENT_CONTROL_MARKER_KEY);
+    store.put(write.handoff, CURRENT_CONTROL_MARKER_KEY);
     await browserControlTransactionCompletion(transaction);
     return true;
   } finally {
@@ -80,19 +72,19 @@ async function writeMarker(
 
 async function clearMarker(
   factory: IDBFactory,
-  input: LogoutPurgeProgressClear,
+  clear: AccountDeletionHandoffClear,
 ): Promise<unknown> {
   const database = await openBrowserControlDatabase(factory);
   try {
     const transaction = database.transaction(
-      LOGOUT_PURGE_CONTROL_STORE,
+      ACCOUNT_DELETION_CONTROL_STORE,
       'readwrite',
     );
-    const store = transaction.objectStore(LOGOUT_PURGE_CONTROL_STORE);
+    const store = transaction.objectStore(ACCOUNT_DELETION_CONTROL_STORE);
     const marker = await browserControlRequestValue(
       store.get(CURRENT_CONTROL_MARKER_KEY),
     );
-    if (!canClear(marker, input)) {
+    if (!canClear(marker, clear)) {
       await abortBrowserControlTransaction(transaction);
       return false;
     }
@@ -104,26 +96,32 @@ async function clearMarker(
   }
 }
 
-function canWrite(marker: unknown, input: LogoutPurgeProgressWrite): boolean {
-  switch (input.kind) {
+function canWrite(
+  marker: unknown,
+  write: AccountDeletionHandoffWrite,
+): boolean {
+  switch (write.kind) {
     case 'create':
       return marker === undefined;
     case 'replace': {
-      const current = inspectLogoutPurgeProgress(marker);
+      const current = inspectAccountDeletionHandoff(marker);
       return (
         current.kind === 'loaded' &&
-        current.progress.revision === input.expectedRevision &&
-        sameLogoutPurgeGeneration(current.progress, input.progress)
+        current.handoff.revision === write.expectedRevision &&
+        sameAccountDeletionGeneration(current.handoff, write.handoff)
       );
     }
   }
 }
 
-function canClear(marker: unknown, input: LogoutPurgeProgressClear): boolean {
-  const current = inspectLogoutPurgeProgress(marker);
+function canClear(
+  marker: unknown,
+  clear: AccountDeletionHandoffClear,
+): boolean {
+  const current = inspectAccountDeletionHandoff(marker);
   return (
     current.kind === 'loaded' &&
-    current.progress.revision === input.expectedRevision &&
-    sameLogoutPurgeGeneration(current.progress, input.generation)
+    current.handoff.revision === clear.expectedRevision &&
+    sameAccountDeletionGeneration(current.handoff, clear.generation)
   );
 }

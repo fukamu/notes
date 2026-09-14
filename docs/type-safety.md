@@ -143,6 +143,8 @@ Browser logout purgeはVault外のcontrol IndexedDBへversioned markerをtransac
 
 退会browser handoff coreはstart request前のdurable marker、最初のsession revoke確認、既存logout purge、残りserver statusをtyped phaseで順序づけます。pure transitionは不正なgeneration・revision・順序を拒否し、runnerはsession revokeがretry中ならlocal contentを保持し、serverが先へ進んだ後だけ既存purge runnerを開始します。server response、永続化、clock、entropy、fetch、DOMはportの外側に限定します。詳細は [Account deletion browser handoff](account-deletion-browser-handoff.md) を参照してください。
 
+退会browser adapterは非content control IndexedDBのadditive schemaにlogout markerと独立したhandoff storeを持ち、generation/revision CASで更新します。HTTPはidempotency keyまたはcontinuation capabilityだけをsame-origin/no-store/no-redirectで送り、成功bodyも`unknown`からdecodeします。Web Crypto、Date、fetch、IndexedDB、既存browser logout purgeのcompositionは`lib/client`に限定し、legacy local routeへ暗黙接続しません。
+
 Google OIDC境界はstate、nonce、PKCE verifier/challenge、authorization code、issuer、subject、client ID、redirect URIを別brandで表します。start/callback、provider verified claims、pending transaction、identity directoryの値はすべて`unknown`からdecodeし、exact redirect/issuer/audience、`azp`、expiry/issued-at、nonceをpure coreで判定します。transaction storeはstateを原子的にconsumeし、同じcallbackを再利用できません。emailはverified attributeであってidentity keyではなく、既存accountへのlink対象はrequest bodyではなくauthenticated `VaultContext`からだけ導出します。provider通信・signature/JWKS検証・entropy・clock・transaction/identity storage・Web Cryptoはport/adapter側に留めます。
 
 カード作成・編集・競合解決・pending mutation構築は `lib/domain/card-transitions.ts` のpure functionが担当します。時刻とbranded IDは外側で一度生成して入力し、UUIDv7生成は `lib/client/id-generator.ts` に限定します。編集とmutation mode、予期可能なresolve失敗はdiscriminated unionで区別し、IndexedDB adapterだけが既存の例外へ変換します。
