@@ -86,9 +86,11 @@ CREATE TABLE privacy_requests (
     )
   )
 );
+--> statement-breakpoint
 
 CREATE UNIQUE INDEX idx_privacy_requests_submission
   ON privacy_requests(account_id, vault_id, submission_id);
+--> statement-breakpoint
 
 CREATE INDEX idx_privacy_requests_state
   ON privacy_requests(account_id, vault_id, state, updated_at, request_id);

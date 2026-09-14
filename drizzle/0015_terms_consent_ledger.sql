@@ -22,12 +22,15 @@ CREATE TABLE terms_consent_evidence (
     AND accepted_at >= 0
   )
 );
+--> statement-breakpoint
 
 CREATE UNIQUE INDEX idx_terms_consent_submission
   ON terms_consent_evidence(account_id, vault_id, submission_id);
+--> statement-breakpoint
 
 CREATE INDEX idx_terms_consent_latest
   ON terms_consent_evidence(account_id, vault_id, accepted_at, consent_id);
+--> statement-breakpoint
 
 CREATE TRIGGER terms_consent_immutable
   BEFORE UPDATE ON terms_consent_evidence
