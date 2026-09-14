@@ -22,16 +22,29 @@ describe('billing checkout UI pure state', () => {
       review: review(),
       notice: null,
     });
-    expect(loaded).toMatchObject({ kind: 'review', consent: false });
+    expect(loaded).toMatchObject({
+      kind: 'review',
+      subscriptionConsent: false,
+      termsConsent: false,
+    });
     expect(billingCheckoutUiReducer(loaded, { type: 'submit-requested' })).toBe(
       loaded,
     );
 
     const consented = billingCheckoutUiReducer(loaded, {
       type: 'consent-changed',
+      subject: 'subscription',
       consent: true,
     });
-    const submitting = billingCheckoutUiReducer(consented, {
+    expect(
+      billingCheckoutUiReducer(consented, { type: 'submit-requested' }),
+    ).toBe(consented);
+    const termsConsented = billingCheckoutUiReducer(consented, {
+      type: 'consent-changed',
+      subject: 'terms',
+      consent: true,
+    });
+    const submitting = billingCheckoutUiReducer(termsConsented, {
       type: 'submit-requested',
     });
     expect(submitting).toMatchObject({
@@ -51,7 +64,8 @@ describe('billing checkout UI pure state', () => {
     });
     expect(retry).toMatchObject({
       kind: 'review',
-      consent: true,
+      subscriptionConsent: true,
+      termsConsent: true,
       review: { submissionId: contractIds.submissionA },
     });
 
@@ -59,6 +73,9 @@ describe('billing checkout UI pure state', () => {
       type: 'offer-changed',
     });
     expect(loading).toEqual({ kind: 'loading', reason: 'offer-changed' });
+    expect(
+      billingCheckoutUiReducer(submitting, { type: 'terms-changed' }),
+    ).toEqual({ kind: 'loading', reason: 'terms-changed' });
     const refreshed = billingCheckoutUiReducer(loading, {
       type: 'offer-loaded',
       review: { ...review(), submissionId: contractIds.submissionB },
@@ -66,7 +83,8 @@ describe('billing checkout UI pure state', () => {
     });
     expect(refreshed).toMatchObject({
       kind: 'review',
-      consent: false,
+      subscriptionConsent: false,
+      termsConsent: false,
       notice: 'offer-changed',
       review: { submissionId: contractIds.submissionB },
     });
@@ -84,7 +102,11 @@ describe('billing checkout UI pure state', () => {
     });
     expect(
       billingCheckoutUiReducer(ready, { type: 'review-again' }),
-    ).toMatchObject({ kind: 'review', consent: false });
+    ).toMatchObject({
+      kind: 'review',
+      subscriptionConsent: false,
+      termsConsent: false,
+    });
   });
 
   it('formats only the supported billing cadence and tax-inclusive yen values', () => {
@@ -135,6 +157,11 @@ function review(): BillingCheckoutReview {
   return {
     offer: offer.offer,
     offerHash: contractIds.offerHashA,
+    terms: {
+      termsVersion: 'terms-v1:2026-09-15',
+      termsHash: `sha256:${'a'.repeat(64)}`,
+      effectiveDate: '2026-09-15',
+    },
     submissionId: contractIds.submissionA,
   };
 }
@@ -147,7 +174,15 @@ function submittingState() {
   });
   const consented = billingCheckoutUiReducer(loaded, {
     type: 'consent-changed',
+    subject: 'subscription',
     consent: true,
   });
-  return billingCheckoutUiReducer(consented, { type: 'submit-requested' });
+  const termsConsented = billingCheckoutUiReducer(consented, {
+    type: 'consent-changed',
+    subject: 'terms',
+    consent: true,
+  });
+  return billingCheckoutUiReducer(termsConsented, {
+    type: 'submit-requested',
+  });
 }

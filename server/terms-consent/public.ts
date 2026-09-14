@@ -201,3 +201,21 @@ export type CurrentTermsSourcePort = {
 export type TermsDocumentHasherPort = {
   hash(serializedTerms: string): Promise<unknown>;
 };
+
+export type TermsConsentCheckoutVerification =
+  | { readonly kind: 'accepted'; readonly consentId: TermsConsentId }
+  | {
+      readonly kind: 'rejected';
+      readonly reason:
+        | 'terms-consent-required'
+        | 'terms-changed'
+        | 'owner-mismatch'
+        | 'unavailable';
+    };
+
+export type TermsConsentCheckoutVerifierPort = {
+  verify(input: {
+    readonly context: VaultContext;
+    readonly submissionId: unknown;
+  }): Promise<TermsConsentCheckoutVerification>;
+};

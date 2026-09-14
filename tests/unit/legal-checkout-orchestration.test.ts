@@ -12,6 +12,7 @@ import {
   contractEvidence,
   contractIds,
 } from '@/tests/fixtures/legal-checkout';
+import { termsConsentIds } from '@/tests/fixtures/terms-consent';
 
 describe('contract checkout orchestration', () => {
   it('derives stable Billing and Checkout identifiers from immutable evidence', () => {
@@ -155,6 +156,7 @@ describe('contract checkout orchestration', () => {
     const application = createContractCheckoutApplication({
       evidence,
       offerSource: { readCurrent: () => contractDisclosure() },
+      terms: acceptedTerms(),
       provider: {
         beginHostedCheckout: async () => ({
           kind: 'rejected',
@@ -174,6 +176,43 @@ describe('contract checkout orchestration', () => {
       reason: 'malformed-provider-response',
     });
   });
+
+  it('requires current terms evidence with the same submission before commercial evidence or provider calls', async () => {
+    const beginHostedCheckout = vi.fn();
+    const confirm = vi.fn();
+    const baseEvidence = createContractEvidenceService({
+      repository: createFakeContractEvidenceRepository(),
+      hasher: { hash: async () => contractIds.offerHashA },
+    });
+    const application = createContractCheckoutApplication({
+      evidence: {
+        prepareOffer: (input) => baseEvidence.prepareOffer(input),
+        confirm,
+      },
+      offerSource: { readCurrent: () => contractDisclosure() },
+      terms: {
+        verify: async () => ({
+          kind: 'rejected',
+          reason: 'terms-consent-required',
+        }),
+      },
+      provider: { beginHostedCheckout },
+    });
+
+    await expect(
+      application.confirm({
+        context: billingContext(),
+        command: contractCommand(),
+        evidenceId: contractIds.evidenceA,
+        confirmedAt: 1_000,
+      }),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      reason: 'terms-consent-required',
+    });
+    expect(confirm).not.toHaveBeenCalled();
+    expect(beginHostedCheckout).not.toHaveBeenCalled();
+  });
 });
 
 function setupApplication(
@@ -186,6 +225,16 @@ function setupApplication(
       hasher: { hash: async () => contractIds.offerHashA },
     }),
     offerSource,
+    terms: acceptedTerms(),
     provider: { beginHostedCheckout },
   });
+}
+
+function acceptedTerms() {
+  return {
+    verify: async () => ({
+      kind: 'accepted' as const,
+      consentId: termsConsentIds.consentA,
+    }),
+  };
 }

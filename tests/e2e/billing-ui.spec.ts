@@ -10,7 +10,10 @@ test('local fixture exercises checkout and cancellation without a provider', asy
   await page.goto('/pricing');
   await page.getByRole('link', { name: '申込み内容を確認する' }).click();
   await expect(page.getByTestId('billing-fixture-notice')).toBeVisible();
-  await page.getByRole('checkbox').check();
+  await page
+    .getByRole('checkbox', { name: /有料サブスクリプションの申込み/ })
+    .check();
+  await page.getByRole('checkbox', { name: /利用規約.*同意/ }).check();
   await page.getByTestId('confirm-subscription').click();
   await expect(
     page.getByRole('heading', { name: '開発用の申込み確認' }),
@@ -69,10 +72,20 @@ test('dedicated checkout keeps legal detail out of Notes and requires affirmativ
   ]) {
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
+  await expect(page.getByTestId('checkout-terms-reference')).toContainText(
+    'terms-v1:2026-09-15',
+  );
+  await expect(
+    page.getByRole('link', { name: '独立した利用規約ページ' }),
+  ).toHaveAttribute('href', '/legal/terms');
 
   const submit = page.getByTestId('confirm-subscription');
   await expect(submit).toBeDisabled();
-  await page.getByRole('checkbox').check();
+  await page
+    .getByRole('checkbox', { name: /有料サブスクリプションの申込み/ })
+    .check();
+  await expect(submit).toBeDisabled();
+  await page.getByRole('checkbox', { name: /利用規約.*同意/ }).check();
   await expect(submit).toBeEnabled();
   await submit.evaluate((element) => {
     if (!(element instanceof HTMLButtonElement)) {
@@ -93,7 +106,10 @@ test('dedicated checkout keeps legal detail out of Notes and requires affirmativ
   expect(checkoutRequests).toBe(1);
 
   await page.getByRole('button', { name: '申込み内容をもう一度確認' }).click();
-  await expect(page.getByRole('checkbox')).not.toBeChecked();
+  await expect(page.getByRole('checkbox')).toHaveCount(2);
+  for (const checkbox of await page.getByRole('checkbox').all()) {
+    await expect(checkbox).not.toBeChecked();
+  }
 
   await page.getByRole('link', { name: '料金へ戻って確認・訂正' }).click();
   await expect(
@@ -130,7 +146,10 @@ test('a stale offer is reloaded and must be accepted again', async ({
   });
 
   await page.goto('/checkout');
-  await page.getByRole('checkbox').check();
+  await page
+    .getByRole('checkbox', { name: /有料サブスクリプションの申込み/ })
+    .check();
+  await page.getByRole('checkbox', { name: /利用規約.*同意/ }).check();
   await page.getByTestId('confirm-subscription').click();
   await expect(
     page.getByText(
@@ -140,9 +159,50 @@ test('a stale offer is reloaded and must be accepted again', async ({
   await expect(
     page.getByText('1,280円（税込）', { exact: false }).first(),
   ).toBeVisible();
-  await expect(page.getByRole('checkbox')).not.toBeChecked();
+  for (const checkbox of await page.getByRole('checkbox').all()) {
+    await expect(checkbox).not.toBeChecked();
+  }
   await expect(page.getByTestId('confirm-subscription')).toBeDisabled();
   expect(postCount).toBe(1);
+});
+
+test('a server terms gate rejection reloads and clears both checkout consents', async ({
+  page,
+}) => {
+  await page.route('**/api/billing/checkout', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 422,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'terms-consent-required' }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        offer: checkoutOffer({ priceYen: 1_280, effectiveDate: '2026-09-14' }),
+        offerHash: initialOfferHash,
+      }),
+    });
+  });
+
+  await page.goto('/checkout');
+  await page
+    .getByRole('checkbox', { name: /有料サブスクリプションの申込み/ })
+    .check();
+  await page.getByRole('checkbox', { name: /利用規約.*同意/ }).check();
+  await page.getByTestId('confirm-subscription').click();
+  await expect(
+    page.getByText(
+      '利用規約が更新されました。最新内容を確認し、両方のチェックを入れ直してください。',
+    ),
+  ).toBeVisible();
+  for (const checkbox of await page.getByRole('checkbox').all()) {
+    await expect(checkbox).not.toBeChecked();
+  }
+  await expect(page.getByTestId('confirm-subscription')).toBeDisabled();
 });
 
 test('checkout retry reuses the same submission identifier', async ({
@@ -179,7 +239,10 @@ test('checkout retry reuses the same submission identifier', async ({
   });
 
   await page.goto('/checkout');
-  await page.getByRole('checkbox').check();
+  await page
+    .getByRole('checkbox', { name: /有料サブスクリプションの申込み/ })
+    .check();
+  await page.getByRole('checkbox', { name: /利用規約.*同意/ }).check();
   await page.getByTestId('confirm-subscription').click();
   await expect(
     page.getByText(/入力内容は変えずに再試行できます/),
@@ -239,6 +302,49 @@ test('account billing cancellation uses an accessible dialog, focus return, and 
   expect(cancellationKeys[1]).toBe(cancellationKeys[0]);
 });
 
+test('account terms uses a dedicated keyboard-accessible page and resets on navigation', async ({
+  page,
+}) => {
+  await page.goto('/account/terms');
+  await expect(
+    page.getByRole('heading', { name: '利用規約の確認' }),
+  ).toBeVisible();
+  await expect(page.getByTestId('terms-consent-fixture-notice')).toBeVisible();
+  await expect(page.getByTestId('new-card')).toHaveCount(0);
+  const checkbox = page.getByRole('checkbox', {
+    name: /利用規約.*全文.*同意/,
+  });
+  const accept = page.getByTestId('accept-current-terms');
+  await expect(checkbox).not.toBeChecked();
+  await expect(accept).toBeDisabled();
+
+  await page.getByRole('link', { name: '独立した利用規約ページ' }).click();
+  await expect(page.getByRole('heading', { name: '利用規約' })).toBeVisible();
+  await page.goBack();
+  await expect(
+    page.getByRole('heading', { name: '利用規約の確認' }),
+  ).toBeVisible();
+  await expect(checkbox).not.toBeChecked();
+
+  await checkbox.focus();
+  await page.keyboard.press('Space');
+  await expect(accept).toBeEnabled();
+  await accept.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('status')).toContainText(
+    '現在の利用規約への同意を記録しました',
+  );
+  await expect(page.getByRole('checkbox')).toHaveCount(0);
+
+  await page.getByRole('link', { name: 'ノートへ戻る' }).click();
+  await expect(page.getByTestId('new-card')).toBeVisible();
+  await expect(page.getByTestId('terms-consent-panel')).toHaveCount(0);
+  await page.goBack();
+  await expect(
+    page.getByRole('heading', { name: '利用規約の確認' }),
+  ).toBeVisible();
+});
+
 test('billing pages do not mount in the normal Notes interface', async ({
   page,
 }) => {
@@ -246,10 +352,14 @@ test('billing pages do not mount in the normal Notes interface', async ({
   await expect(page.getByTestId('new-card')).toBeVisible();
   await expect(page.getByTestId('billing-fixture-notice')).toHaveCount(0);
   await expect(page.getByTestId('billing-terms')).toHaveCount(0);
+  await expect(page.getByTestId('terms-consent-panel')).toHaveCount(0);
 
   await page.goto('/account/billing');
   await expect(page.getByTestId('new-card')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '契約管理' })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: '利用規約の同意状態' }),
+  ).toHaveAttribute('href', '/account/terms');
 });
 
 function requestRecord(body: string | null): Record<string, unknown> {

@@ -18,6 +18,7 @@ import {
   contractDisclosure,
   contractIds,
 } from '@/tests/fixtures/legal-checkout';
+import { termsConsentIds } from '@/tests/fixtures/terms-consent';
 import {
   stripeCheckoutMetadata,
   stripeCheckoutResponse,
@@ -111,6 +112,12 @@ function integrationSetup(
     application: createContractCheckoutApplication({
       evidence,
       offerSource: { readCurrent: () => contractDisclosure() },
+      terms: {
+        verify: async () => ({
+          kind: 'accepted',
+          consentId: termsConsentIds.consentA,
+        }),
+      },
       provider: stripe,
     }),
     billing,
