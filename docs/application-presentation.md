@@ -115,6 +115,15 @@ IDs rather than raw card records. The status selector fixes priority as
 local-save failure, local save, active sync, offline, sync failure, then saved;
 it also states whether retry is available.
 
+The model is discriminated by `activeView`. It materializes editor/conflict
+data only for `card`, history items only for `history`, and connection
+nodes/edges only for `connections`; the two inactive heavy models are
+explicitly `null`. This keeps a title/body edit from rebuilding the 10,000-card
+history and connections projections while making the uncomputed state visible
+to every presentation implementation. View navigation still computes the
+selected projection synchronously from the same full local replica, so URL,
+back/forward, offline, and renderer output contracts do not change.
+
 `NotesPresentationActions` exposes semantic operations only:
 `createCard`, `openCard`, `showCurrentCard`, `showHistory`, `showConnections`,
 `updateTitle`, `updateBody`, `retrySync`, and `resolveConflict`. It deliberately

@@ -178,7 +178,49 @@ describe('notes application controller', () => {
       activeView: 'card',
       currentCardDisplayLabel: '#7',
       availableViews: { card: true, history: true, connections: true },
+      history: null,
+      connections: null,
     });
-    expect(props.model.connections?.nodes).toHaveLength(1);
+    expect(props.model.cardEditor?.cardId).toBe(current.id);
+
+    const history = createNotesPresentationModel(store, {
+      kind: 'history',
+      cardId: current.id,
+    });
+    expect(history.activeView).toBe('history');
+    expect(history.history?.items).toHaveLength(1);
+    expect(history.cardEditor).toBeNull();
+    expect(history.connections).toBeNull();
+
+    const connections = createNotesPresentationModel(store, {
+      kind: 'connections',
+      cardId: current.id,
+    });
+    expect(connections.activeView).toBe('connections');
+    expect(connections.connections?.nodes).toHaveLength(1);
+    expect(connections.cardEditor).toBeNull();
+    expect(connections.history).toBeNull();
+  });
+
+  it('does not read inactive history or connections bodies in card view', () => {
+    const current = card('active-current', 1);
+    const inactiveBase = card('inactive-selector-trap', 2);
+    const inactive: CardRecord = {
+      ...inactiveBase,
+      get body(): CardRecord['body'] {
+        throw new Error('inactive selector read a non-current body');
+      },
+    };
+    const store = fakeStore([current, inactive]);
+
+    const model = createNotesPresentationModel(store, {
+      kind: 'card',
+      cardId: current.id,
+    });
+
+    expect(model.activeView).toBe('card');
+    expect(model.cardEditor?.candidates).toHaveLength(1);
+    expect(model.history).toBeNull();
+    expect(model.connections).toBeNull();
   });
 });
