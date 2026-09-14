@@ -16,6 +16,11 @@ export type TermsConsentSnapshotPlan =
   | { readonly kind: 'ready'; readonly snapshot: TermsConsentSnapshot }
   | { readonly kind: 'rejected'; readonly reason: 'invalid-terms' };
 
+export type TermsDisclosureSnapshot = Omit<TermsConsentSnapshot, 'termsHash'>;
+export type TermsDisclosureSnapshotPlan =
+  | { readonly kind: 'ready'; readonly snapshot: TermsDisclosureSnapshot }
+  | { readonly kind: 'rejected'; readonly reason: 'invalid-terms' };
+
 export type TermsConsentPlan =
   | { readonly kind: 'append'; readonly record: TermsConsentRecord }
   | { readonly kind: 'replay'; readonly record: TermsConsentRecord }
@@ -93,7 +98,21 @@ export function planTermsConsentSnapshot(input: {
   readonly disclosure: unknown;
   readonly termsHash: TermsDocumentHash;
 }): TermsConsentSnapshotPlan {
-  const decoded = decodeLegalTermsDisclosure(input.disclosure);
+  const prepared = planTermsDisclosureSnapshot(input.disclosure);
+  if (prepared.kind === 'rejected') return prepared;
+  return {
+    kind: 'ready',
+    snapshot: {
+      ...prepared.snapshot,
+      termsHash: input.termsHash,
+    },
+  };
+}
+
+export function planTermsDisclosureSnapshot(
+  disclosure: unknown,
+): TermsDisclosureSnapshotPlan {
+  const decoded = decodeLegalTermsDisclosure(disclosure);
   if (decoded.kind === 'invalid') {
     return { kind: 'rejected', reason: 'invalid-terms' };
   }
@@ -103,7 +122,6 @@ export function planTermsConsentSnapshot(input: {
     kind: 'ready',
     snapshot: {
       termsVersion: version.value,
-      termsHash: input.termsHash,
       disclosure: decoded.disclosure,
       serializedTerms: serializeTermsDisclosure(decoded.disclosure),
     },
