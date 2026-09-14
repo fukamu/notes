@@ -23,9 +23,20 @@ boundary cases; it does not add an unbounded fuzzing or wall-clock gate.
 
 ## Tenant, sync, and cryptography — Issue #211
 
-Pending #211. It will record cross-Vault equal-identifier isolation, forged
-cursor and receipt behavior, malformed page recovery, ciphertext/AAD swap
-rejection, D1/R2/KMS failure injection, and no-change sync port-call evidence.
+| Threat                           | Required invariant                                                                                                | Automated evidence                                                                                                                                     |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Equal identifiers across Vaults  | Scope create/update/delete/CAS/read, mutation receipts, metadata, and quota by the session Vault                  | `tests/integration/sync-v2-server-d1.test.ts`, `tests/integration/sync-v2-journal-d1.test.ts`, `tests/integration/encrypted-object-repository.test.ts` |
+| Forged cursor or receipt         | Authenticate cursor Vault/device/window and reject mismatched, unsent, or replayed receipts without tenant detail | `tests/unit/sync-v2-protocol.test.ts`, `tests/unit/sync-v2-web-crypto.test.ts`, `tests/integration/sync-v2-server-d1.test.ts`                          |
+| Malformed or interrupted page    | Do not commit checkpoint, acknowledgements, or page changes until the terminal plan commits                       | `tests/unit/sync-v2-client.test.ts`, `tests/unit/sync-v2-page-application.test.ts`, `tests/unit/sync-v2-replica.test.ts`, `tests/e2e/notes.spec.ts`    |
+| Ciphertext/AAD swap              | Bind Vault, object type/id, revision, crypto version, and DEK version; reject tamper and swaps                    | `tests/integration/envelope-encryption.test.ts`, `tests/integration/encrypted-object-repository.test.ts`                                               |
+| KMS failure                      | Fail closed on wrap/unwrap for write and read with no plaintext fallback                                          | `tests/integration/envelope-encryption.test.ts`, `tests/integration/encrypted-object-repository.test.ts`                                               |
+| R2-compatible object failure     | Preserve immutable intent for retry, reject conflicting bytes, and retry delete outbox                            | `tests/integration/encrypted-object-repository.test.ts`                                                                                                |
+| D1 journal/quota/content failure | Roll back atomic metadata or retain an explicit reserved retry state; issue receipt only after commit             | `tests/integration/sync-v2-server-d1.test.ts`, `tests/integration/sync-v2-journal-d1.test.ts`                                                          |
+| No-change sync                   | Avoid object-store and encryption/KMS calls when no mutation or content change exists                             | `tests/integration/sync-v2-server-d1.test.ts`                                                                                                          |
+| Secret-bearing sync failure      | Log a fixed error category only and return generic no-store error JSON                                            | `tests/unit/sync-v2-http-handler.test.ts`                                                                                                              |
+
+The object-storage and KMS evidence uses private in-memory adapters, while D1
+atomicity uses Miniflare. No production storage or key provider is contacted.
 
 ## Billing and cross-module closure — Issue #212
 

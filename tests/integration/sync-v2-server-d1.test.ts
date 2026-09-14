@@ -624,16 +624,39 @@ describe('D1 Sync v2 server composition', () => {
     );
   });
 
-  it('isolates equal card and mutation identifiers between two Vaults', async () => {
+  it('isolates equal identifiers and CAS updates through deletion between two Vaults', async () => {
     const contextA = vaultContentContext('a');
     const contextB = vaultContentContext('b');
     const objects = createFakePrivateObjectStorage();
+    const mutationA: PendingMutation = {
+      ...flowMutation,
+      title: 'Vault A private title',
+      body: [{ type: 'text', text: 'Vault A private body' }],
+    };
+    const mutationB: PendingMutation = {
+      ...flowMutation,
+      title: 'Vault B private title',
+      body: [{ type: 'text', text: 'Vault B private body' }],
+    };
+    const requestA = decodeSyncV2Request(
+      encodeSyncV2Request({
+        deviceId,
+        cursor: null,
+        mutations: [mutationA],
+      }),
+    );
+    const requestB = decodeSyncV2Request(
+      encodeSyncV2Request({
+        deviceId,
+        cursor: null,
+        mutations: [mutationB],
+      }),
+    );
     const requestValue = encodeSyncV2Request({
       deviceId,
       cursor: null,
-      mutations: [flowMutation],
+      mutations: [mutationA],
     });
-    const applicationRequest = decodeSyncV2Request(requestValue);
     const requestBytes = parseQuotaByteCount(
       new TextEncoder().encode(JSON.stringify(requestValue)).byteLength,
     );
@@ -643,7 +666,10 @@ describe('D1 Sync v2 server composition', () => {
       objects,
       encryption: encryptionFor(contextA),
       cursors: createWebCryptoSyncV2CursorAuthenticator(cursorSecret),
-      objectKeys: objectKeys([encryptedObjectIds.objectKeyA]),
+      objectKeys: objectKeys([
+        encryptedObjectIds.objectKeyA,
+        encryptedObjectIds.objectKeyC,
+      ]),
       keyring: keyringFor(contextA.vaultId),
     }).application;
     const applicationB = createComposition({
@@ -652,20 +678,23 @@ describe('D1 Sync v2 server composition', () => {
       objects,
       encryption: encryptionFor(contextB),
       cursors: createWebCryptoSyncV2CursorAuthenticator(cursorSecret),
-      objectKeys: objectKeys([encryptedObjectIds.objectKeyB]),
+      objectKeys: objectKeys([
+        encryptedObjectIds.objectKeyB,
+        encryptedObjectIds.objectKeyD,
+      ]),
       keyring: keyringFor(contextB.vaultId),
     }).application;
     const [resultA, resultB] = await Promise.all([
       applicationA.synchronize({
         context: contextA,
-        request: applicationRequest,
+        request: requestA,
         synchronizedAt: 1_500,
         requestBytes,
         limits: paidPersonalVaultLimits,
       }),
       applicationB.synchronize({
         context: contextB,
-        request: applicationRequest,
+        request: requestB,
         synchronizedAt: 1_500,
         requestBytes,
         limits: paidPersonalVaultLimits,
@@ -673,8 +702,116 @@ describe('D1 Sync v2 server composition', () => {
     ]);
     expect(resultA.kind).toBe('synchronized');
     expect(resultB.kind).toBe('synchronized');
+    if (resultA.kind !== 'synchronized' || resultB.kind !== 'synchronized') {
+      return;
+    }
+    expect(resultA.response.changes).toMatchObject([
+      { kind: 'card-upsert', card: { title: mutationA.title } },
+    ]);
+    expect(resultB.response.changes).toMatchObject([
+      { kind: 'card-upsert', card: { title: mutationB.title } },
+    ]);
+
+    const updateA: PendingMutation = {
+      ...mutationA,
+      mutationId: fixtureMutationId('shared-cross-vault-update'),
+      baseServerRevision: 1,
+      title: 'Vault A updated title',
+      updatedAt: 1_600,
+    };
+    const updateB: PendingMutation = {
+      ...mutationB,
+      mutationId: updateA.mutationId,
+      baseServerRevision: 1,
+      title: 'Vault B updated title',
+      updatedAt: 1_600,
+    };
+    const [updatedA, updatedB] = await Promise.all([
+      applicationA.synchronize({
+        context: contextA,
+        request: decodeSyncV2Request(
+          encodeSyncV2Request({
+            deviceId,
+            cursor: resultA.response.page.nextCursor,
+            mutations: [updateA],
+          }),
+        ),
+        synchronizedAt: 1_600,
+        requestBytes,
+        limits: paidPersonalVaultLimits,
+      }),
+      applicationB.synchronize({
+        context: contextB,
+        request: decodeSyncV2Request(
+          encodeSyncV2Request({
+            deviceId,
+            cursor: resultB.response.page.nextCursor,
+            mutations: [updateB],
+          }),
+        ),
+        synchronizedAt: 1_600,
+        requestBytes,
+        limits: paidPersonalVaultLimits,
+      }),
+    ]);
+    expect(updatedA).toMatchObject({
+      kind: 'synchronized',
+      response: { receipts: [{ appliedRevision: 2 }] },
+    });
+    expect(updatedB).toMatchObject({
+      kind: 'synchronized',
+      response: { receipts: [{ appliedRevision: 2 }] },
+    });
+
+    await expect(
+      applicationA.deleteCard({
+        context: contextA,
+        mutationId: fixtureMutationId('shared-cross-vault-delete'),
+        cardId: mutationA.cardId,
+        expectedRevision: parseContentRevision(2),
+        deletedAt: 1_700,
+        synchronizedAt: 1_700,
+        limits: paidPersonalVaultLimits,
+      }),
+    ).resolves.toMatchObject({ kind: 'deleted' });
+    const survivingB = await applicationB.synchronize({
+      context: contextB,
+      request: decodeSyncV2Request(
+        encodeSyncV2Request({ deviceId, cursor: null, mutations: [] }),
+      ),
+      synchronizedAt: 1_700,
+      requestBytes,
+      limits: paidPersonalVaultLimits,
+    });
+    expect(survivingB.kind).toBe('synchronized');
+    if (survivingB.kind !== 'synchronized') return;
+    expect(
+      survivingB.response.changes.map((change) =>
+        change.kind === 'card-upsert'
+          ? {
+              kind: change.kind,
+              id: change.card.id,
+              title: change.card.title,
+              revision: change.card.revision,
+            }
+          : { kind: change.kind },
+      ),
+    ).toEqual([
+      {
+        kind: 'card-upsert',
+        id: mutationB.cardId,
+        title: mutationB.title,
+        revision: 1,
+      },
+      {
+        kind: 'card-upsert',
+        id: mutationB.cardId,
+        title: updateB.title,
+        revision: 2,
+      },
+    ]);
     await expect(quotaUsage(tenantsDatabase, contextA)).resolves.toMatchObject({
-      active_cards: 1,
+      active_cards: 0,
     });
     await expect(quotaUsage(tenantsDatabase, contextB)).resolves.toMatchObject({
       active_cards: 1,

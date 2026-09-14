@@ -9,6 +9,10 @@ import {
   parseSyncV2Cursor,
 } from '@/lib/sync/v2-protocol';
 import { createCompatibilityFixture } from '@/tests/fixtures/compatibility';
+import {
+  containsSensitiveMarker,
+  securityCorpusMarker,
+} from '@/tests/fixtures/security-corpus';
 import { cookieHeader, fixtureActiveSession } from '@/tests/fixtures/session';
 import type { SyncV2ApplicationInput } from '@/server/sync-v2/public';
 import { paidPersonalVaultLimits } from '@/server/entitlement/public';
@@ -222,6 +226,29 @@ describe('authenticated Sync v2 HTTP handler', () => {
     await expect(response.json()).resolves.toEqual({
       error: 'invalid-request',
     });
+  });
+
+  it('logs only a fixed category for secret-bearing unexpected failures', async () => {
+    const failure = new Error(`message:${securityCorpusMarker}`);
+    failure.name = `name:${securityCorpusMarker}`;
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const response = await createSyncV2HttpHandler(
+      dependencies({
+        application: {
+          synchronize: async () => {
+            throw failure;
+          },
+        },
+      }),
+    )(request());
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    await expect(response.json()).resolves.toEqual({ error: 'unavailable' });
+    expect(log).toHaveBeenCalledWith('sync v2 failed', 'Error');
+    expect(
+      containsSensitiveMarker(log.mock.calls, [securityCorpusMarker]),
+    ).toBe(false);
   });
 
   it.each([
