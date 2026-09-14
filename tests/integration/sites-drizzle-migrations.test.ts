@@ -46,9 +46,9 @@ describe('ChatGPT Sites Drizzle migration compatibility', () => {
     }
   });
 
-  it('keeps the quota finalization trigger in one standalone migration statement', async () => {
+  it('keeps the quota finalization assertion table in one trigger-free migration statement', async () => {
     const source = await readFile(
-      'drizzle/0013_vault_quota_finalize_trigger.sql',
+      'drizzle/0013_vault_quota_finalize_assertions.sql',
       'utf8',
     );
     const statements = source
@@ -57,9 +57,9 @@ describe('ChatGPT Sites Drizzle migration compatibility', () => {
 
     expect(statements).toHaveLength(1);
     expect(statements[0]?.trimStart()).toMatch(
-      /^CREATE TRIGGER vault_quota_finalize_usage/,
+      /^CREATE TABLE vault_quota_finalization_assertions/,
     );
-    expect(source).not.toContain('CREATE TABLE');
+    expect(source).not.toContain('CREATE TRIGGER');
     expect(source).not.toContain('CREATE INDEX');
   });
 
@@ -69,7 +69,7 @@ describe('ChatGPT Sites Drizzle migration compatibility', () => {
         `SELECT type, name FROM sqlite_schema
          WHERE name IN (
            'contract_evidence',
-           'vault_quota_finalize_usage',
+           'vault_quota_finalization_assertions',
            'idx_contract_evidence_submission',
            'contract_evidence_immutable',
            'privacy_requests',
@@ -95,11 +95,11 @@ describe('ChatGPT Sites Drizzle migration compatibility', () => {
       { name: 'privacy_requests', type: 'table' },
       { name: 'terms_consent_evidence', type: 'table' },
       { name: 'terms_consent_immutable', type: 'trigger' },
-      { name: 'vault_quota_finalize_usage', type: 'trigger' },
+      { name: 'vault_quota_finalization_assertions', type: 'table' },
     ]);
   });
 
-  it('keeps trigger bodies intact and immutable evidence enforced', async () => {
+  it('keeps legal trigger bodies intact and immutable evidence enforced', async () => {
     await database
       .prepare('INSERT INTO accounts(account_id, created_at) VALUES (?, ?)')
       .bind('01991f20-61d2-7000-8000-000000000001', 1)

@@ -228,6 +228,157 @@ describe('D1 Vault quota ledger', () => {
     });
   });
 
+  it('replays a completed finalization without applying usage twice', async () => {
+    const ledger = await open(
+      new D1VaultQuotaLedgerDirectory(database),
+      contextA(),
+    );
+    const command = createCommand('a', 10);
+    await ledger.reserve(command);
+    const finalization = {
+      reservationId: command.reservationId,
+      fingerprint: command.fingerprint,
+      outcome: 'commit' as const,
+      limits: command.limits,
+      finalizedAt: 4_000,
+    };
+
+    expect(await ledger.finalize(finalization)).toMatchObject({
+      kind: 'committed',
+    });
+    expect(await ledger.finalize(finalization)).toMatchObject({
+      kind: 'replayed',
+    });
+    expect(await ledger.snapshot()).toMatchObject({
+      revision: 2,
+      committed: { activeCards: 1, plaintextBytes: 10 },
+    });
+    expect(
+      await database
+        .prepare(
+          'SELECT COUNT(*) AS count FROM vault_quota_finalization_assertions',
+        )
+        .first(),
+    ).toEqual({ count: 0 });
+  });
+
+  it('rolls usage back when the reservation CAS changes no row', async () => {
+    const ledger = await open(
+      new D1VaultQuotaLedgerDirectory(database),
+      contextA(),
+    );
+    const command = createCommand('a', 10);
+    await ledger.reserve(command);
+    await database
+      .prepare(
+        `CREATE TRIGGER fail_quota_reservation_finalize
+         BEFORE UPDATE OF state ON vault_quota_reservations
+         FOR EACH ROW BEGIN SELECT RAISE(IGNORE); END`,
+      )
+      .run();
+    try {
+      expect(
+        await ledger.finalize({
+          reservationId: command.reservationId,
+          fingerprint: command.fingerprint,
+          outcome: 'commit',
+          limits: command.limits,
+          finalizedAt: 4_000,
+        }),
+      ).toEqual({ kind: 'rejected', reason: 'cas-conflict' });
+      expect(await ledger.snapshot()).toMatchObject({
+        revision: 1,
+        committed: { activeCards: 0, plaintextBytes: 0 },
+        reserved: { activeCards: 1, plaintextBytes: 10 },
+      });
+      expect(await ledger.findReservation(command.reservationId)).toMatchObject(
+        { state: { kind: 'reserved' } },
+      );
+    } finally {
+      await database
+        .prepare('DROP TRIGGER fail_quota_reservation_finalize')
+        .run();
+    }
+  });
+
+  it('leaves the reservation pending when the usage CAS changes no row', async () => {
+    const ledger = await open(
+      new D1VaultQuotaLedgerDirectory(database),
+      contextA(),
+    );
+    const command = createCommand('a', 10);
+    await ledger.reserve(command);
+    await database
+      .prepare(
+        `CREATE TRIGGER fail_quota_usage_finalize
+         BEFORE UPDATE OF revision ON vault_quota_usage
+         FOR EACH ROW BEGIN SELECT RAISE(IGNORE); END`,
+      )
+      .run();
+    try {
+      expect(
+        await ledger.finalize({
+          reservationId: command.reservationId,
+          fingerprint: command.fingerprint,
+          outcome: 'commit',
+          limits: command.limits,
+          finalizedAt: 4_000,
+        }),
+      ).toEqual({ kind: 'rejected', reason: 'cas-conflict' });
+      expect(await ledger.snapshot()).toMatchObject({
+        revision: 1,
+        committed: { activeCards: 0, plaintextBytes: 0 },
+        reserved: { activeCards: 1, plaintextBytes: 10 },
+      });
+      expect(await ledger.findReservation(command.reservationId)).toMatchObject(
+        { state: { kind: 'reserved' } },
+      );
+    } finally {
+      await database.prepare('DROP TRIGGER fail_quota_usage_finalize').run();
+    }
+  });
+
+  it('rolls the whole batch back and propagates an unrelated D1 failure', async () => {
+    const ledger = await open(
+      new D1VaultQuotaLedgerDirectory(database),
+      contextA(),
+    );
+    const command = createCommand('a', 10);
+    await ledger.reserve(command);
+    await database
+      .prepare(
+        `CREATE TRIGGER abort_quota_reservation_finalize
+         BEFORE UPDATE OF state ON vault_quota_reservations
+         FOR EACH ROW BEGIN
+           SELECT RAISE(ABORT, 'injected quota finalization failure');
+         END`,
+      )
+      .run();
+    try {
+      await expect(
+        ledger.finalize({
+          reservationId: command.reservationId,
+          fingerprint: command.fingerprint,
+          outcome: 'commit',
+          limits: command.limits,
+          finalizedAt: 4_000,
+        }),
+      ).rejects.toThrow(/injected quota finalization failure/);
+      expect(await ledger.snapshot()).toMatchObject({
+        revision: 1,
+        committed: { activeCards: 0, plaintextBytes: 0 },
+        reserved: { activeCards: 1, plaintextBytes: 10 },
+      });
+      expect(await ledger.findReservation(command.reservationId)).toMatchObject(
+        { state: { kind: 'reserved' } },
+      );
+    } finally {
+      await database
+        .prepare('DROP TRIGGER abort_quota_reservation_finalize')
+        .run();
+    }
+  });
+
   it('allows identical card and reservation IDs only within separate Vault scopes', async () => {
     const directory = new D1VaultQuotaLedgerDirectory(database);
     const [ledgerA, ledgerB] = await Promise.all([
@@ -257,6 +408,30 @@ describe('D1 Vault quota ledger', () => {
     });
     expect(await ledgerB.snapshot()).toMatchObject({
       effective: { plaintextBytes: 20 },
+    });
+    const [finalizedA, finalizedB] = await Promise.all([
+      ledgerA.finalize({
+        reservationId: quotaIds.reservationA,
+        fingerprint: quotaIds.fingerprintA,
+        outcome: 'commit',
+        limits: paidPersonalVaultLimits,
+        finalizedAt: 4_000,
+      }),
+      ledgerB.finalize({
+        reservationId: quotaIds.reservationA,
+        fingerprint: quotaIds.fingerprintA,
+        outcome: 'commit',
+        limits: paidPersonalVaultLimits,
+        finalizedAt: 4_000,
+      }),
+    ]);
+    expect(finalizedA).toMatchObject({ kind: 'committed' });
+    expect(finalizedB).toMatchObject({ kind: 'committed' });
+    expect(await ledgerA.snapshot()).toMatchObject({
+      committed: { activeCards: 1, plaintextBytes: 10 },
+    });
+    expect(await ledgerB.snapshot()).toMatchObject({
+      committed: { activeCards: 1, plaintextBytes: 20 },
     });
   });
 

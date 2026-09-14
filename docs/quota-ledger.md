@@ -37,11 +37,15 @@ committed values, current pending sum, and limit in the same `INSERT SELECT`.
 Concurrent attempts cannot both admit the 10,001st card or the byte beyond the
 128 MiB limit.
 
-Finalization changes the reservation and usage through one D1 statement. A
-trigger advances the usage revision only for the expected predecessor revision
-and ignores the outer reservation update if that CAS cannot be applied. The
-adapter reloads typed rows and retries a bounded CAS conflict. Exhaustion is a
-visible `cas-conflict`, never a false success or a dropped reservation.
+Finalization changes the reservation and usage through one atomic D1 batch.
+The batch advances usage only from the expected predecessor revision, updates
+the exact scoped pending reservation, and then inserts a transient assertion
+row whose named `CHECK` constraint fails unless both transitions match. D1
+rolls the entire batch back on that failure, so a zero-row CAS cannot commit
+only one side. The assertion row is deleted in the same batch. The adapter
+reloads typed rows and retries only this named CAS assertion failure; unrelated
+D1 errors still propagate. Exhaustion is a visible `cas-conflict`, never a
+false success or a dropped reservation.
 
 ## Reconciliation and failure behavior
 
@@ -60,9 +64,12 @@ production service.
 ## Migration and rollback
 
 Migration `0012_vault_quota_ledger` is additive and intended for the new empty
-production schema. This issue does not apply it, backfill current Sites/D1
-data, or derive counters from production content. After consumer integration,
-rollback must disable new online mutations before changing ledger state and
-must preserve reservations for reconciliation.
+production schema. Sites migration `0013_vault_quota_finalize_assertions`
+adds the transient assertion table separately, allowing a test Sites database
+that already applied the quota tables to resume without a reset. No request
+handler runs DDL. This issue does not backfill current Sites/D1 data or derive
+counters from production content. After consumer integration, rollback must
+disable new online mutations before changing ledger state and must preserve
+reservations for reconciliation.
 
 Main is unchanged and production is not deployed.
