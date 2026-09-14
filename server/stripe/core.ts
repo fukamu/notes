@@ -33,8 +33,14 @@ import {
   type VerifiedProviderFact,
 } from '../billing/public';
 import {
+  contractEvidenceIdDecoder,
+  contractOfferHashDecoder,
+  type ContractOfferSnapshot,
+} from '../legal-checkout/public';
+import {
   STRIPE_API_VERSION,
   type StripeBillingConfiguration,
+  type HostedCheckoutCommand,
   type StripeRuntimeMode,
 } from './public';
 
@@ -60,6 +66,15 @@ export type StripeCheckoutResponse = {
   readonly providerCheckoutReference: ProviderCheckoutReference;
   readonly checkoutUrl: string;
 };
+
+export type StripeCheckoutResponseResult =
+  | { readonly kind: 'accepted'; readonly response: StripeCheckoutResponse }
+  | {
+      readonly kind: 'rejected';
+      readonly reason:
+        | 'malformed-provider-response'
+        | 'provider-mapping-mismatch';
+    };
 
 export type StripeSnapshotPlan = {
   readonly snapshotId: ReconciliationSnapshotId;
@@ -172,10 +187,24 @@ const billingMetadataDecoder = objectDecoder(
   { billing_subscription_id: billingSubscriptionIdDecoder },
   { unknownFields: 'allow' },
 );
+const contractOfferVersionDecoder = refineDecoder(
+  stringDecoder({ minLength: 1, maxLength: 128 }),
+  (value) => /^legal-commerce-v1:\d{4}-\d{2}-\d{2}$/.test(value),
+  'expected contract offer version',
+);
+const contractDisclosureVersionDecoder = refineDecoder(
+  stringDecoder({ minLength: 10, maxLength: 10 }),
+  (value) => /^\d{4}-\d{2}-\d{2}$/.test(value),
+  'expected contract disclosure version',
+);
 const checkoutMetadataDecoder = objectDecoder(
   {
     billing_subscription_id: billingSubscriptionIdDecoder,
     checkout_intent_id: checkoutIntentIdDecoder,
+    contract_evidence_id: contractEvidenceIdDecoder,
+    contract_offer_hash: contractOfferHashDecoder,
+    contract_offer_version: contractOfferVersionDecoder,
+    contract_disclosure_version: contractDisclosureVersionDecoder,
   },
   { unknownFields: 'allow' },
 );
@@ -338,16 +367,15 @@ const subscriptionSnapshotDecoder = objectDecoder(
 
 export function planStripeCheckout(
   configuration: StripeBillingConfiguration,
-  command: {
-    readonly subscriptionId: BillingSubscriptionId;
-    readonly checkoutIntentId: CheckoutIntentId;
-  },
+  command: HostedCheckoutCommand,
 ): StripeCheckoutCreateCommand {
+  const contract = command.contract;
   return {
     apiVersion: configuration.apiVersion,
     idempotencyKey: command.checkoutIntentId,
     fields: [
       ['mode', 'subscription'],
+      ['submit_type', 'subscribe'],
       ['line_items[0][price]', configuration.priceReference],
       ['line_items[0][quantity]', '1'],
       ['payment_method_collection', 'always'],
@@ -359,9 +387,25 @@ export function planStripeCheckout(
       ['client_reference_id', command.checkoutIntentId],
       ['metadata[billing_subscription_id]', command.subscriptionId],
       ['metadata[checkout_intent_id]', command.checkoutIntentId],
+      ['metadata[contract_evidence_id]', contract.evidenceId],
+      ['metadata[contract_offer_hash]', contract.offerHash],
+      ['metadata[contract_offer_version]', contract.offer.offerVersion],
+      [
+        'metadata[contract_disclosure_version]',
+        contract.offer.disclosureVersion,
+      ],
       [
         'subscription_data[metadata][billing_subscription_id]',
         command.subscriptionId,
+      ],
+      [
+        'subscription_data[metadata][contract_evidence_id]',
+        contract.evidenceId,
+      ],
+      ['subscription_data[metadata][contract_offer_hash]', contract.offerHash],
+      [
+        'custom_text[submit][message]',
+        stripeContractSubmitMessage(contract.offer),
       ],
       ['success_url', configuration.successUrl],
       ['cancel_url', configuration.cancelUrl],
@@ -371,28 +415,49 @@ export function planStripeCheckout(
 
 export function decodeStripeCheckoutResponse(
   input: unknown,
-  expected: {
+  expected: Pick<
+    HostedCheckoutCommand,
+    'subscriptionId' | 'checkoutIntentId' | 'contract'
+  > & {
     readonly mode: StripeRuntimeMode;
-    readonly subscriptionId: BillingSubscriptionId;
-    readonly checkoutIntentId: CheckoutIntentId;
   },
-): StripeCheckoutResponse | undefined {
+): StripeCheckoutResponseResult {
   const decoded = checkoutCreateResponseDecoder.decode(input);
-  if (!decoded.ok) return undefined;
+  if (!decoded.ok) {
+    return { kind: 'rejected', reason: 'malformed-provider-response' };
+  }
   const response = decoded.value;
   if (
     response.livemode !== (expected.mode === 'live') ||
     response.client_reference_id !== expected.checkoutIntentId ||
     response.metadata.billing_subscription_id !== expected.subscriptionId ||
     response.metadata.checkout_intent_id !== expected.checkoutIntentId ||
-    !isStripeCheckoutUrl(response.url)
+    response.metadata.contract_evidence_id !== expected.contract.evidenceId ||
+    response.metadata.contract_offer_hash !== expected.contract.offerHash ||
+    response.metadata.contract_offer_version !==
+      expected.contract.offer.offerVersion ||
+    response.metadata.contract_disclosure_version !==
+      expected.contract.offer.disclosureVersion
   ) {
-    return undefined;
+    return { kind: 'rejected', reason: 'provider-mapping-mismatch' };
+  }
+  if (!isStripeCheckoutUrl(response.url)) {
+    return { kind: 'rejected', reason: 'malformed-provider-response' };
   }
   return {
-    providerCheckoutReference: response.id,
-    checkoutUrl: response.url,
+    kind: 'accepted',
+    response: {
+      providerCheckoutReference: response.id,
+      checkoutUrl: response.url,
+    },
   };
+}
+
+export function stripeContractSubmitMessage(
+  offer: ContractOfferSnapshot,
+): string {
+  const cadence = offer.billingPeriod === 'monthly' ? '毎月' : '毎年';
+  return `14日間は0円です。15日目から税込${offer.renewalChargeYen}円を${cadence}自動課金します。支払い方法の登録が必要です。支払い失敗または追加認証が必要な場合はオンライン利用を停止し、invoice.paid確認後に再開します。解約と退会は別手続です。`;
 }
 
 export function decodeStripeEventPlan(

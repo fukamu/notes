@@ -16,6 +16,7 @@ import {
   stripeCheckoutResponse,
   stripeConfiguration,
   stripeEvent,
+  stripeHostedCheckoutCommand,
   stripeIds,
   stripeInvoiceObject,
   stripeSubscriptionSnapshot,
@@ -320,11 +321,7 @@ async function startedTrial() {
 }
 
 function checkoutCommand() {
-  return {
-    subscriptionId: billingIds.subscriptionA,
-    checkoutIntentId: billingIds.checkoutA,
-    createdAt: 1_000,
-  } as const;
+  return stripeHostedCheckoutCommand();
 }
 
 function webhook(event: unknown, receivedAt: number) {

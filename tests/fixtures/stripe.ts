@@ -9,8 +9,11 @@ import { STRIPE_PROVIDER } from '@/server/stripe/core';
 import {
   STRIPE_API_VERSION,
   parseStripeBillingConfiguration,
+  type HostedCheckoutCommand,
+  type HostedCheckoutContract,
 } from '@/server/stripe/public';
 import { billingIds } from './billing';
+import { contractEvidence } from './legal-checkout';
 
 export const stripeConfiguration = parseStripeBillingConfiguration({
   mode: 'test',
@@ -39,6 +42,39 @@ export function stripeBeginCheckoutCommand(): BeginCheckoutCommand {
   };
 }
 
+export function stripeHostedCheckoutContract(): HostedCheckoutContract {
+  const evidence = contractEvidence();
+  return {
+    evidenceId: evidence.evidenceId,
+    offerHash: evidence.offerHash,
+    offer: evidence.offer,
+  };
+}
+
+export function stripeHostedCheckoutCommand(): HostedCheckoutCommand {
+  return {
+    subscriptionId: billingIds.subscriptionA,
+    checkoutIntentId: billingIds.checkoutA,
+    createdAt: 1_000,
+    contract: stripeHostedCheckoutContract(),
+  };
+}
+
+export function stripeCheckoutMetadata(
+  overrides: Readonly<Record<string, unknown>> = {},
+): Readonly<Record<string, unknown>> {
+  const contract = stripeHostedCheckoutContract();
+  return {
+    billing_subscription_id: billingIds.subscriptionA,
+    checkout_intent_id: billingIds.checkoutA,
+    contract_evidence_id: contract.evidenceId,
+    contract_offer_hash: contract.offerHash,
+    contract_offer_version: contract.offer.offerVersion,
+    contract_disclosure_version: contract.offer.disclosureVersion,
+    ...overrides,
+  };
+}
+
 export function stripeCheckoutResponse(
   overrides: Readonly<Record<string, unknown>> = {},
 ): unknown {
@@ -48,10 +84,7 @@ export function stripeCheckoutResponse(
     mode: 'subscription',
     livemode: false,
     client_reference_id: billingIds.checkoutA,
-    metadata: {
-      billing_subscription_id: billingIds.subscriptionA,
-      checkout_intent_id: billingIds.checkoutA,
-    },
+    metadata: stripeCheckoutMetadata(),
     url: 'https://checkout.stripe.com/c/pay/cs_test_FukamuA',
     ...overrides,
   };
@@ -90,10 +123,7 @@ export function stripeCheckoutCompletedObject(): unknown {
     customer: stripeIds.customer,
     subscription: stripeIds.subscription,
     client_reference_id: billingIds.checkoutA,
-    metadata: {
-      billing_subscription_id: billingIds.subscriptionA,
-      checkout_intent_id: billingIds.checkoutA,
-    },
+    metadata: stripeCheckoutMetadata(),
     url: null,
   };
 }

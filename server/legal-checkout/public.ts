@@ -228,6 +228,11 @@ export type ContractConfirmationResult =
         | 'unavailable';
     };
 
+export type ContractConfirmationRejectionReason = Extract<
+  ContractConfirmationResult,
+  { readonly kind: 'rejected' }
+>['reason'];
+
 export type ContractOfferHasherPort = {
   hash(serializedOffer: string): Promise<unknown>;
 };
@@ -257,4 +262,35 @@ export type ContractEvidenceService = {
     readonly evidenceId: ContractEvidenceId;
     readonly confirmedAt: number;
   }): Promise<ContractConfirmationResult>;
+};
+
+export type ContractOfferSourcePort = {
+  readCurrent(): unknown;
+};
+
+export type ContractCheckoutResult =
+  | {
+      readonly kind: 'redirect';
+      readonly evidenceOutcome: 'recorded' | 'replayed';
+      readonly evidence: ContractEvidenceRecord;
+      readonly checkoutUrl: string;
+    }
+  | {
+      readonly kind: 'rejected';
+      readonly reason:
+        | ContractConfirmationRejectionReason
+        | 'provider-unavailable'
+        | 'malformed-provider-response'
+        | 'provider-mapping-mismatch'
+        | 'billing-rejected';
+    };
+
+export type ContractCheckoutApplication = {
+  prepareOffer(): Promise<PrepareContractOfferResult>;
+  confirm(input: {
+    readonly context: VaultContext;
+    readonly command: ContractConfirmationCommand;
+    readonly evidenceId: ContractEvidenceId;
+    readonly confirmedAt: number;
+  }): Promise<ContractCheckoutResult>;
 };

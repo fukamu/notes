@@ -12,11 +12,13 @@ import {
 import { billingIds } from '@/tests/fixtures/billing';
 import {
   stripeCheckoutCompletedObject,
+  stripeCheckoutMetadata,
   stripeCheckoutResponse,
   stripeConfiguration,
   stripeEvent,
   stripeIds,
   stripeInvoiceObject,
+  stripeHostedCheckoutCommand,
   stripeSetupIntentSucceededObject,
   stripeSubscriptionObject,
   stripeSubscriptionSnapshot,
@@ -24,16 +26,15 @@ import {
 
 describe('Stripe adapter pure core', () => {
   it('fixes subscription mode, payment-method collection, and the 14-day trial', () => {
-    const command = planStripeCheckout(stripeConfiguration, {
-      subscriptionId: billingIds.subscriptionA,
-      checkoutIntentId: billingIds.checkoutA,
-    });
+    const hostedCheckout = stripeHostedCheckoutCommand();
+    const command = planStripeCheckout(stripeConfiguration, hostedCheckout);
     expect(command).toMatchObject({
       apiVersion: STRIPE_API_VERSION,
       idempotencyKey: billingIds.checkoutA,
     });
     const fields = new Map(command.fields);
     expect(fields.get('mode')).toBe('subscription');
+    expect(fields.get('submit_type')).toBe('subscribe');
     expect(fields.get('payment_method_collection')).toBe('always');
     expect(fields.get('subscription_data[trial_period_days]')).toBe('14');
     expect(
@@ -45,6 +46,16 @@ describe('Stripe adapter pure core', () => {
     expect(fields.get('metadata[billing_subscription_id]')).toBe(
       billingIds.subscriptionA,
     );
+    expect(fields.get('metadata[contract_evidence_id]')).toBe(
+      hostedCheckout.contract.evidenceId,
+    );
+    expect(fields.get('metadata[contract_offer_hash]')).toBe(
+      hostedCheckout.contract.offerHash,
+    );
+    expect(fields.get('custom_text[submit][message]')).toContain('14日間は0円');
+    expect(
+      fields.get('custom_text[submit][message]')?.length,
+    ).toBeLessThanOrEqual(1_200);
   });
 
   it('accepts HTTPS and loopback development callbacks but rejects insecure remote callbacks', () => {
@@ -72,32 +83,33 @@ describe('Stripe adapter pure core', () => {
   it('decodes only the expected Checkout mapping and Stripe-hosted redirect', () => {
     const expected = {
       mode: 'test',
-      subscriptionId: billingIds.subscriptionA,
-      checkoutIntentId: billingIds.checkoutA,
+      ...stripeHostedCheckoutCommand(),
     } as const;
     expect(
       decodeStripeCheckoutResponse(stripeCheckoutResponse(), expected),
     ).toEqual({
-      providerCheckoutReference: stripeIds.checkout,
-      checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_FukamuA',
+      kind: 'accepted',
+      response: {
+        providerCheckoutReference: stripeIds.checkout,
+        checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_FukamuA',
+      },
     });
     expect(
       decodeStripeCheckoutResponse(
         stripeCheckoutResponse({
-          metadata: {
+          metadata: stripeCheckoutMetadata({
             billing_subscription_id: billingIds.subscriptionB,
-            checkout_intent_id: billingIds.checkoutA,
-          },
+          }),
         }),
         expected,
       ),
-    ).toBeUndefined();
+    ).toEqual({ kind: 'rejected', reason: 'provider-mapping-mismatch' });
     expect(
       decodeStripeCheckoutResponse(
         stripeCheckoutResponse({ url: 'https://example.test/not-stripe' }),
         expected,
       ),
-    ).toBeUndefined();
+    ).toEqual({ kind: 'rejected', reason: 'malformed-provider-response' });
   });
 
   it('maps official-format Checkout, invoice, SetupIntent, and cancellation events', () => {

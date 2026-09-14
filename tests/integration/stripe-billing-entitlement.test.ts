@@ -6,13 +6,14 @@ import {
   createFakeStripeWebhookVerifier,
 } from '@/server/stripe/fake';
 import { createStripeBillingAdapter } from '@/server/stripe/service';
-import { billingContext, billingIds } from '@/tests/fixtures/billing';
+import { billingContext } from '@/tests/fixtures/billing';
 import { undecidedOfflineLeasePolicy } from '@/tests/fixtures/entitlement';
 import {
   stripeCheckoutCompletedObject,
   stripeCheckoutResponse,
   stripeConfiguration,
   stripeEvent,
+  stripeHostedCheckoutCommand,
   stripeIds,
   stripeInvoiceObject,
   stripeSetupIntentSucceededObject,
@@ -45,11 +46,10 @@ describe('Stripe to Billing to Entitlement integration', () => {
         webhookVerifier: createFakeStripeWebhookVerifier(),
       });
 
-      await stripe.beginHostedCheckout(billingContext(), {
-        subscriptionId: billingIds.subscriptionA,
-        checkoutIntentId: billingIds.checkoutA,
-        createdAt: 1_000,
-      });
+      await stripe.beginHostedCheckout(
+        billingContext(),
+        stripeHostedCheckoutCommand(),
+      );
       await expect(
         entitlement.port.authorizeCapability(
           billingContext(),
