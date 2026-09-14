@@ -16,6 +16,7 @@ import {
 import { cookieHeader, fixtureActiveSession } from '@/tests/fixtures/session';
 import type { SyncV2ApplicationInput } from '@/server/sync-v2/public';
 import { paidPersonalVaultLimits } from '@/server/entitlement/public';
+import { createFakeTelemetrySink } from '@/server/telemetry/fake';
 
 const expectedOrigin = 'https://notes.example';
 const nextCursor = parseSyncV2Cursor(
@@ -107,6 +108,7 @@ describe('authenticated Sync v2 HTTP handler', () => {
     const entitlement = vi.fn(dependencies().entitlement.authorizeCapability);
     const readLimits = vi.fn(dependencies().entitlement.readLimits);
     const synchronize = synchronizeSpy();
+    const telemetry = createFakeTelemetrySink();
     const syncRequest = request();
     const expectedRequestBytes = (await syncRequest.clone().arrayBuffer())
       .byteLength;
@@ -114,6 +116,7 @@ describe('authenticated Sync v2 HTTP handler', () => {
       dependencies({
         entitlement: { authorizeCapability: entitlement, readLimits },
         application: { synchronize },
+        telemetry: telemetry.sink,
       }),
     )(syncRequest);
     expect(response.status).toBe(200);
@@ -135,6 +138,16 @@ describe('authenticated Sync v2 HTTP handler', () => {
       version: 'sync/v2',
       page: { kind: 'complete' },
     });
+    expect(telemetry.records()).toEqual([
+      {
+        schemaVersion: 1,
+        operation: 'sync-v2',
+        outcome: 'no-change',
+        failureCategory: 'none',
+        durationBucket: 'not-measured',
+        workItemsBucket: 'zero',
+      },
+    ]);
   });
 
   it('rejects anonymous and cross-site requests before application work', async () => {
@@ -161,6 +174,7 @@ describe('authenticated Sync v2 HTTP handler', () => {
 
   it('locks online sync immediately for denied entitlement', async () => {
     const synchronize = synchronizeSpy();
+    const telemetry = createFakeTelemetrySink();
     const response = await createSyncV2HttpHandler(
       dependencies({
         entitlement: {
@@ -175,6 +189,7 @@ describe('authenticated Sync v2 HTTP handler', () => {
           }),
         },
         application: { synchronize },
+        telemetry: telemetry.sink,
       }),
     )(request());
     expect(response.status).toBe(402);
@@ -182,6 +197,13 @@ describe('authenticated Sync v2 HTTP handler', () => {
       error: 'online-access-locked',
     });
     expect(synchronize).not.toHaveBeenCalled();
+    expect(telemetry.records()).toEqual([
+      expect.objectContaining({
+        operation: 'sync-v2',
+        outcome: 'locked',
+        failureCategory: 'billing',
+      }),
+    ]);
   });
 
   it('rejects unavailable limits before application work', async () => {
@@ -232,6 +254,7 @@ describe('authenticated Sync v2 HTTP handler', () => {
     const failure = new Error(`message:${securityCorpusMarker}`);
     failure.name = `name:${securityCorpusMarker}`;
     const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const telemetry = createFakeTelemetrySink();
     const response = await createSyncV2HttpHandler(
       dependencies({
         application: {
@@ -239,6 +262,7 @@ describe('authenticated Sync v2 HTTP handler', () => {
             throw failure;
           },
         },
+        telemetry: telemetry.sink,
       }),
     )(request());
 
@@ -249,6 +273,30 @@ describe('authenticated Sync v2 HTTP handler', () => {
     expect(
       containsSensitiveMarker(log.mock.calls, [securityCorpusMarker]),
     ).toBe(false);
+    expect(telemetry.records()).toEqual([
+      expect.objectContaining({
+        operation: 'sync-v2',
+        outcome: 'failure',
+        failureCategory: 'internal',
+      }),
+    ]);
+    expect(JSON.stringify(telemetry.records())).not.toContain(
+      securityCorpusMarker,
+    );
+  });
+
+  it('does not change a successful response when telemetry recording fails', async () => {
+    const telemetry = createFakeTelemetrySink({ failAfterRecords: 0 });
+    const response = await createSyncV2HttpHandler(
+      dependencies({ telemetry: telemetry.sink }),
+    )(request());
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      version: 'sync/v2',
+      page: { kind: 'complete' },
+    });
+    expect(telemetry.records()).toEqual([]);
   });
 
   it.each([

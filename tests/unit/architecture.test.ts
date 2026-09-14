@@ -1753,3 +1753,45 @@ describe('headless card editor architecture', () => {
     expect(renderer).toContain('card-link-structure card-link-capsule');
   });
 });
+
+describe('provider-neutral telemetry architecture', () => {
+  it('keeps vocabulary and alert decisions pure and provider adapters outside the core', async () => {
+    const [core, publicContract, fake, handler, coverage, documentation] =
+      await Promise.all([
+        readFile('server/telemetry/core.ts', 'utf8'),
+        readFile('server/telemetry/public.ts', 'utf8'),
+        readFile('server/telemetry/fake.ts', 'utf8'),
+        readFile('app/api/v2/sync/handler.ts', 'utf8'),
+        readFile('vitest.config.ts', 'utf8'),
+        readFile('docs/telemetry-and-alerts.md', 'utf8'),
+      ]);
+
+    expect(core).toContain('planTelemetryEvent');
+    expect(core).toContain('telemetryMetricsForEvent');
+    expect(core).toContain('planTelemetryAlert');
+    expect(core).toContain("threshold: { kind: 'decision-required' }");
+    expect(core).not.toMatch(
+      /D1Database|R2Bucket|fetch\(|Date\.|performance\.|process\.|console\.|Promise/,
+    );
+    expect(publicContract).toContain('type TelemetrySink');
+    expect(publicContract).toContain('recordTelemetrySafely');
+    expect(publicContract).not.toMatch(
+      /Cloudflare|Datadog|Stripe\.|D1Database/,
+    );
+    expect(handler).toContain('recordTelemetrySafely');
+    expect(handler).toContain("operation: 'sync-v2'");
+    expect(fake).not.toMatch(/process\.env|fetch\(|D1Database|R2Bucket/);
+    expect(coverage).toContain("'server/**/*.ts'");
+    expect(documentation).toContain('No production monitoring account');
+    expect(documentation).toContain('threshold: decision-required');
+
+    const productionFiles = (await Promise.all(roots.map(sourceFiles))).flat();
+    const fakeConsumers: string[] = [];
+    for (const file of productionFiles) {
+      if (file === 'server/telemetry/fake.ts') continue;
+      const source = await readFile(file, 'utf8');
+      if (/telemetry\/fake/.test(source)) fakeConsumers.push(file);
+    }
+    expect(fakeConsumers).toEqual([]);
+  });
+});
