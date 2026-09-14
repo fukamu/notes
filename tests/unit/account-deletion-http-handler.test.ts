@@ -10,6 +10,10 @@ import {
   type AccountDeletionApplication,
 } from '@/server/account-deletion/public';
 import { SESSION_COOKIE_NAME } from '@/server/core/session-cookie';
+import {
+  containsSensitiveMarker,
+  securityCorpusMarker,
+} from '@/tests/fixtures/security-corpus';
 import { cookieHeader, fixtureActiveSession } from '@/tests/fixtures/session';
 
 const expectedOrigin = 'https://notes.example';
@@ -183,6 +187,37 @@ describe('account deletion HTTP handlers', () => {
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ status: 'completed' });
+  });
+
+  it('logs only a fixed category for secret-bearing provider failures', async () => {
+    const failure = new Error(`message:${securityCorpusMarker}`);
+    failure.name = `name:${securityCorpusMarker}`;
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const response = await createAccountDeletionStartHandler(
+      dependencies({
+        application: application({
+          start: async () => {
+            throw failure;
+          },
+        }),
+      }),
+    )(
+      request('/api/account/deletion', {
+        body: JSON.stringify({ idempotencyKey }),
+        cookie: cookieHeader(),
+      }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    await expect(response.json()).resolves.toEqual({ error: 'unavailable' });
+    expect(log).toHaveBeenCalledWith(
+      'account deletion request failed',
+      'Error',
+    );
+    expect(
+      containsSensitiveMarker(log.mock.calls, [securityCorpusMarker]),
+    ).toBe(false);
   });
 });
 

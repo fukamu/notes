@@ -21,122 +21,134 @@ import {
 } from '@/tests/fixtures/stripe';
 
 describe('Stripe to Billing to Entitlement integration', () => {
-  it('grants trial only after verified setup and resumes a lock only after invoice.paid', async () => {
-    const billing = createFakeBillingModule([billingContext()]);
-    const entitlement = createFakeEntitlementModule({
-      owners: [billingContext()],
-      billing: billing.api,
-      offlineLeasePolicy: undecidedOfflineLeasePolicy,
-    });
-    const stripe = createStripeBillingAdapter({
-      configuration: stripeConfiguration,
-      billing: billing.api,
-      transport: createFakeStripeTransport({
-        checkoutResponse: stripeCheckoutResponse(),
-        snapshots: new Map([
-          [stripeIds.subscription, stripeSubscriptionSnapshot()],
-        ]),
-      }),
-      webhookVerifier: createFakeStripeWebhookVerifier(),
-    });
+  it.each([
+    ['invoice.payment_failed', 'payment-failed'],
+    ['invoice.payment_action_required', 'payment-action-required'],
+  ] as const)(
+    'grants trial only after verified setup and resumes %s only after invoice.paid',
+    async (delinquencyEvent, expectedLockReason) => {
+      const billing = createFakeBillingModule([billingContext()]);
+      const entitlement = createFakeEntitlementModule({
+        owners: [billingContext()],
+        billing: billing.api,
+        offlineLeasePolicy: undecidedOfflineLeasePolicy,
+      });
+      const stripe = createStripeBillingAdapter({
+        configuration: stripeConfiguration,
+        billing: billing.api,
+        transport: createFakeStripeTransport({
+          checkoutResponse: stripeCheckoutResponse(),
+          snapshots: new Map([
+            [stripeIds.subscription, stripeSubscriptionSnapshot()],
+          ]),
+        }),
+        webhookVerifier: createFakeStripeWebhookVerifier(),
+      });
 
-    await stripe.beginHostedCheckout(billingContext(), {
-      subscriptionId: billingIds.subscriptionA,
-      checkoutIntentId: billingIds.checkoutA,
-      createdAt: 1_000,
-    });
-    await expect(
-      entitlement.port.authorizeCapability(
-        billingContext(),
-        'notes-read',
-        1_500,
-      ),
-    ).resolves.toMatchObject({
-      kind: 'denied',
-      reason: 'payment-method-required',
-    });
-
-    await stripe.ingestWebhook(
-      webhook(
-        stripeEvent(
-          'checkout.session.completed',
-          stripeCheckoutCompletedObject(),
+      await stripe.beginHostedCheckout(billingContext(), {
+        subscriptionId: billingIds.subscriptionA,
+        checkoutIntentId: billingIds.checkoutA,
+        createdAt: 1_000,
+      });
+      await expect(
+        entitlement.port.authorizeCapability(
+          billingContext(),
+          'notes-read',
+          1_500,
         ),
-        3_000,
-      ),
-    );
-    await expect(
-      entitlement.port.authorizeCapability(
-        billingContext(),
-        'notes-write',
-        3_100,
-      ),
-    ).resolves.toMatchObject({ kind: 'allowed', basis: 'trial' });
+      ).resolves.toMatchObject({
+        kind: 'denied',
+        reason: 'payment-method-required',
+      });
 
-    const failedWebhook = webhook(
-      stripeEvent(
-        'invoice.payment_failed',
-        stripeInvoiceObject({ paid: false, status: 'open' }),
-        { id: 'evt_failed_A', created: 5 },
-      ),
-      5_100,
-    );
-    await expect(stripe.ingestWebhook(failedWebhook)).resolves.toEqual({
-      kind: 'accepted',
-      outcome: 'applied',
-    });
-    await expect(stripe.ingestWebhook(failedWebhook)).resolves.toEqual({
-      kind: 'accepted',
-      outcome: 'duplicate',
-    });
-    await expect(
-      entitlement.port.authorizeCapability(
-        billingContext(),
-        'notes-sync',
-        5_200,
-      ),
-    ).resolves.toMatchObject({ kind: 'denied', reason: 'payment-failed' });
-
-    await stripe.ingestWebhook(
-      webhook(
-        stripeEvent(
-          'setup_intent.succeeded',
-          stripeSetupIntentSucceededObject(),
-          { id: 'evt_setup_update_A', created: 6 },
+      await stripe.ingestWebhook(
+        webhook(
+          stripeEvent(
+            'checkout.session.completed',
+            stripeCheckoutCompletedObject(),
+          ),
+          3_000,
         ),
-        6_100,
-      ),
-    );
-    await expect(
-      entitlement.port.authorizeCapability(
-        billingContext(),
-        'notes-read',
-        6_200,
-      ),
-    ).resolves.toMatchObject({ kind: 'denied', reason: 'payment-failed' });
-
-    await stripe.ingestWebhook(
-      webhook(
-        stripeEvent(
-          'invoice.paid',
-          stripeInvoiceObject({
-            id: stripeIds.invoice2,
-            paid: true,
-            status: 'paid',
-          }),
-          { id: 'evt_paid_A', created: 7 },
+      );
+      await expect(
+        entitlement.port.authorizeCapability(
+          billingContext(),
+          'notes-write',
+          3_100,
         ),
-        7_100,
-      ),
-    );
-    await expect(
-      entitlement.port.authorizeCapability(
-        billingContext(),
-        'notes-read',
-        7_200,
-      ),
-    ).resolves.toMatchObject({ kind: 'allowed', basis: 'paid' });
-  });
+      ).resolves.toMatchObject({ kind: 'allowed', basis: 'trial' });
+
+      const failedWebhook = webhook(
+        stripeEvent(
+          delinquencyEvent,
+          stripeInvoiceObject({ paid: false, status: 'open' }),
+          { id: `evt_${delinquencyEvent.replaceAll('.', '_')}_A`, created: 5 },
+        ),
+        5_100,
+      );
+      await expect(stripe.ingestWebhook(failedWebhook)).resolves.toEqual({
+        kind: 'accepted',
+        outcome: 'applied',
+      });
+      await expect(stripe.ingestWebhook(failedWebhook)).resolves.toEqual({
+        kind: 'accepted',
+        outcome: 'duplicate',
+      });
+      await expect(
+        entitlement.port.authorizeCapability(
+          billingContext(),
+          'notes-sync',
+          5_200,
+        ),
+      ).resolves.toMatchObject({
+        kind: 'denied',
+        reason: expectedLockReason,
+      });
+
+      await stripe.ingestWebhook(
+        webhook(
+          stripeEvent(
+            'setup_intent.succeeded',
+            stripeSetupIntentSucceededObject(),
+            { id: 'evt_setup_update_A', created: 6 },
+          ),
+          6_100,
+        ),
+      );
+      await expect(
+        entitlement.port.authorizeCapability(
+          billingContext(),
+          'notes-read',
+          6_200,
+        ),
+      ).resolves.toMatchObject({
+        kind: 'denied',
+        reason: expectedLockReason,
+      });
+
+      await stripe.ingestWebhook(
+        webhook(
+          stripeEvent(
+            'invoice.paid',
+            stripeInvoiceObject({
+              id: stripeIds.invoice2,
+              paid: true,
+              status: 'paid',
+            }),
+            { id: 'evt_paid_A', created: 7 },
+          ),
+          7_100,
+        ),
+      );
+      await expect(
+        entitlement.port.authorizeCapability(
+          billingContext(),
+          'notes-read',
+          7_200,
+        ),
+      ).resolves.toMatchObject({ kind: 'allowed', basis: 'paid' });
+    },
+  );
 });
 
 function webhook(event: unknown, receivedAt: number) {

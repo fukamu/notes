@@ -232,10 +232,7 @@ function errorResponse(status: number, error: string): Response {
   return Response.json({ error }, { status, headers: noStoreHeaders });
 }
 
-function unexpectedFailure(error: unknown): Response {
-  console.error(
-    'account deletion request failed',
-    error instanceof Error ? error.name : 'UnknownError',
-  );
+function unexpectedFailure(_error: unknown): Response {
+  console.error('account deletion request failed', 'Error');
   return errorResponse(503, 'unavailable');
 }
