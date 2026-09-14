@@ -24,6 +24,7 @@ export default defineConfig({
         'lib/application/card-body-text-lookup.ts',
         'lib/application/card-editor-index.ts',
         'lib/application/history-window.ts',
+        'lib/application/legal-commerce.ts',
         'lib/application/logout-coordination.ts',
         'lib/application/notes-access.ts',
         'lib/application/notes-database-scope.ts',
