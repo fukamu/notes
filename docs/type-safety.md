@@ -149,6 +149,8 @@ Browser logout purgeはVault外のcontrol IndexedDBへversioned markerをtransac
 
 Vault DEK rotationはgenerating/promoting/completedとCAS revisionをpure state machineで管理し、D1/KMSをservice adapterの外側に置きます。D1 repositoryはAccountId/VaultId ownerを全load/mutationで固定し、wrapped metadataの永続化後だけoperation rowをcompletedへ進めます。pending中はsource、completed後だけtargetをlogical write versionとし、全旧versionをmixed read用に保持します。raw DEK handleは生成結果の検証後に必ずdestroyし、old keyの削除やproduction KMS操作は行いません。詳細は [Vault DEK rotation lifecycle](dek-rotation.md) を参照してください。
 
+既存暗号文の再暗号化は、昇格済みwrite DEKと結びついたtyped checkpointでVault内を最大100件ずつ走査します。旧暗号文を記録済みAADで認証してからfresh ciphertextをimmutable保存し、logical revisionを変えずにmetadata CASと旧object delete outboxを同一D1 batchで確定します。CAS競合、途中失敗、checkpointより前へ追加された旧version、旧DEKのpending writeを明示的な再試行状態にし、対象なしではR2/KMSを呼びません。詳細は [Vault DEK rotation lifecycle](dek-rotation.md#existing-ciphertext-re-encryption) を参照してください。
+
 Google OIDC境界はstate、nonce、PKCE verifier/challenge、authorization code、issuer、subject、client ID、redirect URIを別brandで表します。start/callback、provider verified claims、pending transaction、identity directoryの値はすべて`unknown`からdecodeし、exact redirect/issuer/audience、`azp`、expiry/issued-at、nonceをpure coreで判定します。transaction storeはstateを原子的にconsumeし、同じcallbackを再利用できません。emailはverified attributeであってidentity keyではなく、既存accountへのlink対象はrequest bodyではなくauthenticated `VaultContext`からだけ導出します。provider通信・signature/JWKS検証・entropy・clock・transaction/identity storage・Web Cryptoはport/adapter側に留めます。
 
 カード作成・編集・競合解決・pending mutation構築は `lib/domain/card-transitions.ts` のpure functionが担当します。時刻とbranded IDは外側で一度生成して入力し、UUIDv7生成は `lib/client/id-generator.ts` に限定します。編集とmutation mode、予期可能なresolve失敗はdiscriminated unionで区別し、IndexedDB adapterだけが既存の例外へ変換します。

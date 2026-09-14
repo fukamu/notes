@@ -44,3 +44,31 @@ retaining the operation row and every old/new wrapped version for mixed reads.
 Provider-side cleanup after a successful KMS generation whose response was
 lost requires the eventual KMS adapter's idempotency and cleanup contract; the
 fake adapter is deterministic but is not a production substitute.
+
+## Existing ciphertext re-encryption
+
+Issue #189 adds the second stage after promotion. A bounded application batch
+selects only metadata older than the promoted write version using a typed
+Account/Vault-scoped checkpoint. Every candidate is read and authenticated
+with its recorded Vault/object/revision AAD before fresh ciphertext is created
+with the current write DEK. Logical object revision, write ID, plaintext size,
+crypto format, and creation time remain unchanged.
+
+The replacement uses a fresh immutable object key. D1 then performs an exact
+old-metadata CAS and enqueues the old key in the delete outbox in one batch. An
+R2/KMS/authentication failure therefore leaves the old metadata authoritative;
+a CAS loser leaves only a new orphan covered by the existing grace-period GC.
+A repeated exact commit is classified as a replay only when both replacement
+metadata and the old-key outbox entry are present.
+
+Page checkpoints never skip a CAS conflict. After reaching the end, the batch
+rechecks the complete Vault inventory and restarts from the beginning if an
+older row appeared behind the checkpoint. Older pending write intents keep the
+batch pending, and a stored object or intent newer than the requested target
+fails closed. A Vault with no older object or intent returns before calling
+object storage or KMS.
+
+This stage does not delete old objects directly, retire wrapped keys, select a
+production R2/KMS provider, schedule a production job, or perform production
+operations. The existing outbox worker owns physical deletion. Recovery drill
+and the explicit key-retirement approval gate remain Issue #190.

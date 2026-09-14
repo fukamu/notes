@@ -189,7 +189,7 @@ export function createEncryptedObjectService(input: {
           },
           plaintext: command.plaintext,
         });
-        storedBytes = encodeCiphertext(ciphertext);
+        storedBytes = encodeEncryptedObjectCiphertext(ciphertext);
         const put = await input.objects.putIfAbsent({
           objectKey: intent.objectKey,
           bytes: storedBytes,
@@ -207,7 +207,7 @@ export function createEncryptedObjectService(input: {
         }
       }
 
-      const ciphertext = decodeCiphertextBytes(storedBytes);
+      const ciphertext = decodeEncryptedObjectCiphertext(storedBytes);
       const storedPlan = planStoredCiphertext({
         metadata: intent,
         ciphertext,
@@ -327,7 +327,7 @@ async function readMetadata(
   if (metadata === undefined) return { kind: 'not-found' };
   const bytes = await input.objects.get(metadata.objectKey);
   if (bytes === undefined) throw new EncryptedObjectIntegrityError();
-  const ciphertext = decodeCiphertextBytes(bytes);
+  const ciphertext = decodeEncryptedObjectCiphertext(bytes);
   const plan = planStoredCiphertext({
     metadata,
     ciphertext,
@@ -349,7 +349,9 @@ async function readMetadata(
   return { kind: 'found', plaintext };
 }
 
-function encodeCiphertext(ciphertext: EnvelopeCiphertext): Uint8Array {
+export function encodeEncryptedObjectCiphertext(
+  ciphertext: EnvelopeCiphertext,
+): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(ciphertext));
 }
 
@@ -360,7 +362,7 @@ function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
   );
 }
 
-function decodeCiphertextBytes(bytes: Uint8Array) {
+export function decodeEncryptedObjectCiphertext(bytes: Uint8Array) {
   try {
     const candidate: unknown = JSON.parse(new TextDecoder().decode(bytes));
     return decodeEnvelopeCiphertext(candidate);

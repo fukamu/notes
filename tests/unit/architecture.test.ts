@@ -128,6 +128,7 @@ describe('pure-core dependency direction', () => {
     'server/crypto/core.ts',
     'server/crypto/rotation-core.ts',
     'server/encrypted-object/core.ts',
+    'server/encrypted-object/reencryption-core.ts',
     'server/entitlement/core.ts',
     'server/sync-v2/core.ts',
   ];
