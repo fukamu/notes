@@ -10,6 +10,7 @@ export default defineConfig({
     './server/crypto/d1-schema.ts',
     './server/encrypted-object/d1-schema.ts',
     './server/entitlement/d1-schema.ts',
+    './server/quota/d1-schema.ts',
     './server/vault-content/d1-schema.ts',
     './server/vault-content/sync-v2-d1-schema.ts',
   ],

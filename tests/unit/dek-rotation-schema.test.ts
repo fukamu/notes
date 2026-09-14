@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { getTableConfig } from 'drizzle-orm/sqlite-core';
 import { describe, expect, it } from 'vitest';
 import { vaultDekRotationOperations } from '@/server/crypto/d1-schema';
+import { accountDeletionContinuationMigration } from '@/server/account-deletion/continuation-migration';
 import {
   dekRotationMigration,
   dekRotationStatements,
@@ -56,11 +57,16 @@ describe('DEK rotation schema', () => {
     }
   });
 
-  it('pins the additive manifest and appends it after existing migrations', () => {
+  it('pins the additive manifest after its preceding account-deletion migration', () => {
     const checksum = createHash('sha256')
       .update(dekRotationStatements.join('\n'))
       .digest('hex');
     expect(dekRotationMigration.checksum).toBe(`sha256:${checksum}`);
-    expect(productionMigrationManifest.at(-1)).toBe(dekRotationMigration);
+    expect(productionMigrationManifest).toContain(dekRotationMigration);
+    expect(
+      productionMigrationManifest.indexOf(dekRotationMigration),
+    ).toBeGreaterThan(
+      productionMigrationManifest.indexOf(accountDeletionContinuationMigration),
+    );
   });
 });
