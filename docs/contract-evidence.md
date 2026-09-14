@@ -21,9 +21,11 @@ cancellation and refund text, and payment-failure lock policy. Its stable JSON
 serialization is hashed with SHA-256 through `ContractOfferHasherPort`.
 
 The exact calendar date of the first charge is intentionally not guessed before
-checkout completes. #224 must derive it from the authenticated provider result
-and #225 must show it at the final-action surface together with the approved
-terms. A redirect alone is never evidence of consent or entitlement.
+checkout completes. #224 preserves the relative day-15 rule in the provider
+mapping. #225 must show the approved rule at the final-action surface and must
+not claim an exact provider date until a Stripe test-mode rendering or completed
+provider result proves it. A redirect alone is never evidence of consent or
+entitlement.
 
 ## Confirmation and idempotency
 

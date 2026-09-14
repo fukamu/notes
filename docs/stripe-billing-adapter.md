@@ -29,16 +29,21 @@ The pure Checkout plan pins the Stripe API version to
 `2026-02-25.clover` and always sends:
 
 - `mode=subscription`;
+- `submit_type=subscribe`;
 - one recurring Price and quantity `1`;
 - `payment_method_collection=always`;
 - `subscription_data[trial_period_days]=14`;
 - missing-payment-method end behavior `cancel`;
-- the internal Billing subscription and checkout-intent identifiers as
-  correlation metadata; and
+- a bounded Japanese submit-adjacent summary of the free period, first charge,
+  renewal, lock, and cancellation/account-deletion distinction;
+- the internal Billing subscription, checkout-intent, contract-evidence,
+  offer-hash, offer-version, and disclosure-version identifiers as correlation
+  metadata; and
 - the checkout intent as the Stripe idempotency key.
 
-The adapter accepts only a matching response and an HTTPS redirect on
-`checkout.stripe.com`. A provider timeout after creation leaves the Billing
+The adapter accepts only a response whose Billing and contract metadata all
+match the request, plus an HTTPS redirect on `checkout.stripe.com`. A provider
+timeout after creation leaves the Billing
 checkout pending. Repeating the same internal checkout command uses the same
 idempotency key, so a fake-provider contract test covers response loss without
 creating a second subscription.

@@ -57,16 +57,16 @@ export function createStripeBillingAdapter(dependencies: {
         mode: dependencies.configuration.mode,
         subscriptionId: command.subscriptionId,
         checkoutIntentId: command.checkoutIntentId,
+        contract: command.contract,
       });
-      if (response === undefined) {
-        return { kind: 'rejected', reason: 'malformed-provider-response' };
-      }
+      if (response.kind === 'rejected') return response;
       let opened: Awaited<ReturnType<BillingApi['recordCheckoutOpened']>>;
       try {
         opened = await dependencies.billing.recordCheckoutOpened(context, {
           subscriptionId: command.subscriptionId,
           checkoutIntentId: command.checkoutIntentId,
-          providerCheckoutReference: response.providerCheckoutReference,
+          providerCheckoutReference:
+            response.response.providerCheckoutReference,
           openedAt: command.createdAt,
         });
       } catch {
@@ -83,8 +83,8 @@ export function createStripeBillingAdapter(dependencies: {
       }
       return {
         kind: 'redirect',
-        checkoutUrl: response.checkoutUrl,
-        providerCheckoutReference: response.providerCheckoutReference,
+        checkoutUrl: response.response.checkoutUrl,
+        providerCheckoutReference: response.response.providerCheckoutReference,
       };
     },
 

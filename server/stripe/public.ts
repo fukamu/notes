@@ -17,6 +17,11 @@ import type {
   ProviderSubscriptionReference,
   ReconciliationSnapshotId,
 } from '../billing/public';
+import type {
+  ContractEvidenceId,
+  ContractOfferHash,
+  ContractOfferSnapshot,
+} from '../legal-checkout/public';
 
 declare const stripePriceReferenceBrand: unique symbol;
 declare const stripeReturnUrlBrand: unique symbol;
@@ -105,6 +110,13 @@ export type HostedCheckoutCommand = {
   readonly subscriptionId: BillingSubscriptionId;
   readonly checkoutIntentId: CheckoutIntentId;
   readonly createdAt: number;
+  readonly contract: HostedCheckoutContract;
+};
+
+export type HostedCheckoutContract = {
+  readonly evidenceId: ContractEvidenceId;
+  readonly offerHash: ContractOfferHash;
+  readonly offer: ContractOfferSnapshot;
 };
 
 export type HostedCheckoutResult =

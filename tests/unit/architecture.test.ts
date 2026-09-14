@@ -131,6 +131,7 @@ describe('pure-core dependency direction', () => {
     'server/encrypted-object/recovery-core.ts',
     'server/encrypted-object/reencryption-core.ts',
     'server/entitlement/core.ts',
+    'server/legal-checkout/checkout-core.ts',
     'server/legal-checkout/core.ts',
     'server/operations/core.ts',
     'server/quota/core.ts',
@@ -1056,7 +1057,7 @@ function legalCheckoutBoundaryViolation(file: string, source: string): boolean {
     return false;
   }
   return (
-    /(?:(?:@\/)?server\/legal-checkout|(?:\.\.?\/)+legal-checkout)\/(?:core|d1-adapter|d1-schema|fake|migration|records|service|web-crypto-hash)/.test(
+    /(?:(?:@\/)?server\/legal-checkout|(?:\.\.?\/)+legal-checkout)\/(?:checkout-core|checkout-service|core|d1-adapter|d1-schema|fake|migration|records|service|web-crypto-hash)/.test(
       source,
     ) ||
     /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+contract_evidence\b/i.test(source)
@@ -1096,19 +1097,34 @@ describe('Contract evidence module ownership', () => {
   });
 
   it('derives authoritative terms in pure core and scopes append-only evidence by Vault', async () => {
-    const [core, publicContract, service, adapter, fake, hasher, production] =
-      await Promise.all([
-        readFile('server/legal-checkout/core.ts', 'utf8'),
-        readFile('server/legal-checkout/public.ts', 'utf8'),
-        readFile('server/legal-checkout/service.ts', 'utf8'),
-        readFile('server/legal-checkout/d1-adapter.ts', 'utf8'),
-        readFile('server/legal-checkout/fake.ts', 'utf8'),
-        readFile('server/legal-checkout/web-crypto-hash.ts', 'utf8'),
-        readFile('server/migrations/production.ts', 'utf8'),
-      ]);
+    const [
+      core,
+      checkoutCore,
+      publicContract,
+      service,
+      checkoutService,
+      adapter,
+      fake,
+      hasher,
+      production,
+    ] = await Promise.all([
+      readFile('server/legal-checkout/core.ts', 'utf8'),
+      readFile('server/legal-checkout/checkout-core.ts', 'utf8'),
+      readFile('server/legal-checkout/public.ts', 'utf8'),
+      readFile('server/legal-checkout/service.ts', 'utf8'),
+      readFile('server/legal-checkout/checkout-service.ts', 'utf8'),
+      readFile('server/legal-checkout/d1-adapter.ts', 'utf8'),
+      readFile('server/legal-checkout/fake.ts', 'utf8'),
+      readFile('server/legal-checkout/web-crypto-hash.ts', 'utf8'),
+      readFile('server/migrations/production.ts', 'utf8'),
+    ]);
     expect(core).toContain('planContractOffer');
     expect(core).toContain('planContractEvidence');
     expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Promise|Date\.now|crypto\.|fetch\(|process\.env/,
+    );
+    expect(checkoutCore).toContain('planContractHostedCheckout');
+    expect(checkoutCore).not.toMatch(
       /D1Database|\.prepare\(|Promise|Date\.now|crypto\.|fetch\(|process\.env/,
     );
     expect(publicContract).toContain('type ContractEvidenceService');
@@ -1116,6 +1132,10 @@ describe('Contract evidence module ownership', () => {
     expect(publicContract).not.toMatch(/D1Database|Stripe|Checkout\.Session/);
     expect(service).not.toMatch(
       /D1Database|\.prepare\(|Date\.now|fetch\(|process\.env/,
+    );
+    expect(checkoutService).toContain('createContractCheckoutApplication');
+    expect(checkoutService).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|fetch\(|process\.env|stripe\/(?:core|service|ports)/,
     );
     expect(adapter).toContain('record.scope.accountId');
     expect(adapter).toContain('record.scope.vaultId');
@@ -1125,6 +1145,32 @@ describe('Contract evidence module ownership', () => {
     expect(hasher).toContain('subtle.digest(');
     expect(hasher).toContain("'SHA-256'");
     expect(production).toContain('contractEvidenceMigration');
+  });
+
+  it('keeps authenticated billing HTTP adapters scope-derived and production routes fail closed', async () => {
+    const [checkout, cancellation, checkoutRoute, cancellationRoute] =
+      await Promise.all([
+        readFile('app/api/billing/checkout/handler.ts', 'utf8'),
+        readFile('app/api/billing/cancel/handler.ts', 'utf8'),
+        readFile('app/api/billing/checkout/route.ts', 'utf8'),
+        readFile('app/api/billing/cancel/route.ts', 'utf8'),
+      ]);
+    expect(checkout).toContain('deriveVaultContext');
+    expect(checkout).toContain('contractConfirmationCommandDecoder');
+    expect(checkout).toContain('context: session.context');
+    expect(checkout).not.toMatch(
+      /legal-checkout\/(?:checkout-service|core|d1-adapter|records)|stripe\/(?:core|service|ports)/,
+    );
+    expect(cancellation).toContain('deriveVaultContext');
+    expect(cancellation).toContain('accountId: session.context.accountId');
+    expect(cancellation).toContain('vaultId: session.context.vaultId');
+    expect(cancellation).not.toMatch(
+      /entitlement\/|billing\/(?:cancellation-service|core|d1-adapter|records)/,
+    );
+    for (const route of [checkoutRoute, cancellationRoute]) {
+      expect(route).toContain("mode.mode === 'legacy-test' ? 404 : 503");
+      expect(route).not.toMatch(/\/fake|createFake|allowAll/);
+    }
   });
 });
 
@@ -1317,6 +1363,9 @@ describe('Stripe provider adapter boundary', () => {
       /billing\/(?:core|d1-adapter|d1-schema|fake|migration|ports|records|service)/,
     );
     expect(core).toContain('planStripeCheckout');
+    expect(core).toContain("['submit_type', 'subscribe']");
+    expect(core).toContain("'metadata[contract_offer_hash]'");
+    expect(core).toContain("'custom_text[submit][message]'");
     expect(core).toContain('decodeStripeEventPlan');
     expect(core).toContain('decodeStripeReconciliationSnapshot');
     expect(core).not.toMatch(
