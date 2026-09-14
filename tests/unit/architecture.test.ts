@@ -131,6 +131,7 @@ describe('pure-core dependency direction', () => {
     'server/encrypted-object/recovery-core.ts',
     'server/encrypted-object/reencryption-core.ts',
     'server/entitlement/core.ts',
+    'server/operations/core.ts',
     'server/quota/core.ts',
     'server/quota/ledger-core.ts',
     'server/sync-v2/core.ts',
@@ -1793,5 +1794,28 @@ describe('provider-neutral telemetry architecture', () => {
       if (/telemetry\/fake/.test(source)) fakeConsumers.push(file);
     }
     expect(fakeConsumers).toEqual([]);
+  });
+});
+
+describe('provider-neutral operations architecture', () => {
+  it('keeps the launch gate pure and prevents runbook text from becoming execution authority', async () => {
+    const [core, runbook, coverage] = await Promise.all([
+      readFile('server/operations/core.ts', 'utf8'),
+      readFile('docs/production-operations-runbook.md', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+    ]);
+
+    expect(core).toContain('planEnvironmentAction');
+    expect(core).toContain('evaluateLaunchGate');
+    expect(core).toContain('decodeLaunchGateEvidence');
+    expect(core).toContain('explicit-production-operation-approval-required');
+    expect(core).not.toMatch(
+      /D1Database|R2Bucket|fetch\(|Date\.|performance\.|process\.|console\.|Promise/,
+    );
+    expect(runbook).toContain(
+      'A passing gate is evidence of readiness, never authority',
+    );
+    expect(runbook).toContain('Data deletion and key destruction are outside');
+    expect(coverage).toContain("'server/**/*.ts'");
   });
 });
