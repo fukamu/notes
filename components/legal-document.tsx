@@ -5,12 +5,14 @@ export function LegalDocument({
   title,
   summary,
   fixture,
+  fixtureMessage,
   children,
 }: {
   eyebrow: string;
   title: string;
   summary: string;
   fixture: boolean;
+  fixtureMessage?: string;
   children: ReactNode;
 }) {
   return (
@@ -30,7 +32,8 @@ export function LegalDocument({
           aria-label="開発用表示"
           data-testid="legal-fixture-notice"
         >
-          これはローカル開発・テスト専用のサンプル表示です。実在する販売事業者情報や料金ではなく、契約や課金は行われません。
+          {fixtureMessage ??
+            'これはローカル開発・テスト専用のサンプル表示です。実在する販売事業者情報や料金ではなく、契約や課金は行われません。'}
         </aside>
       )}
       <div className="mt-9">{children}</div>

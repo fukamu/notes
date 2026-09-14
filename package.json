@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "vinext dev",
-    "build": "npm run check:legal-commerce && npm run build:service-worker && vinext build && node scripts/verify-service-worker.mjs && node scripts/verify-environment.mjs",
+    "build": "npm run check:legal-commerce && npm run check:privacy-disclosure && npm run build:service-worker && vinext build && node scripts/verify-service-worker.mjs && node scripts/verify-environment.mjs",
     "build:service-worker": "node scripts/build-service-worker.mjs",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "npm run lint:app && npm run lint:api && npm run lint:service-worker && npm run lint:tooling && npm run lint:test",
@@ -40,6 +40,7 @@
     "check": "npm run typecheck && npm run lint && npm run test && npm run build",
     "check:environment": "node scripts/verify-environment.mjs",
     "check:legal-commerce": "node --experimental-strip-types scripts/verify-legal-commerce.mjs",
+    "check:privacy-disclosure": "node --experimental-strip-types scripts/verify-privacy-disclosure.mjs",
     "verify": "npm run format:check && npm run check && npm run test:e2e",
     "db:generate": "drizzle-kit generate"
   },
