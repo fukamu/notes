@@ -15,6 +15,7 @@ export default defineConfig({
       reporter: ['text', 'json-summary'],
       include: [
         'app/api/account/deletion/handler.ts',
+        'app/api/account/terms-consent/handler.ts',
         'components/account-deletion-boundary.tsx',
         'components/history-view.tsx',
         'components/privacy-request-boundary.tsx',

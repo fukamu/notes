@@ -1,4 +1,6 @@
 import type {
+  CurrentTermsSourcePort,
+  TermsDocumentHasherPort,
   TermsConsentAppendResult,
   TermsConsentRecord,
   TermsConsentRepository,
@@ -6,6 +8,9 @@ import type {
   TermsConsentSubmissionId,
 } from './public';
 import { termsConsentRecordMatchesContext } from './core';
+import { localLegalTermsFixture } from '../../lib/application/legal-terms';
+import { createTermsConsentApplication } from './application';
+import { parseTermsDocumentHash } from './public';
 
 export function createFakeTermsConsentRepository(): TermsConsentRepository {
   const bySubmission = new Map<string, TermsConsentRecord>();
@@ -52,6 +57,54 @@ export function createFakeTermsConsentRepository(): TermsConsentRepository {
       byConsent.set(consentKey, record);
       return { kind: 'created' };
     },
+  };
+}
+
+export class FakeCurrentTermsSource implements CurrentTermsSourcePort {
+  constructor(private value: unknown) {}
+
+  set(value: unknown): void {
+    this.value = value;
+  }
+
+  readCurrent(): unknown {
+    return this.value;
+  }
+}
+
+export class FakeTermsDocumentHasher implements TermsDocumentHasherPort {
+  readonly calls: string[] = [];
+
+  constructor(private value: unknown) {}
+
+  set(value: unknown): void {
+    this.value = value;
+  }
+
+  async hash(serializedTerms: string): Promise<unknown> {
+    this.calls.push(serializedTerms);
+    return this.value;
+  }
+}
+
+export function createFakeTermsConsentModule() {
+  const repository = createFakeTermsConsentRepository();
+  const source = new FakeCurrentTermsSource({
+    disclosure: localLegalTermsFixture,
+    acceptancePolicy: { kind: 'initial-release' },
+  });
+  const hasher = new FakeTermsDocumentHasher(
+    parseTermsDocumentHash(`sha256:${'a'.repeat(64)}`),
+  );
+  return {
+    repository,
+    source,
+    hasher,
+    application: createTermsConsentApplication({
+      repository,
+      source,
+      hasher,
+    }),
   };
 }
 

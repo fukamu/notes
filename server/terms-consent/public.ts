@@ -147,3 +147,57 @@ export type TermsConsentRepository = {
     record: TermsConsentRecord,
   ): Promise<TermsConsentAppendResult>;
 };
+
+export type TermsAcceptancePolicy =
+  | { readonly kind: 'initial-release' }
+  | {
+      readonly kind: 'reconsent-required';
+      readonly legalReviewId: string;
+    }
+  | { readonly kind: 'notice-only'; readonly legalReviewId: string }
+  | { readonly kind: 'undecided' };
+
+const legalReviewIdDecoder = refineDecoder(
+  stringDecoder({ minLength: 1, maxLength: 128 }),
+  (value) => /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(value),
+  'expected a non-sensitive legal review reference',
+);
+
+export const termsAcceptancePolicyDecoder: Decoder<TermsAcceptancePolicy> =
+  unionDecoder(
+    objectDecoder({ kind: literalDecoder('initial-release') }),
+    objectDecoder({
+      kind: literalDecoder('reconsent-required'),
+      legalReviewId: legalReviewIdDecoder,
+    }),
+    objectDecoder({
+      kind: literalDecoder('notice-only'),
+      legalReviewId: legalReviewIdDecoder,
+    }),
+    objectDecoder({ kind: literalDecoder('undecided') }),
+  );
+
+const unknownValueDecoder: Decoder<unknown> = {
+  decode(input) {
+    return { ok: true, value: input };
+  },
+};
+
+export type CurrentTermsSourceValue = Readonly<{
+  disclosure: unknown;
+  acceptancePolicy: TermsAcceptancePolicy;
+}>;
+
+export const currentTermsSourceValueDecoder: Decoder<CurrentTermsSourceValue> =
+  objectDecoder({
+    disclosure: unknownValueDecoder,
+    acceptancePolicy: termsAcceptancePolicyDecoder,
+  });
+
+export type CurrentTermsSourcePort = {
+  readCurrent(): unknown;
+};
+
+export type TermsDocumentHasherPort = {
+  hash(serializedTerms: string): Promise<unknown>;
+};

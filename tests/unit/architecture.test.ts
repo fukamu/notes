@@ -81,6 +81,10 @@ describe('trust-boundary architecture', () => {
       ],
       ['server/email-otp-boundary.ts', 'emailOtpChallengeDecoder.decode('],
       ['server/email-otp-boundary.ts', 'emailOtpDigestDecoder.decode('],
+      [
+        'app/api/account/terms-consent/handler.ts',
+        'termsConsentCommandDecoder.decode(body.value)',
+      ],
       ['lib/editor/card-link-attributes.ts', 'cardLinkAttributesDecoder'],
     ] as const;
     for (const [file, marker] of expectations) {
@@ -140,6 +144,7 @@ describe('pure-core dependency direction', () => {
     'server/quota/ledger-core.ts',
     'server/sync-v2/core.ts',
     'server/sync-v2/quota-core.ts',
+    'server/terms-consent/application-core.ts',
     'server/terms-consent/core.ts',
   ];
 
@@ -2048,6 +2053,36 @@ describe('legal terms disclosure architecture', () => {
     expect(notes).not.toMatch(/legal\/terms|利用規約/);
     expect(docs).toContain('does not mount the Notes');
     expect(docs).toContain('FUKAMU_LEGAL_TERMS_JSON');
+  });
+});
+
+describe('terms consent server gate architecture', () => {
+  it('keeps policy decisions pure, request ownership session-derived, and Notes UI unchanged', async () => {
+    const [core, handler, route, termsPage, notes, coverage, documentation] =
+      await Promise.all([
+        readFile('server/terms-consent/application-core.ts', 'utf8'),
+        readFile('app/api/account/terms-consent/handler.ts', 'utf8'),
+        readFile('app/api/account/terms-consent/route.ts', 'utf8'),
+        readFile('app/(public)/legal/terms/page.tsx', 'utf8'),
+        readFile('components/notes-presentation.tsx', 'utf8'),
+        readFile('vitest.config.ts', 'utf8'),
+        readFile('docs/terms-consent-server-gate.md', 'utf8'),
+      ]);
+
+    expect(core).toContain('decideTermsConsentStatus');
+    expect(core).toContain("reason: 'classification-required'");
+    expect(core).not.toMatch(
+      /Promise|fetch\(|Date\.|crypto\.|process\.|console\.|D1Database|Request|Response/,
+    );
+    expect(handler).toContain('deriveVaultContext');
+    expect(handler).toContain('termsConsentCommandDecoder.decode(body.value)');
+    expect(handler).not.toMatch(/body\.value\.(?:accountId|vaultId)/);
+    expect(route).toContain("mode.mode === 'legacy-test' ? 404 : 503");
+    expect(termsPage).toContain('title="利用規約"');
+    expect(notes).not.toMatch(/terms-consent|legal\/terms|利用規約/);
+    expect(coverage).toContain("'app/api/account/terms-consent/handler.ts'");
+    expect(documentation).toContain('通常の Notes UI には表示を追加しない');
+    expect(documentation).toContain('/legal/terms');
   });
 });
 
