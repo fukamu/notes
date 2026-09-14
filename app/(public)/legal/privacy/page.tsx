@@ -3,6 +3,7 @@ import {
   LegalDefinitionList,
   LegalDocument,
 } from '@/components/legal-document';
+import { PublicRouteLink } from '@/components/public-route-link';
 import { privacyRequestKindLabel } from '@/lib/application/privacy-disclosure';
 import { privacyDisclosureForCurrentEnvironment } from '@/lib/environment/privacy-disclosure';
 
@@ -98,6 +99,12 @@ export default function PrivacyPage() {
                 <p>{disclosure.dataSubjectRequests.procedure}</p>
                 <p>{disclosure.dataSubjectRequests.identityVerification}</p>
                 <p>{disclosure.dataSubjectRequests.fee}</p>
+                <PublicRouteLink
+                  className="inline-block text-primary underline underline-offset-4"
+                  href="/account/privacy"
+                >
+                  専用accountページで請求する
+                </PublicRouteLink>
               </div>
             ),
           },
