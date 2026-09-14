@@ -16,6 +16,8 @@ export default defineConfig({
       include: [
         'app/api/account/deletion/handler.ts',
         'components/session-notes-app.tsx',
+        'lib/application/account-deletion-handoff.ts',
+        'lib/application/account-deletion-runner.ts',
         'lib/application/logout-coordination.ts',
         'lib/application/notes-access.ts',
         'lib/application/notes-database-scope.ts',

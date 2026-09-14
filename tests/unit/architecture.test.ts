@@ -368,6 +368,31 @@ describe('pure-core dependency direction', () => {
       expect(testConfig).toContain(`'${path}'`);
     }
   });
+
+  it('keeps account deletion handoff decisions pure and covered', async () => {
+    const [core, runner, testConfig] = await Promise.all([
+      readFile('lib/application/account-deletion-handoff.ts', 'utf8'),
+      readFile('lib/application/account-deletion-runner.ts', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+    ]);
+
+    expect(core).toContain('planAccountDeletionStartAccepted');
+    expect(core).toContain('accountDeletionUiReducer');
+    expect(core).toContain('accountDeletionHandoffDecoder');
+    expect(core).not.toMatch(
+      /fetch\(|indexedDB|window\.|document\.|crypto\.|Date\.now|Math\.random|console\./,
+    );
+    expect(runner).toContain('input.logoutPurge.run');
+    expect(runner).not.toMatch(
+      /fetch\(|indexedDB|window\.|document\.|crypto\.|Date\.now|Math\.random|console\./,
+    );
+    for (const path of [
+      'lib/application/account-deletion-handoff.ts',
+      'lib/application/account-deletion-runner.ts',
+    ]) {
+      expect(testConfig).toContain(`'${path}'`);
+    }
+  });
 });
 
 describe('Identity/Vault control-plane ownership', () => {
