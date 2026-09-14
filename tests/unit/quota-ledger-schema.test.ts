@@ -50,17 +50,32 @@ describe('Vault quota ledger schema', () => {
   });
 
   it('checks in additive DDL and the atomic finalization trigger without content', async () => {
-    const source = await readFile('drizzle/0012_gigantic_iron_lad.sql', 'utf8');
+    const tableSource = await readFile(
+      'drizzle/0012_gigantic_iron_lad.sql',
+      'utf8',
+    );
+    const triggerSource = await readFile(
+      'drizzle/0013_vault_quota_finalize_trigger.sql',
+      'utf8',
+    );
     for (const marker of [
       'vault_quota_usage',
       'vault_quota_reservations',
       'idx_vault_quota_reservations_reconcile',
+    ]) {
+      expect(tableSource).toContain(marker);
+    }
+    for (const marker of [
       'vault_quota_finalize_usage',
       'BEFORE UPDATE OF state',
       'RAISE(IGNORE)',
     ]) {
-      expect(source).toContain(marker);
+      expect(triggerSource).toContain(marker);
     }
+    expect(tableSource).not.toContain('CREATE TRIGGER');
+    expect(triggerSource.trimStart()).toMatch(/^CREATE TRIGGER/);
+    expect(triggerSource).not.toContain('CREATE TABLE');
+    expect(triggerSource).not.toContain('CREATE INDEX');
     for (const excluded of [
       'title',
       'body_json',
@@ -69,7 +84,9 @@ describe('Vault quota ledger schema', () => {
       'token_hash',
       'provider_secret',
     ]) {
-      expect(source.toLowerCase()).not.toContain(excluded);
+      expect(`${tableSource}\n${triggerSource}`.toLowerCase()).not.toContain(
+        excluded,
+      );
     }
   });
 

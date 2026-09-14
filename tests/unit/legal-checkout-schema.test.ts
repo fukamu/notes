@@ -35,7 +35,7 @@ describe('contract evidence owned schema', () => {
   });
 
   it('checks in an additive provider-neutral migration after quota', async () => {
-    const source = await readFile('drizzle/0013_contract_evidence.sql', 'utf8');
+    const source = await readFile('drizzle/0014_contract_evidence.sql', 'utf8');
     for (const marker of [
       'contract_evidence',
       'account_id, vault_id, evidence_id',

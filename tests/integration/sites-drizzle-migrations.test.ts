@@ -33,12 +33,43 @@ afterAll(async () => {
 });
 
 describe('ChatGPT Sites Drizzle migration compatibility', () => {
+  it('registers every checked-in migration in the Drizzle journal', async () => {
+    const migrationFiles = (await readdir('drizzle'))
+      .filter((file) => /^\d{4}_.+\.sql$/.test(file))
+      .sort();
+    const journal = await readFile('drizzle/meta/_journal.json', 'utf8');
+
+    for (const migrationFile of migrationFiles) {
+      expect(journal).toContain(
+        `"tag": "${migrationFile.replace(/\.sql$/, '')}"`,
+      );
+    }
+  });
+
+  it('keeps the quota finalization trigger in one standalone migration statement', async () => {
+    const source = await readFile(
+      'drizzle/0013_vault_quota_finalize_trigger.sql',
+      'utf8',
+    );
+    const statements = source
+      .split('--> statement-breakpoint')
+      .filter((statement) => statement.trim() !== '');
+
+    expect(statements).toHaveLength(1);
+    expect(statements[0]?.trimStart()).toMatch(
+      /^CREATE TRIGGER vault_quota_finalize_usage/,
+    );
+    expect(source).not.toContain('CREATE TABLE');
+    expect(source).not.toContain('CREATE INDEX');
+  });
+
   it('applies every checked-in migration as one prepared statement per breakpoint', async () => {
     const schema = await database
       .prepare(
         `SELECT type, name FROM sqlite_schema
          WHERE name IN (
            'contract_evidence',
+           'vault_quota_finalize_usage',
            'idx_contract_evidence_submission',
            'contract_evidence_immutable',
            'privacy_requests',
@@ -64,6 +95,7 @@ describe('ChatGPT Sites Drizzle migration compatibility', () => {
       { name: 'privacy_requests', type: 'table' },
       { name: 'terms_consent_evidence', type: 'table' },
       { name: 'terms_consent_immutable', type: 'trigger' },
+      { name: 'vault_quota_finalize_usage', type: 'trigger' },
     ]);
   });
 
