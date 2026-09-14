@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "issue": 200,
+  "branchPoint": "556a18651dc2bf4f7d36cfb3c77dba073c8f23d6",
+  "generatedAt": "2026-09-14T07:21:01.311Z",
+  "fixture": {
+    "cardCount": 10000,
+    "seed": 308333310,
+    "textCharacters": 768,
+    "bodySegments": 40000,
+    "linkSegments": 20000,
+    "maximumSerializedContentBytesPerCard": 2517,
+    "serializedReplicaBytes": 26777301
+  },
+  "scaleBudgets": {
+    "activeCardsPerVault": {
+      "limit": 10000,
+      "observed": 10000,
+      "source": "Personal Vault entitlement requirement"
+    },
+    "displayedCharactersPerCard": {
+      "limit": 1000,
+      "observed": 854,
+      "source": "Product display-content requirement"
+    },
+    "serializedContentBytesPerCard": {
+      "limit": 8192,
+      "observed": 2517,
+      "source": "Recommended internal plaintext limit"
+    },
+    "serializedVaultBytes": {
+      "limit": 134217728,
+      "observed": 26777301,
+      "source": "Recommended Personal Vault plaintext envelope"
+    }
+  },
+  "environment": {
+    "node": "v26.8.1",
+    "platform": "linux",
+    "release": "7.0.0-31-generic",
+    "cpu": "11th Gen Intel(R) Core(TM) i7-1195G7 @ 2.90GHz",
+    "cpuCount": 8,
+    "totalMemoryBytes": 16463360000
+  },
+  "memoryObservation": {
+    "heapUsedBeforeFixtureBytes": 12804216,
+    "heapUsedAfterFixtureBytes": 33998600,
+    "rssBeforeFixtureBytes": 72929280,
+    "rssAfterFixtureBytes": 107925504,
+    "policy": "Observational only: Node garbage collection and host load make heap deltas unsuitable for a strict CI gate. Stable serialized-byte limits are enforced separately."
+  },
+  "methodology": {
+    "command": "npm run benchmark:client",
+    "syntheticDataOnly": true,
+    "outlierPolicy": "No timing sample is removed. Raw samples, median and nearest-rank p95 are retained.",
+    "timingGate": "Issue #200 records a baseline and does not add an absolute wall-clock CI gate. Follow-up Issues compare the same case on the same host and use max(20%, 3x observed median-to-p95 spread) as a review tolerance for non-targeted regressions.",
+    "interactionBudget": "Mechanism budgets are authoritative until final browser evidence in #204: zero inactive heavy selectors, no per-keystroke full sort, one card lookup build per history selection, and viewport-bounded history DOM.",
+    "connectionsDecision": "Only the typed graph-input boundary is measured. Full-graph versus staged disclosure remains Decision Required."
+  },
+  "measurements": [
+    {
+      "name": "fixture-generation",
+      "warmupIterations": 1,
+      "measuredIterations": 5,
+      "timing": {
+        "minimumMs": 15.693,
+        "medianMs": 15.981,
+        "p95Ms": 20.067,
+        "maximumMs": 20.067,
+        "samplesMs": [18.35, 15.981, 15.693, 20.067, 15.738]
+      },
+      "observedHeapDeltaBytes": 105680832,
+      "sameHostFollowUpToleranceRatio": 0.767
+    },
+    {
+      "name": "serialized-replica-boundary-decode",
+      "warmupIterations": 1,
+      "measuredIterations": 3,
+      "timing": {
+        "minimumMs": 78.133,
+        "medianMs": 80.249,
+        "p95Ms": 83.11,
+        "maximumMs": 83.11,
+        "samplesMs": [83.11, 78.133, 80.249]
+      },
+      "observedHeapDeltaBytes": 85763616,
+      "sameHostFollowUpToleranceRatio": 0.2
+    },
+    {
+      "name": "card-editor-input-model",
+      "warmupIterations": 1,
+      "measuredIterations": 5,
+      "timing": {
+        "minimumMs": 1.572,
+        "medianMs": 1.988,
+        "p95Ms": 4.413,
+        "maximumMs": 4.413,
+        "samplesMs": [4.413, 2.394, 1.988, 1.861, 1.572]
+      },
+      "observedHeapDeltaBytes": -14284256,
+      "sameHostFollowUpToleranceRatio": 3.659
+    },
+    {
+      "name": "link-prefix-interaction-99",
+      "warmupIterations": 10,
+      "measuredIterations": 30,
+      "timing": {
+        "minimumMs": 0.135,
+        "medianMs": 0.194,
+        "p95Ms": 0.338,
+        "maximumMs": 0.35,
+        "samplesMs": [
+          0.184, 0.154, 0.15, 0.137, 0.135, 0.142, 0.141, 0.138, 0.139, 0.14,
+          0.198, 0.211, 0.204, 0.194, 0.183, 0.183, 0.179, 0.218, 0.194, 0.198,
+          0.35, 0.194, 0.24, 0.224, 0.23, 0.265, 0.249, 0.338, 0.226, 0.198
+        ]
+      },
+      "observedHeapDeltaBytes": 2547880,
+      "sameHostFollowUpToleranceRatio": 2.227
+    },
+    {
+      "name": "history-view-model",
+      "warmupIterations": 1,
+      "measuredIterations": 3,
+      "timing": {
+        "minimumMs": 5387.622,
+        "medianMs": 5404.852,
+        "p95Ms": 5424.005,
+        "maximumMs": 5424.005,
+        "samplesMs": [5387.622, 5424.005, 5404.852]
+      },
+      "observedHeapDeltaBytes": 46656096,
+      "sameHostFollowUpToleranceRatio": 0.2
+    },
+    {
+      "name": "connections-input-boundary",
+      "warmupIterations": 1,
+      "measuredIterations": 3,
+      "timing": {
+        "minimumMs": 11.673,
+        "medianMs": 15.272,
+        "p95Ms": 16.709,
+        "maximumMs": 16.709,
+        "samplesMs": [16.709, 15.272, 11.673]
+      },
+      "observedHeapDeltaBytes": 3814840,
+      "sameHostFollowUpToleranceRatio": 0.282
+    }
+  ]
+}
