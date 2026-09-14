@@ -6,8 +6,10 @@ it does not revoke a server session or delete server-side account data.
 
 ## Durable marker and ordered effects
 
-The single non-content `logout-purge/v1` marker lives in
-`fukamu-notes:control:v1`, outside every Vault database. Reads and
+The non-content `logout-purge/v1` marker lives in
+`fukamu-notes:control:v1`, outside every Vault database. Control database
+schema version 2 additively introduces the account-deletion handoff store while
+preserving this logout store and marker. Reads and
 compare-and-swap writes use one IndexedDB transaction, so another tab cannot
 replace a newer revision. Missing progress allows runtime entry; corrupt,
 unknown-version, or unavailable progress continues to fail closed.
@@ -54,6 +56,8 @@ worker reset, back/forward navigation, and a subsequent Vault login.
 This change has no server schema migration and no production data operation.
 A rollback must not ship an authenticated logout path that clears or ignores a
 pending marker; retaining the marker and blocking the runtime is safer. Server
-session revocation and account deletion remain owned by #123.
+session revocation and account deletion server effects remain owned by #123.
+The browser handoff that reuses this purge is described in
+[Account deletion browser handoff](account-deletion-browser-handoff.md).
 
 This work is not deployed to production and does not update `main`.

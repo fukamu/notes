@@ -2,9 +2,9 @@
 
 Issue #175 defines the pure browser handoff state machine and runner between the
 server boundary from #174 and the existing crash-resumable logout purge from
-#148. Browser persistence, HTTP adapters, authenticated UI, and end-to-end
-composition are separate dependent Issues #183 and #184. This Issue does not
-deploy a route or perform a production deletion.
+#148. Issue #183 supplies browser persistence, HTTP, entropy, and clock adapters.
+Authenticated UI and end-to-end composition remain in dependent Issue #184.
+Neither Issue deploys a route or performs a production deletion.
 
 ## Durable order and crash recovery
 
@@ -42,14 +42,36 @@ revocation retry from content deleted after local purge, preserves typed
 failure/retry information, and does not infer completion from an absent or
 malformed external value.
 
+## Browser adapters
+
+The marker is stored in the non-content `fukamu-notes:control:v1` IndexedDB.
+Its additive schema version 2 preserves the existing `logout-purge` store and
+adds a separate `account-deletion-handoff` store. Both stores use transactional
+compare-and-swap writes. A corrupt or unknown-version marker is returned to the
+runner for fail-closed handling instead of being cleared or guessed.
+
+The HTTP adapter sends only `idempotencyKey` or `continuationToken`, uses
+same-origin credentials, refuses redirects, disables caching, and decodes every
+success body from `unknown`. AccountId and VaultId are never accepted from UI
+or request body. Web Crypto supplies 256 random bits for the unpadded base64url
+idempotency key, while clock and fetch remain injected for deterministic tests.
+
+The browser composition reuses the existing `BrowserLogoutPurgeService`; it
+does not duplicate cache, Service Worker, graph worker, tab-lock, or Vault
+database deletion. `LegacyNotesApp` still does not construct this composition,
+so local development and the current test Sites environment remain free of
+authentication, billing, and deletion requirements unless explicitly composed.
+
 ## Security and rollback
 
-The continuation capability must survive session revocation. Its browser
-storage implementation in #183 must therefore treat it as a high-entropy,
-owner-bound, sequence-rotated, expiry-bound capability, omit it from URLs and
-logs, and remove it only with the terminal marker's conditional clear.
+The continuation capability must survive session revocation, so its browser
+storage treats it as a high-entropy, owner-bound, sequence-rotated,
+expiry-bound capability, omits it from URLs and logs, and removes it only with
+the terminal marker's conditional clear. Same-origin script can read IndexedDB;
+preventing script injection remains a required application security control.
 
-Rolling back #175 removes only the unused core and runner before #183/#184 are
-integrated. Once a browser marker can be created, a deployed rollback must keep
-the durable boundary able to detect and finish it. This change performs no
-production migration, deletion, email, payment, deployment, or `main` update.
+Rolling back the visible composition is safe only if the durable adapter and
+runner remain able to detect and finish existing markers. A deployed rollback
+must not ignore or delete either account-deletion or logout markers. This
+change performs no production migration, deletion, email, payment, deployment,
+or `main` update.
