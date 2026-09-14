@@ -1,5 +1,5 @@
 import { Miniflare } from 'miniflare';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { VaultContext } from '@/lib/domain/identity';
 import type { EnvelopeObject, VaultDekKeyring } from '@/server/crypto/core';
 import { decodeVaultDekKeyring } from '@/server/crypto/core';
@@ -44,6 +44,11 @@ import {
 } from '@/tests/fixtures/vault-content';
 
 type TestDatabase = Awaited<ReturnType<Miniflare['getD1Database']>>;
+
+// This composite suite provisions three isolated D1 databases and performs real
+// Web Crypto. The repository uses the same ceiling for other composite D1
+// suites; this is a completion guard, not a production performance threshold.
+vi.setConfig({ testTimeout: 15_000 });
 
 let miniflare: Miniflare;
 let happyDatabase: TestDatabase;
