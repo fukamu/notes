@@ -72,3 +72,8 @@ This stage does not delete old objects directly, retire wrapped keys, select a
 production R2/KMS provider, schedule a production job, or perform production
 operations. The existing outbox worker owns physical deletion. Recovery drill
 and the explicit key-retirement approval gate remain Issue #190.
+
+Issue #190 now supplies the fixture-only recovery drill and retirement evidence
+gate described in [DEK rotation recovery drill and retirement gate](dek-rotation-recovery.md).
+The gate has no delete effect and terminates at a separate explicit-production-
+approval-required result even after all evidence passes.
