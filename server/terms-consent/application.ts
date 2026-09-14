@@ -1,4 +1,3 @@
-import type { VaultContext } from '../../lib/domain/identity';
 import {
   acceptedTermsStatus,
   decideTermsConsentStatus,
@@ -15,6 +14,7 @@ import {
   type TermsConsentRecord,
   type TermsConsentRepository,
   type TermsConsentSnapshot,
+  type TermsConsentScope,
   type TermsDocumentHasherPort,
 } from './public';
 
@@ -41,10 +41,10 @@ export type TermsConsentApplicationResult =
 
 export type TermsConsentApplication = {
   status(input: {
-    readonly context: VaultContext;
+    readonly context: TermsConsentScope;
   }): Promise<TermsConsentApplicationResult>;
   accept(input: {
-    readonly context: VaultContext;
+    readonly context: TermsConsentScope;
     readonly command: TermsConsentCommand;
     readonly consentId: TermsConsentId;
     readonly acceptedAt: number;

@@ -144,6 +144,7 @@ describe('pure-core dependency direction', () => {
     'server/quota/ledger-core.ts',
     'server/sync-v2/core.ts',
     'server/sync-v2/quota-core.ts',
+    'server/signup-admission/core.ts',
     'server/terms-consent/application-core.ts',
     'server/terms-consent/core.ts',
   ];
@@ -2139,6 +2140,43 @@ describe('terms consent presentation architecture', () => {
       expect(coverage).toContain(`'${path}'`);
     }
     expect(documentation).toContain('/account/terms');
+    expect(documentation).toContain('通常の Notes UI には追加しない');
+  });
+});
+
+describe('signup terms admission architecture', () => {
+  it('gates both verified providers before provisioning and keeps legal UI outside Notes', async () => {
+    const [core, application, oidc, otp, termsHandler, notes, documentation] =
+      await Promise.all([
+        readFile('server/signup-admission/core.ts', 'utf8'),
+        readFile('server/signup-admission/application.ts', 'utf8'),
+        readFile('server/oidc-boundary.ts', 'utf8'),
+        readFile('server/email-otp-boundary.ts', 'utf8'),
+        readFile('app/api/account/terms-consent/handler.ts', 'utf8'),
+        readFile('components/notes-presentation.tsx', 'utf8'),
+        readFile('docs/signup-terms-admission.md', 'utf8'),
+      ]);
+
+    expect(core).toContain('planSignupAdmission');
+    expect(core).toContain('signupReceiptMatchesPlan');
+    expect(core).not.toMatch(
+      /Promise|fetch\(|Date\.|crypto\.|process\.|console\.|D1Database|Request|Response/,
+    );
+    expect(application).toContain('termsConsentCommandDecoder.decode');
+    expect(application).toContain('dependencies.terms.accept');
+    expect(application.indexOf('dependencies.terms.accept')).toBeLessThan(
+      application.indexOf('dependencies.provisioning.finalize'),
+    );
+    expect(oidc).toContain("kind: 'google'");
+    expect(oidc).toContain('input.signupAdmission.admit');
+    expect(otp).toContain("kind: 'email-otp'");
+    expect(otp).toContain('input.signupAdmission.admit');
+    expect(termsHandler).toContain('deriveVaultContext');
+    expect(application).not.toMatch(/input\.(?:accountId|vaultId|sessionId)/);
+    expect(notes).not.toMatch(
+      /terms-consent|account\/terms|legal\/terms|利用規約/,
+    );
+    expect(documentation).toContain('/legal/terms');
     expect(documentation).toContain('通常の Notes UI には追加しない');
   });
 });

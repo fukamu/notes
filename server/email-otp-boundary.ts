@@ -37,6 +37,11 @@ import {
   type EmailOtpPurpose,
   type PendingEmailOtpChallenge,
 } from './core/email-otp';
+import { termsConsentCommandDecoder } from './terms-consent/public';
+import type {
+  SignupAdmissionPort,
+  SignupAdmissionReceipt,
+} from './signup-admission/public';
 
 export type EmailOtpClockPort = {
   nowEpochSeconds: () => unknown;
@@ -145,6 +150,7 @@ export type EmailOtpStartResult =
 export async function startEmailOtp(input: {
   readonly address: unknown;
   readonly intent: EmailOtpStartIntent;
+  readonly signupTermsConsent?: unknown;
   readonly vaultContext?: VaultContext;
   readonly networkContext: unknown;
   readonly clock: EmailOtpClockPort;
@@ -170,9 +176,19 @@ export async function startEmailOtp(input: {
   });
   try {
     const address = emailOtpAddressDecoder.decode(input.address);
+    const signupTermsConsent =
+      input.signupTermsConsent === undefined
+        ? undefined
+        : termsConsentCommandDecoder.decode(input.signupTermsConsent);
     const now = decodeEpoch(input.clock.nowEpochSeconds());
     const purpose = purposeFromStart(input.intent, input.vaultContext);
-    if (!address.ok || now === undefined || !purpose) {
+    if (
+      !address.ok ||
+      now === undefined ||
+      !purpose ||
+      (signupTermsConsent !== undefined && !signupTermsConsent.ok) ||
+      (purpose.kind === 'link' && signupTermsConsent !== undefined)
+    ) {
       return accepted();
     }
     const keys = emailOtpRateLimitKeysDecoder.decode(
@@ -211,6 +227,9 @@ export async function startEmailOtp(input: {
       digest: digest.value,
       salt: salt.value,
       purpose,
+      ...(signupTermsConsent === undefined
+        ? {}
+        : { signupTermsConsent: signupTermsConsent.value }),
       nowEpochSeconds: now,
     });
     if (created.kind === 'rejected') return accepted();
@@ -244,8 +263,12 @@ export type EmailOtpCompletionResult =
       readonly kind: 'resolved';
       readonly resolution: Exclude<
         EmailOtpIdentityResolution,
-        { readonly kind: 'rejected' }
+        { readonly kind: 'rejected' | 'provision-account' }
       >;
+    }
+  | {
+      readonly kind: 'admitted';
+      readonly admission: SignupAdmissionReceipt;
     }
   | { readonly kind: 'failed'; readonly error: 'verification-failed' };
 
@@ -256,6 +279,7 @@ export async function completeEmailOtp(input: {
   readonly hasher: EmailOtpHasherPort;
   readonly challenges: EmailOtpChallengeStore;
   readonly identities: EmailOtpIdentityDirectory;
+  readonly signupAdmission?: SignupAdmissionPort;
 }): Promise<EmailOtpCompletionResult> {
   const challengeId = emailOtpChallengeIdDecoder.decode(input.challengeId);
   const code = emailOtpCodeDecoder.decode(input.code);
@@ -312,9 +336,23 @@ export async function completeEmailOtp(input: {
         ? {}
         : { verifiedContactAccountId: verifiedContactAccountId.value }),
     });
-    return resolution.kind === 'rejected'
-      ? verificationFailed()
-      : { kind: 'resolved', resolution };
+    if (resolution.kind === 'rejected') return verificationFailed();
+    if (resolution.kind === 'provision-account') {
+      if (
+        challenge.value.signupTermsConsent === undefined ||
+        input.signupAdmission === undefined
+      ) {
+        return verificationFailed();
+      }
+      const admission = await input.signupAdmission.admit({
+        identity: { kind: 'email-otp', address: resolution.address },
+        termsConsent: challenge.value.signupTermsConsent,
+      });
+      return admission.kind === 'admitted'
+        ? { kind: 'admitted', admission: admission.receipt }
+        : verificationFailed();
+    }
+    return { kind: 'resolved', resolution };
   } catch {
     return verificationFailed();
   }

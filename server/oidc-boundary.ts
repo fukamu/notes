@@ -33,6 +33,11 @@ import {
   type OidcIdentityResolution,
   type PendingOidcTransaction,
 } from './core/oidc';
+import { termsConsentCommandDecoder } from './terms-consent/public';
+import type {
+  SignupAdmissionPort,
+  SignupAdmissionReceipt,
+} from './signup-admission/public';
 
 export type OidcClockPort = {
   nowEpochSeconds: () => unknown;
@@ -90,6 +95,7 @@ export async function startGoogleOidc(input: {
   readonly configuration: unknown;
   readonly redirectUri: unknown;
   readonly intent: OidcStartIntent;
+  readonly signupTermsConsent?: unknown;
   readonly vaultContext?: VaultContext;
   readonly clock: OidcClockPort;
   readonly secrets: OidcSecretPort;
@@ -101,13 +107,20 @@ export async function startGoogleOidc(input: {
   );
   const redirectUri = oidcRedirectUriDecoder.decode(input.redirectUri);
   const now = input.clock.nowEpochSeconds();
+  const signupTermsConsent =
+    input.signupTermsConsent === undefined
+      ? undefined
+      : termsConsentCommandDecoder.decode(input.signupTermsConsent);
   if (
     !configuration.ok ||
     !redirectUri.ok ||
     typeof now !== 'number' ||
     !Number.isSafeInteger(now) ||
     now < 0 ||
-    (input.intent === 'link-current-account' && !input.vaultContext)
+    (input.intent === 'link-current-account' && !input.vaultContext) ||
+    (signupTermsConsent !== undefined && !signupTermsConsent.ok) ||
+    (input.intent === 'link-current-account' &&
+      signupTermsConsent !== undefined)
   ) {
     return { kind: 'failed', error: 'authentication-unavailable' };
   }
@@ -135,6 +148,9 @@ export async function startGoogleOidc(input: {
       codeVerifier: verifier.value,
       redirectUri: redirectUri.value,
       purpose,
+      ...(signupTermsConsent === undefined
+        ? {}
+        : { signupTermsConsent: signupTermsConsent.value }),
       nowEpochSeconds: now,
     });
     if (transaction.kind === 'rejected') {
@@ -164,8 +180,12 @@ export type OidcCompletionResult =
       readonly kind: 'resolved';
       readonly resolution: Exclude<
         OidcIdentityResolution,
-        { readonly kind: 'rejected' }
+        { readonly kind: 'rejected' | 'provision-account' }
       >;
+    }
+  | {
+      readonly kind: 'admitted';
+      readonly admission: SignupAdmissionReceipt;
     }
   | { readonly kind: 'failed'; readonly error: 'authentication-failed' };
 
@@ -176,6 +196,7 @@ export async function completeGoogleOidc(input: {
   readonly transactions: OidcTransactionStore;
   readonly provider: OidcVerifiedClaimsPort;
   readonly identities: OidcIdentityDirectory;
+  readonly signupAdmission?: SignupAdmissionPort;
 }): Promise<OidcCompletionResult> {
   const callback = oidcCallbackDecoder.decode(input.callback);
   const configuration = oidcProviderConfigurationDecoder.decode(
@@ -247,9 +268,28 @@ export async function completeGoogleOidc(input: {
         ? {}
         : { verifiedEmailAccountId: verifiedEmailAccountId.value }),
     });
-    return resolution.kind === 'rejected'
-      ? authenticationFailed()
-      : { kind: 'resolved', resolution };
+    if (resolution.kind === 'rejected') return authenticationFailed();
+    if (resolution.kind === 'provision-account') {
+      if (
+        transaction.value.signupTermsConsent === undefined ||
+        input.signupAdmission === undefined
+      ) {
+        return authenticationFailed();
+      }
+      const admission = await input.signupAdmission.admit({
+        identity: {
+          kind: 'google',
+          issuer: resolution.identityKey.issuer,
+          subject: resolution.identityKey.subject,
+          email: resolution.email,
+        },
+        termsConsent: transaction.value.signupTermsConsent,
+      });
+      return admission.kind === 'admitted'
+        ? { kind: 'admitted', admission: admission.receipt }
+        : authenticationFailed();
+    }
+    return { kind: 'resolved', resolution };
   } catch {
     return authenticationFailed();
   }

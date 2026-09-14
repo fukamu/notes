@@ -1,10 +1,6 @@
 import { decodeOrThrow } from '../../lib/codec/core';
 import type { D1DatabaseBinding } from '../../db/d1-types';
-import type {
-  AccountId,
-  VaultContext,
-  VaultId,
-} from '../../lib/domain/identity';
+import type { AccountId, VaultId } from '../../lib/domain/identity';
 import { termsConsentRecordMatchesContext } from './core';
 import { mapTermsConsentRow, termsConsentRowDecoder } from './records';
 import type {
@@ -12,6 +8,7 @@ import type {
   TermsConsentId,
   TermsConsentRecord,
   TermsConsentRepository,
+  TermsConsentScope,
   TermsConsentSubmissionId,
 } from './public';
 
@@ -22,14 +19,14 @@ export class D1TermsConsentRepository implements TermsConsentRepository {
   constructor(private readonly database: D1DatabaseBinding) {}
 
   findById(
-    context: VaultContext,
+    context: TermsConsentScope,
     consentId: TermsConsentId,
   ): Promise<TermsConsentRecord | undefined> {
     return this.findByIdScope(context.accountId, context.vaultId, consentId);
   }
 
   findBySubmission(
-    context: VaultContext,
+    context: TermsConsentScope,
     submissionId: TermsConsentSubmissionId,
   ): Promise<TermsConsentRecord | undefined> {
     return this.findBySubmissionScope(
@@ -39,7 +36,9 @@ export class D1TermsConsentRepository implements TermsConsentRepository {
     );
   }
 
-  findLatest(context: VaultContext): Promise<TermsConsentRecord | undefined> {
+  findLatest(
+    context: TermsConsentScope,
+  ): Promise<TermsConsentRecord | undefined> {
     return this.readOne(
       `SELECT ${consentColumns} FROM terms_consent_evidence
        WHERE account_id = ? AND vault_id = ?
@@ -49,7 +48,7 @@ export class D1TermsConsentRepository implements TermsConsentRepository {
   }
 
   async append(
-    context: VaultContext,
+    context: TermsConsentScope,
     record: TermsConsentRecord,
   ): Promise<TermsConsentAppendResult> {
     if (!termsConsentRecordMatchesContext(record, context)) {

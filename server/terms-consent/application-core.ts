@@ -1,9 +1,9 @@
-import type { VaultContext } from '../../lib/domain/identity';
 import type {
   TermsAcceptancePolicy,
   TermsConsentId,
   TermsConsentRecord,
   TermsConsentSnapshot,
+  TermsConsentScope,
   TermsDocumentHash,
   TermsVersion,
 } from './public';
@@ -57,7 +57,7 @@ export type TermsConsentStatusPlan =
     };
 
 export function decideTermsConsentStatus(input: {
-  readonly context: VaultContext;
+  readonly context: TermsConsentScope;
   readonly current: TermsConsentSnapshot;
   readonly latest: TermsConsentRecord | undefined;
   readonly acceptancePolicy: TermsAcceptancePolicy;
@@ -165,7 +165,7 @@ function acceptedReference(record: TermsConsentRecord): AcceptedTermsReference {
 
 function matchesContext(
   record: TermsConsentRecord,
-  context: VaultContext,
+  context: TermsConsentScope,
 ): boolean {
   return (
     record.scope.accountId === context.accountId &&
