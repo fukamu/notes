@@ -131,6 +131,7 @@ describe('pure-core dependency direction', () => {
     'server/encrypted-object/recovery-core.ts',
     'server/encrypted-object/reencryption-core.ts',
     'server/entitlement/core.ts',
+    'server/quota/core.ts',
     'server/sync-v2/core.ts',
   ];
 

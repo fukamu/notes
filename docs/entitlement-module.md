@@ -39,6 +39,11 @@ plaintext per card, and 128 MiB plaintext per Vault only while content access is
 active. #125 remains responsible for defining byte/count algorithms and
 enforcing each limit at the application boundary.
 
+The count and byte algorithms are now fixed in
+[Personal Vault quota policy](quota-policy.md). D1 reservation and Sync v2
+enforcement remain separate dependent Issues; this pure policy does not make a
+client counter authoritative.
+
 ## Offline lease decision boundary
 
 The offline lease duration remains a parent #106 Decision Required. The policy

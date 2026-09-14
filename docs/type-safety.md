@@ -153,6 +153,8 @@ Vault DEK rotationはgenerating/promoting/completedとCAS revisionをpure state 
 
 DEK recovery drillはversioned backup manifestとciphertextを`unknown`からdecodeし、fixture上のmixed旧/新versionを正確なVault/object/revision AADで認証します。plaintext/raw keyをreceiptへ含めず、incomplete checkpoint、missing/wrong key、swap、retention違反をblocked resultにします。retirement pure gateはactive/pending/backup/drill evidenceが揃ってもdeleteを返さず、別のproduction key destruction承認が必要なterminal stateで停止します。詳細は [DEK rotation recovery drill and retirement gate](dek-rotation-recovery.md) を参照してください。
 
+Personal Vault quotaは表示文字、serialized plaintext bytes、ciphertext bytes、request bytes、Vault usageを別のrefined measureとして扱います。表示文字は正規化しないUnicode scalar valueで数え、unpaired surrogateを拒否します。pure transitionはcreate/update/delete deltaとexact limitを決めますが、並行reservationやserver接続は後続Issueへ分離します。詳細は [Personal Vault quota policy](quota-policy.md) を参照してください。
+
 Google OIDC境界はstate、nonce、PKCE verifier/challenge、authorization code、issuer、subject、client ID、redirect URIを別brandで表します。start/callback、provider verified claims、pending transaction、identity directoryの値はすべて`unknown`からdecodeし、exact redirect/issuer/audience、`azp`、expiry/issued-at、nonceをpure coreで判定します。transaction storeはstateを原子的にconsumeし、同じcallbackを再利用できません。emailはverified attributeであってidentity keyではなく、既存accountへのlink対象はrequest bodyではなくauthenticated `VaultContext`からだけ導出します。provider通信・signature/JWKS検証・entropy・clock・transaction/identity storage・Web Cryptoはport/adapter側に留めます。
 
 カード作成・編集・競合解決・pending mutation構築は `lib/domain/card-transitions.ts` のpure functionが担当します。時刻とbranded IDは外側で一度生成して入力し、UUIDv7生成は `lib/client/id-generator.ts` に限定します。編集とmutation mode、予期可能なresolve失敗はdiscriminated unionで区別し、IndexedDB adapterだけが既存の例外へ変換します。
