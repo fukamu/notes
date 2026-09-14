@@ -3,6 +3,7 @@ import { accountDeletionContinuationMigration } from '../account-deletion/contin
 import { billingSubscriptionMigration } from '../billing/migration';
 import { identityVaultControlPlaneMigration } from '../control-plane/migration';
 import { envelopeEncryptionMetadataMigration } from '../crypto/migration';
+import { dekRotationMigration } from '../crypto/rotation-migration';
 import { encryptedObjectRepositoryMigration } from '../encrypted-object/migration';
 import { entitlementMigration } from '../entitlement/migration';
 import { vaultContentMigration } from '../vault-content/migration';
@@ -18,4 +19,5 @@ export const productionMigrationManifest = [
   syncV2JournalMigration,
   accountDeletionSagaMigration,
   accountDeletionContinuationMigration,
+  dekRotationMigration,
 ] as const;

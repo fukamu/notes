@@ -78,6 +78,13 @@
       "when": 1789342935497,
       "tag": "0010_account_deletion_continuation",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1789357657586,
+      "tag": "0011_happy_lilith",
+      "breakpoints": true
     }
   ]
 }
