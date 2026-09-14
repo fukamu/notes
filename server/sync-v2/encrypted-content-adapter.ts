@@ -17,6 +17,7 @@ import {
   type EncryptedObjectService,
   type EncryptedObjectWriteResult,
 } from '../encrypted-object/service';
+import { quotaTransportLimits } from '../quota/public';
 import {
   decodeSyncV2StoredCard,
   decodeSyncV2StoredConflict,
@@ -55,6 +56,7 @@ export class EncryptedSyncV2ContentDirectory implements SyncV2ContentDirectory {
       objects: this.objects,
       objectKeys: this.objectKeys,
       encryption: this.encryption,
+      maximumCiphertextBytes: quotaTransportLimits.ciphertextBytesPerObject,
     });
     return {
       kind: 'opened',

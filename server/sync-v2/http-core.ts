@@ -1,4 +1,8 @@
-import type { EntitlementDecision } from '../entitlement/public';
+import type {
+  EntitlementDecision,
+  EntitlementDenialReason,
+  EntitlementLimitDecision,
+} from '../entitlement/public';
 import type { SyncV2ApplicationResult } from './public';
 
 export type SyncV2HttpAccessPlan =
@@ -17,7 +21,21 @@ export function planSyncV2EntitlementAccess(
       ? { kind: 'continue' }
       : { kind: 'reject', status: 403, error: 'forbidden' };
   }
-  switch (decision.reason) {
+  return planEntitlementDenial(decision.reason);
+}
+
+export function planSyncV2EntitlementLimitAccess(
+  decision: EntitlementLimitDecision,
+): SyncV2HttpAccessPlan {
+  return decision.kind === 'available'
+    ? { kind: 'continue' }
+    : planEntitlementDenial(decision.reason);
+}
+
+function planEntitlementDenial(
+  reason: EntitlementDenialReason,
+): SyncV2HttpAccessPlan {
+  switch (reason) {
     case 'owner-mismatch':
       return { kind: 'reject', status: 403, error: 'forbidden' };
     case 'billing-unavailable':
@@ -50,7 +68,7 @@ export function planSyncV2EntitlementAccess(
 
 export function planSyncV2ApplicationHttpResult(
   result: Exclude<SyncV2ApplicationResult, { readonly kind: 'synchronized' }>,
-): { readonly status: 400 | 409 | 503; readonly error: string } {
+): { readonly status: 400 | 409 | 413 | 503; readonly error: string } {
   switch (result.reason) {
     case 'invalid-cursor':
       return { status: 400, error: 'invalid-request' };
@@ -58,6 +76,17 @@ export function planSyncV2ApplicationHttpResult(
     case 'mutation-conflict':
       return { status: 409, error: 'sync-conflict' };
     case 'scope-unavailable':
+    case 'quota-unavailable':
       return { status: 503, error: 'unavailable' };
+    case 'request-limit':
+      return { status: 413, error: 'request-too-large' };
+    case 'display-character-limit':
+    case 'serialized-plaintext-limit':
+      return { status: 413, error: 'card-too-large' };
+    case 'ciphertext-limit':
+      return { status: 413, error: 'encrypted-content-too-large' };
+    case 'active-card-limit':
+    case 'vault-plaintext-limit':
+      return { status: 409, error: 'quota-exceeded' };
   }
 }

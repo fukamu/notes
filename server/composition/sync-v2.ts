@@ -11,12 +11,14 @@ import { createControlPlaneSessionResolver } from '../control-plane/session-reso
 import { D1IdentityVaultControlPlane } from '../control-plane/d1-adapter';
 import { createD1BillingApi } from '../billing/d1-adapter';
 import { createD1EntitlementPort } from '../entitlement/d1-adapter';
+import { D1VaultQuotaLedgerDirectory } from '../quota/d1-adapter';
 import { D1VaultContentDirectory } from '../vault-content/d1-adapter';
 import { D1SyncV2JournalDirectory } from '../vault-content/sync-v2-d1-adapter';
 import { D1EncryptedObjectMetadataDirectory } from '../encrypted-object/d1-adapter';
 import { EncryptedSyncV2ContentDirectory } from '../sync-v2/encrypted-content-adapter';
 import { createSyncV2Application } from '../sync-v2/service';
 import type {
+  SyncV2Application,
   SyncV2ClockPort,
   SyncV2KeyringPort,
   SyncV2MutationFingerprintPort,
@@ -33,9 +35,17 @@ export type D1SyncV2CompositionInput = {
   readonly objectKeys: OpaqueObjectKeyGeneratorPort;
   readonly encryption: EnvelopeEncryptionService;
   readonly keyrings: SyncV2KeyringPort;
+  readonly quotaReservationReconcileDelayMs: number;
 };
 
-export function createD1SyncV2HttpHandler(input: D1SyncV2CompositionInput) {
+export type D1SyncV2Composition = {
+  readonly handler: ReturnType<typeof createSyncV2HttpHandler>;
+  readonly application: SyncV2Application;
+};
+
+export function createD1SyncV2Composition(
+  input: D1SyncV2CompositionInput,
+): D1SyncV2Composition {
   const controlPlane = new D1IdentityVaultControlPlane(input.database);
   const vaultContent = new D1VaultContentDirectory(
     input.database,
@@ -60,19 +70,32 @@ export function createD1SyncV2HttpHandler(input: D1SyncV2CompositionInput) {
     input.encryption,
     input.keyrings,
   );
-  return createSyncV2HttpHandler({
-    expectedOrigin: input.expectedOrigin,
-    clock: input.clock,
-    sessions: createControlPlaneSessionResolver({
-      controlPlane,
-      hashes: input.sessionTokenHashes,
-    }),
-    entitlement,
-    application: createSyncV2Application({
-      journals,
-      contents,
-      cursors: input.cursors,
-      fingerprints: input.fingerprints,
-    }),
+  const quotas = new D1VaultQuotaLedgerDirectory(input.database);
+  const application = createSyncV2Application({
+    journals,
+    contents,
+    cursors: input.cursors,
+    fingerprints: input.fingerprints,
+    quotas,
+    quotaPolicy: {
+      reservationReconcileDelayMs: input.quotaReservationReconcileDelayMs,
+    },
   });
+  return {
+    application,
+    handler: createSyncV2HttpHandler({
+      expectedOrigin: input.expectedOrigin,
+      clock: input.clock,
+      sessions: createControlPlaneSessionResolver({
+        controlPlane,
+        hashes: input.sessionTokenHashes,
+      }),
+      entitlement,
+      application,
+    }),
+  };
+}
+
+export function createD1SyncV2HttpHandler(input: D1SyncV2CompositionInput) {
+  return createD1SyncV2Composition(input).handler;
 }

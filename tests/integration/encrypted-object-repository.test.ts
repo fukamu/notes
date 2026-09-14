@@ -52,24 +52,34 @@ let recoveryDatabase: TestDatabase;
 let securityDatabase: TestDatabase;
 let gcDatabase: TestDatabase;
 let tenantDatabase: TestDatabase;
+let limitDatabase: TestDatabase;
 
 beforeAll(async () => {
   miniflare = new Miniflare({
     modules: true,
     script: 'export default { fetch() { return new Response("ok") } }',
-    d1Databases: ['IDEMPOTENCY', 'RECOVERY', 'SECURITY', 'GC', 'TENANT'],
+    d1Databases: [
+      'IDEMPOTENCY',
+      'RECOVERY',
+      'SECURITY',
+      'GC',
+      'TENANT',
+      'LIMIT',
+    ],
   });
   idempotencyDatabase = await miniflare.getD1Database('IDEMPOTENCY');
   recoveryDatabase = await miniflare.getD1Database('RECOVERY');
   securityDatabase = await miniflare.getD1Database('SECURITY');
   gcDatabase = await miniflare.getD1Database('GC');
   tenantDatabase = await miniflare.getD1Database('TENANT');
+  limitDatabase = await miniflare.getD1Database('LIMIT');
   for (const database of [
     idempotencyDatabase,
     recoveryDatabase,
     securityDatabase,
     gcDatabase,
     tenantDatabase,
+    limitDatabase,
   ]) {
     await runD1Migrations({
       database,
@@ -312,6 +322,31 @@ describe('encrypted object application service', () => {
     await expect(objects.get(encryptedObjectIds.objectKeyD)).resolves.toEqual(
       new Uint8Array([2]),
     );
+  });
+
+  it('rejects an encoded ciphertext above the configured ceiling before upload', async () => {
+    const context = vaultContentContext('a');
+    const repository = await openRepository(limitDatabase, context);
+    const objects = createFakePrivateObjectStorage();
+    const service = createEncryptedObjectService({
+      context,
+      metadata: repository,
+      objects,
+      objectKeys: objectKeys([encryptedObjectIds.objectKeyA]).port,
+      encryption: encryptionFor(context),
+      maximumCiphertextBytes: 1,
+    });
+    await expect(service.write(firstWrite())).resolves.toEqual({
+      kind: 'not-applied',
+      reason: 'ciphertext-limit',
+    });
+    expect(objects.calls().put).toBe(0);
+    await expect(
+      repository.findIntent(encryptedObjectIds.writeA),
+    ).resolves.toBeUndefined();
+    await expect(
+      repository.findCurrent(firstWrite().object),
+    ).resolves.toBeUndefined();
   });
 
   it('isolates equal write, object, and key identifiers by Vault', async () => {
