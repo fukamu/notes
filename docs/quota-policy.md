@@ -62,9 +62,9 @@ is rejected. Underflow, unsafe arithmetic, deletion from an empty Vault, or a
 current-card size greater than the recorded Vault total is invalid evidence.
 
 Concurrent correctness is not claimed by this pure calculation alone. Issue
-#195 will place the snapshot, reservation, and revision behind a Vault-scoped
-D1 CAS. Issue #196 will obtain Entitlement limits and boundary measurements,
-then connect that reservation to authenticated Sync v2 without weakening
-idempotency or failure handling.
+#195 places the snapshot, reservation, and revision behind a Vault-scoped D1
+CAS; see [Vault quota ledger](quota-ledger.md). Issue #196 will obtain
+Entitlement limits and boundary measurements, then connect that reservation to
+authenticated Sync v2 without weakening idempotency or failure handling.
 
 Main is unchanged and production is not deployed by this policy.

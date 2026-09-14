@@ -132,6 +132,7 @@ describe('pure-core dependency direction', () => {
     'server/encrypted-object/reencryption-core.ts',
     'server/entitlement/core.ts',
     'server/quota/core.ts',
+    'server/quota/ledger-core.ts',
     'server/sync-v2/core.ts',
   ];
 
@@ -908,6 +909,46 @@ function billingBoundaryViolation(file: string, source: string): boolean {
     )
   );
 }
+
+function quotaLedgerBoundaryViolation(file: string, source: string): boolean {
+  if (
+    file.startsWith('server/quota/') ||
+    file.startsWith('server/migrations/')
+  ) {
+    return false;
+  }
+  return (
+    /server\/quota\/(?:d1-adapter|d1-schema|migration|records)/.test(source) ||
+    /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:vault_quota_usage|vault_quota_reservations)\b/i.test(
+      source,
+    )
+  );
+}
+
+describe('Vault quota ledger module ownership', () => {
+  it('keeps D1 internals and table mutations inside the quota module', async () => {
+    const files = (await Promise.all(roots.map(sourceFiles))).flat();
+    const violations: string[] = [];
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (quotaLedgerBoundaryViolation(file, source)) violations.push(file);
+    }
+    expect(violations).toEqual([]);
+
+    const [core, publicContract, adapter] = await Promise.all([
+      readFile('server/quota/ledger-core.ts', 'utf8'),
+      readFile('server/quota/public.ts', 'utf8'),
+      readFile('server/quota/d1-adapter.ts', 'utf8'),
+    ]);
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Promise|Date\.now|crypto\.|fetch\(|process\.env/,
+    );
+    expect(publicContract).not.toMatch(/D1Database|\.prepare\(/);
+    expect(adapter).toContain('this.scope.accountId');
+    expect(adapter).toContain('this.scope.vaultId');
+    expect(adapter).not.toMatch(/CREATE\s+(?:TABLE|INDEX|TRIGGER)/i);
+  });
+});
 
 describe('Billing module ownership', () => {
   it('keeps Billing internals and table mutations inside their owner module', async () => {

@@ -1,0 +1,67 @@
+# Vault quota ledger
+
+Issue #195 adds the provider-neutral reservation contract, fake, and D1 adapter
+used to make the Personal Vault limits authoritative under concurrent writes.
+It does not yet connect quota to Sync v2 or any production database; that
+composition belongs to issue #196.
+
+## Durable model
+
+Each `(AccountId, VaultId)` owns one committed usage row and any number of
+idempotent reservation rows. Both tables and the reconciliation index include
+the Account and Vault scope. The directory opens a ledger only after the
+authenticated `VaultContext` matches an existing `personal_vaults` owner. The
+caller never supplies a separate owner in a reservation command.
+
+Committed usage is the number of active cards and their current serialized
+plaintext bytes. Effective usage is committed usage plus only the positive
+parts of pending reservations:
+
+- create reserves one card and all next plaintext bytes;
+- an increasing update reserves only `next - current` plaintext bytes;
+- a decreasing update and a delete reserve zero additional capacity;
+- commit applies the full signed delta to committed usage;
+- release removes the positive reservation without changing committed usage.
+
+A decrease therefore does not free capacity until its content write has
+actually committed. A failed or timed-out delete cannot make a later create
+appear to fit while the original content still exists.
+
+## CAS and idempotency
+
+Reservations use a mutation UUID plus an SHA-256 fingerprint. Replaying the
+same ID and fingerprint returns the existing record; reusing the ID for a
+different fingerprint is rejected. D1 admission checks the committed revision,
+committed values, current pending sum, and limit in the same `INSERT SELECT`.
+Concurrent attempts cannot both admit the 10,001st card or the byte beyond the
+128 MiB limit.
+
+Finalization changes the reservation and usage through one D1 statement. A
+trigger advances the usage revision only for the expected predecessor revision
+and ignores the outer reservation update if that CAS cannot be applied. The
+adapter reloads typed rows and retries a bounded CAS conflict. Exhaustion is a
+visible `cas-conflict`, never a false success or a dropped reservation.
+
+## Reconciliation and failure behavior
+
+`reconcileAfter` marks a pending reservation as eligible for investigation; it
+is not an expiry that automatically releases quota. The reconciler must obtain
+durable evidence from the content/journal path and explicitly commit or release
+the reservation. That cross-repository evidence is part of #196. Until then,
+abandoned reservations remain charged, which fails closed.
+
+D1 errors and malformed rows propagate as failures. No in-memory or plaintext
+fallback is used. The fake implements the same explicit-finalization rule for
+local development and tests, without contacting billing, KMS, R2, or any
+production service.
+
+## Migration and rollback
+
+Migration `0012_vault_quota_ledger` is additive and intended for the new empty
+production schema. This issue does not apply it, backfill current Sites/D1
+data, or derive counters from production content. Before #196 consumes the
+ledger, rollback is to stop using the new adapter/tables while preserving the
+existing encrypted-object and journal data. After consumer integration,
+rollback must disable new online mutations before changing ledger state.
+
+Main is unchanged and production is not deployed.
