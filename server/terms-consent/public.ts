@@ -134,16 +134,18 @@ export type TermsConsentAppendResult =
 
 export type TermsConsentRepository = {
   findById(
-    context: VaultContext,
+    context: TermsConsentScope,
     consentId: TermsConsentId,
   ): Promise<TermsConsentRecord | undefined>;
   findBySubmission(
-    context: VaultContext,
+    context: TermsConsentScope,
     submissionId: TermsConsentSubmissionId,
   ): Promise<TermsConsentRecord | undefined>;
-  findLatest(context: VaultContext): Promise<TermsConsentRecord | undefined>;
+  findLatest(
+    context: TermsConsentScope,
+  ): Promise<TermsConsentRecord | undefined>;
   append(
-    context: VaultContext,
+    context: TermsConsentScope,
     record: TermsConsentRecord,
   ): Promise<TermsConsentAppendResult>;
 };

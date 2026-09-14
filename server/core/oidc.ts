@@ -51,6 +51,10 @@ import {
   type ActiveSession,
   type RotateSessionDecision,
 } from './session';
+import {
+  termsConsentCommandDecoder,
+  type TermsConsentCommand,
+} from '../terms-consent/public';
 
 export const OIDC_TRANSACTION_TTL_SECONDS = 600;
 export const OIDC_CLOCK_SKEW_SECONDS = 60;
@@ -75,6 +79,7 @@ export type PendingOidcTransaction = {
   readonly codeVerifier: PkceCodeVerifier;
   readonly redirectUri: OidcRedirectUri;
   readonly purpose: OidcPurpose;
+  readonly signupTermsConsent?: TermsConsentCommand;
   readonly createdAtEpochSeconds: number;
   readonly expiresAtEpochSeconds: number;
 };
@@ -86,11 +91,16 @@ const pendingOidcTransactionShapeDecoder = refineDecoder(
     codeVerifier: pkceCodeVerifierDecoder,
     redirectUri: oidcRedirectUriDecoder,
     purpose: oidcPurposeDecoder,
+    signupTermsConsent: optionalDecoder(termsConsentCommandDecoder),
     createdAtEpochSeconds: epochSecondsDecoder,
     expiresAtEpochSeconds: epochSecondsDecoder,
   }),
   (transaction) =>
     !sameOpaqueValue(transaction.state, transaction.nonce) &&
+    !(
+      transaction.purpose.kind === 'link' &&
+      transaction.signupTermsConsent !== undefined
+    ) &&
     transaction.expiresAtEpochSeconds > transaction.createdAtEpochSeconds &&
     transaction.expiresAtEpochSeconds - transaction.createdAtEpochSeconds <=
       OIDC_TRANSACTION_TTL_SECONDS,
@@ -100,7 +110,12 @@ const pendingOidcTransactionShapeDecoder = refineDecoder(
 export const pendingOidcTransactionDecoder: Decoder<PendingOidcTransaction> =
   transformDecoder(
     pendingOidcTransactionShapeDecoder,
-    (transaction): PendingOidcTransaction => transaction,
+    (transaction): PendingOidcTransaction => {
+      const { signupTermsConsent, ...withoutOptional } = transaction;
+      return signupTermsConsent === undefined
+        ? withoutOptional
+        : { ...withoutOptional, signupTermsConsent };
+    },
   );
 
 export type OidcProviderConfiguration = {
@@ -249,7 +264,8 @@ export type CreateOidcTransactionDecision =
       readonly reason:
         | 'invalid-clock'
         | 'redirect-not-allowed'
-        | 'state-nonce-reused';
+        | 'state-nonce-reused'
+        | 'invalid-purpose';
     };
 
 export function createOidcTransaction(input: {
@@ -259,6 +275,7 @@ export function createOidcTransaction(input: {
   readonly codeVerifier: PkceCodeVerifier;
   readonly redirectUri: OidcRedirectUri;
   readonly purpose: OidcPurpose;
+  readonly signupTermsConsent?: TermsConsentCommand;
   readonly nowEpochSeconds: number;
 }): CreateOidcTransactionDecision {
   if (
@@ -278,6 +295,9 @@ export function createOidcTransaction(input: {
   ) {
     return { kind: 'rejected', reason: 'state-nonce-reused' };
   }
+  if (input.purpose.kind === 'link' && input.signupTermsConsent !== undefined) {
+    return { kind: 'rejected', reason: 'invalid-purpose' };
+  }
   return {
     kind: 'created',
     transaction: {
@@ -286,6 +306,9 @@ export function createOidcTransaction(input: {
       codeVerifier: input.codeVerifier,
       redirectUri: input.redirectUri,
       purpose: input.purpose,
+      ...(input.signupTermsConsent === undefined
+        ? {}
+        : { signupTermsConsent: input.signupTermsConsent }),
       createdAtEpochSeconds: input.nowEpochSeconds,
       expiresAtEpochSeconds:
         input.nowEpochSeconds + OIDC_TRANSACTION_TTL_SECONDS,

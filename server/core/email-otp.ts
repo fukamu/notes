@@ -28,6 +28,10 @@ import {
   type IdentityId,
   type VaultId,
 } from '../../lib/domain/identity';
+import {
+  termsConsentCommandDecoder,
+  type TermsConsentCommand,
+} from '../terms-consent/public';
 
 export const EMAIL_OTP_TTL_SECONDS = 600;
 export const EMAIL_OTP_RESEND_INTERVAL_SECONDS = 60;
@@ -67,6 +71,7 @@ type EmailOtpChallengeCommon = {
   readonly digest: EmailOtpDigest;
   readonly salt: EmailOtpSalt;
   readonly purpose: EmailOtpPurpose;
+  readonly signupTermsConsent?: TermsConsentCommand;
   readonly createdAtEpochSeconds: number;
   readonly expiresAtEpochSeconds: number;
   readonly failedAttempts: number;
@@ -101,6 +106,7 @@ const challengeCommonShape = {
   digest: emailOtpDigestDecoder,
   salt: emailOtpSaltDecoder,
   purpose: emailOtpPurposeDecoder,
+  signupTermsConsent: optionalDecoder(termsConsentCommandDecoder),
   createdAtEpochSeconds: epochSecondsDecoder,
   expiresAtEpochSeconds: epochSecondsDecoder,
   failedAttempts: failedAttemptsDecoder,
@@ -134,17 +140,24 @@ const emailOtpChallengeShapeDecoder = unionDecoder(
 );
 
 export const emailOtpChallengeDecoder: Decoder<EmailOtpChallenge> =
-  transformDecoder(
-    refineDecoder(
+  refineDecoder(
+    transformDecoder(
       emailOtpChallengeShapeDecoder,
-      hasValidChallengeTimeline,
-      'expected a consistent, bounded Email OTP challenge',
+      (challenge): EmailOtpChallenge => {
+        const { signupTermsConsent, ...withoutOptional } = challenge;
+        return signupTermsConsent === undefined
+          ? withoutOptional
+          : { ...withoutOptional, signupTermsConsent };
+      },
     ),
-    (challenge): EmailOtpChallenge => challenge,
+    hasValidChallengeTimeline,
+    'expected a consistent, bounded Email OTP challenge',
   );
 
 function hasValidChallengeTimeline(challenge: EmailOtpChallenge): boolean {
   if (
+    (challenge.purpose.kind === 'link' &&
+      challenge.signupTermsConsent !== undefined) ||
     challenge.expiresAtEpochSeconds <= challenge.createdAtEpochSeconds ||
     challenge.expiresAtEpochSeconds - challenge.createdAtEpochSeconds !==
       EMAIL_OTP_TTL_SECONDS ||
@@ -187,7 +200,10 @@ function hasValidChallengeTimeline(challenge: EmailOtpChallenge): boolean {
 
 export type CreateEmailOtpChallengeDecision =
   | { readonly kind: 'created'; readonly challenge: PendingEmailOtpChallenge }
-  | { readonly kind: 'rejected'; readonly reason: 'invalid-clock' };
+  | {
+      readonly kind: 'rejected';
+      readonly reason: 'invalid-clock' | 'invalid-purpose';
+    };
 
 export function createEmailOtpChallenge(input: {
   readonly challengeId: EmailOtpChallengeId;
@@ -195,10 +211,14 @@ export function createEmailOtpChallenge(input: {
   readonly digest: EmailOtpDigest;
   readonly salt: EmailOtpSalt;
   readonly purpose: EmailOtpPurpose;
+  readonly signupTermsConsent?: TermsConsentCommand;
   readonly nowEpochSeconds: number;
 }): CreateEmailOtpChallengeDecision {
   if (!canAddSeconds(input.nowEpochSeconds, EMAIL_OTP_TTL_SECONDS)) {
     return { kind: 'rejected', reason: 'invalid-clock' };
+  }
+  if (input.purpose.kind === 'link' && input.signupTermsConsent !== undefined) {
+    return { kind: 'rejected', reason: 'invalid-purpose' };
   }
   return {
     kind: 'created',
@@ -209,6 +229,9 @@ export function createEmailOtpChallenge(input: {
       digest: input.digest,
       salt: input.salt,
       purpose: input.purpose,
+      ...(input.signupTermsConsent === undefined
+        ? {}
+        : { signupTermsConsent: input.signupTermsConsent }),
       createdAtEpochSeconds: input.nowEpochSeconds,
       expiresAtEpochSeconds: input.nowEpochSeconds + EMAIL_OTP_TTL_SECONDS,
       failedAttempts: 0,

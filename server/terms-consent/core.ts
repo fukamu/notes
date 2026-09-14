@@ -2,13 +2,13 @@ import {
   decodeLegalTermsDisclosure,
   type LegalTermsDisclosure,
 } from '../../lib/application/legal-terms';
-import type { VaultContext } from '../../lib/domain/identity';
 import {
   termsVersionDecoder,
   type TermsConsentCommand,
   type TermsConsentId,
   type TermsConsentRecord,
   type TermsConsentSnapshot,
+  type TermsConsentScope,
   type TermsDocumentHash,
 } from './public';
 
@@ -129,7 +129,7 @@ export function planTermsDisclosureSnapshot(
 }
 
 export function planTermsConsent(input: {
-  readonly context: VaultContext;
+  readonly context: TermsConsentScope;
   readonly command: TermsConsentCommand;
   readonly snapshot: TermsConsentSnapshot;
   readonly consentId: TermsConsentId;
@@ -183,7 +183,7 @@ export function planTermsConsent(input: {
 
 export function termsConsentRecordMatchesContext(
   record: TermsConsentRecord,
-  context: VaultContext,
+  context: TermsConsentScope,
 ): boolean {
   return sameScope(record.scope, context);
 }
@@ -204,7 +204,7 @@ function sameSubmissionPayload(
 
 function sameScope(
   left: TermsConsentRecord['scope'],
-  right: VaultContext,
+  right: TermsConsentScope,
 ): boolean {
   return left.accountId === right.accountId && left.vaultId === right.vaultId;
 }
