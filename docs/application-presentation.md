@@ -160,11 +160,17 @@ Vault, session, or logout boundaries.
 has no generic current-card or view setter.
 
 History sorting, display labels, title/body fallbacks, current-item marking,
-and previews are pure view-model work. The current item scroll behavior lives
-in a dedicated presentation hook and does not depend on a parent/button DOM
-lookup. Conflict view models contain only the two choices for the current
-card, including titles, previews, accessible action names, and the established
-missing-link fallback. The renderer does not receive all conflicts.
+and previews are pure view-model work. A second pure boundary maps item count,
+current index, fixed row geometry, and measured/unmeasured viewport state to a
+bounded render range, offset, total height, and centered scroll position. The
+React hook owns only `ResizeObserver`, validated scroll measurements, element
+refs, and focus. History renders a semantic ordered list with `aria-posinset`
+and `aria-setsize`; Arrow Up/Down and Home/End can move focus into a range that
+was not mounted. It clears every ref on unmount and holds no Vault/session data
+outside the mounted presentation. Conflict view models contain only the two
+choices for the current card, including titles, previews, accessible action
+names, and the established missing-link fallback. The renderer does not
+receive all conflicts.
 
 ## Feature adapters and composition
 
@@ -285,7 +291,8 @@ Structural styles are named separately from the default visual theme:
 or geometry. Visual classes such as `.fukamu-editor`, `.card-link-capsule`,
 `.connections-viewport`, `.connections-map-toolbar`, and `.connections-node` are
 replaceable theme choices. `.history-stack` only supplies functional scroll
-padding.
+padding; fixed history row geometry and viewport-bounded overscan are shared
+with the pure range contract and final 10,000-card browser evidence.
 
 Conflict visuals use light/dark semantic `--warning-*` tokens and the shared
 button primitive; no feature component embeds an amber or white palette.

@@ -154,3 +154,38 @@ batch-selector call and is never cached across Vault/session/logout boundaries.
 The baseline measures connections input construction only. Whether 10,000-card
 connections should show every card or progressively disclose the current-card
 neighborhood/search results remains Decision Required in #106 and #126.
+
+## Issue #204 browser windowing
+
+`docs/benchmarks/10k-browser-final.json` records three desktop Chromium and
+three Pixel 7-equivalent runs of the deterministic 10,000-card fixture. The
+browser loads the replica, opens history at its midpoint, scrolls to the final
+row, moves keyboard focus with Home/End across unmounted ranges, restores the
+history URL with Back, and queries the `99` link prefix. The existing v1
+snapshot contract rejects links to cards absent from the response, so the 48
+deliberately missing fixture targets are rebound to fixture card 1 only in this
+browser adapter. The benchmark remains synthetic and does not contact a
+production backend.
+
+History rows use a 108 px fixed height, 12 px gap, 12 px content inset, and four
+overscan rows on each side. Both projects mounted 13 rows against a calculated
+limit of 14; total history DOM was 205 elements rather than 10,000 card rows.
+This viewport-derived bound is the stable CI gate. The reference-host medians
+were about 1.05 s for initial load, 105–124 ms to open history, 20 ms to scroll,
+and 273–277 ms to expose the 111 matching link candidates. Those timings and
+the coarse `performance.memory` samples are retained as evidence, not converted
+into an unexplained absolute wall-clock gate.
+
+The range, total height, offset, centering, and keyboard target decisions are
+typed pure functions. React owns only DOM measurement, `ResizeObserver`, scroll
+events, element refs, and focus. The derived range and refs disappear on
+unmount, so no history content cache crosses a provider, Vault, session, or
+logout boundary. Existing desktop/mobile URL, Back, card-open, current marker,
+list semantics, and keyboard behavior are covered in the same E2E.
+
+The final browser run intentionally does not activate a 10,000-node connections
+graph. Demand-driven presentation proves that card/history views do not build
+it, while the existing typed input-boundary measurement remains 15.272 ms
+median and 16.709 ms p95. Full graph versus current-neighborhood/search/staged
+disclosure remains the recorded Decision Required rather than an implementation
+choice in #204.
