@@ -19,6 +19,7 @@ export default defineConfig({
         'components/session-notes-app.tsx',
         'lib/application/account-deletion-handoff.ts',
         'lib/application/account-deletion-runner.ts',
+        'lib/application/card-body-text-lookup.ts',
         'lib/application/card-editor-index.ts',
         'lib/application/logout-coordination.ts',
         'lib/application/notes-access.ts',

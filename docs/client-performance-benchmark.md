@@ -123,6 +123,32 @@ earlier benchmark, timings are review evidence rather than absolute CI gates;
 exact output equivalence, body-only index reuse, and the lookup mechanism are
 the stable gates.
 
+## Issue #203 history preview lookup
+
+`docs/benchmarks/10k-history-preview-index.json` compares the legacy
+per-history-item all-card `Map` construction with one pure lookup shared by the
+selector invocation:
+
+| Boundary                         |       Median |          p95 |
+| -------------------------------- | -----------: | -----------: |
+| Previous per-item lookup rebuild | 5,390.062 ms | 5,390.062 ms |
+| Indexed single-lookup history    |    36.277 ms |    42.604 ms |
+
+The reference-host median improved by about 148.6×. Timing remains evidence,
+not an absolute CI threshold. The stable computation gate is one lookup build,
+at most one entry per distinct `CardId`, one output item per card, and
+O(cards log cards + total body segments) time. The stable memory gate is
+O(cards) derived lookup space; raw Node heap deltas remain observational
+because garbage collection and host load are nondeterministic.
+
+The benchmark asserts all 10,000 output items are exactly equal to the previous
+selector. Focused tests additionally preserve display-ID ordering and all tie
+breaks, current markers, whitespace normalization, empty-body text,
+official/provisional and `Untitled` link labels, missing-link fallback, the
+legacy last-card-wins duplicate-ID rule, conflict choices, and caller input
+immutability. The lookup exists only within one pure history or conflict
+batch-selector call and is never cached across Vault/session/logout boundaries.
+
 ## Known boundary
 
 The baseline measures connections input construction only. Whether 10,000-card

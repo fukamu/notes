@@ -16,7 +16,7 @@ import type {
 } from '@/lib/application/presentation';
 import {
   selectCardEditorInputModel,
-  selectConflictViewModel,
+  selectConflictViewModels,
   selectConnectionsViewModel,
   selectHistoryViewModel,
   selectNotesStatus,
@@ -163,9 +163,12 @@ export function createNotesPresentationModel(
           : null,
         history: null,
         conflicts: currentCard
-          ? store.conflicts
-              .filter((conflict) => conflict.cardId === currentCard.id)
-              .map((conflict) => selectConflictViewModel(conflict, store.cards))
+          ? selectConflictViewModels(
+              store.conflicts.filter(
+                (conflict) => conflict.cardId === currentCard.id,
+              ),
+              store.cards,
+            )
           : [],
         connections: null,
       };

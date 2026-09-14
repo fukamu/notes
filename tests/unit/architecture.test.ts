@@ -1652,6 +1652,34 @@ describe('swappable presentation architecture', () => {
   });
 });
 
+describe('history preview lookup architecture', () => {
+  it('builds one pure lookup per history or conflict selector invocation', async () => {
+    const lookup = await readFile(
+      'lib/application/card-body-text-lookup.ts',
+      'utf8',
+    );
+    const viewModels = await readFile('lib/application/view-models.ts', 'utf8');
+    const controller = await readFile(
+      'lib/application/notes-controller.ts',
+      'utf8',
+    );
+    const coverage = await readFile('vitest.config.ts', 'utf8');
+
+    expect(lookup).not.toMatch(
+      /(?:React|window|document|indexedDB|fetch\(|Date\.|Math\.random|crypto\.|process\.|console\.)/,
+    );
+    expect(viewModels).not.toContain("from '@/lib/domain/body'");
+    expect(viewModels.match(/createCardBodyTextLookup\(cards\)/g)).toHaveLength(
+      2,
+    );
+    expect(viewModels).toContain(
+      'bodyToPlainTextFromLookup(card.body, bodyTextLookup)',
+    );
+    expect(controller).toContain('selectConflictViewModels(');
+    expect(coverage).toContain('lib/application/card-body-text-lookup.ts');
+  });
+});
+
 describe('headless card editor architecture', () => {
   it('keeps candidate indexing pure and its cache instance-scoped', async () => {
     const index = await readFile(
