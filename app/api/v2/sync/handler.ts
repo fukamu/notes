@@ -24,6 +24,19 @@ import {
   quotaTransportLimits,
   type QuotaByteCount,
 } from '@/server/quota/public';
+import { assertNever } from '@/lib/shared/invariant';
+import {
+  bucketTelemetryCount,
+  planTelemetryEvent,
+  type TelemetryFailureCategory,
+  type TelemetryOutcome,
+} from '@/server/telemetry/core';
+import {
+  noOpTelemetrySink,
+  recordTelemetrySafely,
+  type TelemetrySink,
+} from '@/server/telemetry/public';
+import type { SyncV2ApplicationRejection } from '@/server/sync-v2/public';
 
 export type SyncV2HttpDependencies = {
   readonly expectedOrigin: unknown;
@@ -34,6 +47,7 @@ export type SyncV2HttpDependencies = {
     'authorizeCapability' | 'readLimits'
   >;
   readonly application: Pick<SyncV2Application, 'synchronize'>;
+  readonly telemetry?: TelemetrySink;
 };
 
 type BodyReadResult =
@@ -53,9 +67,15 @@ export function createSyncV2HttpHandler(dependencies: SyncV2HttpDependencies) {
     try {
       now = nonNegativeSafeInteger(dependencies.clock.now(), 'Sync v2 clock');
     } catch (error: unknown) {
-      return error instanceof BoundaryDecodeError
-        ? errorResponse(503, 'unavailable')
-        : unexpectedFailure(error);
+      return observedResponse(
+        dependencies,
+        error instanceof BoundaryDecodeError
+          ? errorResponse(503, 'unavailable')
+          : unexpectedFailure(error),
+        'failure',
+        'internal',
+        null,
+      );
     }
 
     let session;
@@ -68,30 +88,72 @@ export function createSyncV2HttpHandler(dependencies: SyncV2HttpDependencies) {
         dependencies.sessions,
       );
     } catch (error: unknown) {
-      return unexpectedFailure(error);
+      return observedResponse(
+        dependencies,
+        unexpectedFailure(error),
+        'failure',
+        'internal',
+        null,
+      );
     }
     if (session.kind === 'anonymous') {
-      return errorResponse(401, 'authentication-required');
+      return observedResponse(
+        dependencies,
+        errorResponse(401, 'authentication-required'),
+        'denied',
+        'authentication',
+        null,
+      );
     }
     if (session.kind === 'forbidden') {
-      return errorResponse(403, 'forbidden');
+      return observedResponse(
+        dependencies,
+        errorResponse(403, 'forbidden'),
+        'denied',
+        'authorization',
+        null,
+      );
     }
 
     const body = await readBoundedJson(request);
     if (body.kind === 'too-large') {
-      return errorResponse(413, 'request-too-large');
+      return observedResponse(
+        dependencies,
+        errorResponse(413, 'request-too-large'),
+        'denied',
+        'invalid-input',
+        null,
+      );
     }
     if (body.kind === 'invalid') {
-      return errorResponse(400, 'invalid-request');
+      return observedResponse(
+        dependencies,
+        errorResponse(400, 'invalid-request'),
+        'denied',
+        'invalid-input',
+        null,
+      );
     }
     let syncRequest;
     try {
       syncRequest = decodeSyncV2Request(body.value);
     } catch (error: unknown) {
       if (error instanceof BoundaryDecodeError) {
-        return errorResponse(400, 'invalid-request');
+        return observedResponse(
+          dependencies,
+          errorResponse(400, 'invalid-request'),
+          'denied',
+          'invalid-input',
+          null,
+        );
       }
-      return unexpectedFailure(error);
+      return observedResponse(
+        dependencies,
+        unexpectedFailure(error),
+        'failure',
+        'internal',
+        null,
+      );
     }
 
     let entitlement;
@@ -102,25 +164,51 @@ export function createSyncV2HttpHandler(dependencies: SyncV2HttpDependencies) {
         now,
       );
     } catch (error: unknown) {
-      return unexpectedFailure(error);
+      return observedResponse(
+        dependencies,
+        unexpectedFailure(error),
+        'failure',
+        'dependency',
+        syncRequest.mutations.length,
+      );
     }
     const access = planSyncV2EntitlementAccess(entitlement);
     if (access.kind === 'reject') {
-      return errorResponse(access.status, access.error);
+      return observedAccessRejection(
+        dependencies,
+        access,
+        syncRequest.mutations.length,
+      );
     }
 
     let limits;
     try {
       limits = await dependencies.entitlement.readLimits(session.context, now);
     } catch (error: unknown) {
-      return unexpectedFailure(error);
+      return observedResponse(
+        dependencies,
+        unexpectedFailure(error),
+        'failure',
+        'dependency',
+        syncRequest.mutations.length,
+      );
     }
     const limitAccess = planSyncV2EntitlementLimitAccess(limits);
     if (limitAccess.kind === 'reject') {
-      return errorResponse(limitAccess.status, limitAccess.error);
+      return observedAccessRejection(
+        dependencies,
+        limitAccess,
+        syncRequest.mutations.length,
+      );
     }
     if (limits.kind !== 'available') {
-      return errorResponse(503, 'unavailable');
+      return observedResponse(
+        dependencies,
+        errorResponse(503, 'unavailable'),
+        'failure',
+        'dependency',
+        syncRequest.mutations.length,
+      );
     }
 
     try {
@@ -133,13 +221,36 @@ export function createSyncV2HttpHandler(dependencies: SyncV2HttpDependencies) {
       });
       if (result.kind === 'rejected') {
         const rejected = planSyncV2ApplicationHttpResult(result);
-        return errorResponse(rejected.status, rejected.error);
+        const telemetry = applicationRejectionTelemetry(result.reason);
+        return observedResponse(
+          dependencies,
+          errorResponse(rejected.status, rejected.error),
+          telemetry.outcome,
+          telemetry.failureCategory,
+          syncRequest.mutations.length,
+        );
       }
-      return Response.json(encodeSyncV2Response(result.response), {
-        headers: noStoreHeaders,
-      });
+      const noChange =
+        syncRequest.mutations.length === 0 &&
+        result.response.changes.length === 0 &&
+        result.response.receipts.length === 0;
+      return observedResponse(
+        dependencies,
+        Response.json(encodeSyncV2Response(result.response), {
+          headers: noStoreHeaders,
+        }),
+        noChange ? 'no-change' : 'success',
+        'none',
+        syncRequest.mutations.length + result.response.changes.length,
+      );
     } catch (error: unknown) {
-      return unexpectedFailure(error);
+      return observedResponse(
+        dependencies,
+        unexpectedFailure(error),
+        'failure',
+        'internal',
+        syncRequest.mutations.length,
+      );
     }
   };
 }
@@ -190,4 +301,90 @@ function unexpectedFailure(error: unknown): Response {
     error instanceof Error ? 'Error' : 'UnknownError',
   );
   return errorResponse(503, 'unavailable');
+}
+
+function observedAccessRejection(
+  dependencies: SyncV2HttpDependencies,
+  access: {
+    readonly status: 402 | 403 | 503;
+    readonly error: 'online-access-locked' | 'forbidden' | 'unavailable';
+  },
+  workItems: number,
+): Response {
+  switch (access.status) {
+    case 402:
+      return observedResponse(
+        dependencies,
+        errorResponse(access.status, access.error),
+        'locked',
+        'billing',
+        workItems,
+      );
+    case 403:
+      return observedResponse(
+        dependencies,
+        errorResponse(access.status, access.error),
+        'denied',
+        'authorization',
+        workItems,
+      );
+    case 503:
+      return observedResponse(
+        dependencies,
+        errorResponse(access.status, access.error),
+        'failure',
+        'dependency',
+        workItems,
+      );
+  }
+}
+
+function applicationRejectionTelemetry(
+  reason: SyncV2ApplicationRejection['reason'],
+): Readonly<{
+  outcome: TelemetryOutcome;
+  failureCategory: TelemetryFailureCategory;
+}> {
+  switch (reason) {
+    case 'invalid-cursor':
+    case 'request-limit':
+    case 'display-character-limit':
+    case 'serialized-plaintext-limit':
+    case 'ciphertext-limit':
+      return { outcome: 'denied', failureCategory: 'invalid-input' };
+    case 'scope-unavailable':
+      return { outcome: 'denied', failureCategory: 'authorization' };
+    case 'idempotency-key-reuse':
+    case 'mutation-conflict':
+      return { outcome: 'denied', failureCategory: 'conflict' };
+    case 'active-card-limit':
+    case 'vault-plaintext-limit':
+      return { outcome: 'denied', failureCategory: 'quota' };
+    case 'quota-unavailable':
+      return { outcome: 'failure', failureCategory: 'dependency' };
+    default:
+      return assertNever(reason, 'Unhandled Sync V2 rejection telemetry');
+  }
+}
+
+function observedResponse(
+  dependencies: SyncV2HttpDependencies,
+  response: Response,
+  outcome: TelemetryOutcome,
+  failureCategory: TelemetryFailureCategory,
+  workItems: number | null,
+): Response {
+  const bucket = bucketTelemetryCount(workItems);
+  if (bucket.kind === 'rejected') return response;
+  recordTelemetrySafely(
+    dependencies.telemetry ?? noOpTelemetrySink,
+    planTelemetryEvent({
+      operation: 'sync-v2',
+      outcome,
+      failureCategory,
+      durationBucket: 'not-measured',
+      workItemsBucket: bucket.bucket,
+    }),
+  );
+  return response;
 }
