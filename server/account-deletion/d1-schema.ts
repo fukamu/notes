@@ -108,3 +108,40 @@ export const accountDeletionStepReceipts = sqliteTable(
     ),
   ],
 );
+
+export const accountDeletionContinuations = sqliteTable(
+  'account_deletion_continuations',
+  {
+    operationId: text('operation_id').primaryKey(),
+    idempotencyKeyHash: text('idempotency_key_hash').notNull(),
+    secretHash: text('secret_hash').notNull(),
+    sequence: integer('sequence').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_account_deletion_continuations_secret').on(
+      table.secretHash,
+    ),
+    index('idx_account_deletion_continuations_expiry').on(
+      table.expiresAt,
+      table.operationId,
+    ),
+    foreignKey({
+      columns: [table.operationId],
+      foreignColumns: [accountDeletionOperations.operationId],
+      name: 'account_deletion_continuations_operation_fk',
+    }).onDelete('cascade'),
+    check(
+      'account_deletion_continuations_shape_check',
+      sql`length(${table.idempotencyKeyHash}) = 43
+        AND length(${table.secretHash}) = 43
+        AND ${table.sequence} BETWEEN 0 AND 2147483647
+        AND ${table.createdAt} >= 0
+        AND ${table.expiresAt} > ${table.createdAt}
+        AND ${table.updatedAt} >= ${table.createdAt}
+        AND ${table.updatedAt} < ${table.expiresAt}`,
+    ),
+  ],
+);

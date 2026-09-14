@@ -71,6 +71,13 @@
       "when": 1789328483601,
       "tag": "0009_account_deletion_saga",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1789342935497,
+      "tag": "0010_account_deletion_continuation",
+      "breakpoints": true
     }
   ]
 }

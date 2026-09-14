@@ -3,9 +3,14 @@ import { readFile } from 'node:fs/promises';
 import { getTableConfig } from 'drizzle-orm/sqlite-core';
 import { describe, expect, it } from 'vitest';
 import {
+  accountDeletionContinuations,
   accountDeletionOperations,
   accountDeletionStepReceipts,
 } from '@/server/account-deletion/d1-schema';
+import {
+  accountDeletionContinuationMigration,
+  accountDeletionContinuationStatements,
+} from '@/server/account-deletion/continuation-migration';
 import {
   accountDeletionSagaMigration,
   accountDeletionSagaStatements,
@@ -70,5 +75,57 @@ describe('account deletion saga schema', () => {
       .update(accountDeletionSagaStatements.join('\n'))
       .digest('hex');
     expect(accountDeletionSagaMigration.checksum).toBe(`sha256:${checksum}`);
+  });
+
+  it('adds only hash-based, operation-scoped continuation capability state', async () => {
+    const continuations = getTableConfig(accountDeletionContinuations);
+    expect(continuations.columns).toHaveLength(7);
+    expect(continuations.indexes.map((index) => index.config.name)).toEqual([
+      'idx_account_deletion_continuations_secret',
+      'idx_account_deletion_continuations_expiry',
+    ]);
+    expect(continuations.foreignKeys).toHaveLength(1);
+    expect(continuations.checks).toHaveLength(1);
+
+    const source = await readFile(
+      'drizzle/0010_account_deletion_continuation.sql',
+      'utf8',
+    );
+    for (const marker of [
+      'account_deletion_continuations',
+      'idempotency_key_hash',
+      'secret_hash',
+      'expires_at',
+      'sequence',
+    ]) {
+      expect(source).toContain(marker);
+    }
+    for (const excluded of [
+      'continuation_token',
+      'idempotency_key TEXT',
+      'account_id',
+      'vault_id',
+      'provider',
+      'plaintext',
+    ]) {
+      expect(source.toLowerCase()).not.toContain(excluded.toLowerCase());
+    }
+    expect(productionMigrationManifest).toContain(
+      accountDeletionContinuationMigration,
+    );
+    expect(
+      productionMigrationManifest.indexOf(accountDeletionContinuationMigration),
+    ).toBeGreaterThan(
+      productionMigrationManifest.indexOf(accountDeletionSagaMigration),
+    );
+  });
+
+  it('pins the continuation migration statements to their SHA-256 checksum', () => {
+    const checksum = createHash('sha256')
+      .update(accountDeletionContinuationStatements.join('\n'))
+      .digest('hex');
+    expect(accountDeletionContinuationMigration.checksum).toBe(
+      `sha256:${checksum}`,
+    );
   });
 });

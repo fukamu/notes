@@ -10,6 +10,8 @@ import {
 import { accountIdDecoder, vaultIdDecoder } from '../../lib/domain/identity';
 import {
   accountDeletionAttemptDecoder,
+  accountDeletionContinuationSequenceDecoder,
+  accountDeletionCredentialHashDecoder,
   accountDeletionFailureCodeDecoder,
   accountDeletionOperationDecoder,
   accountDeletionOperationIdDecoder,
@@ -17,6 +19,7 @@ import {
   accountDeletionStepDecoder,
   accountDeletionStepReceiptDecoder,
   type AccountDeletionOperation,
+  type AccountDeletionContinuation,
   type AccountDeletionState,
   type AccountDeletionStepReceipt,
 } from './public';
@@ -52,11 +55,24 @@ export const accountDeletionReceiptRowDecoder = objectDecoder({
   completed_at: timestampDecoder,
 });
 
+export const accountDeletionContinuationRowDecoder = objectDecoder({
+  operation_id: accountDeletionOperationIdDecoder,
+  idempotency_key_hash: accountDeletionCredentialHashDecoder,
+  secret_hash: accountDeletionCredentialHashDecoder,
+  sequence: accountDeletionContinuationSequenceDecoder,
+  expires_at: timestampDecoder,
+  created_at: timestampDecoder,
+  updated_at: timestampDecoder,
+});
+
 export type AccountDeletionOperationRow = InferDecoder<
   typeof accountDeletionOperationRowDecoder
 >;
 export type AccountDeletionReceiptRow = InferDecoder<
   typeof accountDeletionReceiptRowDecoder
+>;
+export type AccountDeletionContinuationRow = InferDecoder<
+  typeof accountDeletionContinuationRowDecoder
 >;
 
 export function mapAccountDeletionOperationRow(
@@ -183,6 +199,20 @@ export function mapAccountDeletionReceiptRow(
     );
   }
   return decoded.value;
+}
+
+export function mapAccountDeletionContinuationRow(
+  row: AccountDeletionContinuationRow,
+): AccountDeletionContinuation {
+  return {
+    operationId: row.operation_id,
+    idempotencyKeyHash: row.idempotency_key_hash,
+    secretHash: row.secret_hash,
+    sequence: row.sequence,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 function invalidOperationRow(reason: string): never {
