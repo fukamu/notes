@@ -2024,3 +2024,43 @@ describe('privacy disclosure architecture', () => {
     expect(documentation).toContain('fails before');
   });
 });
+
+describe('privacy processing registry architecture', () => {
+  it('keeps inventory decisions typed, provider-neutral, and fail-closed', async () => {
+    const [
+      domain,
+      core,
+      adapter,
+      script,
+      packageSource,
+      coverage,
+      documentation,
+    ] = await Promise.all([
+      readFile('lib/domain/privacy-processing.ts', 'utf8'),
+      readFile('lib/application/privacy-processing-registry.ts', 'utf8'),
+      readFile('lib/environment/privacy-processing-registry.ts', 'utf8'),
+      readFile('scripts/verify-privacy-processing-registry.mjs', 'utf8'),
+      readFile('package.json', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+      readFile('docs/privacy-processing-registry.md', 'utf8'),
+    ]);
+
+    expect(domain).toContain("'vault-content'");
+    expect(domain).toContain("'device-offline-replica'");
+    expect(core).toContain('evaluatePrivacyProcessingConsistency');
+    expect(core).toContain("kind: 'decision-required'");
+    expect(core).not.toMatch(
+      /process\.env|fetch\(|indexedDB|window\.|document\.|localStorage|console\./,
+    );
+    expect(adapter).toContain('process.env');
+    expect(script).toContain('evaluatePrivacyProcessingConsistency');
+    expect(packageSource).toContain(
+      'npm run check:privacy-processing-registry',
+    );
+    expect(coverage).toContain(
+      "'lib/application/privacy-processing-registry.ts'",
+    );
+    expect(documentation).toContain('does not add AccountId or VaultId');
+    expect(documentation).toContain('no D1/R2/KMS/Stripe operation');
+  });
+});
