@@ -140,6 +140,7 @@ describe('pure-core dependency direction', () => {
     'server/quota/ledger-core.ts',
     'server/sync-v2/core.ts',
     'server/sync-v2/quota-core.ts',
+    'server/terms-consent/core.ts',
   ];
 
   it('keeps core imports independent of concrete effect adapters', async () => {

@@ -11,6 +11,7 @@ import { privacyRequestJournalMigration } from '../privacy-request/migration';
 import { vaultQuotaLedgerMigration } from '../quota/migration';
 import { vaultContentMigration } from '../vault-content/migration';
 import { syncV2JournalMigration } from '../vault-content/sync-v2-migration';
+import { termsConsentLedgerMigration } from '../terms-consent/migration';
 
 export const productionMigrationManifest = [
   identityVaultControlPlaneMigration,
@@ -26,4 +27,5 @@ export const productionMigrationManifest = [
   vaultQuotaLedgerMigration,
   contractEvidenceMigration,
   privacyRequestJournalMigration,
+  termsConsentLedgerMigration,
 ] as const;
