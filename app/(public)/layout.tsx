@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { PublicRouteLink } from '@/components/public-route-link';
 
 const legalHref = '/legal/commercial-transactions';
+const privacyHref = '/legal/privacy';
 
 export default function PublicRouteLayout({
   children,
@@ -33,6 +34,12 @@ export default function PublicRouteLayout({
             </PublicRouteLink>
             <PublicRouteLink
               className="hover:text-foreground"
+              href={privacyHref}
+            >
+              個人情報保護方針
+            </PublicRouteLink>
+            <PublicRouteLink
+              className="hover:text-foreground"
               href="/account/billing"
             >
               契約管理
@@ -53,6 +60,12 @@ export default function PublicRouteLayout({
             </PublicRouteLink>
             <PublicRouteLink className="hover:text-foreground" href={legalHref}>
               特定商取引法に基づく表記
+            </PublicRouteLink>
+            <PublicRouteLink
+              className="hover:text-foreground"
+              href={privacyHref}
+            >
+              個人情報保護方針
             </PublicRouteLink>
             <PublicRouteLink
               className="hover:text-foreground"

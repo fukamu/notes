@@ -1985,3 +1985,42 @@ describe('legal commerce disclosure architecture', () => {
     expect(documentation).toContain('fails before a deployable build exists');
   });
 });
+
+describe('privacy disclosure architecture', () => {
+  it('keeps production values fail-closed and the policy outside the Notes UI', async () => {
+    const [
+      core,
+      adapter,
+      script,
+      packageSource,
+      coverage,
+      notes,
+      page,
+      documentation,
+    ] = await Promise.all([
+      readFile('lib/application/privacy-disclosure.ts', 'utf8'),
+      readFile('lib/environment/privacy-disclosure.ts', 'utf8'),
+      readFile('scripts/verify-privacy-disclosure.mjs', 'utf8'),
+      readFile('package.json', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+      readFile('components/notes-presentation.tsx', 'utf8'),
+      readFile('app/(public)/legal/privacy/page.tsx', 'utf8'),
+      readFile('docs/privacy-disclosure.md', 'utf8'),
+    ]);
+
+    expect(core).toContain('decodePrivacyDisclosure');
+    expect(core).toContain('resolvePrivacyDisclosure');
+    expect(core).not.toMatch(
+      /process\.env|fetch\(|indexedDB|window\.|document\.|localStorage|console\./,
+    );
+    expect(adapter).toContain('process.env');
+    expect(script).toContain('resolvePrivacyDisclosure(process.env)');
+    expect(packageSource).toContain('npm run check:privacy-disclosure');
+    expect(packageSource).toContain("'app/(public)'");
+    expect(coverage).toContain("'lib/application/privacy-disclosure.ts'");
+    expect(page).toContain('title="個人情報保護方針"');
+    expect(notes).not.toMatch(/legal\/privacy|個人情報保護方針/);
+    expect(documentation).toContain('does not mount the Notes');
+    expect(documentation).toContain('fails before');
+  });
+});

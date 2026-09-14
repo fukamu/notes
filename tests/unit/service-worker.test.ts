@@ -113,6 +113,7 @@ describe('Service Worker cache policy', () => {
       ['GET', '/billing', 'navigate'],
       ['GET', '/checkout', 'navigate'],
       ['GET', '/account/billing', 'navigate'],
+      ['GET', '/legal/privacy', 'navigate'],
       ['GET', '/account', 'navigate'],
       ['GET', '/cards/card-id?token=secret', 'navigate'],
       ['GET', '/_next/static/chunks/app.js?user=1', 'no-cors'],
