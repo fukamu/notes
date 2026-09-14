@@ -133,6 +133,7 @@ describe('pure-core dependency direction', () => {
     'server/entitlement/core.ts',
     'server/legal-checkout/checkout-core.ts',
     'server/legal-checkout/core.ts',
+    'server/privacy-request/core.ts',
     'server/operations/core.ts',
     'server/quota/core.ts',
     'server/quota/ledger-core.ts',

@@ -3,17 +3,16 @@ import {
   privacyDataCategoryIds,
   type PrivacyDataCategoryId,
 } from '../domain/privacy-processing.ts';
+import {
+  isPrivacyRequestKind,
+  privacyRequestKinds,
+  type PrivacyRequestKind,
+} from '../domain/privacy-request.ts';
+
+export type { PrivacyRequestKind } from '../domain/privacy-request.ts';
 
 export const PRIVACY_DISCLOSURE_SCHEMA_VERSION = 1;
 export const PRIVACY_BACKUP_RETENTION_MAXIMUM_DAYS = 30;
-
-export type PrivacyRequestKind =
-  | 'purpose-notification'
-  | 'disclosure'
-  | 'correction'
-  | 'usage-suspension'
-  | 'deletion'
-  | 'third-party-provision-suspension';
 
 export type PrivacyCollectionItem = Readonly<{
   categoryId: PrivacyDataCategoryId;
@@ -77,14 +76,7 @@ export type PrivacyDisclosureResolution =
       readonly issues: readonly string[];
     };
 
-const requiredRequestKinds: readonly PrivacyRequestKind[] = [
-  'purpose-notification',
-  'disclosure',
-  'correction',
-  'usage-suspension',
-  'deletion',
-  'third-party-provision-suspension',
-];
+const requiredRequestKinds: readonly PrivacyRequestKind[] = privacyRequestKinds;
 
 export const localPrivacyDisclosureFixture: PrivacyDisclosure = {
   schemaVersion: PRIVACY_DISCLOSURE_SCHEMA_VERSION,
@@ -744,17 +736,6 @@ function validateProductionDisclosure(
     }
   }
   return issues;
-}
-
-function isPrivacyRequestKind(input: unknown): input is PrivacyRequestKind {
-  return (
-    input === 'purpose-notification' ||
-    input === 'disclosure' ||
-    input === 'correction' ||
-    input === 'usage-suspension' ||
-    input === 'deletion' ||
-    input === 'third-party-provision-suspension'
-  );
 }
 
 function requiredString(
