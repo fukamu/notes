@@ -122,6 +122,7 @@ describe('pure-core dependency direction', () => {
     'server/account-deletion/core.ts',
     'server/account-deletion/delete-vault-data-core.ts',
     'server/account-deletion/finalize-account-core.ts',
+    'server/account-deletion/http-core.ts',
     'server/billing/cancellation-core.ts',
     'server/billing/core.ts',
     'server/crypto/core.ts',
@@ -489,10 +490,10 @@ function accountDeletionBoundaryViolation(
     return false;
   }
   return (
-    /server\/account-deletion\/(?:cancel-subscription|core|d1-adapter|d1-schema|delete-private-objects|delete-private-objects-core|delete-vault-data|delete-vault-data-core|finalize-account|finalize-account-core|migration|records|revoke-sessions)/.test(
+    /server\/account-deletion\/(?:application|cancel-subscription|continuation-migration|core|d1-adapter|d1-schema|delete-private-objects|delete-private-objects-core|delete-vault-data|delete-vault-data-core|finalize-account|finalize-account-core|http-core|migration|records|revoke-sessions|web-credentials)/.test(
       source,
     ) ||
-    /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:account_deletion_operations|account_deletion_step_receipts)\b/i.test(
+    /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:account_deletion_operations|account_deletion_step_receipts|account_deletion_continuations)\b/i.test(
       source,
     )
   );
@@ -598,6 +599,37 @@ describe('Account deletion saga ownership', () => {
       /(?:encrypted-object|crypto|control-plane)\/(?:core|d1-adapter|d1-finalization|d1-schema|migration|ports|records)|D1Database|\.prepare\(|Date\.now|R2|KMS|Stripe|fetch\(/,
     );
     expect(testConfig).toContain("'server/**/*.ts'");
+  });
+
+  it('keeps authenticated deletion HTTP decisions pure and production routes fail closed', async () => {
+    const [core, application, handler, credentials, startRoute, statusRoute] =
+      await Promise.all([
+        readFile('server/account-deletion/http-core.ts', 'utf8'),
+        readFile('server/account-deletion/application.ts', 'utf8'),
+        readFile('app/api/account/deletion/handler.ts', 'utf8'),
+        readFile('server/account-deletion/web-credentials.ts', 'utf8'),
+        readFile('app/api/account/deletion/route.ts', 'utf8'),
+        readFile('app/api/account/deletion/status/route.ts', 'utf8'),
+      ]);
+    expect(core).toContain('planAccountDeletionContinuationConsume');
+    expect(core).toContain('planAccountDeletionRun');
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise|Request|Response/,
+    );
+    expect(application).toContain('executeRevokeSessionsStep');
+    expect(application).toContain("case 'revoke-sessions':");
+    expect(application).not.toMatch(/D1Database|\.prepare\(|Date\.now|fetch\(/);
+    expect(handler).toContain('deriveVaultContext');
+    expect(handler).toContain('accountDeletionStartRequestDecoder.decode');
+    expect(handler).not.toMatch(
+      /entitlement|accountId:\s*decoded|vaultId:\s*decoded/,
+    );
+    expect(credentials).toContain('crypto.subtle.sign(');
+    expect(credentials).toContain('crypto.subtle.digest(');
+    for (const route of [startRoute, statusRoute]) {
+      expect(route).toContain('return unavailable(503)');
+      expect(route).not.toMatch(/\/fake|createFake|allowAll/);
+    }
   });
 });
 

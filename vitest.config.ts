@@ -14,6 +14,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json-summary'],
       include: [
+        'app/api/account/deletion/handler.ts',
         'components/session-notes-app.tsx',
         'lib/application/logout-coordination.ts',
         'lib/application/notes-access.ts',
