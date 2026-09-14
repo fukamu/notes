@@ -6,6 +6,7 @@ import { envelopeEncryptionMetadataMigration } from '../crypto/migration';
 import { dekRotationMigration } from '../crypto/rotation-migration';
 import { encryptedObjectRepositoryMigration } from '../encrypted-object/migration';
 import { entitlementMigration } from '../entitlement/migration';
+import { contractEvidenceMigration } from '../legal-checkout/migration';
 import { vaultQuotaLedgerMigration } from '../quota/migration';
 import { vaultContentMigration } from '../vault-content/migration';
 import { syncV2JournalMigration } from '../vault-content/sync-v2-migration';
@@ -22,4 +23,5 @@ export const productionMigrationManifest = [
   accountDeletionContinuationMigration,
   dekRotationMigration,
   vaultQuotaLedgerMigration,
+  contractEvidenceMigration,
 ] as const;

@@ -131,6 +131,7 @@ describe('pure-core dependency direction', () => {
     'server/encrypted-object/recovery-core.ts',
     'server/encrypted-object/reencryption-core.ts',
     'server/entitlement/core.ts',
+    'server/legal-checkout/core.ts',
     'server/operations/core.ts',
     'server/quota/core.ts',
     'server/quota/ledger-core.ts',
@@ -1044,6 +1045,86 @@ describe('Billing module ownership', () => {
       /process\.env|D1Database|fetch\(|Stripe/,
     );
     expect(testConfig).toContain("'server/**/*.ts'");
+  });
+});
+
+function legalCheckoutBoundaryViolation(file: string, source: string): boolean {
+  if (
+    file.startsWith('server/legal-checkout/') ||
+    file.startsWith('server/migrations/')
+  ) {
+    return false;
+  }
+  return (
+    /(?:(?:@\/)?server\/legal-checkout|(?:\.\.?\/)+legal-checkout)\/(?:core|d1-adapter|d1-schema|fake|migration|records|service|web-crypto-hash)/.test(
+      source,
+    ) ||
+    /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+contract_evidence\b/i.test(source)
+  );
+}
+
+describe('Contract evidence module ownership', () => {
+  it('keeps private persistence and hashing adapters inside their owner module', async () => {
+    const files = (await Promise.all(roots.map(sourceFiles))).flat();
+    const violations: string[] = [];
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (legalCheckoutBoundaryViolation(file, source)) violations.push(file);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('detects private imports and direct writes while allowing the public contract', () => {
+    expect(
+      legalCheckoutBoundaryViolation(
+        'app/api/billing/checkout.ts',
+        "import { createContractEvidenceService } from '../../../server/legal-checkout/service'",
+      ),
+    ).toBe(true);
+    expect(
+      legalCheckoutBoundaryViolation(
+        'app/api/billing/checkout.ts',
+        'INSERT INTO contract_evidence(account_id) VALUES (?)',
+      ),
+    ).toBe(true);
+    expect(
+      legalCheckoutBoundaryViolation(
+        'app/api/billing/checkout.ts',
+        "import type { ContractEvidenceService } from '../../../server/legal-checkout/public'",
+      ),
+    ).toBe(false);
+  });
+
+  it('derives authoritative terms in pure core and scopes append-only evidence by Vault', async () => {
+    const [core, publicContract, service, adapter, fake, hasher, production] =
+      await Promise.all([
+        readFile('server/legal-checkout/core.ts', 'utf8'),
+        readFile('server/legal-checkout/public.ts', 'utf8'),
+        readFile('server/legal-checkout/service.ts', 'utf8'),
+        readFile('server/legal-checkout/d1-adapter.ts', 'utf8'),
+        readFile('server/legal-checkout/fake.ts', 'utf8'),
+        readFile('server/legal-checkout/web-crypto-hash.ts', 'utf8'),
+        readFile('server/migrations/production.ts', 'utf8'),
+      ]);
+    expect(core).toContain('planContractOffer');
+    expect(core).toContain('planContractEvidence');
+    expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Promise|Date\.now|crypto\.|fetch\(|process\.env/,
+    );
+    expect(publicContract).toContain('type ContractEvidenceService');
+    expect(publicContract).toContain('type ContractEvidenceRepository');
+    expect(publicContract).not.toMatch(/D1Database|Stripe|Checkout\.Session/);
+    expect(service).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|fetch\(|process\.env/,
+    );
+    expect(adapter).toContain('record.scope.accountId');
+    expect(adapter).toContain('record.scope.vaultId');
+    expect(adapter).toContain('WHERE account_id = ? AND vault_id = ?');
+    expect(adapter).not.toMatch(/CREATE\s+(?:TABLE|INDEX|TRIGGER)/i);
+    expect(fake).not.toMatch(/D1Database|process\.env|fetch\(/);
+    expect(hasher).toContain('subtle.digest(');
+    expect(hasher).toContain("'SHA-256'");
+    expect(production).toContain('contractEvidenceMigration');
   });
 });
 
