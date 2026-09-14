@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { LegalDocument } from '@/components/legal-document';
 import { PublicRouteLink } from '@/components/public-route-link';
+import { buttonVariants } from '@/components/ui/button';
 import {
   billingPeriodLabel,
   formatTaxIncludedPrice,
@@ -58,6 +59,15 @@ export default function PricingPage() {
           </PublicRouteLink>
           をご確認ください。
         </p>
+        <PublicRouteLink
+          className={buttonVariants({
+            size: 'lg',
+            className: 'mt-7 min-h-11',
+          })}
+          href="/checkout"
+        >
+          申込み内容を確認する
+        </PublicRouteLink>
       </section>
 
       <section className="mt-10" aria-labelledby="requirements-heading">
