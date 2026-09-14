@@ -134,6 +134,7 @@ describe('pure-core dependency direction', () => {
     'server/quota/core.ts',
     'server/quota/ledger-core.ts',
     'server/sync-v2/core.ts',
+    'server/sync-v2/quota-core.ts',
   ];
 
   it('keeps core imports independent of concrete effect adapters', async () => {
@@ -913,12 +914,15 @@ function billingBoundaryViolation(file: string, source: string): boolean {
 function quotaLedgerBoundaryViolation(file: string, source: string): boolean {
   if (
     file.startsWith('server/quota/') ||
+    file === 'server/composition/sync-v2.ts' ||
     file.startsWith('server/migrations/')
   ) {
     return false;
   }
   return (
-    /server\/quota\/(?:d1-adapter|d1-schema|migration|records)/.test(source) ||
+    /(?:(?:@\/)?server\/quota|(?:\.\.?\/)+quota)\/(?:d1-adapter|d1-schema|migration|records)/.test(
+      source,
+    ) ||
     /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:vault_quota_usage|vault_quota_reservations)\b/i.test(
       source,
     )
@@ -1133,17 +1137,29 @@ describe('Entitlement module ownership', () => {
 
 describe('authenticated Sync v2 composition', () => {
   it('keeps decisions pure, handlers on public ports, and concrete wiring in one root', async () => {
-    const [core, service, publicContract, handler, composition, route] =
-      await Promise.all([
-        readFile('server/sync-v2/core.ts', 'utf8'),
-        readFile('server/sync-v2/service.ts', 'utf8'),
-        readFile('server/sync-v2/public.ts', 'utf8'),
-        readFile('app/api/v2/sync/handler.ts', 'utf8'),
-        readFile('server/composition/sync-v2.ts', 'utf8'),
-        readFile('app/api/v2/sync/route.ts', 'utf8'),
-      ]);
+    const [
+      core,
+      quotaCore,
+      service,
+      publicContract,
+      handler,
+      composition,
+      route,
+    ] = await Promise.all([
+      readFile('server/sync-v2/core.ts', 'utf8'),
+      readFile('server/sync-v2/quota-core.ts', 'utf8'),
+      readFile('server/sync-v2/service.ts', 'utf8'),
+      readFile('server/sync-v2/public.ts', 'utf8'),
+      readFile('app/api/v2/sync/handler.ts', 'utf8'),
+      readFile('server/composition/sync-v2.ts', 'utf8'),
+      readFile('app/api/v2/sync/route.ts', 'utf8'),
+    ]);
     expect(core).toContain('planSyncV2Mutation');
     expect(core).not.toMatch(
+      /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise|TextEncoder|TextDecoder/,
+    );
+    expect(quotaCore).toContain('toSyncV2VaultQuotaChange');
+    expect(quotaCore).not.toMatch(
       /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise|TextEncoder|TextDecoder/,
     );
     expect(service).toContain('createSyncV2Application');
@@ -1154,6 +1170,7 @@ describe('authenticated Sync v2 composition', () => {
     expect(publicContract).toContain('type SyncV2ContentDirectory');
     expect(publicContract).not.toMatch(/D1Database|R2Bucket|Stripe/);
     expect(handler).toContain("'notes-sync'");
+    expect(handler).toContain('readLimits');
     expect(handler).toContain('entitlement/public');
     expect(handler).not.toMatch(
       /billing\/|stripe\/|entitlement\/(?:core|d1-adapter|records|service)/,
@@ -1161,6 +1178,7 @@ describe('authenticated Sync v2 composition', () => {
     expect(composition).toContain('createD1SyncV2HttpHandler');
     expect(composition).toContain('D1SyncV2JournalDirectory');
     expect(composition).toContain('EncryptedSyncV2ContentDirectory');
+    expect(composition).toContain('D1VaultQuotaLedgerDirectory');
     expect(composition).not.toMatch(/\/fake|allowAll|\.prepare\(/);
     expect(route).toContain('return unavailable(503)');
     expect(route).not.toMatch(/\/fake|createFake|allowAll/);

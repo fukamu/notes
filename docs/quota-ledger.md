@@ -2,8 +2,9 @@
 
 Issue #195 adds the provider-neutral reservation contract, fake, and D1 adapter
 used to make the Personal Vault limits authoritative under concurrent writes.
-It does not yet connect quota to Sync v2 or any production database; that
-composition belongs to issue #196.
+Issue #196 connects it to the authenticated Sync v2 application; see
+[Sync v2 quota enforcement](sync-v2-quota.md). Neither Issue connects a
+production database or deploys the endpoint.
 
 ## Durable model
 
@@ -45,10 +46,11 @@ visible `cas-conflict`, never a false success or a dropped reservation.
 ## Reconciliation and failure behavior
 
 `reconcileAfter` marks a pending reservation as eligible for investigation; it
-is not an expiry that automatically releases quota. The reconciler must obtain
-durable evidence from the content/journal path and explicitly commit or release
-the reservation. That cross-repository evidence is part of #196. Until then,
-abandoned reservations remain charged, which fails closed.
+is not an expiry that automatically releases quota. Sync v2 retries use a
+durable matching journal receipt to finish a pending commit. A future background
+reconciler must obtain the same durable content/journal evidence and explicitly
+commit or release the reservation. Until that evidence exists, abandoned
+reservations remain charged, which fails closed.
 
 D1 errors and malformed rows propagate as failures. No in-memory or plaintext
 fallback is used. The fake implements the same explicit-finalization rule for
@@ -59,9 +61,8 @@ production service.
 
 Migration `0012_vault_quota_ledger` is additive and intended for the new empty
 production schema. This issue does not apply it, backfill current Sites/D1
-data, or derive counters from production content. Before #196 consumes the
-ledger, rollback is to stop using the new adapter/tables while preserving the
-existing encrypted-object and journal data. After consumer integration,
-rollback must disable new online mutations before changing ledger state.
+data, or derive counters from production content. After consumer integration,
+rollback must disable new online mutations before changing ledger state and
+must preserve reservations for reconciliation.
 
 Main is unchanged and production is not deployed.

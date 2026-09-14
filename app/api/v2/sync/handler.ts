@@ -1,5 +1,5 @@
 import { BoundaryDecodeError } from '@/lib/codec/core';
-import { CONTRACT_LIMITS, nonNegativeSafeInteger } from '@/lib/domain/types';
+import { nonNegativeSafeInteger } from '@/lib/domain/types';
 import {
   decodeSyncV2Request,
   encodeSyncV2Response,
@@ -13,22 +13,35 @@ import {
 import {
   planSyncV2ApplicationHttpResult,
   planSyncV2EntitlementAccess,
+  planSyncV2EntitlementLimitAccess,
 } from '@/server/sync-v2/http-core';
 import type {
   SyncV2Application,
   SyncV2ClockPort,
 } from '@/server/sync-v2/public';
+import {
+  parseQuotaByteCount,
+  quotaTransportLimits,
+  type QuotaByteCount,
+} from '@/server/quota/public';
 
 export type SyncV2HttpDependencies = {
   readonly expectedOrigin: unknown;
   readonly clock: SyncV2ClockPort;
   readonly sessions: SessionCredentialResolver;
-  readonly entitlement: Pick<EntitlementPort, 'authorizeCapability'>;
-  readonly application: SyncV2Application;
+  readonly entitlement: Pick<
+    EntitlementPort,
+    'authorizeCapability' | 'readLimits'
+  >;
+  readonly application: Pick<SyncV2Application, 'synchronize'>;
 };
 
 type BodyReadResult =
-  | { readonly kind: 'read'; readonly value: unknown }
+  | {
+      readonly kind: 'read';
+      readonly value: unknown;
+      readonly bytes: QuotaByteCount;
+    }
   | { readonly kind: 'invalid' }
   | { readonly kind: 'too-large' };
 
@@ -96,11 +109,27 @@ export function createSyncV2HttpHandler(dependencies: SyncV2HttpDependencies) {
       return errorResponse(access.status, access.error);
     }
 
+    let limits;
+    try {
+      limits = await dependencies.entitlement.readLimits(session.context, now);
+    } catch (error: unknown) {
+      return unexpectedFailure(error);
+    }
+    const limitAccess = planSyncV2EntitlementLimitAccess(limits);
+    if (limitAccess.kind === 'reject') {
+      return errorResponse(limitAccess.status, limitAccess.error);
+    }
+    if (limits.kind !== 'available') {
+      return errorResponse(503, 'unavailable');
+    }
+
     try {
       const result = await dependencies.application.synchronize({
         context: session.context,
         request: syncRequest,
         synchronizedAt: now,
+        requestBytes: body.bytes,
+        limits: limits.limits,
       });
       if (result.kind === 'rejected') {
         const rejected = planSyncV2ApplicationHttpResult(result);
@@ -120,7 +149,9 @@ async function readBoundedJson(request: Request): Promise<BodyReadResult> {
   if (declaredLength !== null) {
     const length = Number(declaredLength);
     if (!Number.isSafeInteger(length) || length < 0) return { kind: 'invalid' };
-    if (length > CONTRACT_LIMITS.payloadBytes) return { kind: 'too-large' };
+    if (length > quotaTransportLimits.requestBytes) {
+      return { kind: 'too-large' };
+    }
   }
   let bytes: ArrayBuffer;
   try {
@@ -128,7 +159,7 @@ async function readBoundedJson(request: Request): Promise<BodyReadResult> {
   } catch {
     return { kind: 'invalid' };
   }
-  if (bytes.byteLength > CONTRACT_LIMITS.payloadBytes) {
+  if (bytes.byteLength > quotaTransportLimits.requestBytes) {
     return { kind: 'too-large' };
   }
   try {
@@ -137,7 +168,11 @@ async function readBoundedJson(request: Request): Promise<BodyReadResult> {
       ignoreBOM: false,
     }).decode(bytes);
     const value: unknown = JSON.parse(source);
-    return { kind: 'read', value };
+    return {
+      kind: 'read',
+      value,
+      bytes: parseQuotaByteCount(bytes.byteLength),
+    };
   } catch {
     return { kind: 'invalid' };
   }

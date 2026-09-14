@@ -55,6 +55,7 @@ export type EncryptedObjectWriteResult =
         | 'stale-revision'
         | 'invalid-next-revision'
         | 'invalid-timeline'
+        | 'ciphertext-limit'
         | 'cas-conflict';
     };
 
@@ -98,7 +99,16 @@ export function createEncryptedObjectService(input: {
   readonly objects: PrivateObjectStoragePort;
   readonly objectKeys: OpaqueObjectKeyGeneratorPort;
   readonly encryption: EnvelopeEncryptionService;
+  readonly maximumCiphertextBytes?: number;
 }): EncryptedObjectService {
+  const maximumCiphertextBytes =
+    input.maximumCiphertextBytes === undefined
+      ? undefined
+      : decodeOrThrow(
+          storedByteCountDecoder,
+          input.maximumCiphertextBytes,
+          'encrypted object ciphertext limit',
+        );
   return {
     async write(command) {
       const plaintextBytes = decodeOrThrow(
@@ -123,6 +133,12 @@ export function createEncryptedObjectService(input: {
           request,
         });
         if (plan.kind === 'replay') {
+          if (
+            maximumCiphertextBytes !== undefined &&
+            plan.metadata.ciphertextBytes > maximumCiphertextBytes
+          ) {
+            return { kind: 'not-applied', reason: 'ciphertext-limit' };
+          }
           return { kind: 'replayed', metadata: plan.metadata };
         }
         if (plan.kind === 'rejected') {
@@ -190,6 +206,16 @@ export function createEncryptedObjectService(input: {
           plaintext: command.plaintext,
         });
         storedBytes = encodeEncryptedObjectCiphertext(ciphertext);
+        if (
+          maximumCiphertextBytes !== undefined &&
+          storedBytes.byteLength > maximumCiphertextBytes
+        ) {
+          await input.metadata.abandonIntent({
+            intent,
+            requestedAt: command.createdAt,
+          });
+          return { kind: 'not-applied', reason: 'ciphertext-limit' };
+        }
         const put = await input.objects.putIfAbsent({
           objectKey: intent.objectKey,
           bytes: storedBytes,
@@ -205,6 +231,17 @@ export function createEncryptedObjectService(input: {
           storedBytes = existingBytes;
           authenticateExistingObject = true;
         }
+      }
+
+      if (
+        maximumCiphertextBytes !== undefined &&
+        storedBytes.byteLength > maximumCiphertextBytes
+      ) {
+        await input.metadata.abandonIntent({
+          intent,
+          requestedAt: command.createdAt,
+        });
+        return { kind: 'not-applied', reason: 'ciphertext-limit' };
       }
 
       const ciphertext = decodeEncryptedObjectCiphertext(storedBytes);

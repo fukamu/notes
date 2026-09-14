@@ -13,9 +13,10 @@ KMS provider, or change the browser replica.
 2. derive `VaultContext` from the secure session cookie and server control
    plane, never from request JSON;
 3. enforce the existing bounded JSON and Sync v2 wire codecs;
-4. authorize `notes-sync` through the Entitlement public API; and
-5. invoke the Sync v2 application with scope-bound journal and encrypted
-   content repositories.
+4. authorize `notes-sync` and read Personal Vault limits through the
+   Entitlement public API; and
+5. invoke the Sync v2 application with the measured request bytes and
+   scope-bound quota, journal, and encrypted content repositories.
 
 The handler imports neither Billing nor Stripe state. The composition root is
 the only module that constructs concrete D1 and encrypted-object adapters.
@@ -61,6 +62,11 @@ content fail closed. New content is written through the envelope-encryption
 service before the D1 journal commit. If that commit fails, retrying the same
 mutation reuses the immutable encrypted write and completes the journal without
 encrypting or uploading it again.
+
+Quota admission surrounds that existing write path without changing the v2
+browser wire. Details, failure ordering, and the separately exposed deletion
+operation are documented in
+[Sync v2 quota enforcement](sync-v2-quota.md).
 
 Journal upserts are hydrated from the exact encrypted object revision named by
 the fixed page, rather than from a newer current revision. Tombstones require

@@ -3,11 +3,20 @@ import type { CardId, ConflictId, MutationId } from '../../lib/domain/id';
 import type { BodySegment, PendingMutation } from '../../lib/domain/types';
 import type {
   SyncSequence,
+  SyncV2MutationReceipt,
   SyncV2Request,
   SyncV2Response,
 } from '../../lib/sync/v2-protocol';
 import type { SyncV2CursorAuthenticator } from '../../lib/sync/v2-cursor';
-import type { VaultPartitionRoute } from '../vault-content/records';
+import type {
+  ContentRevision,
+  VaultPartitionRoute,
+} from '../vault-content/records';
+import type { PersonalVaultLimits } from '../entitlement/public';
+import type {
+  QuotaByteCount,
+  VaultQuotaLedgerDirectory,
+} from '../quota/public';
 import type {
   SyncV2CardHead,
   SyncV2JournalDirectory,
@@ -39,6 +48,7 @@ export type SyncV2ContentWriteResult =
         | 'stale-revision'
         | 'invalid-next-revision'
         | 'invalid-timeline'
+        | 'ciphertext-limit'
         | 'cas-conflict';
     };
 
@@ -123,27 +133,57 @@ export type SyncV2ApplicationDependencies = {
   readonly contents: SyncV2ContentDirectory;
   readonly cursors: SyncV2CursorAuthenticator;
   readonly fingerprints: SyncV2MutationFingerprintPort;
+  readonly quotas: VaultQuotaLedgerDirectory;
+  readonly quotaPolicy: {
+    readonly reservationReconcileDelayMs: number;
+  };
+};
+
+export type SyncV2ApplicationRejection = {
+  readonly kind: 'rejected';
+  readonly reason:
+    | 'invalid-cursor'
+    | 'scope-unavailable'
+    | 'idempotency-key-reuse'
+    | 'mutation-conflict'
+    | 'request-limit'
+    | 'display-character-limit'
+    | 'serialized-plaintext-limit'
+    | 'ciphertext-limit'
+    | 'active-card-limit'
+    | 'vault-plaintext-limit'
+    | 'quota-unavailable';
 };
 
 export type SyncV2ApplicationResult =
   | { readonly kind: 'synchronized'; readonly response: SyncV2Response }
-  | {
-      readonly kind: 'rejected';
-      readonly reason:
-        | 'invalid-cursor'
-        | 'scope-unavailable'
-        | 'idempotency-key-reuse'
-        | 'mutation-conflict';
-    };
+  | SyncV2ApplicationRejection;
 
 export type SyncV2ApplicationInput = {
   readonly context: VaultContext;
   readonly request: SyncV2Request;
   readonly synchronizedAt: number;
+  readonly requestBytes: QuotaByteCount;
+  readonly limits: PersonalVaultLimits;
 };
+
+export type SyncV2CardDeletionInput = {
+  readonly context: VaultContext;
+  readonly mutationId: MutationId;
+  readonly cardId: CardId;
+  readonly expectedRevision: ContentRevision;
+  readonly deletedAt: number;
+  readonly synchronizedAt: number;
+  readonly limits: PersonalVaultLimits;
+};
+
+export type SyncV2CardDeletionResult =
+  | { readonly kind: 'deleted'; readonly receipt: SyncV2MutationReceipt }
+  | SyncV2ApplicationRejection;
 
 export type SyncV2Application = {
   synchronize(input: SyncV2ApplicationInput): Promise<SyncV2ApplicationResult>;
+  deleteCard(input: SyncV2CardDeletionInput): Promise<SyncV2CardDeletionResult>;
 };
 
 export type SyncV2CursorWindow = {

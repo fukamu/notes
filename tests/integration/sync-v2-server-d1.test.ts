@@ -11,6 +11,7 @@ import {
 import type { VaultContext } from '@/lib/domain/identity';
 import type { PendingMutation } from '@/lib/domain/types';
 import {
+  decodeSyncV2Request,
   decodeSyncV2Response,
   encodeSyncV2Request,
   parseSyncSequence,
@@ -19,7 +20,7 @@ import { SYNC_V2_CURSOR_VERSION } from '@/lib/sync/v2-cursor';
 import { createFakeKeyManagement } from '@/server/adapters/fake-key-management';
 import { createFakePrivateObjectStorage } from '@/server/adapters/fake-private-object-storage';
 import { createD1BillingApi } from '@/server/billing/d1-adapter';
-import { createD1SyncV2HttpHandler } from '@/server/composition/sync-v2';
+import { createD1SyncV2Composition } from '@/server/composition/sync-v2';
 import { D1IdentityVaultControlPlane } from '@/server/control-plane/d1-adapter';
 import {
   decodeVaultDekKeyring,
@@ -29,18 +30,20 @@ import {
   createEnvelopeEncryptionService,
   type EnvelopeEncryptionService,
 } from '@/server/crypto/envelope-service';
+import { paidPersonalVaultLimits } from '@/server/entitlement/public';
+import { D1VaultQuotaLedgerDirectory } from '@/server/quota/d1-adapter';
+import { parseQuotaByteCount } from '@/server/quota/public';
 import { webCryptoAes256Gcm } from '@/server/crypto/web-aes-gcm';
 import type { OpaqueObjectKeyGeneratorPort } from '@/server/encrypted-object/ports';
 import { productionMigrationManifest } from '@/server/migrations/production';
 import { runD1Migrations } from '@/server/migrations/d1-runner';
+import { encodeSyncV2StoredCard } from '@/server/sync-v2/content-codec';
 import {
   createWebCryptoSyncV2CursorAuthenticator,
   webCryptoSyncV2MutationFingerprints,
 } from '@/server/sync-v2/web-crypto';
 import { D1VaultContentDirectory } from '@/server/vault-content/d1-adapter';
 import { parseContentRevision } from '@/server/vault-content/records';
-import { D1SyncV2JournalDirectory } from '@/server/vault-content/sync-v2-d1-adapter';
-import { parseSyncV2MutationFingerprint } from '@/server/vault-content/sync-v2-public';
 import {
   beginCheckoutCommand,
   paymentFailedFact,
@@ -63,6 +66,7 @@ import { encryptedObjectIds } from '@/tests/fixtures/encrypted-object';
 import { fixtureCardId, fixtureMutationId } from '@/tests/fixtures/ids';
 import { cookieHeader } from '@/tests/fixtures/session';
 import { vaultContentIds } from '@/tests/fixtures/vault-content';
+import { vaultContentContext } from '@/tests/fixtures/vault-content';
 
 type TestDatabase = Awaited<ReturnType<Miniflare['getD1Database']>>;
 
@@ -70,6 +74,14 @@ const expectedOrigin = 'https://notes.example';
 const deviceId = createCompatibilityFixture().request.deviceId;
 const cursorSecret = new Uint8Array(32).fill(0x51);
 const flowMutation = mutation('sync-v2-server-flow');
+const flowUpdateMutation: PendingMutation = {
+  ...flowMutation,
+  mutationId: fixtureMutationId('sync-v2-server-flow-update'),
+  baseServerRevision: 1,
+  title: 'Updated encrypted server card',
+  body: [{ type: 'text', text: 'updated tenant-only plaintext' }],
+  updatedAt: 1_450,
+};
 const recoveryMutation = mutation('sync-v2-server-recovery');
 
 // The end-to-end D1 composition exercises auth, encryption, cursor paging,
@@ -81,24 +93,55 @@ vi.setConfig({ testTimeout: 15_000 });
 let miniflare: Miniflare;
 let flowDatabase: TestDatabase;
 let recoveryDatabase: TestDatabase;
+let limitsDatabase: TestDatabase;
+let conflictDatabase: TestDatabase;
+let concurrencyDatabase: TestDatabase;
+let tenantsDatabase: TestDatabase;
 
 beforeAll(async () => {
   miniflare = new Miniflare({
     modules: true,
     script: 'export default { fetch() { return new Response("ok") } }',
-    d1Databases: ['FLOW', 'RECOVERY'],
+    d1Databases: [
+      'FLOW',
+      'RECOVERY',
+      'LIMITS',
+      'CONFLICT',
+      'CONCURRENCY',
+      'TENANTS',
+    ],
   });
   flowDatabase = await miniflare.getD1Database('FLOW');
   recoveryDatabase = await miniflare.getD1Database('RECOVERY');
-  for (const database of [flowDatabase, recoveryDatabase]) {
+  limitsDatabase = await miniflare.getD1Database('LIMITS');
+  conflictDatabase = await miniflare.getD1Database('CONFLICT');
+  concurrencyDatabase = await miniflare.getD1Database('CONCURRENCY');
+  tenantsDatabase = await miniflare.getD1Database('TENANTS');
+  for (const database of [
+    flowDatabase,
+    recoveryDatabase,
+    limitsDatabase,
+    conflictDatabase,
+    concurrencyDatabase,
+    tenantsDatabase,
+  ]) {
     await runD1Migrations({
       database,
       manifest: productionMigrationManifest,
       appliedAt: 1_000,
     });
     await database.prepare('PRAGMA foreign_keys = ON').run();
+  }
+  for (const database of [
+    flowDatabase,
+    recoveryDatabase,
+    limitsDatabase,
+    conflictDatabase,
+    concurrencyDatabase,
+  ]) {
     await provision(database);
   }
+  await provisionTwoVaults(tenantsDatabase);
 });
 
 afterEach(() => {
@@ -115,15 +158,19 @@ describe('D1 Sync v2 server composition', () => {
     const objects = createFakePrivateObjectStorage();
     const encryption = countedEncryption(encryptionFor(controlPlaneContext()));
     const cursors = createWebCryptoSyncV2CursorAuthenticator(cursorSecret);
-    const handler = createHandler({
+    const composition = createComposition({
       database: flowDatabase,
       now,
       objects,
       encryption: encryption.port,
       cursors,
-      objectKeys: objectKeys([encryptedObjectIds.objectKeyA]),
+      objectKeys: objectKeys([
+        encryptedObjectIds.objectKeyA,
+        encryptedObjectIds.objectKeyB,
+      ]),
       keyring: keyringFor(controlPlaneContext().vaultId),
     });
+    const handler = composition.handler;
 
     const firstResponse = await handler(syncRequest([flowMutation]));
     expect(firstResponse.status).toBe(200);
@@ -147,6 +194,15 @@ describe('D1 Sync v2 server composition', () => {
       ],
       page: { kind: 'complete' },
     });
+    await expect(quotaUsage(flowDatabase)).resolves.toMatchObject({
+      active_cards: 1,
+      plaintext_bytes: encodeSyncV2StoredCard({
+        title: flowMutation.title,
+        body: flowMutation.body,
+        createdAt: flowMutation.createdAt,
+        updatedAt: flowMutation.updatedAt,
+      }).byteLength,
+    });
 
     const afterFirst = adapterCalls(objects.calls(), encryption.calls());
     const replayResponse = await handler(
@@ -162,31 +218,79 @@ describe('D1 Sync v2 server composition', () => {
       afterFirst,
     );
 
-    const journal = await openJournal(flowDatabase, controlPlaneContext());
+    const updateResponse = await handler(
+      syncRequest([flowUpdateMutation], replay.page.nextCursor),
+    );
+    expect(updateResponse.status).toBe(200);
+    const updated = decodeSyncV2Response(await updateResponse.json(), [
+      flowUpdateMutation,
+    ]);
+    expect(updated.receipts).toEqual([
+      {
+        mutationId: flowUpdateMutation.mutationId,
+        cardId: flowUpdateMutation.cardId,
+        appliedRevision: 2,
+      },
+    ]);
+    await expect(quotaUsage(flowDatabase)).resolves.toMatchObject({
+      active_cards: 1,
+      plaintext_bytes: encodeSyncV2StoredCard({
+        title: flowUpdateMutation.title,
+        body: flowUpdateMutation.body,
+        createdAt: flowUpdateMutation.createdAt,
+        updatedAt: flowUpdateMutation.updatedAt,
+      }).byteLength,
+    });
+
     await expect(
-      journal.commit({
-        kind: 'card-delete',
+      composition.application.deleteCard({
+        context: controlPlaneContext(),
         mutationId: fixtureMutationId('sync-v2-server-delete'),
-        fingerprint: parseSyncV2MutationFingerprint(`${'z'.repeat(42)}A`),
         cardId: flowMutation.cardId,
-        expectedRevision: parseContentRevision(1),
-        tombstoneRevision: parseContentRevision(2),
+        expectedRevision: parseContentRevision(2),
         deletedAt: 1_550,
-        committedAt: 1_550,
+        synchronizedAt: 1_550,
+        limits: paidPersonalVaultLimits,
       }),
-    ).resolves.toMatchObject({ kind: 'applied' });
+    ).resolves.toMatchObject({
+      kind: 'deleted',
+      receipt: { appliedRevision: 3 },
+    });
+    await expect(quotaUsage(flowDatabase)).resolves.toMatchObject({
+      active_cards: 0,
+      plaintext_bytes: 0,
+    });
+
+    const beforeDeleteReplay = adapterCalls(
+      objects.calls(),
+      encryption.calls(),
+    );
+    await expect(
+      composition.application.deleteCard({
+        context: controlPlaneContext(),
+        mutationId: fixtureMutationId('sync-v2-server-delete'),
+        cardId: flowMutation.cardId,
+        expectedRevision: parseContentRevision(2),
+        deletedAt: 1_550,
+        synchronizedAt: 1_550,
+        limits: paidPersonalVaultLimits,
+      }),
+    ).resolves.toMatchObject({ kind: 'deleted' });
+    expect(adapterCalls(objects.calls(), encryption.calls())).toEqual(
+      beforeDeleteReplay,
+    );
 
     const beforeTombstone = adapterCalls(objects.calls(), encryption.calls());
     const tombstoneResponse = await handler(
-      syncRequest([], replay.page.nextCursor),
+      syncRequest([], updated.page.nextCursor),
     );
     const tombstone = decodeSyncV2Response(await tombstoneResponse.json(), []);
     expect(tombstone.changes).toEqual([
       {
         kind: 'card-tombstone',
-        sequence: parseSyncSequence(2),
+        sequence: parseSyncSequence(3),
         cardId: flowMutation.cardId,
-        revision: 2,
+        revision: 3,
         deletedAt: 1_550,
       },
     ]);
@@ -243,7 +347,11 @@ describe('D1 Sync v2 server composition', () => {
       objects,
       encryption: encryption.port,
       cursors: createWebCryptoSyncV2CursorAuthenticator(cursorSecret),
-      objectKeys: objectKeys([encryptedObjectIds.objectKeyB]),
+      objectKeys: objectKeys([
+        encryptedObjectIds.objectKeyB,
+        encryptedObjectIds.objectKeyC,
+        encryptedObjectIds.objectKeyD,
+      ]),
     } as const;
 
     const malformed = createHandler({ ...shared, keyring: {} });
@@ -267,6 +375,9 @@ describe('D1 Sync v2 server composition', () => {
     expect(failed.status).toBe(503);
     expect(objects.calls()).toMatchObject({ put: 1 });
     expect(encryption.calls()).toMatchObject({ encrypt: 1 });
+    await expect(
+      quotaReservation(recoveryDatabase, recoveryMutation.mutationId),
+    ).resolves.toMatchObject({ state: 'reserved' });
 
     await recoveryDatabase
       .prepare('DROP TRIGGER fail_sync_v2_server_change')
@@ -280,6 +391,287 @@ describe('D1 Sync v2 server composition', () => {
     expect(response.receipts).toHaveLength(1);
     expect(objects.calls().put).toBe(beforeRetry.put);
     expect(encryption.calls().encrypt).toBe(beforeRetry.encrypt);
+    await expect(
+      quotaReservation(recoveryDatabase, recoveryMutation.mutationId),
+    ).resolves.toMatchObject({ state: 'committed' });
+
+    await recoveryDatabase
+      .prepare(
+        `CREATE TRIGGER fail_sync_v2_quota_reserve
+         BEFORE INSERT ON vault_quota_reservations
+         BEGIN SELECT RAISE(ABORT, 'injected quota reserve failure'); END`,
+      )
+      .run();
+    const reserveFailureMutation = mutation('sync-v2-quota-reserve-failure');
+    const beforeReserveFailure = adapterCalls(
+      objects.calls(),
+      encryption.calls(),
+    );
+    const reserveFailure = await handler(syncRequest([reserveFailureMutation]));
+    expect(reserveFailure.status).toBe(503);
+    expect(adapterCalls(objects.calls(), encryption.calls())).toEqual(
+      beforeReserveFailure,
+    );
+    await expect(
+      quotaReservation(recoveryDatabase, reserveFailureMutation.mutationId),
+    ).resolves.toBeNull();
+    await recoveryDatabase
+      .prepare('DROP TRIGGER fail_sync_v2_quota_reserve')
+      .run();
+
+    await recoveryDatabase
+      .prepare(
+        `CREATE TRIGGER fail_sync_v2_quota_finalize
+         BEFORE UPDATE OF state ON vault_quota_reservations
+         BEGIN SELECT RAISE(ABORT, 'injected quota finalize failure'); END`,
+      )
+      .run();
+    const finalizeFailureMutation = mutation('sync-v2-quota-finalize-failure');
+    const finalizeFailure = await handler(
+      syncRequest([finalizeFailureMutation]),
+    );
+    expect(finalizeFailure.status).toBe(503);
+    await expect(
+      quotaReservation(recoveryDatabase, finalizeFailureMutation.mutationId),
+    ).resolves.toMatchObject({ state: 'reserved' });
+    await recoveryDatabase
+      .prepare('DROP TRIGGER fail_sync_v2_quota_finalize')
+      .run();
+    const beforeFinalizeRetry = adapterCalls(
+      objects.calls(),
+      encryption.calls(),
+    );
+    const finalizeRetry = await handler(syncRequest([finalizeFailureMutation]));
+    expect(finalizeRetry.status).toBe(200);
+    expect(objects.calls().put).toBe(beforeFinalizeRetry.put);
+    expect(encryption.calls().encrypt).toBe(beforeFinalizeRetry.encrypt);
+    await expect(
+      quotaReservation(recoveryDatabase, finalizeFailureMutation.mutationId),
+    ).resolves.toMatchObject({ state: 'committed' });
+    await expect(quotaUsage(recoveryDatabase)).resolves.toMatchObject({
+      active_cards: 2,
+    });
+
+    const contentFailureMutation = mutation('sync-v2-content-write-failure');
+    objects.failNext('put');
+    const contentFailure = await handler(syncRequest([contentFailureMutation]));
+    expect(contentFailure.status).toBe(503);
+    await expect(
+      quotaReservation(recoveryDatabase, contentFailureMutation.mutationId),
+    ).resolves.toMatchObject({ state: 'reserved' });
+    const contentRetry = await handler(syncRequest([contentFailureMutation]));
+    expect(contentRetry.status).toBe(200);
+    await expect(
+      quotaReservation(recoveryDatabase, contentFailureMutation.mutationId),
+    ).resolves.toMatchObject({ state: 'committed' });
+    await expect(quotaUsage(recoveryDatabase)).resolves.toMatchObject({
+      active_cards: 3,
+    });
+  });
+
+  it('rejects display and serialized plaintext limits before object storage', async () => {
+    const objects = createFakePrivateObjectStorage();
+    const encryption = countedEncryption(encryptionFor(controlPlaneContext()));
+    const handler = createHandler({
+      database: limitsDatabase,
+      now: mutableClock(1_500),
+      objects,
+      encryption: encryption.port,
+      cursors: createWebCryptoSyncV2CursorAuthenticator(cursorSecret),
+      objectKeys: objectKeys([encryptedObjectIds.objectKeyA]),
+      keyring: keyringFor(controlPlaneContext().vaultId),
+    });
+    const displayMutation: PendingMutation = {
+      ...mutation('sync-v2-display-limit'),
+      title: 'x'.repeat(1_001),
+      body: [],
+    };
+    const display = await handler(syncRequest([displayMutation]));
+    expect(display.status).toBe(413);
+    await expect(display.json()).resolves.toEqual({ error: 'card-too-large' });
+
+    const serializedMutation: PendingMutation = {
+      ...mutation('sync-v2-serialized-limit'),
+      body: Array.from({ length: 300 }, () => ({
+        type: 'link' as const,
+        targetCardId: fixtureCardId('sync-v2-serialized-limit-target'),
+      })),
+    };
+    const serialized = await handler(syncRequest([serializedMutation]));
+    expect(serialized.status).toBe(413);
+    await expect(serialized.json()).resolves.toEqual({
+      error: 'card-too-large',
+    });
+
+    await limitsDatabase
+      .prepare(
+        `UPDATE vault_quota_usage SET plaintext_bytes = ?
+         WHERE account_id = ? AND vault_id = ?`,
+      )
+      .bind(
+        paidPersonalVaultLimits.plaintextBytesPerVault,
+        controlPlaneContext().accountId,
+        controlPlaneContext().vaultId,
+      )
+      .run();
+    const vaultTotal = await handler(
+      syncRequest([mutation('sync-v2-vault-plaintext-limit')]),
+    );
+    expect(vaultTotal.status).toBe(409);
+    await expect(vaultTotal.json()).resolves.toEqual({
+      error: 'quota-exceeded',
+    });
+    expect(objects.calls()).toMatchObject({ get: 0, put: 0 });
+    expect(encryption.calls()).toEqual({ encrypt: 0, decrypt: 0 });
+    await expect(quotaUsage(limitsDatabase)).resolves.toMatchObject({
+      active_cards: 0,
+      plaintext_bytes: paidPersonalVaultLimits.plaintextBytesPerVault,
+    });
+  });
+
+  it('admits only one concurrent create at the 10,000-card boundary', async () => {
+    const context = controlPlaneContext();
+    const quota = await new D1VaultQuotaLedgerDirectory(
+      concurrencyDatabase,
+    ).open(context, 1_500);
+    if (quota.kind !== 'opened') throw new Error('missing quota scope');
+    await concurrencyDatabase
+      .prepare(
+        `UPDATE vault_quota_usage SET active_cards = 9999
+         WHERE account_id = ? AND vault_id = ?`,
+      )
+      .bind(context.accountId, context.vaultId)
+      .run();
+    const objects = createFakePrivateObjectStorage();
+    const encryption = countedEncryption(encryptionFor(context));
+    const handler = createHandler({
+      database: concurrencyDatabase,
+      now: mutableClock(1_500),
+      objects,
+      encryption: encryption.port,
+      cursors: createWebCryptoSyncV2CursorAuthenticator(cursorSecret),
+      objectKeys: objectKeys([
+        encryptedObjectIds.objectKeyA,
+        encryptedObjectIds.objectKeyB,
+      ]),
+      keyring: keyringFor(context.vaultId),
+    });
+    const responses = await Promise.all([
+      handler(syncRequest([mutation('sync-v2-card-10000-a')])),
+      handler(syncRequest([mutation('sync-v2-card-10000-b')])),
+    ]);
+    expect(
+      responses.map((response) => response.status).sort((a, b) => a - b),
+    ).toEqual([200, 409]);
+    const rejected = responses.find((response) => response.status === 409);
+    if (rejected === undefined) throw new Error('missing quota rejection');
+    await expect(rejected.json()).resolves.toEqual({
+      error: 'quota-exceeded',
+    });
+    await expect(quotaUsage(concurrencyDatabase)).resolves.toMatchObject({
+      active_cards: 10_000,
+    });
+    expect(objects.calls().put).toBe(1);
+    expect(encryption.calls().encrypt).toBe(1);
+  });
+
+  it('preserves concurrent conflicts without increasing active-card quota', async () => {
+    const context = controlPlaneContext();
+    const objects = createFakePrivateObjectStorage();
+    const handler = createHandler({
+      database: conflictDatabase,
+      now: mutableClock(1_500),
+      objects,
+      encryption: encryptionFor(context),
+      cursors: createWebCryptoSyncV2CursorAuthenticator(cursorSecret),
+      objectKeys: objectKeys([
+        encryptedObjectIds.objectKeyA,
+        encryptedObjectIds.objectKeyB,
+      ]),
+      keyring: keyringFor(context.vaultId),
+    });
+    const base = mutation('sync-v2-conflict-base');
+    const createdResponse = await handler(syncRequest([base]));
+    expect(createdResponse.status).toBe(200);
+    const created = decodeSyncV2Response(await createdResponse.json(), [base]);
+    const usageBeforeConflict = await quotaUsage(conflictDatabase);
+    const concurrent: PendingMutation = {
+      ...base,
+      mutationId: fixtureMutationId('sync-v2-conflict-concurrent'),
+      title: 'Concurrent title',
+      body: [{ type: 'text', text: 'Concurrent body' }],
+      updatedAt: 1_400,
+    };
+    const conflictResponse = await handler(
+      syncRequest([concurrent], created.page.nextCursor),
+    );
+    expect(conflictResponse.status).toBe(200);
+    const conflict = decodeSyncV2Response(await conflictResponse.json(), [
+      concurrent,
+    ]);
+    expect(conflict.changes).toMatchObject([
+      { kind: 'conflict-upsert', conflict: { cardId: base.cardId } },
+    ]);
+    await expect(quotaUsage(conflictDatabase)).resolves.toEqual(
+      usageBeforeConflict,
+    );
+  });
+
+  it('isolates equal card and mutation identifiers between two Vaults', async () => {
+    const contextA = vaultContentContext('a');
+    const contextB = vaultContentContext('b');
+    const objects = createFakePrivateObjectStorage();
+    const requestValue = encodeSyncV2Request({
+      deviceId,
+      cursor: null,
+      mutations: [flowMutation],
+    });
+    const applicationRequest = decodeSyncV2Request(requestValue);
+    const requestBytes = parseQuotaByteCount(
+      new TextEncoder().encode(JSON.stringify(requestValue)).byteLength,
+    );
+    const applicationA = createComposition({
+      database: tenantsDatabase,
+      now: mutableClock(1_500),
+      objects,
+      encryption: encryptionFor(contextA),
+      cursors: createWebCryptoSyncV2CursorAuthenticator(cursorSecret),
+      objectKeys: objectKeys([encryptedObjectIds.objectKeyA]),
+      keyring: keyringFor(contextA.vaultId),
+    }).application;
+    const applicationB = createComposition({
+      database: tenantsDatabase,
+      now: mutableClock(1_500),
+      objects,
+      encryption: encryptionFor(contextB),
+      cursors: createWebCryptoSyncV2CursorAuthenticator(cursorSecret),
+      objectKeys: objectKeys([encryptedObjectIds.objectKeyB]),
+      keyring: keyringFor(contextB.vaultId),
+    }).application;
+    const [resultA, resultB] = await Promise.all([
+      applicationA.synchronize({
+        context: contextA,
+        request: applicationRequest,
+        synchronizedAt: 1_500,
+        requestBytes,
+        limits: paidPersonalVaultLimits,
+      }),
+      applicationB.synchronize({
+        context: contextB,
+        request: applicationRequest,
+        synchronizedAt: 1_500,
+        requestBytes,
+        limits: paidPersonalVaultLimits,
+      }),
+    ]);
+    expect(resultA.kind).toBe('synchronized');
+    expect(resultB.kind).toBe('synchronized');
+    await expect(quotaUsage(tenantsDatabase, contextA)).resolves.toMatchObject({
+      active_cards: 1,
+    });
+    await expect(quotaUsage(tenantsDatabase, contextB)).resolves.toMatchObject({
+      active_cards: 1,
+    });
   });
 });
 
@@ -300,6 +692,21 @@ async function provision(database: TestDatabase): Promise<void> {
   await billing.ingestVerifiedProviderFact(trialStartedFact(1_200));
 }
 
+async function provisionTwoVaults(database: TestDatabase): Promise<void> {
+  const controlPlane = new D1IdentityVaultControlPlane(database);
+  const content = new D1VaultContentDirectory(database, controlPlane);
+  for (const account of ['a', 'b'] as const) {
+    const context = vaultContentContext(account);
+    await controlPlane.provisionPersonalAccount(
+      personalAccountProvision(account),
+    );
+    await content.assignPartition(context, {
+      partitionId: vaultContentIds.partitionHot,
+      updatedAt: 1_000,
+    });
+  }
+}
+
 function createHandler(input: {
   readonly database: TestDatabase;
   readonly now: ReturnType<typeof mutableClock>;
@@ -309,7 +716,19 @@ function createHandler(input: {
   readonly objectKeys: OpaqueObjectKeyGeneratorPort;
   readonly keyring: unknown;
 }) {
-  return createD1SyncV2HttpHandler({
+  return createComposition(input).handler;
+}
+
+function createComposition(input: {
+  readonly database: TestDatabase;
+  readonly now: ReturnType<typeof mutableClock>;
+  readonly objects: ReturnType<typeof createFakePrivateObjectStorage>;
+  readonly encryption: EnvelopeEncryptionService;
+  readonly cursors: ReturnType<typeof createWebCryptoSyncV2CursorAuthenticator>;
+  readonly objectKeys: OpaqueObjectKeyGeneratorPort;
+  readonly keyring: unknown;
+}) {
+  return createD1SyncV2Composition({
     database: input.database,
     expectedOrigin,
     clock: input.now,
@@ -320,7 +739,38 @@ function createHandler(input: {
     objectKeys: input.objectKeys,
     encryption: input.encryption,
     keyrings: { read: async () => input.keyring },
+    quotaReservationReconcileDelayMs: 60_000,
   });
+}
+
+async function quotaUsage(
+  database: TestDatabase,
+  context: VaultContext = controlPlaneContext(),
+): Promise<unknown> {
+  return database
+    .prepare(
+      `SELECT active_cards, plaintext_bytes FROM vault_quota_usage
+       WHERE account_id = ? AND vault_id = ?`,
+    )
+    .bind(context.accountId, context.vaultId)
+    .first();
+}
+
+async function quotaReservation(
+  database: TestDatabase,
+  mutationId: PendingMutation['mutationId'],
+): Promise<unknown> {
+  return database
+    .prepare(
+      `SELECT state FROM vault_quota_reservations
+       WHERE account_id = ? AND vault_id = ? AND reservation_id = ?`,
+    )
+    .bind(
+      controlPlaneContext().accountId,
+      controlPlaneContext().vaultId,
+      mutationId,
+    )
+    .first();
 }
 
 function syncRequest(
@@ -351,16 +801,6 @@ function mutation(label: string): PendingMutation {
     updatedAt: 1_300,
     conflictIds: [],
   };
-}
-
-async function openJournal(database: TestDatabase, context: VaultContext) {
-  const controlPlane = new D1IdentityVaultControlPlane(database);
-  const contents = new D1VaultContentDirectory(database, controlPlane);
-  const opened = await new D1SyncV2JournalDirectory(database, contents).open(
-    context,
-  );
-  if (opened.kind === 'not-found') throw new Error('missing journal scope');
-  return opened.repository;
 }
 
 function keyringFor(vaultId: VaultContext['vaultId']): VaultDekKeyring {

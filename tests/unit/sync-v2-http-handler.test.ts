@@ -11,6 +11,7 @@ import {
 import { createCompatibilityFixture } from '@/tests/fixtures/compatibility';
 import { cookieHeader, fixtureActiveSession } from '@/tests/fixtures/session';
 import type { SyncV2ApplicationInput } from '@/server/sync-v2/public';
+import { paidPersonalVaultLimits } from '@/server/entitlement/public';
 
 const expectedOrigin = 'https://notes.example';
 const nextCursor = parseSyncV2Cursor(
@@ -68,6 +69,11 @@ function dependencies(
         basis: 'trial',
         validUntil: 2_000,
       }),
+      readLimits: async () => ({
+        kind: 'available',
+        limits: paidPersonalVaultLimits,
+        validUntil: 2_000,
+      }),
     },
     application: {
       synchronize: async () => ({
@@ -95,13 +101,17 @@ function synchronizeSpy() {
 describe('authenticated Sync v2 HTTP handler', () => {
   it('derives VaultContext, checks notes-sync, and returns no-store JSON', async () => {
     const entitlement = vi.fn(dependencies().entitlement.authorizeCapability);
+    const readLimits = vi.fn(dependencies().entitlement.readLimits);
     const synchronize = synchronizeSpy();
+    const syncRequest = request();
+    const expectedRequestBytes = (await syncRequest.clone().arrayBuffer())
+      .byteLength;
     const response = await createSyncV2HttpHandler(
       dependencies({
-        entitlement: { authorizeCapability: entitlement },
+        entitlement: { authorizeCapability: entitlement, readLimits },
         application: { synchronize },
       }),
-    )(request());
+    )(syncRequest);
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(entitlement).toHaveBeenCalledWith(
@@ -110,6 +120,13 @@ describe('authenticated Sync v2 HTTP handler', () => {
       1_500,
     );
     expect(synchronize).toHaveBeenCalledOnce();
+    expect(readLimits).toHaveBeenCalledWith(
+      expect.objectContaining({ vaultId: fixtureActiveSession().vaultId }),
+      1_500,
+    );
+    const [synchronizeCall] = synchronize.mock.calls;
+    expect(synchronizeCall?.[0].limits).toEqual(paidPersonalVaultLimits);
+    expect(synchronizeCall?.[0].requestBytes).toBe(expectedRequestBytes);
     await expect(response.json()).resolves.toMatchObject({
       version: 'sync/v2',
       page: { kind: 'complete' },
@@ -148,6 +165,10 @@ describe('authenticated Sync v2 HTTP handler', () => {
             capability,
             reason: 'payment-failed',
           }),
+          readLimits: async () => ({
+            kind: 'denied',
+            reason: 'payment-failed',
+          }),
         },
         application: { synchronize },
       }),
@@ -156,6 +177,25 @@ describe('authenticated Sync v2 HTTP handler', () => {
     await expect(response.json()).resolves.toEqual({
       error: 'online-access-locked',
     });
+    expect(synchronize).not.toHaveBeenCalled();
+  });
+
+  it('rejects unavailable limits before application work', async () => {
+    const synchronize = synchronizeSpy();
+    const response = await createSyncV2HttpHandler(
+      dependencies({
+        entitlement: {
+          authorizeCapability: dependencies().entitlement.authorizeCapability,
+          readLimits: async () => ({
+            kind: 'denied',
+            reason: 'entitlement-unavailable',
+          }),
+        },
+        application: { synchronize },
+      }),
+    )(request());
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: 'unavailable' });
     expect(synchronize).not.toHaveBeenCalled();
   });
 
@@ -183,4 +223,24 @@ describe('authenticated Sync v2 HTTP handler', () => {
       error: 'invalid-request',
     });
   });
+
+  it.each([
+    ['ciphertext-limit', 413, 'encrypted-content-too-large'],
+    ['active-card-limit', 409, 'quota-exceeded'],
+    ['vault-plaintext-limit', 409, 'quota-exceeded'],
+    ['quota-unavailable', 503, 'unavailable'],
+  ] as const)(
+    'maps %s without exposing storage details',
+    async (reason, status, error) => {
+      const response = await createSyncV2HttpHandler(
+        dependencies({
+          application: {
+            synchronize: async () => ({ kind: 'rejected', reason }),
+          },
+        }),
+      )(request());
+      expect(response.status).toBe(status);
+      await expect(response.json()).resolves.toEqual({ error });
+    },
+  );
 });
