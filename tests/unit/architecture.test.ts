@@ -2059,6 +2059,58 @@ describe('privacy disclosure architecture', () => {
   });
 });
 
+describe('privacy request UI architecture', () => {
+  it('keeps the request UI on a dedicated route with a pure core and scoped adapters', async () => {
+    const [
+      core,
+      http,
+      local,
+      boundary,
+      page,
+      notes,
+      privacyPage,
+      documentation,
+      coverage,
+    ] = await Promise.all([
+      readFile('lib/application/privacy-request-ui.ts', 'utf8'),
+      readFile('lib/client/http-privacy-request.ts', 'utf8'),
+      readFile('lib/client/local-privacy-request.ts', 'utf8'),
+      readFile('components/privacy-request-boundary.tsx', 'utf8'),
+      readFile('app/(public)/account/privacy/page.tsx', 'utf8'),
+      readFile('components/notes-presentation.tsx', 'utf8'),
+      readFile('app/(public)/legal/privacy/page.tsx', 'utf8'),
+      readFile('docs/privacy-disclosure.md', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+    ]);
+
+    expect(core).toContain('privacyRequestUiReducer');
+    expect(core).toContain('privacyRequestStatusPresentation');
+    expect(core).not.toMatch(
+      /Promise|fetch\(|indexedDB|window\.|document\.|localStorage|sessionStorage|Date\.now|uuidv7|console\./,
+    );
+    expect(http).toContain('responseDecoder.decode');
+    expect(http).toContain("credentials: 'same-origin'");
+    expect(http).not.toMatch(/accountId|vaultId/);
+    expect(local).not.toMatch(
+      /fetch\(|indexedDB|localStorage|sessionStorage|console\./,
+    );
+    expect(boundary).toContain('AlertDialog');
+    expect(boundary).toContain("source === 'local-fixture'");
+    expect(page).toContain('PrivacyRequestBoundary');
+    expect(privacyPage).toContain('href="/account/privacy"');
+    expect(notes).not.toMatch(/privacyRequest|PrivacyRequest|account\/privacy/);
+    expect(documentation).toContain('in-memory only');
+    for (const path of [
+      'components/privacy-request-boundary.tsx',
+      'lib/application/privacy-request-ui.ts',
+      'lib/client/http-privacy-request.ts',
+      'lib/client/local-privacy-request.ts',
+    ]) {
+      expect(coverage).toContain(`'${path}'`);
+    }
+  });
+});
+
 describe('privacy processing registry architecture', () => {
   it('keeps inventory decisions typed, provider-neutral, and fail-closed', async () => {
     const [

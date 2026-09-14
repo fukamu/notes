@@ -7,9 +7,10 @@ Issue #229 adds the canonical, directly addressable privacy page at
 The page uses the public-only route layout and does not mount the Notes
 application. The card editor, history, and connections UI do not contain the
 policy body, a persistent privacy panel, or a consent dialog. Public pages expose
-only a restrained text link. A later authenticated data-request flow belongs on
-a dedicated account page; only a legally required consent or a destructive
-request may use a focused, accessible dialog.
+only restrained text links. The data-request flow is available at the separate
+`/account/privacy` page. Only the destructive account-deletion request uses a
+focused, accessible confirmation dialog; the policy body and request controls do
+not appear in the normal Notes interface.
 
 This engineering implementation follows the Personal Information Protection
 Commission's current general guidance that a purpose of use must be identified
@@ -32,7 +33,10 @@ fixture. Its controller, purposes, contact, retention, processor, transfer, and
 request text is marked as a development sample. An accessible notice states that
 it is not a real operator, processor list, contact, or production handling policy.
 No identity provider, mail provider, KMS, billing provider, or production data is
-used.
+used. The local request adapter is in-memory only, does not persist or send the
+request, never performs identity verification or deletion, and returns only the
+`verification-pending` sample state. Reload and back/forward restoration clear
+the displayed request.
 
 ## Production configuration
 
@@ -70,9 +74,11 @@ contact operation remain Decision Required until supplied and reviewed.
 
 The schema and environment resolution are pure typed functions. Only the
 environment adapter reads `process.env`; the page receives a decoded disclosure.
-Provider inventory and runtime-retention drift are intentionally deferred to
-Issue #230, and request storage/API/UI to Issues #231 and #232. No database
-migration, provider call, deployment, or production operation is part of #229.
+Provider inventory and runtime-retention drift are implemented under Issue #230.
+Request storage/API and the separate request UI are implemented under Issues
+#231 and #232. Production request routing still fails closed until its approved
+composition is configured. No provider call, deployment, or production operation
+is part of the disclosure or request UI work.
 
 Rollback is one PR revert of the disclosure contract, environment adapter, page,
 link, build gate, tests, and this document. A policy version that has already been
