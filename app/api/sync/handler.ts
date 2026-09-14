@@ -56,13 +56,10 @@ export async function handleSyncRequest(
     return Response.json(response, {
       headers: { 'Cache-Control': 'no-store' },
     });
-  } catch (error) {
+  } catch {
     // Keep operational diagnostics server-side without serializing request data
     // or database values into logs or responses.
-    console.error(
-      'sync failed',
-      error instanceof Error ? error.name : 'UnknownError',
-    );
+    console.error('sync failed', 'Error');
     return Response.json(
       { error: '同期に失敗しました。入力内容は端末に残っています。' },
       { status: 500 },

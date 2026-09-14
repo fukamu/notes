@@ -71,17 +71,36 @@ describe('Entitlement pure policy', () => {
     ['payment-failed', 'payment-failed'],
     ['payment-action-required', 'payment-action-required'],
   ] as const)('locks online notes for %s', (billingReason, reason) => {
-    expect(
-      evaluateSubscriptionFacts(
-        subscriptionFacts({
-          kind: 'delinquent',
-          reason: billingReason,
-          since: 5_000,
-          invoiceReference: billingIds.invoice1,
-        }),
-        5_000,
-      ),
-    ).toMatchObject({ state: { kind: 'locked', reason } });
+    const evaluation = evaluateSubscriptionFacts(
+      subscriptionFacts({
+        kind: 'delinquent',
+        reason: billingReason,
+        since: 5_000,
+        invoiceReference: billingIds.invoice1,
+      }),
+      5_000,
+    );
+    expect(evaluation).toMatchObject({ state: { kind: 'locked', reason } });
+    if (evaluation.kind !== 'evaluated') throw new Error('invalid fixture');
+    for (const capability of [
+      'notes-read',
+      'notes-write',
+      'notes-sync',
+    ] as const) {
+      expect(
+        authorizeEntitlementState(evaluation.state, capability, 5_000),
+      ).toMatchObject({ kind: 'denied', reason });
+    }
+    for (const capability of [
+      'billing-recovery',
+      'subscription-cancel',
+      'account-delete',
+      'support',
+    ] as const) {
+      expect(
+        authorizeEntitlementState(evaluation.state, capability, 5_000),
+      ).toMatchObject({ kind: 'allowed', basis: 'recovery' });
+    }
   });
 
   it('caps access at a scheduled cancellation and keeps recovery capabilities open', () => {

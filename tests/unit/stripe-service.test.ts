@@ -1,11 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createFakeBillingModule } from '@/server/billing/fake';
 import {
   createFakeStripeTransport,
   createFakeStripeWebhookVerifier,
 } from '@/server/stripe/fake';
 import { createStripeBillingAdapter } from '@/server/stripe/service';
+import type { StripeTransportPort } from '@/server/stripe/ports';
 import { billingContext, billingIds } from '@/tests/fixtures/billing';
+import {
+  containsSensitiveMarker,
+  securityCorpusMarker,
+} from '@/tests/fixtures/security-corpus';
 import {
   stripeCheckoutCompletedObject,
   stripeCheckoutResponse,
@@ -198,6 +203,73 @@ describe('Stripe Billing adapter with fake provider boundary', () => {
         ),
       ),
     ).resolves.toEqual({ kind: 'rejected', reason: 'billing-rejected' });
+  });
+
+  it('fails closed across provider timeout and malformed snapshot, then retries the same event safely', async () => {
+    const billing = createFakeBillingModule([billingContext()]);
+    const baseTransport = createFakeStripeTransport({
+      checkoutResponse: stripeCheckoutResponse(),
+      snapshots: new Map([
+        [stripeIds.subscription, stripeSubscriptionSnapshot()],
+      ]),
+    });
+    const failure = new Error(`timeout:${securityCorpusMarker}`);
+    failure.name = `provider:${securityCorpusMarker}`;
+    let retrievals = 0;
+    const transport: StripeTransportPort = {
+      createCheckoutSession: (command) =>
+        baseTransport.createCheckoutSession(command),
+      async retrieveSubscriptionSnapshot(request) {
+        retrievals += 1;
+        if (retrievals === 1) throw failure;
+        if (retrievals === 2) {
+          return { malformed: securityCorpusMarker };
+        }
+        return baseTransport.retrieveSubscriptionSnapshot(request);
+      },
+    };
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const adapter = createStripeBillingAdapter({
+      configuration: stripeConfiguration,
+      billing: billing.api,
+      transport,
+      webhookVerifier: createFakeStripeWebhookVerifier(),
+    });
+    await adapter.beginHostedCheckout(billingContext(), checkoutCommand());
+    const event = webhook(
+      stripeEvent(
+        'checkout.session.completed',
+        stripeCheckoutCompletedObject(),
+      ),
+      3_000,
+    );
+
+    await expect(adapter.ingestWebhook(event)).resolves.toEqual({
+      kind: 'rejected',
+      reason: 'provider-unavailable',
+    });
+    await expect(adapter.ingestWebhook(event)).resolves.toEqual({
+      kind: 'rejected',
+      reason: 'malformed-event',
+    });
+    expect(billing.repository.inspect().reconciliationCheckpoints).toEqual([]);
+    await expect(
+      billing.api.readSubscription(billingContext()),
+    ).resolves.toMatchObject({ lifecycle: { kind: 'checkout-pending' } });
+
+    await expect(adapter.ingestWebhook(event)).resolves.toEqual({
+      kind: 'accepted',
+      outcome: 'applied',
+    });
+    await expect(adapter.ingestWebhook(event)).resolves.toEqual({
+      kind: 'accepted',
+      outcome: 'duplicate',
+    });
+    expect(retrievals).toBe(4);
+    expect(log).not.toHaveBeenCalled();
+    expect(
+      containsSensitiveMarker(log.mock.calls, [securityCorpusMarker]),
+    ).toBe(false);
   });
 });
 

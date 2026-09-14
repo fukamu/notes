@@ -22,6 +22,10 @@ import {
 } from '@/lib/domain/id';
 import { CONTRACT_LIMITS, type PendingMutation } from '@/lib/domain/types';
 import { decodeSyncResponse, encodeSyncRequest } from '@/lib/sync/protocol';
+import {
+  containsSensitiveMarker,
+  securityCorpusMarker,
+} from '@/tests/fixtures/security-corpus';
 
 const ids = {
   device: parseDeviceId('01991f20-61d2-7000-8000-000000001000'),
@@ -291,10 +295,30 @@ describe('sync API request and response boundaries', () => {
     expect(await snapshot()).toBe(before);
   });
 
-  it('returns configuration failures as 5xx after request validation', async () => {
-    const response = await handleSyncRequest(syncRequest([]), {});
+  it('returns database failures as redacted 5xx after request validation', async () => {
+    const failure = new Error(`message:${securityCorpusMarker}`);
+    failure.name = `name:${securityCorpusMarker}`;
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const failingDatabase = {
+      prepare() {
+        throw failure;
+      },
+      batch() {
+        throw failure;
+      },
+      exec() {
+        throw failure;
+      },
+    };
+    const response = await handleSyncRequest(syncRequest([]), {
+      DB: failingDatabase,
+    });
     expect(response.status).toBe(500);
     expect(await response.text()).not.toContain('DB');
+    expect(log).toHaveBeenCalledWith('sync failed', 'Error');
+    expect(
+      containsSensitiveMarker(log.mock.calls, [securityCorpusMarker]),
+    ).toBe(false);
   });
 });
 
