@@ -15,6 +15,7 @@ export default defineConfig({
       reporter: ['text', 'json-summary'],
       include: [
         'app/api/account/deletion/handler.ts',
+        'components/account-deletion-boundary.tsx',
         'components/session-notes-app.tsx',
         'lib/application/account-deletion-handoff.ts',
         'lib/application/account-deletion-runner.ts',

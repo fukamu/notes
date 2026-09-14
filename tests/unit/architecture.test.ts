@@ -421,6 +421,22 @@ describe('pure-core dependency direction', () => {
       expect(testConfig).toContain(`'${path}'`);
     }
   });
+
+  it('keeps account deletion UI outside the legacy route and under coverage', async () => {
+    const [boundary, sessionApp, notesApp, testConfig] = await Promise.all([
+      readFile('components/account-deletion-boundary.tsx', 'utf8'),
+      readFile('components/session-notes-app.tsx', 'utf8'),
+      readFile('components/notes-app.tsx', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+    ]);
+
+    expect(boundary).toContain('accountDeletionUiReducer');
+    expect(boundary).toContain('AlertDialog');
+    expect(boundary).not.toMatch(/fetch\(|indexedDB|caches\.|serviceWorker/);
+    expect(sessionApp).toContain('AccountDeletionBoundary');
+    expect(notesApp).not.toMatch(/accountDeletion|AccountDeletion/);
+    expect(testConfig).toContain(`'components/account-deletion-boundary.tsx'`);
+  });
 });
 
 describe('Identity/Vault control-plane ownership', () => {

@@ -151,6 +151,147 @@ test('logout purge drains tabs and prevents browser content resurrection', async
   ]);
 });
 
+test('account deletion survives reload after revocation and reuses verified logout purge', async ({
+  page,
+  context,
+}) => {
+  const peer = await context.newPage();
+  await Promise.all([ready(page), ready(peer)]);
+  await Promise.all([installHarness(page), installHarness(peer)]);
+
+  await page.evaluate(
+    async ({ first, second, cardId }) => {
+      await window.__fukamuLogoutPurgeHarness.seedVault(
+        first,
+        cardId,
+        'Vault A account deletion content',
+      );
+      await window.__fukamuLogoutPurgeHarness.seedVault(
+        second,
+        cardId,
+        'Vault B isolated content',
+      );
+      await window.__fukamuLogoutPurgeHarness.seedNotesCache();
+      void window.__fukamuLogoutPurgeHarness
+        .prepareGraphWorker()
+        .catch(() => undefined);
+      history.pushState({}, '', `/cards/${cardId}`);
+      history.pushState({}, '', '/history');
+    },
+    { first: vaultA, second: vaultB, cardId: sharedCardId },
+  );
+  await Promise.all([
+    page.evaluate(
+      (generation) => window.__fukamuLogoutPurgeHarness.enterFence(generation),
+      vaultA,
+    ),
+    peer.evaluate(
+      (generation) => window.__fukamuLogoutPurgeHarness.enterFence(generation),
+      vaultA,
+    ),
+  ]);
+
+  await expect(
+    page.evaluate(
+      (generation) =>
+        window.__fukamuLogoutPurgeHarness.beginAccountDeletion(generation),
+      vaultA,
+    ),
+  ).resolves.toEqual({
+    kind: 'pending',
+    localContent: 'deleted',
+    status: {
+      kind: 'in-progress',
+      continuationToken: `ad1.${'S'.repeat(43)}.1`,
+    },
+  });
+  await expect
+    .poll(() =>
+      peer.evaluate(() => window.__fukamuLogoutPurgeHarness.fenceStatus()),
+    )
+    .toBe('quiesced');
+  await expect(
+    page.evaluate(() =>
+      window.__fukamuLogoutPurgeHarness.accountDeletionRemoteCalls(),
+    ),
+  ).resolves.toEqual(['start', 'resume:0']);
+  await expect(
+    page.evaluate(() =>
+      window.__fukamuLogoutPurgeHarness.accountDeletionMarker(),
+    ),
+  ).resolves.toMatchObject({ kind: 'server-pending', revision: 4 });
+  await expect(
+    page.evaluate(
+      (generation) =>
+        window.__fukamuLogoutPurgeHarness.snapshotVault(generation),
+      vaultA,
+    ),
+  ).resolves.toEqual({ present: false, titles: [] });
+  await expect(
+    page.evaluate(
+      (generation) =>
+        window.__fukamuLogoutPurgeHarness.snapshotVault(generation),
+      vaultB,
+    ),
+  ).resolves.toEqual({
+    present: true,
+    titles: ['Vault B isolated content'],
+  });
+  await expect(
+    page.evaluate(() => window.__fukamuLogoutPurgeHarness.cacheNames()),
+  ).resolves.not.toContain('fukamu-notes-e2e-private');
+  await expect(
+    page.evaluate(() => window.__fukamuLogoutPurgeHarness.graphWorkerIsReset()),
+  ).resolves.toBe(true);
+
+  await page.reload();
+  await expect(page.getByTestId('new-card')).toBeVisible();
+  await installHarness(page);
+  await expect(
+    page.evaluate(() =>
+      window.__fukamuLogoutPurgeHarness.recoverAccountDeletion(),
+    ),
+  ).resolves.toMatchObject({
+    kind: 'pending',
+    localContent: 'deleted',
+  });
+  await expect(
+    page.evaluate(() =>
+      window.__fukamuLogoutPurgeHarness.accountDeletionRemoteCalls(),
+    ),
+  ).resolves.toEqual([]);
+  await expect(
+    page.evaluate(() =>
+      window.__fukamuLogoutPurgeHarness.resumeAccountDeletion(),
+    ),
+  ).resolves.toEqual({ kind: 'terminal', status: 'completed' });
+  await expect(
+    page.evaluate(() =>
+      window.__fukamuLogoutPurgeHarness.accountDeletionRemoteCalls(),
+    ),
+  ).resolves.toEqual(['resume:1']);
+  await expect(
+    page.evaluate(() =>
+      window.__fukamuLogoutPurgeHarness.accountDeletionMarker(),
+    ),
+  ).resolves.toBeUndefined();
+
+  await page.goBack();
+  await page.goForward();
+  await expect(
+    page.evaluate(
+      (generation) =>
+        window.__fukamuLogoutPurgeHarness.snapshotVault(generation),
+      vaultA,
+    ),
+  ).resolves.toEqual({ present: false, titles: [] });
+
+  await Promise.all([
+    page.evaluate(() => window.__fukamuLogoutPurgeHarness.closeFence()),
+    peer.evaluate(() => window.__fukamuLogoutPurgeHarness.closeFence()),
+  ]);
+});
+
 async function ready(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.getByTestId('new-card')).toBeVisible();

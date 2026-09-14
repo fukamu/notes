@@ -47,6 +47,13 @@ key. It checks that the returned repository/transport scope matches the
 VaultContext before mounting `NotesProvider`. This prevents IndexedDB, sync, or
 Service Worker preparation from starting for anonymous or purge-blocked access.
 
+When the optional account-deletion runner is supplied, its durable handoff
+boundary wraps both authenticated and anonymous branches. It checks progress
+before the runtime fence is entered and therefore resumes local purge even
+after the server has revoked the browser session. The legacy route does not
+supply this runner. See
+[Account deletion browser handoff](account-deletion-browser-handoff.md).
+
 The current route deliberately mounts `LegacyNotesApp` as an explicit local
 compatibility harness. A vault-scoped IndexedDB repository now exists, but it
 is not mounted in the route. The Provider now rejects stale load/save/sync
