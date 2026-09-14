@@ -187,7 +187,7 @@ function errorResponse(status: number, error: string): Response {
 function unexpectedFailure(error: unknown): Response {
   console.error(
     'sync v2 failed',
-    error instanceof Error ? error.name : 'UnknownError',
+    error instanceof Error ? 'Error' : 'UnknownError',
   );
   return errorResponse(503, 'unavailable');
 }
