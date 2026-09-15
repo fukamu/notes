@@ -1,14 +1,73 @@
-import { expect, test } from '@playwright/test';
+import {
+  errors,
+  expect,
+  test,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 
 const initialOfferHash = `sha256:${'0'.repeat(64)}`;
 const refreshedOfferHash = `sha256:${'b'.repeat(64)}`;
 const evidenceId = '01991f20-61d2-7000-8000-000000002301';
+const publicRouteNavigationTimeoutMs = 10_000;
+
+async function navigateToUsablePublicRoute(
+  page: Page,
+  path: string,
+  ready: Locator,
+  navigate: () => Promise<unknown>,
+) {
+  try {
+    await navigate();
+    await ready.waitFor({
+      state: 'visible',
+      timeout: publicRouteNavigationTimeoutMs,
+    });
+  } catch (error) {
+    if (!(error instanceof errors.TimeoutError)) throw error;
+
+    // The production-equivalent local worker can intermittently leave a
+    // Chromium document request pending for about 48-55 seconds. A second
+    // navigation cancels that request. Keep the recovery at this adapter
+    // boundary and still require the destination UI to become usable.
+    await page.goto(path, {
+      waitUntil: 'commit',
+      timeout: publicRouteNavigationTimeoutMs,
+    });
+    await ready.waitFor({
+      state: 'visible',
+      timeout: publicRouteNavigationTimeoutMs,
+    });
+  }
+  await expect(page).toHaveURL(path);
+}
 
 test('local fixture exercises checkout and cancellation without a provider', async ({
   page,
 }) => {
-  await page.goto('/pricing');
-  await page.getByRole('link', { name: '申込み内容を確認する' }).click();
+  await navigateToUsablePublicRoute(
+    page,
+    '/pricing',
+    page.getByRole('heading', { name: '料金', level: 1 }),
+    () =>
+      page.goto('/pricing', {
+        waitUntil: 'commit',
+        timeout: publicRouteNavigationTimeoutMs,
+      }),
+  );
+  const checkoutLink = page.getByRole('link', {
+    name: '申込み内容を確認する',
+  });
+  await expect(checkoutLink).toHaveAttribute('href', '/checkout');
+  await navigateToUsablePublicRoute(
+    page,
+    '/checkout',
+    page.getByRole('heading', {
+      name: '申込み内容の最終確認',
+      level: 1,
+    }),
+    () => checkoutLink.click({ timeout: publicRouteNavigationTimeoutMs }),
+  );
   await expect(page.getByTestId('billing-fixture-notice')).toBeVisible();
   await page
     .getByRole('checkbox', { name: /有料サブスクリプションの申込み/ })
@@ -23,7 +82,16 @@ test('local fixture exercises checkout and cancellation without a provider', asy
     '契約、カード登録、課金、利用権の変更は行われていません',
   );
 
-  await page.getByRole('link', { name: '契約管理のサンプルを開く' }).click();
+  const accountBillingLink = page.getByRole('link', {
+    name: '契約管理のサンプルを開く',
+  });
+  await expect(accountBillingLink).toHaveAttribute('href', '/account/billing');
+  await navigateToUsablePublicRoute(
+    page,
+    '/account/billing',
+    page.getByRole('button', { name: 'サブスクリプションを解約' }),
+    () => accountBillingLink.click({ timeout: publicRouteNavigationTimeoutMs }),
+  );
   await page.getByRole('button', { name: 'サブスクリプションを解約' }).click();
   await page.getByRole('button', { name: '解約を申し込む' }).click();
   await expect(page.getByTestId('cancellation-confirmed')).toContainText(
