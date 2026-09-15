@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createFakeBillingModule } from '@/server/billing/fake';
 import { createFakeEntitlementModule } from '@/server/entitlement/fake';
 import {
+  FUKAMU_OFFLINE_LEASE_DURATION_MS,
+  fukamuOfflineLeasePolicy,
   paidPersonalVaultLimits,
   type OfflineLeasePolicy,
 } from '@/server/entitlement/public';
@@ -139,7 +141,7 @@ describe('Entitlement public port with fake persistence', () => {
 
   it('issues leases idempotently and revokes them when payment fails', async () => {
     const { billing, entitlement } = await moduleWithTrial(
-      configuredOfflineLeasePolicy(60_000),
+      fukamuOfflineLeasePolicy,
     );
     const command = { leaseId: entitlementIds.leaseA, issuedAt: 3_000 };
     await expect(
@@ -200,6 +202,15 @@ describe('Entitlement public port with fake persistence', () => {
         7_001,
       ),
     ).resolves.toMatchObject({ kind: 'allowed', basis: 'paid' });
+    await expect(
+      entitlement.port.issueOfflineLease(billingContext(), {
+        leaseId: entitlementIds.leaseB,
+        issuedAt: 7_002,
+      }),
+    ).resolves.toMatchObject({
+      kind: 'issued',
+      lease: { expiresAt: 7_002 + FUKAMU_OFFLINE_LEASE_DURATION_MS },
+    });
   });
 
   it('uses the reconciled Billing read model without provider-specific states', async () => {

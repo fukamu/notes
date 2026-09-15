@@ -11,6 +11,7 @@ import { createControlPlaneSessionResolver } from '../control-plane/session-reso
 import { D1IdentityVaultControlPlane } from '../control-plane/d1-adapter';
 import { createD1BillingApi } from '../billing/d1-adapter';
 import { createD1EntitlementPort } from '../entitlement/d1-adapter';
+import { fukamuOfflineLeasePolicy } from '../entitlement/public';
 import { D1VaultQuotaLedgerDirectory } from '../quota/d1-adapter';
 import { D1VaultContentDirectory } from '../vault-content/d1-adapter';
 import { D1SyncV2JournalDirectory } from '../vault-content/sync-v2-d1-adapter';
@@ -56,7 +57,7 @@ export function createD1SyncV2Composition(
     database: input.database,
     controlPlane,
     billing,
-    offlineLeasePolicy: { kind: 'undecided' },
+    offlineLeasePolicy: fukamuOfflineLeasePolicy,
   });
   const journals = new D1SyncV2JournalDirectory(input.database, vaultContent);
   const metadata = new D1EncryptedObjectMetadataDirectory(

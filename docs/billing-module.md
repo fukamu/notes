@@ -99,6 +99,7 @@ npm run verify
 ```
 
 Stripe signature/raw-body decoding and API reconciliation belong to #120.
-Capabilities and the still-undecided offline entitlement lease belong to #119.
+Capabilities and the approved 24-hour offline entitlement lease belong to #119
+and its decision implementation #265.
 Price, refund, cancellation deadline, and application confirmation UI remain
 in their legal/product Issues and are not decided here.

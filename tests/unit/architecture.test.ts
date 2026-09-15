@@ -1427,6 +1427,12 @@ describe('authenticated Sync v2 composition', () => {
     expect(composition).toContain('D1SyncV2JournalDirectory');
     expect(composition).toContain('EncryptedSyncV2ContentDirectory');
     expect(composition).toContain('D1VaultQuotaLedgerDirectory');
+    expect(composition).toContain(
+      'offlineLeasePolicy: fukamuOfflineLeasePolicy',
+    );
+    expect(composition).not.toContain(
+      "offlineLeasePolicy: { kind: 'undecided' }",
+    );
     expect(composition).not.toMatch(/\/fake|allowAll|\.prepare\(/);
     expect(route).toContain('return unavailable(503)');
     expect(route).not.toMatch(/\/fake|createFake|allowAll/);

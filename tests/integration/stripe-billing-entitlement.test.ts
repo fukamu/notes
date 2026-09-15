@@ -6,8 +6,9 @@ import {
   createFakeStripeWebhookVerifier,
 } from '@/server/stripe/fake';
 import { createStripeBillingAdapter } from '@/server/stripe/service';
+import { fukamuOfflineLeasePolicy } from '@/server/entitlement/public';
 import { billingContext } from '@/tests/fixtures/billing';
-import { undecidedOfflineLeasePolicy } from '@/tests/fixtures/entitlement';
+import { entitlementIds } from '@/tests/fixtures/entitlement';
 import {
   stripeCheckoutCompletedObject,
   stripeCheckoutResponse,
@@ -32,7 +33,7 @@ describe('Stripe to Billing to Entitlement integration', () => {
       const entitlement = createFakeEntitlementModule({
         owners: [billingContext()],
         billing: billing.api,
-        offlineLeasePolicy: undecidedOfflineLeasePolicy,
+        offlineLeasePolicy: fukamuOfflineLeasePolicy,
       });
       const stripe = createStripeBillingAdapter({
         configuration: stripeConfiguration,
@@ -77,6 +78,12 @@ describe('Stripe to Billing to Entitlement integration', () => {
           3_100,
         ),
       ).resolves.toMatchObject({ kind: 'allowed', basis: 'trial' });
+      await expect(
+        entitlement.port.issueOfflineLease(billingContext(), {
+          leaseId: entitlementIds.leaseA,
+          issuedAt: 3_200,
+        }),
+      ).resolves.toMatchObject({ kind: 'issued', lease: { basis: 'trial' } });
 
       const failedWebhook = webhook(
         stripeEvent(
@@ -104,6 +111,14 @@ describe('Stripe to Billing to Entitlement integration', () => {
         kind: 'denied',
         reason: expectedLockReason,
       });
+      await expect(
+        entitlement.port.authorizeOfflineCapability(
+          billingContext(),
+          'notes-read',
+          entitlementIds.leaseA,
+          5_201,
+        ),
+      ).resolves.toMatchObject({ kind: 'denied', reason: 'lease-revoked' });
 
       await stripe.ingestWebhook(
         webhook(
