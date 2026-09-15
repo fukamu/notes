@@ -9,6 +9,10 @@ import {
   resolveLegalCommerceDisclosure,
   type LegalCommerceDisclosure,
 } from '@/lib/application/legal-commerce';
+import {
+  FUKAMU_BILLING_PERIOD,
+  FUKAMU_MONTHLY_PRICE_YEN,
+} from '@/lib/application/legal-product';
 import { BILLING_TRIAL_DURATION_MS } from '@/server/billing/core';
 
 function productionDisclosure(): LegalCommerceDisclosure {
@@ -23,8 +27,8 @@ function productionDisclosure(): LegalCommerceDisclosure {
     },
     offer: {
       planName: 'FUKAMU Notes スタンダード',
-      priceYen: 1_280,
-      billingPeriod: 'monthly',
+      priceYen: FUKAMU_MONTHLY_PRICE_YEN,
+      billingPeriod: FUKAMU_BILLING_PERIOD,
       taxIncluded: true,
       trialDays: 14,
     },
@@ -44,7 +48,7 @@ describe('legal commerce disclosure core', () => {
       disclosure: productionDisclosure(),
     });
     expect(formatTaxIncludedPrice(productionDisclosure())).toBe(
-      '1,280円（税込）',
+      '980円（税込）',
     );
     expect(billingPeriodLabel('monthly')).toBe('月額');
     expect(billingPeriodLabel('annual')).toBe('年額');
@@ -138,6 +142,27 @@ describe('legal commerce disclosure core', () => {
       source: 'production-configuration',
       disclosure: productionDisclosure(),
     });
+  });
+
+  it('rejects production price or billing-period drift from the approved monthly offer', () => {
+    for (const offer of [
+      { ...productionDisclosure().offer, priceYen: 960 },
+      { ...productionDisclosure().offer, priceYen: 1_280 },
+      { ...productionDisclosure().offer, billingPeriod: 'annual' },
+    ]) {
+      expect(
+        resolveLegalCommerceDisclosure({
+          FUKAMU_SERVICE_MODE: 'public-paid',
+          FUKAMU_LEGAL_COMMERCE_JSON: JSON.stringify({
+            ...productionDisclosure(),
+            offer,
+          }),
+        }),
+      ).toMatchObject({
+        kind: 'blocked',
+        reason: 'invalid-production-configuration',
+      });
+    }
   });
 });
 

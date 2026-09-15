@@ -2130,6 +2130,8 @@ describe('legal terms disclosure architecture', () => {
     expect(packageSource).toContain('npm run check:legal-terms');
     expect(coverage).toContain("'lib/application/legal-terms.ts'");
     expect(page).toContain('title="利用規約"');
+    expect(page).not.toMatch(/対象年齢|18歳以上/);
+    expect(core).not.toMatch(/対象年齢|18歳以上/);
     expect(notes).not.toMatch(/legal\/terms|利用規約/);
     expect(docs).toContain('does not mount the Notes');
     expect(docs).toContain('FUKAMU_LEGAL_TERMS_JSON');

@@ -10,6 +10,8 @@ import {
   type Decoder,
 } from '../codec/core.ts';
 import type { LegalCommerceDisclosure } from './legal-commerce.ts';
+import { localLegalOperatorFixture } from './legal-operator-fixture.ts';
+import { FUKAMU_SERVICE_ELIGIBILITY } from './legal-product.ts';
 import type { PrivacyDisclosure } from './privacy-disclosure.ts';
 
 export const LEGAL_TERMS_SCHEMA_VERSION = 1;
@@ -206,11 +208,10 @@ export const localLegalTermsFixture: LegalTermsDisclosure = {
   effectiveDate: '2026-09-15',
   serviceName: 'FUKAMU Notes',
   operator: {
-    legalName: 'FUKAMU Notes 開発用サンプル株式会社',
-    supportUrl: 'http://localhost:3100/legal/commercial-transactions',
+    legalName: localLegalOperatorFixture.legalName,
+    supportUrl: localLegalOperatorFixture.supportUrl,
   },
-  serviceEligibility:
-    '開発用サンプル：対象年齢、未成年者の同意その他の利用資格は本番公開前に確定します。',
+  serviceEligibility: FUKAMU_SERVICE_ELIGIBILITY,
   accountSecurity:
     '開発用サンプル：認証情報と利用端末を適切に管理し、不正利用を確認した場合は窓口へ連絡します。',
   authentication: {
@@ -396,6 +397,11 @@ function validateProductionTerms(
   disclosure: LegalTermsDisclosure,
 ): readonly string[] {
   const issues: string[] = [];
+  if (disclosure.serviceEligibility !== FUKAMU_SERVICE_ELIGIBILITY) {
+    issues.push(
+      '$.serviceEligibility must match the approved contract-capacity policy',
+    );
+  }
   const values = [
     disclosure.operator.legalName,
     disclosure.operator.supportUrl,

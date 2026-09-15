@@ -10,9 +10,10 @@ only to signup, checkout, and account terms flows.
 
 With no `FUKAMU_SERVICE_MODE`, or with `legacy-test`, the page renders a built-in
 sample. It is explicitly labelled as development-only and deliberately leaves
-the legally undecided age, liability, service-end notice, and venue wording as
-sample text. It creates no account, consent evidence, payment, provider call, or
-production operation.
+the legally undecided liability, service-end notice, and venue wording as sample
+text. It creates no account, consent evidence, payment, provider call, or
+production operation. Operator samples come from the same replaceable fixture
+as the local commercial and privacy pages.
 
 ## Production configuration
 
@@ -26,12 +27,18 @@ logout removes local content, account deletion removes live data, and backup
 residue is at most 30 days. User content ownership remains with the user and its
 license scope is fixed to the minimum needed to provide the service.
 
+Eligibility is expressed by legal capacity to conclude the paid recurring
+contract without a legal representative's consent. The public page does not use
+an age-category label and signup does not collect date of birth. Production
+configuration must reproduce this approved eligibility sentence exactly, which
+prevents a configuration change from silently introducing a different age or
+guardian rule.
+
 The production validator also rejects sample/placeholder wording, an unverified
 corporate name, and non-production support URLs. This is a completeness gate,
-not legal approval. Age/guardian requirements, liability limits, service-end
-notice, governing law/venue, final Japanese wording, and material-change handling
-remain Decision Required and require qualified Japanese legal review before
-production launch.
+not legal approval. Liability limits, service-end notice, governing law/venue,
+remaining final Japanese wording, and material-change handling remain Decision
+Required and require qualified Japanese legal review before production launch.
 
 `npm run build` executes `check:legal-terms`. That check resolves the commercial,
 privacy, and terms sources together and fails when operator identity, support
