@@ -10,6 +10,8 @@ import {
   Move,
   Network,
   Plus,
+  RotateCcw,
+  Search,
   TriangleAlert,
 } from 'lucide-react';
 import type { ConnectionsRendererProps } from '@/components/presentation-contract';
@@ -86,6 +88,7 @@ const ConnectionsEdgeLayer = memo(
 
 export function ConnectionsView({
   model,
+  staging,
   actions,
   presentation,
 }: ConnectionsRendererProps) {
@@ -108,7 +111,7 @@ export function ConnectionsView({
     <section className="w-full min-w-0" aria-labelledby="connections-heading">
       <div className="connections-map-heading mb-4">
         <div>
-          <p className="eyebrow">ALL DIRECTED LINKS</p>
+          <p className="eyebrow">FOCUSED DIRECTED LINKS</p>
           <h1
             id="connections-heading"
             className="font-heading text-2xl font-semibold"
@@ -116,7 +119,7 @@ export function ConnectionsView({
             つながり
           </h1>
           <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-            この端末にある全カードと、本文で明示した一方向リンクを表示します。
+            現在のカードまたは検索したカードの周辺を、段階的に表示します。
             <ArrowRight aria-hidden="true" className="size-4 shrink-0" />
           </p>
         </div>
@@ -189,6 +192,86 @@ export function ConnectionsView({
         </div>
       </div>
 
+      <section
+        className="mb-4 rounded-2xl border bg-card/45 p-3 sm:p-4"
+        aria-label="表示するカードの選択"
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="min-w-0 flex-1 text-sm font-medium">
+            カードを検索
+            <span className="mt-1 flex items-center gap-2 rounded-xl border bg-background px-3 focus-within:ring-2 focus-within:ring-ring">
+              <Search
+                aria-hidden="true"
+                className="size-4 shrink-0 text-muted-foreground"
+              />
+              <input
+                type="search"
+                value={staging.query}
+                onChange={(event) =>
+                  actions.setSearchQuery(event.currentTarget.value)
+                }
+                className="min-h-10 min-w-0 flex-1 bg-transparent text-sm outline-none"
+                placeholder="番号またはタイトル"
+                data-testid="connections-search"
+              />
+            </span>
+          </label>
+          {staging.focusCardId !== staging.currentCardId && (
+            <button
+              type="button"
+              className="connections-map-control self-start sm:self-auto"
+              onClick={actions.focusCurrentCard}
+            >
+              <RotateCcw aria-hidden="true" className="size-4" />
+              現在のカード周辺へ戻る
+            </button>
+          )}
+        </div>
+
+        <p
+          className="mt-3 text-xs text-muted-foreground"
+          aria-live="polite"
+          data-testid="connections-stage-summary"
+        >
+          全{staging.totalNodeCount.toLocaleString('ja-JP')}枚のうち
+          {staging.visibleNodeCount.toLocaleString('ja-JP')}枚を表示
+          {staging.focusLabel ? `・起点: ${staging.focusLabel}` : ''}
+        </p>
+
+        {staging.query.trim() !== '' && (
+          <div className="mt-3">
+            {staging.searchResults.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                一致するカードはありません。
+              </p>
+            ) : (
+              <ul className="flex flex-wrap gap-2" aria-label="カード検索結果">
+                {staging.searchResults.map((result) => (
+                  <li key={result.cardId}>
+                    <button
+                      type="button"
+                      className="rounded-full border bg-background px-3 py-1.5 text-left text-sm hover:border-primary/45 focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-current={
+                        result.cardId === staging.focusCardId
+                          ? 'true'
+                          : undefined
+                      }
+                      aria-label={`${result.displayLabel} ${result.title}の周辺を表示`}
+                      onClick={() => actions.focusCard(result.cardId)}
+                    >
+                      <span className="font-mono text-xs font-semibold text-accent-foreground">
+                        {result.displayLabel}
+                      </span>{' '}
+                      <span>{result.title}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
+
       <p id="connections-map-instructions" className="sr-only">
         ドラッグまたは一本指で移動、ピンチまたは Control
         キーを押しながらホイールで拡大縮小できます。矢印キーで移動、プラスとマイナスで拡大縮小、0で全体表示、Homeで現在のカードへ戻ります。
@@ -203,8 +286,12 @@ export function ConnectionsView({
         data-camera-render-count="0"
         data-active-pointers="0"
         data-click-suppression="false"
+        data-total-node-count={staging.totalNodeCount}
+        data-visible-node-count={staging.visibleNodeCount}
+        data-node-limit={staging.nodeLimit}
+        data-stage-focus-id={staging.focusCardId ?? ''}
         aria-busy={model.status === 'loading'}
-        aria-label="全カード間の一方向リンクマップ"
+        aria-label="選択したカード周辺の一方向リンクマップ"
         aria-describedby="connections-map-instructions"
       >
         {model.status === 'loading' && (
@@ -322,6 +409,28 @@ export function ConnectionsView({
           </div>
         )}
       </section>
+
+      {staging.canExpand && (
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            className="connections-map-control"
+            onClick={actions.expand}
+            data-testid="connections-expand"
+          >
+            <Plus aria-hidden="true" className="size-4" />
+            さらに
+            {staging.nextExpansionCount.toLocaleString('ja-JP')}
+            枚を表示
+          </button>
+        </div>
+      )}
+
+      {staging.stoppedAtMaximum && (
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          一度に表示できる上限に達しました。別のカードを検索して、その周辺を表示できます。
+        </p>
+      )}
 
       {model.status === 'ready' && model.edges.length === 0 && (
         <div className="mt-4 flex items-center gap-3 rounded-xl border border-dashed px-4 py-4 text-sm text-muted-foreground">

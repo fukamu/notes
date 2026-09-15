@@ -346,7 +346,27 @@ describe('alternate presentation contract', () => {
     for (const status of ['loading', 'error', 'ready'] as const) {
       const props: ConnectionsRendererProps = {
         model: controllerState(status),
-        actions: { openCard },
+        staging: {
+          query: '',
+          searchResults: [],
+          focusCardId: firstId,
+          focusLabel: '#1 First、現在のカード',
+          currentCardId: firstId,
+          totalNodeCount: 1,
+          visibleNodeCount: 1,
+          nodeLimit: 64,
+          hiddenReachableNodeCount: 0,
+          nextExpansionCount: 0,
+          canExpand: false,
+          stoppedAtMaximum: false,
+        },
+        actions: {
+          openCard,
+          setSearchQuery: vi.fn(),
+          focusCard: vi.fn(),
+          focusCurrentCard: vi.fn(),
+          expand: vi.fn(),
+        },
         presentation: alternateNotesAppConfiguration.connectionsPresentation,
       };
       const probe = createAlternateConnectionsProbe(props);

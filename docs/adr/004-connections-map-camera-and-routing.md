@@ -316,6 +316,26 @@ Full values and their attribution limits are in
 Desktop/mobile × light/dark visual evidence and its review checklist are in
 [`screenshots/connections-map`](../screenshots/connections-map/README.md).
 
+## 10,000-card staging addendum
+
+Issue #266 applies the approved large-Vault product decision: connections no
+longer sends every card to ELK when a Vault exceeds the small-graph bound. A
+typed pure selector treats incoming and outgoing links as neighborhood
+adjacency while retaining the original directed edges for rendering. It starts
+from the current card, sends at most 64 nodes to the worker, and expands in
+64-node pages to a hard maximum of 256 nodes. Search returns at most eight
+deterministic title/display-ID matches and lets the user restart the bounded
+neighborhood from a selected result. Reaching the maximum directs the user to
+search rather than silently laying out the rest of the Vault.
+
+Graphs with at most 64 cards retain the existing all-card behavior, including
+isolated and disconnected cards. The full local replica remains available for
+offline editing and search; staging changes only layout and DOM membership. The
+selector has no DOM, worker, clock, network, or storage dependency, and the
+React adapter passes only its bounded result to the existing renderer-neutral
+layout controller. Fixed-count unit and 10,000-card browser assertions are the
+required structural gate; wall-clock timings remain observational.
+
 ## Consequences
 
 - The original study retained ORTHOGONAL + FIXED_SIDE. The expanded Issue #57
@@ -330,3 +350,5 @@ Desktop/mobile × light/dark visual evidence and its review checklist are in
   route. It smooths corners but is not labeled a routing improvement.
 - Keep the benchmark artifact and fixed fixtures as reproducible compatibility
   evidence. Raw timing remains informational rather than a flaky CI threshold.
+- Preserve the 64/64/256 staging policy unless a later reviewed Issue changes
+  both the structural worker/DOM bounds and the user-visible search path.
