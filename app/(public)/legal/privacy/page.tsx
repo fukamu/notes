@@ -84,6 +84,23 @@ export default function PrivacyPage() {
             label: '委託・第三者提供',
             value: disclosure.processorsAndThirdParties,
           },
+          {
+            label: '外部送信',
+            value: (
+              <div className="space-y-2">
+                <p>
+                  Google LoginとStripe
+                  Checkoutへの遷移時に送信される情報、送信先および利用目的は、独立した公表ページで確認できます。
+                </p>
+                <PublicRouteLink
+                  className="inline-block text-primary underline underline-offset-4"
+                  href="/legal/external-transmission"
+                >
+                  外部送信について確認する
+                </PublicRouteLink>
+              </div>
+            ),
+          },
           { label: '外国での取扱い', value: disclosure.foreignTransfers },
           {
             label: '本人からの請求',
