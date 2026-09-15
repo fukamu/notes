@@ -21,16 +21,18 @@ demonstrably restores client navigation.
 ## Local and test behavior
 
 When `FUKAMU_SERVICE_MODE` is absent or `legacy-test`, the pages render a built-in
-fixture. Every identifying or commercial value is visibly marked as a development
-sample, and an accessible notice says that it is not a real seller, price,
-contract, or charge. This keeps `npm run dev`, local builds, CI, and the current
-Sites test environment independent of production legal decisions and services.
+fixture. Operator identity and contact values are visibly marked as development
+samples, while the approved JPY 980 monthly price and contract policies are the
+same values that production validation requires. An accessible notice says that
+the operator is not real and that the local screen cannot create a contract or
+charge. This keeps `npm run dev`, local builds, CI, and the current Sites test
+environment independent of production credentials and services.
 The replaceable operator sample is defined once in
 `lib/application/legal-operator-fixture.ts` and shared with the local privacy and
 terms fixtures so those pages cannot accidentally identify different operators.
 
-The fixture is deliberately invalid for production. It must never be copied into
-a production configuration.
+The fixture remains deliberately invalid for production because of its operator
+placeholders. Replace those values; never copy them into production.
 
 ## Production configuration
 
@@ -75,10 +77,10 @@ annual billing period fails closed before build.
 `npm run build` runs `check:legal-commerce` before creating artifacts. Therefore
 `public-paid` with missing or invalid data fails before a deployable build exists.
 This is a completeness and placeholder gate, not legal approval. The price and
-billing cycle are product decisions; cancellation/refund wording, corporate
-values, contact operation, and supported environment remain Decision Required
-until the user supplies them and a qualified Japanese lawyer reviews the
-rendered pages.
+billing cycle and the cancellation/refund policies are approved product
+decisions and are exact production invariants. Corporate values, contact
+operation, and supported environment still require real configuration, and a
+qualified Japanese lawyer must review the rendered pages before launch.
 
 ## Consistency and rollback
 

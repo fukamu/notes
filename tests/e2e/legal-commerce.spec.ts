@@ -30,6 +30,12 @@ test('pricing and public navigation lead to the dedicated legal disclosure', asy
   ]) {
     await expect(page.getByText(term, { exact: true })).toBeVisible();
   }
+  await expect(
+    page.getByText(/無料期間の終了時まで利用できます/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/日割り計算せず、通常は返金しません/),
+  ).toBeVisible();
   await page.getByRole('link', { name: '会社概要' }).first().click();
   await expect(
     page.getByRole('heading', { name: '会社概要', exact: true }),

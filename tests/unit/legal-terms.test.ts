@@ -12,8 +12,18 @@ import {
   type LegalTermsDisclosure,
 } from '@/lib/application/legal-terms';
 import { localLegalCommerceFixture } from '@/lib/application/legal-commerce';
+import {
+  FUKAMU_AMENDMENTS_POLICY,
+  FUKAMU_CANCELLATION_POLICY,
+  FUKAMU_GOVERNING_LAW_AND_VENUE_POLICY,
+  FUKAMU_LIABILITY_POLICY,
+  FUKAMU_MAINTENANCE_AND_CHANGES_POLICY,
+  FUKAMU_NOTICES_POLICY,
+  FUKAMU_REFUND_POLICY,
+  FUKAMU_SERVICE_ELIGIBILITY,
+  FUKAMU_SERVICE_TERMINATION_POLICY,
+} from '@/lib/application/legal-product';
 import { localPrivacyDisclosureFixture } from '@/lib/application/privacy-disclosure';
-import { FUKAMU_SERVICE_ELIGIBILITY } from '@/lib/application/legal-product';
 
 function productionTerms(): LegalTermsDisclosure {
   return {
@@ -49,8 +59,8 @@ function productionTerms(): LegalTermsDisclosure {
       trialDays: 14,
       firstChargeDay: 15,
       automaticRenewal: true,
-      cancellationPolicy: 'アカウントの契約管理画面から解約できます。',
-      refundPolicy: '提供開始後の返金条件は申込み最終確認画面に表示します。',
+      cancellationPolicy: FUKAMU_CANCELLATION_POLICY,
+      refundPolicy: FUKAMU_REFUND_POLICY,
       paymentFailureLock: 'immediate-online-lock',
       resumePolicy: 'invoice-paid-only',
       cancellationSeparateFromAccountDeletion: true,
@@ -63,20 +73,15 @@ function productionTerms(): LegalTermsDisclosure {
     },
     suspensionPolicy:
       '支払い停止または重大な違反がある場合、必要な範囲で利用を停止します。',
-    maintenanceAndChanges:
-      '保守または機能変更が必要な場合、影響と緊急性に応じて事前に通知します。',
-    serviceTermination:
-      'サービスを終了する場合、合理的な期間を設けて通知し、利用者dataの取扱方法を案内します。',
+    maintenanceAndChanges: FUKAMU_MAINTENANCE_AND_CHANGES_POLICY,
+    serviceTermination: FUKAMU_SERVICE_TERMINATION_POLICY,
     intellectualProperty:
       'サービス自体の知的財産権は運営者または正当な権利者に帰属します。',
-    liability:
-      '適用法令に反しない範囲で、運営者の責任範囲を個別事情に応じて判断します。',
-    notices: '重要な通知は登録連絡先またはサービス内の専用画面で行います。',
-    governingLawAndVenue:
-      '日本法を準拠法とし、法令上認められる合意管轄を利用者へ表示します。',
+    liability: FUKAMU_LIABILITY_POLICY,
+    notices: FUKAMU_NOTICES_POLICY,
+    governingLawAndVenue: FUKAMU_GOVERNING_LAW_AND_VENUE_POLICY,
     amendments: {
-      procedure:
-        '変更後のversionと施行日を公開し、重要な変更は施行前に通知します。',
+      procedure: FUKAMU_AMENDMENTS_POLICY,
       materialChangeHandling: 'legal-review-required-before-enforcement',
     },
   };
@@ -193,6 +198,40 @@ describe('legal terms disclosure core', () => {
         '$.serviceEligibility must match the approved contract-capacity policy',
       ],
     });
+  });
+
+  it('rejects drift from every approved material policy', () => {
+    const terms = productionTerms();
+    const changed = [
+      { ...terms, maintenanceAndChanges: '変更された方針' },
+      { ...terms, serviceTermination: '変更された方針' },
+      { ...terms, liability: '変更された方針' },
+      { ...terms, notices: '変更された方針' },
+      { ...terms, governingLawAndVenue: '変更された方針' },
+      {
+        ...terms,
+        billing: { ...terms.billing, cancellationPolicy: '変更された方針' },
+      },
+      {
+        ...terms,
+        billing: { ...terms.billing, refundPolicy: '変更された方針' },
+      },
+      {
+        ...terms,
+        amendments: { ...terms.amendments, procedure: '変更された方針' },
+      },
+    ];
+    for (const disclosure of changed) {
+      expect(
+        resolveLegalTermsDisclosure({
+          FUKAMU_SERVICE_MODE: 'public-paid',
+          FUKAMU_LEGAL_TERMS_JSON: JSON.stringify(disclosure),
+        }),
+      ).toMatchObject({
+        kind: 'blocked',
+        reason: 'invalid-production-configuration',
+      });
+    }
   });
 
   it('detects drift from commercial and privacy disclosures', () => {

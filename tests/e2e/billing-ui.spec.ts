@@ -49,7 +49,7 @@ test('dedicated checkout keeps legal detail out of Notes and requires affirmativ
         evidenceOutcome: 'recorded',
         evidenceId,
         offerHash: initialOfferHash,
-        offerVersion: 'legal-commerce-v1:2026-09-14',
+        offerVersion: 'legal-commerce-v1:2026-09-15',
         checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_fukamu',
       }),
     });
@@ -232,7 +232,7 @@ test('checkout retry reuses the same submission identifier', async ({
         evidenceOutcome: 'replayed',
         evidenceId,
         offerHash: initialOfferHash,
-        offerVersion: 'legal-commerce-v1:2026-09-14',
+        offerVersion: 'legal-commerce-v1:2026-09-15',
         checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_retry',
       }),
     });

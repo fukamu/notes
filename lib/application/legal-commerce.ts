@@ -1,7 +1,9 @@
 import { localLegalOperatorFixture } from './legal-operator-fixture.ts';
 import {
   FUKAMU_BILLING_PERIOD,
+  FUKAMU_CANCELLATION_POLICY,
   FUKAMU_MONTHLY_PRICE_YEN,
+  FUKAMU_REFUND_POLICY,
 } from './legal-product.ts';
 
 export const LEGAL_COMMERCE_SCHEMA_VERSION = 1;
@@ -63,18 +65,22 @@ export const localLegalCommerceFixture: LegalCommerceDisclosure = {
     supportUrl: localLegalOperatorFixture.supportUrl,
   },
   offer: {
-    planName: '開発用サンプル月額プラン',
+    planName: 'FUKAMU Notes 月額プラン',
     priceYen: FUKAMU_MONTHLY_PRICE_YEN,
     billingPeriod: FUKAMU_BILLING_PERIOD,
     taxIncluded: true,
     trialDays: LEGAL_TRIAL_DAYS,
   },
-  additionalFees: '開発用サンプル：インターネット接続料金は利用者負担',
-  cancellationPolicy: '開発用サンプル：アカウント画面から解約',
-  refundPolicy: '開発用サンプル：返金条件は未確定',
-  specialTerms: '開発用サンプル：本表示で契約や課金は行われません',
-  systemRequirements: ['開発用サンプル：サポート対象ブラウザは未確定'],
-  effectiveDate: '2026-09-14',
+  additionalFees:
+    '本サービスの利用に必要なインターネット接続料金、通信料金および利用端末の費用は利用者の負担です。',
+  cancellationPolicy: FUKAMU_CANCELLATION_POLICY,
+  refundPolicy: FUKAMU_REFUND_POLICY,
+  specialTerms: '前記以外の特別な販売条件はありません。',
+  systemRequirements: [
+    '最新安定版のGoogle Chrome、Safari、Mozilla FirefoxまたはMicrosoft Edge',
+    'JavaScript、CookieおよびIndexedDBを利用できること',
+  ],
+  effectiveDate: '2026-09-15',
 };
 
 export function decodeLegalCommerceDisclosure(
@@ -374,6 +380,12 @@ function validateProductionDisclosure(
   }
   if (disclosure.offer.billingPeriod !== FUKAMU_BILLING_PERIOD) {
     issues.push(`$.offer.billingPeriod must be ${FUKAMU_BILLING_PERIOD}`);
+  }
+  if (disclosure.cancellationPolicy !== FUKAMU_CANCELLATION_POLICY) {
+    issues.push('$.cancellationPolicy must match the approved policy');
+  }
+  if (disclosure.refundPolicy !== FUKAMU_REFUND_POLICY) {
+    issues.push('$.refundPolicy must match the approved policy');
   }
   const strings = [
     ['$.seller.legalName', disclosure.seller.legalName],

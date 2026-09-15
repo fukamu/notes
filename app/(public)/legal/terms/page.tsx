@@ -18,7 +18,7 @@ export default function LegalTermsPage() {
       title="利用規約"
       summary="FUKAMU Notesのアカウント、Personal Vault、有料サブスクリプションおよび利用者contentの取扱条件です。"
       fixture={resolved.source === 'local-fixture'}
-      fixtureMessage="これはローカル開発・テスト専用のサンプル規約です。実在する契約条件、責任範囲、通知期間または裁判管轄を確定するものではありません。"
+      fixtureMessage="ローカル開発・テスト環境です。会社名、所在地、電話番号と窓口は置換用のサンプルであり、この画面から契約や課金は行われません。"
     >
       <LegalDefinitionList
         items={[

@@ -11,7 +11,17 @@ import {
 } from '../codec/core.ts';
 import type { LegalCommerceDisclosure } from './legal-commerce.ts';
 import { localLegalOperatorFixture } from './legal-operator-fixture.ts';
-import { FUKAMU_SERVICE_ELIGIBILITY } from './legal-product.ts';
+import {
+  FUKAMU_AMENDMENTS_POLICY,
+  FUKAMU_CANCELLATION_POLICY,
+  FUKAMU_GOVERNING_LAW_AND_VENUE_POLICY,
+  FUKAMU_LIABILITY_POLICY,
+  FUKAMU_MAINTENANCE_AND_CHANGES_POLICY,
+  FUKAMU_NOTICES_POLICY,
+  FUKAMU_REFUND_POLICY,
+  FUKAMU_SERVICE_ELIGIBILITY,
+  FUKAMU_SERVICE_TERMINATION_POLICY,
+} from './legal-product.ts';
 import type { PrivacyDisclosure } from './privacy-disclosure.ts';
 
 export const LEGAL_TERMS_SCHEMA_VERSION = 1;
@@ -213,7 +223,7 @@ export const localLegalTermsFixture: LegalTermsDisclosure = {
   },
   serviceEligibility: FUKAMU_SERVICE_ELIGIBILITY,
   accountSecurity:
-    '開発用サンプル：認証情報と利用端末を適切に管理し、不正利用を確認した場合は窓口へ連絡します。',
+    '利用者は、Google LoginまたはEmail OTPに使用するアカウント、登録連絡先および利用端末を適切に管理し、第三者による不正利用を確認した場合は速やかに問い合わせ窓口へ連絡するものとします。',
   authentication: {
     googleLogin: true,
     emailOtp: true,
@@ -221,22 +231,25 @@ export const localLegalTermsFixture: LegalTermsDisclosure = {
     sharedVault: false,
   },
   prohibitedActivities: [
-    '開発用サンプル：法令または第三者の権利を侵害する行為',
-    '開発用サンプル：service、他の利用者またはnetworkの安全を損なう行為',
+    '法令、公序良俗または本規約に違反する行為',
+    '第三者の知的財産権、プライバシーその他の権利を侵害する行為',
+    '不正アクセス、認証情報の不正取得その他本サービスの安全性を損なう行為',
+    '本サービスまたはその基盤へ過度な負荷を与え、運営を妨害する行為',
+    'アカウントを第三者へ譲渡もしくは貸与し、または本サービスを無断で再販売する行為',
   ],
   userContent: {
     ownership: 'retained-by-user',
     licenseScope: 'minimum-necessary-for-service',
     licensePurpose:
-      '開発用サンプル：利用者contentの権利は利用者に留保され、serviceの保存・同期・表示・保守・security対応に必要な最小範囲だけ取り扱います。',
+      '利用者contentの権利は利用者に留保されます。利用者は当社に対し、本サービスにおける保存、暗号化、同期、表示、バックアップ、保守およびセキュリティ対応に必要な最小範囲で、利用者contentを複製その他取り扱う権限を付与します。この権限は本サービスの提供以外の目的には使用しません。',
   },
   billing: {
     paidOnly: true,
     trialDays: LEGAL_TERMS_TRIAL_DAYS,
     firstChargeDay: LEGAL_TERMS_FIRST_CHARGE_DAY,
     automaticRenewal: true,
-    cancellationPolicy: '開発用サンプル：アカウント画面から解約',
-    refundPolicy: '開発用サンプル：返金条件は未確定',
+    cancellationPolicy: FUKAMU_CANCELLATION_POLICY,
+    refundPolicy: FUKAMU_REFUND_POLICY,
     paymentFailureLock: 'immediate-online-lock',
     resumePolicy: 'invoice-paid-only',
     cancellationSeparateFromAccountDeletion: true,
@@ -248,21 +261,16 @@ export const localLegalTermsFixture: LegalTermsDisclosure = {
     backupMaximumDays: LEGAL_TERMS_BACKUP_MAXIMUM_DAYS,
   },
   suspensionPolicy:
-    '開発用サンプル：支払い停止または重大な違反時の利用制限手順は本番公開前に法務確認します。',
-  maintenanceAndChanges:
-    '開発用サンプル：保守、機能変更および一時停止の通知条件は本番公開前に確定します。',
-  serviceTermination:
-    '開発用サンプル：service終了時のnotice期間とdata export手順は本番公開前に確定します。',
+    '支払い失敗、追加認証要求、本規約への重大な違反、不正利用またはサービスの安全を守るために必要な場合、当社は必要な範囲で本サービスの利用を停止できます。合理的に可能な場合は理由と解除方法を通知します。停止中も支払い、解約、退会および問い合わせに必要な経路は利用できます。支払いに基づく停止は、未払いinvoiceの支払いを確認した場合に限り解除します。',
+  maintenanceAndChanges: FUKAMU_MAINTENANCE_AND_CHANGES_POLICY,
+  serviceTermination: FUKAMU_SERVICE_TERMINATION_POLICY,
   intellectualProperty:
-    '開発用サンプル：service自体の知的財産権と利用者contentの権利を区別します。',
-  liability:
-    '開発用サンプル：責任範囲・上限は消費者契約法を含む適用法令と専門家review後に確定します。',
-  notices: '開発用サンプル：重要な通知方法と到達時期は本番公開前に確定します。',
-  governingLawAndVenue:
-    '開発用サンプル：準拠法と裁判管轄は日本法専門家review後に確定します。',
+    '本サービス、ソフトウェア、画面、文書その他当社が提供するものに関する知的財産権は、当社または正当な権利者に帰属します。利用者contentの権利は利用者に留保されます。',
+  liability: FUKAMU_LIABILITY_POLICY,
+  notices: FUKAMU_NOTICES_POLICY,
+  governingLawAndVenue: FUKAMU_GOVERNING_LAW_AND_VENUE_POLICY,
   amendments: {
-    procedure:
-      '開発用サンプル：規約versionと施行日を公開し、重要な変更は施行前に通知します。',
+    procedure: FUKAMU_AMENDMENTS_POLICY,
     materialChangeHandling: 'legal-review-required-before-enforcement',
   },
 };
@@ -401,6 +409,45 @@ function validateProductionTerms(
     issues.push(
       '$.serviceEligibility must match the approved contract-capacity policy',
     );
+  }
+  const approvedPolicies = [
+    [
+      '$.billing.cancellationPolicy',
+      disclosure.billing.cancellationPolicy,
+      FUKAMU_CANCELLATION_POLICY,
+    ],
+    [
+      '$.billing.refundPolicy',
+      disclosure.billing.refundPolicy,
+      FUKAMU_REFUND_POLICY,
+    ],
+    [
+      '$.maintenanceAndChanges',
+      disclosure.maintenanceAndChanges,
+      FUKAMU_MAINTENANCE_AND_CHANGES_POLICY,
+    ],
+    [
+      '$.serviceTermination',
+      disclosure.serviceTermination,
+      FUKAMU_SERVICE_TERMINATION_POLICY,
+    ],
+    ['$.liability', disclosure.liability, FUKAMU_LIABILITY_POLICY],
+    ['$.notices', disclosure.notices, FUKAMU_NOTICES_POLICY],
+    [
+      '$.governingLawAndVenue',
+      disclosure.governingLawAndVenue,
+      FUKAMU_GOVERNING_LAW_AND_VENUE_POLICY,
+    ],
+    [
+      '$.amendments.procedure',
+      disclosure.amendments.procedure,
+      FUKAMU_AMENDMENTS_POLICY,
+    ],
+  ] as const;
+  for (const [path, actual, approved] of approvedPolicies) {
+    if (actual !== approved) {
+      issues.push(`${path} must match the approved policy`);
+    }
   }
   const values = [
     disclosure.operator.legalName,
