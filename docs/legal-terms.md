@@ -9,11 +9,11 @@ only to signup, checkout, and account terms flows.
 ## Local and test mode
 
 With no `FUKAMU_SERVICE_MODE`, or with `legacy-test`, the page renders a built-in
-sample. It is explicitly labelled as development-only and deliberately leaves
-the legally undecided liability, service-end notice, and venue wording as sample
-text. It creates no account, consent evidence, payment, provider call, or
-production operation. Operator samples come from the same replaceable fixture
-as the local commercial and privacy pages.
+fixture. It contains the approved contract wording so the complete document can
+be reviewed locally, but its operator name and contact are explicitly labelled
+as replaceable development samples. It creates no account, consent evidence,
+payment, provider call, or production operation. Operator samples come from the
+same replaceable fixture as the local commercial and privacy pages.
 
 ## Production configuration
 
@@ -36,9 +36,30 @@ guardian rule.
 
 The production validator also rejects sample/placeholder wording, an unverified
 corporate name, and non-production support URLs. This is a completeness gate,
-not legal approval. Liability limits, service-end notice, governing law/venue,
-remaining final Japanese wording, and material-change handling remain Decision
-Required and require qualified Japanese legal review before production launch.
+not legal approval. The approved cancellation, refund, maintenance/change,
+service termination, liability, notice, governing-law/venue, and amendment
+sentences are exact production invariants. A different policy requires a new
+product decision and version rather than an environment-only edit.
+
+The approved policies are:
+
+- trial cancellation stops renewal without an initial charge and permits use
+  through the trial end unless another entitlement lock applies;
+- cancellation after payment stops the next renewal and permits use through the
+  paid period end unless another entitlement lock applies;
+- no ordinary prorating or refund, with exceptions for duplicate charges,
+  operator-caused non-provision, and applicable law;
+- ordinary-negligence damages are limited to direct, ordinary damages and the
+  prior 12 months of paid fees, without limiting intentional/gross-negligence,
+  personal-injury, or other legally non-limitable liability;
+- material changes and service termination use 30 days' notice in principle,
+  with narrow security/legal/emergency exceptions and re-consent when legal
+  review requires it; and
+- Japanese law and the district court for the operator's registered head office
+  apply without excluding a consumer's statutory venue.
+
+Qualified Japanese legal review and the real operator/contact values remain a
+production launch gate.
 
 `npm run build` executes `check:legal-terms`. That check resolves the commercial,
 privacy, and terms sources together and fails when operator identity, support

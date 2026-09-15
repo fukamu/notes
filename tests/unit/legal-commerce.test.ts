@@ -11,7 +11,9 @@ import {
 } from '@/lib/application/legal-commerce';
 import {
   FUKAMU_BILLING_PERIOD,
+  FUKAMU_CANCELLATION_POLICY,
   FUKAMU_MONTHLY_PRICE_YEN,
+  FUKAMU_REFUND_POLICY,
 } from '@/lib/application/legal-product';
 import { BILLING_TRIAL_DURATION_MS } from '@/server/billing/core';
 
@@ -33,8 +35,8 @@ function productionDisclosure(): LegalCommerceDisclosure {
       trialDays: 14,
     },
     additionalFees: 'インターネット接続料金は利用者の負担です。',
-    cancellationPolicy: 'アカウントの契約管理画面から解約できます。',
-    refundPolicy: '提供開始後の返金条件は申込み最終確認画面に表示します。',
+    cancellationPolicy: FUKAMU_CANCELLATION_POLICY,
+    refundPolicy: FUKAMU_REFUND_POLICY,
     specialTerms: '日本国内から利用できます。',
     systemRequirements: ['最新版のChrome、Safari、Firefox、Edge'],
     effectiveDate: '2026-09-14',
@@ -157,6 +159,29 @@ describe('legal commerce disclosure core', () => {
             ...productionDisclosure(),
             offer,
           }),
+        }),
+      ).toMatchObject({
+        kind: 'blocked',
+        reason: 'invalid-production-configuration',
+      });
+    }
+  });
+
+  it('rejects production cancellation or refund policy drift', () => {
+    for (const disclosure of [
+      {
+        ...productionDisclosure(),
+        cancellationPolicy: 'いつでも即時解約できます。',
+      },
+      {
+        ...productionDisclosure(),
+        refundPolicy: 'すべて返金します。',
+      },
+    ]) {
+      expect(
+        resolveLegalCommerceDisclosure({
+          FUKAMU_SERVICE_MODE: 'public-paid',
+          FUKAMU_LEGAL_COMMERCE_JSON: JSON.stringify(disclosure),
         }),
       ).toMatchObject({
         kind: 'blocked',

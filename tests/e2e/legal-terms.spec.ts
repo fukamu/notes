@@ -9,7 +9,7 @@ test('public navigation reaches the dedicated versioned terms page', async ({
     page.getByRole('heading', { name: '利用規約', exact: true }),
   ).toBeVisible();
   await expect(page.getByTestId('legal-fixture-notice')).toContainText(
-    'ローカル開発・テスト専用のサンプル規約',
+    '会社名、所在地、電話番号と窓口は置換用のサンプル',
   );
   for (const label of [
     '利用資格',
@@ -28,6 +28,11 @@ test('public navigation reaches the dedicated versioned terms page', async ({
     ),
   ).toBeVisible();
   await expect(page.getByText(/対象年齢|18歳以上/)).toHaveCount(0);
+  await expect(page.getByText(/原則として終了日の30日前/)).toBeVisible();
+  await expect(page.getByText(/直近12か月間/)).toBeVisible();
+  await expect(
+    page.getByText(/消費者に法令上認められる裁判管轄を排除しません/),
+  ).toBeVisible();
 });
 
 test('terms content and dialogs remain outside the normal Notes interface', async ({
