@@ -6,6 +6,10 @@ import {
   D1EntitlementRepository,
   createD1EntitlementPort,
 } from '@/server/entitlement/d1-adapter';
+import {
+  FUKAMU_OFFLINE_LEASE_DURATION_MS,
+  fukamuOfflineLeasePolicy,
+} from '@/server/entitlement/public';
 import { productionMigrationManifest } from '@/server/migrations/production';
 import { runD1Migrations } from '@/server/migrations/d1-runner';
 import {
@@ -18,7 +22,6 @@ import {
 } from '@/tests/fixtures/billing';
 import { personalAccountProvision } from '@/tests/fixtures/control-plane';
 import {
-  configuredOfflineLeasePolicy,
   entitlementIds,
   undecidedOfflineLeasePolicy,
 } from '@/tests/fixtures/entitlement';
@@ -69,10 +72,7 @@ afterAll(async () => {
   await miniflare.dispose();
 });
 
-function modulesFor(
-  database: TestDatabase,
-  policy = configuredOfflineLeasePolicy(60_000),
-) {
+function modulesFor(database: TestDatabase, policy = fukamuOfflineLeasePolicy) {
   const controlPlane = new D1IdentityVaultControlPlane(database);
   const billing = createD1BillingApi(database, controlPlane);
   return {
@@ -120,6 +120,22 @@ describe('D1 Entitlement public contract', () => {
         4_000,
       ),
     ).resolves.toMatchObject({ kind: 'denied', reason: 'lease-not-found' });
+    await expect(
+      entitlement.authorizeOfflineCapability(
+        billingContext(),
+        'notes-write',
+        entitlementIds.leaseA,
+        command.issuedAt + FUKAMU_OFFLINE_LEASE_DURATION_MS - 1,
+      ),
+    ).resolves.toMatchObject({ kind: 'allowed' });
+    await expect(
+      entitlement.authorizeOfflineCapability(
+        billingContext(),
+        'notes-write',
+        entitlementIds.leaseA,
+        command.issuedAt + FUKAMU_OFFLINE_LEASE_DURATION_MS,
+      ),
+    ).resolves.toMatchObject({ kind: 'denied', reason: 'lease-expired' });
   });
 
   it('atomically projects payment failure and revokes active leases', async () => {

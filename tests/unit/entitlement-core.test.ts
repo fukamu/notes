@@ -8,6 +8,8 @@ import {
   planOfflineLease,
 } from '@/server/entitlement/core';
 import {
+  FUKAMU_OFFLINE_LEASE_DURATION_MS,
+  fukamuOfflineLeasePolicy,
   paidPersonalVaultLimits,
   type EntitlementCapability,
 } from '@/server/entitlement/public';
@@ -211,5 +213,80 @@ describe('Entitlement pure policy', () => {
     expect(
       authorizeOfflineLease(planned.lease, context, 'notes-read', 63_000),
     ).toMatchObject({ kind: 'denied', reason: 'lease-expired' });
+  });
+
+  it('uses the approved 24-hour lease with an exclusive billing-capped boundary', () => {
+    expect(FUKAMU_OFFLINE_LEASE_DURATION_MS).toBe(86_400_000);
+    const context = billingContext();
+    const trialFacts = subscriptionFacts();
+    const trialEvaluation = evaluateSubscriptionFacts(trialFacts, 3_000);
+    if (trialEvaluation.kind !== 'evaluated') {
+      throw new Error('invalid trial fixture');
+    }
+    const trialProjection = planEntitlementProjection(
+      context,
+      trialFacts,
+      trialEvaluation.state,
+      3_000,
+      undefined,
+    );
+    if (trialProjection.kind !== 'commit') {
+      throw new Error('invalid trial projection');
+    }
+    const fullLease = planOfflineLease(
+      context,
+      trialProjection.record,
+      fukamuOfflineLeasePolicy,
+      { leaseId: entitlementIds.leaseA, issuedAt: 3_000 },
+    );
+    expect(fullLease).toMatchObject({
+      kind: 'issue',
+      lease: { expiresAt: 3_000 + FUKAMU_OFFLINE_LEASE_DURATION_MS },
+    });
+    if (fullLease.kind !== 'issue') throw new Error('invalid lease plan');
+    expect(
+      authorizeOfflineLease(
+        fullLease.lease,
+        context,
+        'notes-write',
+        fullLease.lease.expiresAt - 1,
+      ),
+    ).toMatchObject({ kind: 'allowed' });
+    expect(
+      authorizeOfflineLease(
+        fullLease.lease,
+        context,
+        'notes-write',
+        fullLease.lease.expiresAt,
+      ),
+    ).toMatchObject({ kind: 'denied', reason: 'lease-expired' });
+
+    const paidFacts = subscriptionFacts({
+      kind: 'active',
+      paidPeriodStartedAt: 10_000,
+      paidThrough: 50_000,
+    });
+    const paidEvaluation = evaluateSubscriptionFacts(paidFacts, 20_000);
+    if (paidEvaluation.kind !== 'evaluated') {
+      throw new Error('invalid paid fixture');
+    }
+    const paidProjection = planEntitlementProjection(
+      context,
+      paidFacts,
+      paidEvaluation.state,
+      20_000,
+      undefined,
+    );
+    if (paidProjection.kind !== 'commit') {
+      throw new Error('invalid paid projection');
+    }
+    expect(
+      planOfflineLease(
+        context,
+        paidProjection.record,
+        fukamuOfflineLeasePolicy,
+        { leaseId: entitlementIds.leaseB, issuedAt: 20_000 },
+      ),
+    ).toMatchObject({ kind: 'issue', lease: { expiresAt: 50_000 } });
   });
 });

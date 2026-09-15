@@ -44,27 +44,31 @@ The count and byte algorithms are now fixed in
 enforcement remain separate dependent Issues; this pure policy does not make a
 client counter authoritative.
 
-## Offline lease decision boundary
+## Offline lease policy
 
-The offline lease duration remains a parent #106 Decision Required. The policy
-is therefore a discriminated union:
+Parent #106 fixes the offline lease duration at 24 hours. The production Sync
+v2 composition supplies this named product policy explicitly; it is not a
+hidden default in the Entitlement service. The policy remains a discriminated
+union:
 
 - `undecided`: lease issuance is denied with `lease-policy-undecided`;
 - `configured`: a caller-supplied, validated positive duration is capped by the
-  current trial or paid period.
+  current trial or paid period. FUKAMU Notes production supplies exactly
+  86,400,000 milliseconds (24 hours).
 
-There is no default duration and no production allow-all fallback. A concrete
-duration can be supplied only after the product decision; changing that
-parameter does not change the state machine. Leases are bound to Account,
-Vault, Session, and SessionEpoch. They authorize offline notes read/write only;
-sync and recovery actions require an online check.
+There is no service-level default duration and no allow-all fallback. Changing
+the named product policy still does not change the state machine. Leases are
+bound to Account, Vault, Session, and SessionEpoch. They authorize offline notes
+read/write only; sync and recovery actions require an online check. Expiry is
+exclusive: the lease is valid immediately before `expiresAt` and denied at the
+exact boundary.
 
 A fully offline device cannot learn about payment failure immediately. Once an
 online check observes a locked Billing state, the projection change and all
 active lease revocations are committed in one repository transaction. An
 already disconnected device can continue only until its previously issued
-lease expires. This is the physical limitation that the outstanding duration
-decision must balance.
+lease expires. With the approved policy, that exposure is at most 24 hours and
+can be shorter at a trial or paid-period boundary.
 
 ## Persistence and adapters
 

@@ -148,6 +148,13 @@ export type OfflineLeasePolicy =
       readonly duration: OfflineLeaseDuration;
     };
 
+export const FUKAMU_OFFLINE_LEASE_DURATION_MS = 24 * 60 * 60 * 1_000;
+
+export const fukamuOfflineLeasePolicy: OfflineLeasePolicy = {
+  kind: 'configured',
+  duration: parseOfflineLeaseDuration(FUKAMU_OFFLINE_LEASE_DURATION_MS),
+};
+
 export type OfflineLease = {
   readonly leaseId: OfflineLeaseId;
   readonly context: VaultContext;
