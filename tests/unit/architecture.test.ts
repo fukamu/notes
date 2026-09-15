@@ -1718,13 +1718,25 @@ describe('swappable presentation architecture', () => {
 
   it('bounds connections before the worker-facing controller boundary', async () => {
     const staging = await readFile('lib/graph/connections-staging.ts', 'utf8');
+    const contract = await readFile(
+      'lib/graph/connections-contract.ts',
+      'utf8',
+    );
     const adapter = await readFile(
       'components/connections-adapter.tsx',
       'utf8',
     );
+    const view = await readFile('components/connections-view.tsx', 'utf8');
 
     expect(staging).toContain('maximumNodeLimit: 256');
     expect(staging).toContain('selectConnectionsStage');
+    expect(staging).not.toContain('queryConnectionsStageNodes');
+    expect(contract).not.toContain('setSearchQuery');
+    expect(contract).not.toContain('searchResults');
+    expect(adapter).toContain(
+      'selectConnectionsStage(input, { expansionPage })',
+    );
+    expect(view).not.toContain('connections-search');
     expect(staging).not.toMatch(
       /(?:react|window\.|document\.|Worker|HTMLElement|performance\.)/,
     );

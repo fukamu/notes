@@ -8,18 +8,15 @@ export type ConnectionsStagingPolicy = Readonly<{
   initialNodeLimit: number;
   expansionPageSize: number;
   maximumNodeLimit: number;
-  searchResultLimit: number;
 }>;
 
 export const defaultConnectionsStagingPolicy = {
   initialNodeLimit: 64,
   expansionPageSize: 64,
   maximumNodeLimit: 256,
-  searchResultLimit: 8,
 } as const satisfies ConnectionsStagingPolicy;
 
 export type ConnectionsStageRequest = Readonly<{
-  focusCardId: CardId;
   expansionPage: number;
 }>;
 
@@ -44,7 +41,6 @@ function validatePolicy(policy: ConnectionsStagingPolicy): void {
   requirePositiveInteger(policy.initialNodeLimit, 'initialNodeLimit');
   requirePositiveInteger(policy.expansionPageSize, 'expansionPageSize');
   requirePositiveInteger(policy.maximumNodeLimit, 'maximumNodeLimit');
-  requirePositiveInteger(policy.searchResultLimit, 'searchResultLimit');
   if (policy.initialNodeLimit > policy.maximumNodeLimit) {
     throw new RangeError('initialNodeLimit must not exceed maximumNodeLimit');
   }
@@ -81,10 +77,8 @@ function uniqueNodes(
 function resolveFocusCardId(
   input: ConnectionsInputModel,
   nodesById: ReadonlyMap<CardId, ConnectionsSemanticNode>,
-  requestedFocusCardId: CardId,
   nodes: readonly ConnectionsSemanticNode[],
 ): CardId | null {
-  if (nodesById.has(requestedFocusCardId)) return requestedFocusCardId;
   if (nodesById.has(input.currentCardId)) return input.currentCardId;
   return nodes[0]?.cardId ?? null;
 }
@@ -135,12 +129,7 @@ export function selectConnectionsStage(
   validatePolicy(policy);
   const nodes = uniqueNodes(input.nodes);
   const nodesById = new Map(nodes.map((node) => [node.cardId, node]));
-  const focusCardId = resolveFocusCardId(
-    input,
-    nodesById,
-    request.focusCardId,
-    nodes,
-  );
+  const focusCardId = resolveFocusCardId(input, nodesById, nodes);
   const requestedNodeLimit = nodeLimit(request.expansionPage, policy);
 
   if (nodes.length <= policy.initialNodeLimit || focusCardId === null) {
@@ -191,33 +180,6 @@ export function selectConnectionsStage(
     canExpand: hiddenReachableNodeCount > 0 && !stoppedAtMaximum,
     stoppedAtMaximum,
   };
-}
-
-function normalizedSearchText(value: string): string {
-  return value.normalize('NFKC').trim().toLowerCase();
-}
-
-export function queryConnectionsStageNodes(
-  nodes: readonly ConnectionsSemanticNode[],
-  query: string,
-  resultLimit: number = defaultConnectionsStagingPolicy.searchResultLimit,
-): ConnectionsSemanticNode[] {
-  requirePositiveInteger(resultLimit, 'resultLimit');
-  const normalizedQuery = normalizedSearchText(query);
-  if (normalizedQuery === '') return [];
-  const results: ConnectionsSemanticNode[] = [];
-  const seen = new Set<CardId>();
-  for (const node of nodes) {
-    if (seen.has(node.cardId)) continue;
-    seen.add(node.cardId);
-    const searchable = normalizedSearchText(
-      `${node.displayLabel} ${node.title}`,
-    );
-    if (!searchable.includes(normalizedQuery)) continue;
-    results.push(node);
-    if (results.length === resultLimit) break;
-  }
-  return results;
 }
 
 export function nextConnectionsExpansionPage(

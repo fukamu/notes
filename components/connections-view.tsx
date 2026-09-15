@@ -10,8 +10,6 @@ import {
   Move,
   Network,
   Plus,
-  RotateCcw,
-  Search,
   TriangleAlert,
 } from 'lucide-react';
 import type { ConnectionsRendererProps } from '@/components/presentation-contract';
@@ -119,7 +117,7 @@ export function ConnectionsView({
             つながり
           </h1>
           <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-            現在のカードまたは検索したカードの周辺を、段階的に表示します。
+            現在のカードの周辺を、段階的に表示します。
             <ArrowRight aria-hidden="true" className="size-4 shrink-0" />
           </p>
         </div>
@@ -192,85 +190,15 @@ export function ConnectionsView({
         </div>
       </div>
 
-      <section
-        className="mb-4 rounded-2xl border bg-card/45 p-3 sm:p-4"
-        aria-label="表示するカードの選択"
+      <p
+        className="mb-4 text-xs text-muted-foreground"
+        aria-live="polite"
+        data-testid="connections-stage-summary"
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="min-w-0 flex-1 text-sm font-medium">
-            カードを検索
-            <span className="mt-1 flex items-center gap-2 rounded-xl border bg-background px-3 focus-within:ring-2 focus-within:ring-ring">
-              <Search
-                aria-hidden="true"
-                className="size-4 shrink-0 text-muted-foreground"
-              />
-              <input
-                type="search"
-                value={staging.query}
-                onChange={(event) =>
-                  actions.setSearchQuery(event.currentTarget.value)
-                }
-                className="min-h-10 min-w-0 flex-1 bg-transparent text-sm outline-none"
-                placeholder="番号またはタイトル"
-                data-testid="connections-search"
-              />
-            </span>
-          </label>
-          {staging.focusCardId !== staging.currentCardId && (
-            <button
-              type="button"
-              className="connections-map-control self-start sm:self-auto"
-              onClick={actions.focusCurrentCard}
-            >
-              <RotateCcw aria-hidden="true" className="size-4" />
-              現在のカード周辺へ戻る
-            </button>
-          )}
-        </div>
-
-        <p
-          className="mt-3 text-xs text-muted-foreground"
-          aria-live="polite"
-          data-testid="connections-stage-summary"
-        >
-          全{staging.totalNodeCount.toLocaleString('ja-JP')}枚のうち
-          {staging.visibleNodeCount.toLocaleString('ja-JP')}枚を表示
-          {staging.focusLabel ? `・起点: ${staging.focusLabel}` : ''}
-        </p>
-
-        {staging.query.trim() !== '' && (
-          <div className="mt-3">
-            {staging.searchResults.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                一致するカードはありません。
-              </p>
-            ) : (
-              <ul className="flex flex-wrap gap-2" aria-label="カード検索結果">
-                {staging.searchResults.map((result) => (
-                  <li key={result.cardId}>
-                    <button
-                      type="button"
-                      className="rounded-full border bg-background px-3 py-1.5 text-left text-sm hover:border-primary/45 focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-current={
-                        result.cardId === staging.focusCardId
-                          ? 'true'
-                          : undefined
-                      }
-                      aria-label={`${result.displayLabel} ${result.title}の周辺を表示`}
-                      onClick={() => actions.focusCard(result.cardId)}
-                    >
-                      <span className="font-mono text-xs font-semibold text-accent-foreground">
-                        {result.displayLabel}
-                      </span>{' '}
-                      <span>{result.title}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </section>
+        全{staging.totalNodeCount.toLocaleString('ja-JP')}枚のうち
+        {staging.visibleNodeCount.toLocaleString('ja-JP')}枚を表示
+        {staging.focusLabel ? `・起点: ${staging.focusLabel}` : ''}
+      </p>
 
       <p id="connections-map-instructions" className="sr-only">
         ドラッグまたは一本指で移動、ピンチまたは Control
@@ -291,7 +219,7 @@ export function ConnectionsView({
         data-node-limit={staging.nodeLimit}
         data-stage-focus-id={staging.focusCardId ?? ''}
         aria-busy={model.status === 'loading'}
-        aria-label="選択したカード周辺の一方向リンクマップ"
+        aria-label="現在のカード周辺の一方向リンクマップ"
         aria-describedby="connections-map-instructions"
       >
         {model.status === 'loading' && (
@@ -428,7 +356,7 @@ export function ConnectionsView({
 
       {staging.stoppedAtMaximum && (
         <p className="mt-4 text-center text-sm text-muted-foreground">
-          一度に表示できる上限に達しました。別のカードを検索して、その周辺を表示できます。
+          一度に表示できる上限に達しました。別のカードを開くと、そのカードの周辺を表示できます。
         </p>
       )}
 

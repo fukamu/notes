@@ -151,9 +151,11 @@ batch-selector call and is never cached across Vault/session/logout boundaries.
 
 ## Known boundary
 
-The baseline measures connections input construction only. Whether 10,000-card
-connections should show every card or progressively disclose the current-card
-neighborhood/search results remains Decision Required in #106 and #126.
+The baseline measures connections input construction only. Issue #266 selected
+progressive disclosure around the current card with fixed worker/DOM bounds;
+Issue #275 removes the connections-only search path without changing those
+bounds. The longer-term experience beyond the 256-card stage remains tracked
+separately.
 
 ## Issue #204 browser windowing
 
@@ -186,6 +188,6 @@ list semantics, and keyboard behavior are covered in the same E2E.
 The final browser run intentionally does not activate a 10,000-node connections
 graph. Demand-driven presentation proves that card/history views do not build
 it, while the existing typed input-boundary measurement remains 15.272 ms
-median and 16.709 ms p95. Full graph versus current-neighborhood/search/staged
-disclosure remains the recorded Decision Required rather than an implementation
-choice in #204.
+median and 16.709 ms p95. This remains evidence for demand-driven,
+current-neighborhood staged disclosure rather than a reason to activate the full
+10,000-node graph.
