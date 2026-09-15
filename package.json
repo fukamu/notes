@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "vinext dev",
-    "build": "npm run check:legal-commerce && npm run check:privacy-disclosure && npm run check:privacy-processing-registry && npm run check:legal-terms && npm run check:external-transmission && npm run check:card-payment-security && npm run build:service-worker && vinext build && node scripts/verify-service-worker.mjs && node scripts/verify-environment.mjs",
+    "build": "npm run check:legal-commerce && npm run check:privacy-disclosure && npm run check:privacy-processing-registry && npm run check:legal-terms && npm run check:external-transmission && npm run check:card-payment-security && npm run check:launch-compliance && npm run build:service-worker && vinext build && node scripts/verify-service-worker.mjs && node scripts/verify-environment.mjs",
     "build:service-worker": "node scripts/build-service-worker.mjs",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "npm run lint:app && npm run lint:api && npm run lint:service-worker && npm run lint:tooling && npm run lint:test",
@@ -45,6 +45,8 @@
     "check:legal-terms": "node --experimental-strip-types scripts/verify-legal-terms.mjs",
     "check:external-transmission": "node --experimental-strip-types scripts/verify-external-transmission.mjs",
     "check:card-payment-security": "node --experimental-strip-types scripts/verify-card-payment-security.mjs",
+    "check:launch-compliance": "node --experimental-strip-types scripts/verify-launch-compliance.mjs",
+    "check:production-launch": "node --experimental-strip-types scripts/verify-launch-compliance.mjs --production-release",
     "verify": "npm run format:check && npm run check && npm run test:e2e",
     "db:generate": "drizzle-kit generate"
   },
