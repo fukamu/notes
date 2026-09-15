@@ -64,32 +64,22 @@ export const vaultQuotaLedgerStatements = [
   )`,
   `CREATE INDEX idx_vault_quota_reservations_reconcile
     ON vault_quota_reservations(account_id, vault_id, state, reconcile_after, reservation_id)`,
-  `CREATE TRIGGER vault_quota_finalize_usage
-    BEFORE UPDATE OF state ON vault_quota_reservations
-    FOR EACH ROW
-    WHEN OLD.state = 'reserved' AND NEW.state IN ('committed', 'released')
-    BEGIN
-      UPDATE vault_quota_usage SET
-        revision = NEW.finalized_usage_revision,
-        active_cards = active_cards + CASE
-          WHEN NEW.state = 'committed' THEN NEW.card_delta ELSE 0 END,
-        plaintext_bytes = plaintext_bytes + CASE
-          WHEN NEW.state = 'committed' THEN NEW.plaintext_byte_delta ELSE 0 END,
-        last_transition_reservation_id = NEW.reservation_id,
-        updated_at = NEW.finalized_at
-      WHERE account_id = NEW.account_id AND vault_id = NEW.vault_id
-        AND revision = NEW.finalized_usage_revision - 1
-        AND active_cards + CASE
-          WHEN NEW.state = 'committed' THEN NEW.card_delta ELSE 0 END >= 0
-        AND plaintext_bytes + CASE
-          WHEN NEW.state = 'committed' THEN NEW.plaintext_byte_delta ELSE 0 END >= 0;
-      SELECT CASE WHEN changes() <> 1 THEN RAISE(IGNORE) END;
-    END`,
+  `CREATE TABLE vault_quota_finalization_assertions (
+    account_id TEXT NOT NULL,
+    vault_id TEXT NOT NULL,
+    reservation_id TEXT NOT NULL,
+    assertion_passed INTEGER NOT NULL,
+    PRIMARY KEY (account_id, vault_id, reservation_id),
+    CONSTRAINT vault_quota_finalization_assertions_owner_fk FOREIGN KEY (account_id, vault_id) REFERENCES personal_vaults(account_id, vault_id) ON DELETE CASCADE,
+    CONSTRAINT vault_quota_finalization_assertions_shape_check CHECK (
+      length(reservation_id) = 36 AND assertion_passed = 1
+    )
+  )`,
 ] as const;
 
 export const vaultQuotaLedgerMigration: MigrationDefinition = {
   id: '0012_vault_quota_ledger',
   checksum:
-    'sha256:45daced43da33f3c490cbd80f15d6d52eea2e1bd386bb075b3b3462aedf6072c',
+    'sha256:15379587d4580c96e4e6aa246009583baa409b8a76b9817579930b812865ed7b',
   statements: vaultQuotaLedgerStatements,
 };

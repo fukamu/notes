@@ -4,6 +4,7 @@ import { getTableConfig } from 'drizzle-orm/sqlite-core';
 import { describe, expect, it } from 'vitest';
 import { productionMigrationManifest } from '@/server/migrations/production';
 import {
+  vaultQuotaFinalizationAssertions,
   vaultQuotaReservations,
   vaultQuotaUsage,
 } from '@/server/quota/d1-schema';
@@ -47,15 +48,33 @@ describe('Vault quota ledger schema', () => {
       'idx_vault_quota_reservations_reconcile',
     ]);
     expect(reservations.checks).toHaveLength(1);
+
+    const assertions = getTableConfig(vaultQuotaFinalizationAssertions);
+    expect(assertions.columns.map((column) => column.name)).toEqual([
+      'account_id',
+      'vault_id',
+      'reservation_id',
+      'assertion_passed',
+    ]);
+    expect(assertions.primaryKeys).toHaveLength(1);
+    expect(
+      assertions.primaryKeys[0]?.columns.map((column) => column.name),
+    ).toEqual(['account_id', 'vault_id', 'reservation_id']);
+    expect(assertions.foreignKeys.map((key) => key.getName())).toEqual([
+      'vault_quota_finalization_assertions_owner_fk',
+    ]);
+    expect(assertions.checks.map((constraint) => constraint.name)).toEqual([
+      'vault_quota_finalization_assertions_shape_check',
+    ]);
   });
 
-  it('checks in additive DDL and the atomic finalization trigger without content', async () => {
+  it('checks in additive DDL and the finalization assertion table without content', async () => {
     const tableSource = await readFile(
       'drizzle/0012_gigantic_iron_lad.sql',
       'utf8',
     );
-    const triggerSource = await readFile(
-      'drizzle/0013_vault_quota_finalize_trigger.sql',
+    const assertionSource = await readFile(
+      'drizzle/0013_vault_quota_finalize_assertions.sql',
       'utf8',
     );
     for (const marker of [
@@ -65,17 +84,16 @@ describe('Vault quota ledger schema', () => {
     ]) {
       expect(tableSource).toContain(marker);
     }
-    for (const marker of [
-      'vault_quota_finalize_usage',
-      'BEFORE UPDATE OF state',
-      'RAISE(IGNORE)',
-    ]) {
-      expect(triggerSource).toContain(marker);
-    }
+    expect(assertionSource).toContain(
+      'vault_quota_finalization_assertions_shape_check',
+    );
+    expect(assertionSource).toContain('assertion_passed = 1');
     expect(tableSource).not.toContain('CREATE TRIGGER');
-    expect(triggerSource.trimStart()).toMatch(/^CREATE TRIGGER/);
-    expect(triggerSource).not.toContain('CREATE TABLE');
-    expect(triggerSource).not.toContain('CREATE INDEX');
+    expect(assertionSource.trimStart()).toMatch(
+      /^CREATE TABLE vault_quota_finalization_assertions/,
+    );
+    expect(assertionSource).not.toContain('CREATE TRIGGER');
+    expect(assertionSource).not.toContain('CREATE INDEX');
     for (const excluded of [
       'title',
       'body_json',
@@ -84,7 +102,7 @@ describe('Vault quota ledger schema', () => {
       'token_hash',
       'provider_secret',
     ]) {
-      expect(`${tableSource}\n${triggerSource}`.toLowerCase()).not.toContain(
+      expect(`${tableSource}\n${assertionSource}`.toLowerCase()).not.toContain(
         excluded,
       );
     }
@@ -95,6 +113,9 @@ describe('Vault quota ledger schema', () => {
       .update(vaultQuotaLedgerStatements.join('\n'))
       .digest('hex');
     expect(vaultQuotaLedgerMigration.checksum).toBe(`sha256:${checksum}`);
+    expect(vaultQuotaLedgerStatements.join('\n')).not.toContain(
+      'CREATE TRIGGER',
+    );
     expect(productionMigrationManifest.indexOf(vaultQuotaLedgerMigration)).toBe(
       productionMigrationManifest.indexOf(dekRotationMigration) + 1,
     );

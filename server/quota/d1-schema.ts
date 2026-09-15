@@ -119,3 +119,28 @@ export const vaultQuotaReservations = sqliteTable(
     ),
   ],
 );
+
+export const vaultQuotaFinalizationAssertions = sqliteTable(
+  'vault_quota_finalization_assertions',
+  {
+    accountId: text('account_id').notNull(),
+    vaultId: text('vault_id').notNull(),
+    reservationId: text('reservation_id').notNull(),
+    assertionPassed: integer('assertion_passed').notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.accountId, table.vaultId, table.reservationId],
+    }),
+    foreignKey({
+      columns: [table.accountId, table.vaultId],
+      foreignColumns: [personalVaults.accountId, personalVaults.vaultId],
+      name: 'vault_quota_finalization_assertions_owner_fk',
+    }).onDelete('cascade'),
+    check(
+      'vault_quota_finalization_assertions_shape_check',
+      sql`length(${table.reservationId}) = 36
+        AND ${table.assertionPassed} = 1`,
+    ),
+  ],
+);

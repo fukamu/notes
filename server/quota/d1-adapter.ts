@@ -33,6 +33,8 @@ import {
 
 const maximumCasAttempts = 3;
 const maximumReconciliationPageSize = 100;
+const finalizationAssertionConstraint =
+  'vault_quota_finalization_assertions_shape_check';
 const ownerDecoder = objectDecoder({
   account_id: accountIdDecoder,
   vault_id: vaultIdDecoder,
@@ -220,23 +222,18 @@ export class D1VaultQuotaLedger implements VaultQuotaLedger {
         };
       }
       const state = command.outcome === 'commit' ? 'committed' : 'released';
-      await this.database
-        .prepare(
-          `UPDATE vault_quota_reservations SET
-            state = ?, finalized_at = ?, finalized_usage_revision = ?
-           WHERE account_id = ? AND vault_id = ? AND reservation_id = ?
-             AND fingerprint = ? AND state = 'reserved'`,
-        )
-        .bind(
+      try {
+        await this.applyFinalization({
+          current: plan.current,
+          next: plan.next,
+          reservation: plan.reservation,
           state,
-          command.finalizedAt,
-          plan.next.revision,
-          this.scope.accountId,
-          this.scope.vaultId,
-          command.reservationId,
-          command.fingerprint,
-        )
-        .run();
+          finalizedAt: command.finalizedAt,
+        });
+      } catch (error: unknown) {
+        if (!isFinalizationCasConflict(error)) throw error;
+        continue;
+      }
       const [nextReservation, snapshot] = await Promise.all([
         this.findReservation(command.reservationId),
         this.snapshot(),
@@ -255,6 +252,120 @@ export class D1VaultQuotaLedger implements VaultQuotaLedger {
       }
     }
     return { kind: 'rejected', reason: 'cas-conflict' };
+  }
+
+  private async applyFinalization(input: {
+    readonly current: VaultQuotaSnapshot;
+    readonly next: VaultQuotaSnapshot;
+    readonly reservation: VaultQuotaReservation;
+    readonly state: 'committed' | 'released';
+    readonly finalizedAt: number;
+  }): Promise<void> {
+    const expectedUsage = `account_id = ? AND vault_id = ?
+      AND revision = ? AND active_cards = ? AND plaintext_bytes = ?
+      AND last_transition_reservation_id = ? AND updated_at = ?`;
+    const expectedReservation = `account_id = ? AND vault_id = ?
+      AND reservation_id = ? AND fingerprint = ? AND state = ?
+      AND finalized_at = ? AND finalized_usage_revision = ?`;
+    await this.database.batch([
+      this.database
+        .prepare(
+          `UPDATE vault_quota_usage SET
+            revision = ?, active_cards = ?, plaintext_bytes = ?,
+            last_transition_reservation_id = ?, updated_at = ?
+           WHERE account_id = ? AND vault_id = ?
+             AND revision = ? AND active_cards = ? AND plaintext_bytes = ?
+             AND updated_at = ?`,
+        )
+        .bind(
+          input.next.revision,
+          input.next.committed.activeCards,
+          input.next.committed.plaintextBytes,
+          input.reservation.reservationId,
+          input.finalizedAt,
+          this.scope.accountId,
+          this.scope.vaultId,
+          input.current.revision,
+          input.current.committed.activeCards,
+          input.current.committed.plaintextBytes,
+          input.current.updatedAt,
+        ),
+      this.database
+        .prepare(
+          `UPDATE vault_quota_reservations SET
+            state = ?, finalized_at = ?, finalized_usage_revision = ?
+           WHERE account_id = ? AND vault_id = ? AND reservation_id = ?
+             AND fingerprint = ? AND state = 'reserved'
+             AND card_delta = ? AND plaintext_byte_delta = ?
+             AND usage_revision_at_reservation = ?
+             AND EXISTS (
+               SELECT 1 FROM vault_quota_usage
+               WHERE ${expectedUsage}
+             )`,
+        )
+        .bind(
+          input.state,
+          input.finalizedAt,
+          input.next.revision,
+          this.scope.accountId,
+          this.scope.vaultId,
+          input.reservation.reservationId,
+          input.reservation.fingerprint,
+          input.reservation.cardDelta,
+          input.reservation.plaintextByteDelta,
+          input.reservation.usageRevisionAtReservation,
+          this.scope.accountId,
+          this.scope.vaultId,
+          input.next.revision,
+          input.next.committed.activeCards,
+          input.next.committed.plaintextBytes,
+          input.reservation.reservationId,
+          input.finalizedAt,
+        ),
+      this.database
+        .prepare(
+          `INSERT INTO vault_quota_finalization_assertions(
+             account_id, vault_id, reservation_id, assertion_passed
+           ) VALUES (?, ?, ?, CASE WHEN
+             EXISTS (
+               SELECT 1 FROM vault_quota_usage WHERE ${expectedUsage}
+             ) AND EXISTS (
+               SELECT 1 FROM vault_quota_reservations
+               WHERE ${expectedReservation}
+             )
+             THEN 1 ELSE 0 END)`,
+        )
+        .bind(
+          this.scope.accountId,
+          this.scope.vaultId,
+          input.reservation.reservationId,
+          this.scope.accountId,
+          this.scope.vaultId,
+          input.next.revision,
+          input.next.committed.activeCards,
+          input.next.committed.plaintextBytes,
+          input.reservation.reservationId,
+          input.finalizedAt,
+          this.scope.accountId,
+          this.scope.vaultId,
+          input.reservation.reservationId,
+          input.reservation.fingerprint,
+          input.state,
+          input.finalizedAt,
+          input.next.revision,
+        ),
+      this.database
+        .prepare(
+          `DELETE FROM vault_quota_finalization_assertions
+           WHERE account_id = ? AND vault_id = ? AND reservation_id = ?
+             AND assertion_passed = 1`,
+        )
+        .bind(
+          this.scope.accountId,
+          this.scope.vaultId,
+          input.reservation.reservationId,
+        ),
+    ]);
   }
 
   async listReconciliationCandidates(input: {
@@ -346,4 +457,11 @@ export class VaultQuotaIntegrityError extends Error {
     super('Vault quota ledger integrity validation failed');
     this.name = 'VaultQuotaIntegrityError';
   }
+}
+
+function isFinalizationCasConflict(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes(finalizationAssertionConstraint)
+  );
 }
