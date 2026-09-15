@@ -183,6 +183,24 @@ describe('pure-core dependency direction', () => {
     expect(violations).toEqual([]);
   });
 
+  it('keeps GCP Cloud KMS behind the provider-neutral key management port', async () => {
+    const [ports, envelopeService, rotationService, gcpAdapter] =
+      await Promise.all([
+        readFile('server/crypto/ports.ts', 'utf8'),
+        readFile('server/crypto/envelope-service.ts', 'utf8'),
+        readFile('server/crypto/rotation-service.ts', 'utf8'),
+        readFile('server/adapters/gcp-cloud-kms.ts', 'utf8'),
+      ]);
+
+    expect(ports).not.toMatch(/GCP|Google|cloudkms/iu);
+    expect(envelopeService).not.toMatch(/gcp-cloud-kms|cloudkms/iu);
+    expect(rotationService).not.toMatch(/gcp-cloud-kms|cloudkms/iu);
+    expect(gcpAdapter).toContain('import type { KeyManagementPort }');
+    expect(gcpAdapter).not.toMatch(
+      /fake-key-management|console\.|process\.env/u,
+    );
+  });
+
   it('keeps UUID generation in the outer client adapter', async () => {
     const domainIds = await readFile('lib/domain/id.ts', 'utf8');
     const generator = await readFile('lib/client/id-generator.ts', 'utf8');
