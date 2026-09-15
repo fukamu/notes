@@ -61,6 +61,7 @@ function benchmarkStore(cards: CardRecord[]): NotesStorePort {
     initialization: { stage: 'ready', loadOutcome: 'succeeded' },
     saveState: 'saved',
     syncState: 'idle',
+    resolvingConflictCardIds: [],
     createCard: async () => {
       const card = cards[0];
       invariant(card, 'Performance fixture cannot create from an empty store');

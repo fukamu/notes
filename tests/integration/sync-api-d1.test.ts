@@ -43,6 +43,9 @@ const ids = {
   rollbackResolve: parseMutationId('01991f20-61d2-7000-8000-000000001018'),
   racingResolveA: parseMutationId('01991f20-61d2-7000-8000-000000001019'),
   racingResolveB: parseMutationId('01991f20-61d2-7000-8000-000000001020'),
+  advanceA: parseMutationId('01991f20-61d2-7000-8000-000000001021'),
+  secondConflictA: parseMutationId('01991f20-61d2-7000-8000-000000001022'),
+  multiResolveA: parseMutationId('01991f20-61d2-7000-8000-000000001023'),
   missingConflict: parseConflictId('01991f20-61d2-7000-8000-000000001099'),
 } as const;
 
@@ -323,6 +326,38 @@ describe('sync API request and response boundaries', () => {
 });
 
 describe('resolve transaction invariants', () => {
+  it('resolves multiple same-card conflicts atomically at the latest revision', async () => {
+    await createConflict(ids.cardA, ids.createA, ids.conflictA);
+    expect(
+      (await post([upsert(ids.advanceA, ids.cardA, 'server revision two', 1)]))
+        .status,
+    ).toBe(200);
+    expect(
+      (await post([upsert(ids.secondConflictA, ids.cardA, 'second local', 1)]))
+        .status,
+    ).toBe(200);
+    const firstConflict = parseConflictId(ids.conflictA);
+    const secondConflict = parseConflictId(ids.secondConflictA);
+    const mutation = resolve(
+      ids.multiResolveA,
+      ids.cardA,
+      [firstConflict, secondConflict],
+      '現在入力を採用',
+      2,
+    );
+
+    const response = await post([mutation]);
+
+    expect(response.status).toBe(200);
+    const decoded = decodeSyncResponse(await response.json(), [mutation]);
+    expect(decoded.cards.find((card) => card.id === ids.cardA)).toMatchObject({
+      title: '現在入力を採用',
+      revision: 3,
+    });
+    expect(decoded.conflicts).toEqual([]);
+    expect(decoded.acknowledgedMutationIds).toEqual([ids.multiResolveA]);
+  });
+
   it('rejects empty, missing, foreign, mixed, and stale conflicts with all state unchanged', async () => {
     await createConflict(ids.cardA, ids.createA, ids.conflictA);
     await createConflict(ids.cardB, ids.createB, ids.conflictB);

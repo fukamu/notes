@@ -6,6 +6,7 @@ import type {
   PendingMutation,
 } from '../domain/types';
 import { assertNever } from '../shared/invariant';
+import { rebasePendingMutationAfterSync } from './pending-mutation';
 import type { ServerCard } from './protocol';
 import type { SyncV2Checkpoint, SyncV2CommitPlan } from './v2-page-application';
 import { parseSyncSequence } from './v2-protocol';
@@ -67,20 +68,6 @@ function sameCheckpoint(
   return (
     left.cursor === right.cursor && left.highWatermark === right.highWatermark
   );
-}
-
-function rebasePendingMutation(
-  mutation: PendingMutation,
-  serverRevision: number,
-): PendingMutation {
-  switch (mutation.kind) {
-    case 'upsert':
-      return { ...mutation, baseServerRevision: serverRevision };
-    case 'resolve':
-      return { ...mutation, baseServerRevision: serverRevision };
-    default:
-      return assertNever(mutation, 'Unsupported Sync v2 mutation rebase');
-  }
 }
 
 function cardFromServer(
@@ -211,7 +198,11 @@ export function planSyncV2ReplicaCommit(input: {
           pending.mutationId !== sent.mutationId &&
           receiptsByMutation.has(sent.mutationId);
         if (pending && (pendingWasNotInThisRequest || newerEditWasSaved)) {
-          pending = rebasePendingMutation(pending, change.card.revision);
+          pending = rebasePendingMutationAfterSync({
+            mutation: pending,
+            serverRevision: change.card.revision,
+            acknowledgedMutation: newerEditWasSaved ? sent : undefined,
+          });
           mutations.set(cardId, pending);
         }
         if (local && pending) {

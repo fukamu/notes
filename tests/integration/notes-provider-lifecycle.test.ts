@@ -20,7 +20,11 @@ import {
   type NotesDataStore,
 } from '@/lib/client/notes-store';
 import { createPendingMutation } from '@/lib/domain/card-transitions';
-import type { CardRecord, PendingMutation } from '@/lib/domain/types';
+import type {
+  CardRecord,
+  ConflictRecord,
+  PendingMutation,
+} from '@/lib/domain/types';
 import { initialSyncV2Checkpoint } from '@/lib/sync/v2-replica';
 import {
   parseSyncSequence,
@@ -28,7 +32,11 @@ import {
   SYNC_V2_VERSION,
 } from '@/lib/sync/v2-protocol';
 import { compatibilityIds } from '@/tests/fixtures/compatibility';
-import { fixtureCardId, fixtureMutationId } from '@/tests/fixtures/ids';
+import {
+  fixtureCardId,
+  fixtureConflictId,
+  fixtureMutationId,
+} from '@/tests/fixtures/ids';
 import { sessionFixtureIds } from '@/tests/fixtures/session';
 
 const vaultScope: VaultNotesScope = {
@@ -49,6 +57,9 @@ type RuntimeOverrides = {
   readonly scope?: VaultNotesScope;
   readonly online?: boolean;
   readonly loadCards?: () => Promise<CardRecord[]>;
+  readonly loadConflicts?: () => Promise<ConflictRecord[]>;
+  readonly loadPendingMutations?: () => Promise<PendingMutation[]>;
+  readonly persistLocalCard?: (card: CardRecord) => Promise<void>;
   readonly persistCardAndMutation?: (
     card: CardRecord,
   ) => Promise<PendingMutation>;
@@ -109,9 +120,12 @@ function createRuntimeHarness(
   const repository: NotesRepository<VaultNotesScope> = {
     scope,
     loadCards: vi.fn(overrides.loadCards ?? (async () => [])),
-    loadConflicts: vi.fn(async () => []),
+    loadConflicts: vi.fn(overrides.loadConflicts ?? (async () => [])),
     loadOrCreateDeviceId: vi.fn(async () => compatibilityIds.device),
-    loadPendingMutations: vi.fn(async () => []),
+    loadPendingMutations: vi.fn(
+      overrides.loadPendingMutations ?? (async () => []),
+    ),
+    persistLocalCard: vi.fn(overrides.persistLocalCard ?? (async () => {})),
     persistCardAndMutation: vi.fn(
       overrides.persistCardAndMutation ??
         (async (cardRecord) => mutationFor(cardRecord)),
@@ -356,6 +370,62 @@ describe('NotesProvider operation lifecycle', () => {
         localRevision: 2,
       }),
     ]);
+  });
+
+  it('keeps conflict-time edits local until one card-level resolution is selected', async () => {
+    const initialCard = card('provider-conflict-current', 'server title');
+    const first: ConflictRecord = {
+      id: fixtureConflictId('provider-conflict-first'),
+      cardId: initialCard.id,
+      serverRevision: 1,
+      localTitle: 'first local',
+      localBody: [],
+      serverTitle: 'first server',
+      serverBody: [],
+      createdAt: 1_100,
+    };
+    const second: ConflictRecord = {
+      ...first,
+      id: fixtureConflictId('provider-conflict-second'),
+      localTitle: 'second local',
+      serverRevision: 2,
+      createdAt: 1_200,
+    };
+    const runtime = createRuntimeHarness({
+      loadCards: async () => [initialCard],
+      loadConflicts: async () => [first, second],
+    });
+
+    await renderRuntime(runtime, 'conflict-current-runtime');
+    act(() =>
+      currentStore().updateCard(initialCard.id, {
+        type: 'title',
+        title: '現在入力を残す',
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(runtime.repository.persistLocalCard).toHaveBeenCalledOnce(),
+    );
+    expect(runtime.repository.persistCardAndMutation).not.toHaveBeenCalled();
+
+    act(() => {
+      currentStore().resolveConflict(first, 'current');
+    });
+    await vi.waitFor(() =>
+      expect(runtime.repository.persistCardAndMutation).toHaveBeenCalledOnce(),
+    );
+    expect(runtime.repository.persistCardAndMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: initialCard.id,
+        title: '現在入力を残す',
+        serverRevision: 2,
+      }),
+      {
+        kind: 'resolve',
+        conflictIds: [first.id, second.id],
+      },
+    );
+    expect(currentStore().resolvingConflictCardIds).toEqual([initialCard.id]);
   });
 
   it('reconciles v2 replica results without routing them through the v1 decoder', async () => {

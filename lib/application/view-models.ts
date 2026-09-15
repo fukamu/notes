@@ -150,12 +150,22 @@ export function selectConflictViewModel(
 export function selectConflictViewModels(
   conflicts: readonly ConflictRecord[],
   cards: readonly CardRecord[],
+  resolution: Readonly<{
+    resolvingCardIds: readonly CardId[];
+    failed: boolean;
+  }> = { resolvingCardIds: [], failed: false },
 ): ConflictViewModel[] {
   if (conflicts.length === 0) return [];
   const bodyTextLookup = createCardBodyTextLookup(cards);
+  const resolvingCardIds = new Set(resolution.resolvingCardIds);
   return conflicts.map((conflict) => ({
     conflictId: conflict.id,
     cardId: conflict.cardId,
+    resolutionState: resolvingCardIds.has(conflict.cardId)
+      ? resolution.failed
+        ? 'failed'
+        : 'pending'
+      : 'ready',
     options: [
       conflictOption('local', conflict, bodyTextLookup),
       conflictOption('server', conflict, bodyTextLookup),

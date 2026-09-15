@@ -38,6 +38,7 @@ export type NotesStorePort = {
   initialization: NotesInitializationLifecycle;
   saveState: SaveState;
   syncState: SyncState;
+  resolvingConflictCardIds: CardId[];
   createCard: () => Promise<CardRecord>;
   hasCard: (cardId: CardId) => boolean;
   updateCard: (cardId: CardId, edit: CardEdit) => void;
@@ -168,6 +169,11 @@ export function createNotesPresentationModel(
                 (conflict) => conflict.cardId === currentCard.id,
               ),
               store.cards,
+              {
+                resolvingCardIds: store.resolvingConflictCardIds,
+                failed:
+                  store.saveState === 'failed' || store.syncState === 'failed',
+              },
             )
           : [],
         connections: null,

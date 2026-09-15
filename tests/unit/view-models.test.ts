@@ -289,6 +289,7 @@ describe('conflict view model', () => {
     };
 
     const model = selectConflictViewModel(conflict, [existing]);
+    expect(model.resolutionState).toBe('ready');
     expect(model.options).toEqual([
       {
         choice: 'local',
@@ -335,6 +336,18 @@ describe('conflict view model', () => {
     expect(models).toHaveLength(2);
     expect(models[0]?.options[0]?.preview).toBe('［仮 #6 Untitled］');
     expect(models[1]?.options[0]?.preview).toBe('［仮 #6 Untitled］');
+    expect(
+      selectConflictViewModels([first], [existing], {
+        resolvingCardIds: [existing.id],
+        failed: false,
+      })[0]?.resolutionState,
+    ).toBe('pending');
+    expect(
+      selectConflictViewModels([first], [existing], {
+        resolvingCardIds: [existing.id],
+        failed: true,
+      })[0]?.resolutionState,
+    ).toBe('failed');
     expect(selectConflictViewModels([], [existing])).toEqual([]);
   });
 });

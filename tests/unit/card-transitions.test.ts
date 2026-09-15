@@ -3,7 +3,7 @@ import {
   applyCardEdit,
   createLocalCard,
   createPendingMutation,
-  resolveCardConflict,
+  resolveCardConflicts,
 } from '@/lib/domain/card-transitions';
 import type {
   BodySegment,
@@ -135,16 +135,17 @@ describe('pure card transitions', () => {
     ['local', 'local title', 'local body'],
     ['server', 'server title', 'server body'],
   ] as const)(
-    'resolves the %s version with the conflict revision',
+    'resolves the %s version while retaining the latest known revision',
     (choice, expectedTitle, expectedBody) => {
-      const original = card();
+      const original = card({ serverRevision: 9 });
       const currentConflict = conflict();
       const originalBefore = structuredClone(original);
       const conflictBefore = structuredClone(currentConflict);
 
-      const result = resolveCardConflict(
+      const result = resolveCardConflicts(
         original,
-        currentConflict,
+        [currentConflict],
+        currentConflict.id,
         choice,
         400,
       );
@@ -155,25 +156,109 @@ describe('pure card transitions', () => {
           ...original,
           title: expectedTitle,
           body: [{ type: 'text', text: expectedBody }],
-          serverRevision: 7,
+          serverRevision: 9,
           updatedAt: 400,
           localRevision: 4,
         },
+        conflictIds: [currentConflict.id],
       });
       expect(original).toEqual(originalBefore);
       expect(currentConflict).toEqual(conflictBefore);
     },
   );
 
+  it('keeps the current input and resolves every known conflict for the card', () => {
+    const original = card({
+      title: 'typing now',
+      body: [{ type: 'text', text: 'latest input' }],
+      serverRevision: 8,
+    });
+    const older = conflict({
+      id: fixtureConflictId('older'),
+      serverRevision: 4,
+    });
+    const newer = conflict({
+      id: fixtureConflictId('newer'),
+      serverRevision: 7,
+    });
+
+    expect(
+      resolveCardConflicts(
+        original,
+        [older, newer, older],
+        older.id,
+        'current',
+        401,
+      ),
+    ).toEqual({
+      ok: true,
+      card: {
+        ...original,
+        updatedAt: 401,
+        localRevision: 4,
+      },
+      conflictIds: [older.id, newer.id],
+    });
+  });
+
+  it('recovers the newest revision preserved by conflict evidence', () => {
+    const original = card({ serverRevision: 3 });
+    const older = conflict({
+      id: fixtureConflictId('older-revision'),
+      serverRevision: 5,
+    });
+    const newest = conflict({
+      id: fixtureConflictId('newest-revision'),
+      serverRevision: 8,
+    });
+
+    const result = resolveCardConflicts(
+      original,
+      [older, newest],
+      older.id,
+      'local',
+      402,
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      card: { serverRevision: 8 },
+      conflictIds: [older.id, newest.id],
+    });
+  });
+
   it('returns a typed failure for a conflict belonging to another card', () => {
     expect(
-      resolveCardConflict(
+      resolveCardConflicts(
         card(),
-        conflict({ cardId: fixtureCardId('other') }),
+        [conflict({ cardId: fixtureCardId('other') })],
+        fixtureConflictId('conflict'),
         'local',
         400,
       ),
     ).toEqual({ ok: false, reason: 'conflict-card-mismatch' });
+  });
+
+  it('rejects an empty set or a selected conflict outside the set', () => {
+    const source = card();
+    expect(
+      resolveCardConflicts(
+        source,
+        [],
+        fixtureConflictId('missing'),
+        'current',
+        400,
+      ),
+    ).toEqual({ ok: false, reason: 'no-conflicts' });
+    expect(
+      resolveCardConflicts(
+        source,
+        [conflict()],
+        fixtureConflictId('missing'),
+        'current',
+        400,
+      ),
+    ).toEqual({ ok: false, reason: 'selected-conflict-missing' });
   });
 });
 
@@ -236,5 +321,46 @@ describe('pure pending mutation construction', () => {
         { kind: 'resolve', conflictIds: [conflictId] },
       ),
     ).toEqual({ ok: false, reason: 'missing-server-revision' });
+  });
+
+  it('retains and unions pending resolve intent when later edits are saved', () => {
+    const source = card({ title: 'latest title', updatedAt: 240 });
+    const firstId = fixtureConflictId('first-resolve');
+    const secondId = fixtureConflictId('second-resolve');
+    const existingResult = createPendingMutation(
+      card(),
+      fixtureMutationId('existing-resolve'),
+      { kind: 'resolve', conflictIds: [firstId] },
+    );
+    if (!existingResult.ok) throw new Error('resolve fixture was rejected');
+
+    const edited = createPendingMutation(
+      source,
+      fixtureMutationId('edited-after-resolve'),
+      { kind: 'upsert' },
+      existingResult.mutation,
+    );
+    expect(edited).toMatchObject({
+      ok: true,
+      mutation: {
+        kind: 'resolve',
+        title: 'latest title',
+        conflictIds: [firstId],
+      },
+    });
+
+    const extended = createPendingMutation(
+      source,
+      fixtureMutationId('extended-resolve'),
+      { kind: 'resolve', conflictIds: [secondId, firstId] },
+      existingResult.mutation,
+    );
+    expect(extended).toMatchObject({
+      ok: true,
+      mutation: {
+        kind: 'resolve',
+        conflictIds: [firstId, secondId],
+      },
+    });
   });
 });

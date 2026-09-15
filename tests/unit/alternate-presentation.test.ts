@@ -101,6 +101,7 @@ function model(
     {
       conflictId,
       cardId: firstId,
+      resolutionState: 'ready',
       options: [
         {
           choice: 'local',

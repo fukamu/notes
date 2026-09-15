@@ -206,6 +206,7 @@ function createRuntime(): VaultNotesRuntimePorts {
       loadConflicts: async () => [],
       loadOrCreateDeviceId: async () => compatibilityIds.device,
       loadPendingMutations: async () => [],
+      persistLocalCard: async () => {},
       persistCardAndMutation: async (card) => {
         throw new Error(`unexpected save for ${card.id}`);
       },
