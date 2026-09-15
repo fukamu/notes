@@ -440,6 +440,20 @@ function BillingTerms({ offer }: { readonly offer: BillingUiOffer }) {
         </PublicRouteLink>
         で確認できます。
       </p>
+      <p
+        className="mt-3 text-sm leading-7 text-muted-foreground"
+        data-testid="card-security-notice"
+      >
+        カード番号・セキュリティコードはStripeの画面で入力され、FUKAMU
+        Notesのサーバーでは取得・保存しません。カード発行会社から本人認証（3Dセキュア）を求められる場合があります。決済事業者への送信内容は{' '}
+        <PublicRouteLink
+          className="text-primary underline underline-offset-4"
+          href="/legal/external-transmission"
+        >
+          外部送信に関する表示
+        </PublicRouteLink>
+        で確認できます。
+      </p>
     </section>
   );
 }

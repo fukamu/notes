@@ -36,6 +36,9 @@ describe('Stripe adapter pure core', () => {
     expect(fields.get('mode')).toBe('subscription');
     expect(fields.get('submit_type')).toBe('subscribe');
     expect(fields.get('payment_method_collection')).toBe('always');
+    expect(
+      fields.get('payment_method_options[card][request_three_d_secure]'),
+    ).toBe('any');
     expect(fields.get('subscription_data[trial_period_days]')).toBe('14');
     expect(
       fields.get(
