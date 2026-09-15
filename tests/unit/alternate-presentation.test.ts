@@ -348,11 +348,8 @@ describe('alternate presentation contract', () => {
       const props: ConnectionsRendererProps = {
         model: controllerState(status),
         staging: {
-          query: '',
-          searchResults: [],
           focusCardId: firstId,
           focusLabel: '#1 First、現在のカード',
-          currentCardId: firstId,
           totalNodeCount: 1,
           visibleNodeCount: 1,
           nodeLimit: 64,
@@ -363,9 +360,6 @@ describe('alternate presentation contract', () => {
         },
         actions: {
           openCard,
-          setSearchQuery: vi.fn(),
-          focusCard: vi.fn(),
-          focusCurrentCard: vi.fn(),
           expand: vi.fn(),
         },
         presentation: alternateNotesAppConfiguration.connectionsPresentation,

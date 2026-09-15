@@ -5,7 +5,6 @@ import type { ConnectionsInputModel } from '@/lib/graph/connections-contract';
 import {
   defaultConnectionsStagingPolicy,
   nextConnectionsExpansionPage,
-  queryConnectionsStageNodes,
   selectConnectionsStage,
   type ConnectionsStagingPolicy,
 } from '@/lib/graph/connections-staging';
@@ -16,7 +15,6 @@ const policy = {
   initialNodeLimit: 3,
   expansionPageSize: 2,
   maximumNodeLimit: 7,
-  searchResultLimit: 2,
 } as const satisfies ConnectionsStagingPolicy;
 
 function node(label: string, position: number) {
@@ -63,7 +61,7 @@ describe('connections staged neighborhood selection', () => {
 
     const selected = selectConnectionsStage(
       source,
-      { focusCardId: source.currentCardId, expansionPage: 0 },
+      { expansionPage: 0 },
       roomy,
     );
 
@@ -74,14 +72,10 @@ describe('connections staged neighborhood selection', () => {
 
   it('orders an undirected neighborhood deterministically across cycles and high degree', () => {
     const source = input();
-    const first = selectConnectionsStage(
-      source,
-      { focusCardId: source.currentCardId, expansionPage: 0 },
-      policy,
-    );
+    const first = selectConnectionsStage(source, { expansionPage: 0 }, policy);
     const repeated = selectConnectionsStage(
       source,
-      { focusCardId: source.currentCardId, expansionPage: 0 },
+      { expansionPage: 0 },
       policy,
     );
 
@@ -108,7 +102,7 @@ describe('connections staged neighborhood selection', () => {
     );
     const selected = selectConnectionsStage(
       source,
-      { focusCardId: source.currentCardId, expansionPage: maximumPage },
+      { expansionPage: maximumPage },
       policy,
     );
 
@@ -124,12 +118,12 @@ describe('connections staged neighborhood selection', () => {
     expect(selected.stoppedAtMaximum).toBe(true);
   });
 
-  it('falls back safely when current and requested roots are missing', () => {
+  it('falls back safely when the current root is missing', () => {
     const source = input();
     const missing = fixtureCardId('missing-staging-root');
     const selected = selectConnectionsStage(
       { ...source, currentCardId: missing },
-      { focusCardId: missing, expansionPage: 0 },
+      { expansionPage: 0 },
       policy,
     );
 
@@ -139,32 +133,13 @@ describe('connections staged neighborhood selection', () => {
     );
   });
 
-  it('returns a bounded deterministic title or display-id search result set', () => {
-    const nodes = input().nodes;
-
-    expect(
-      queryConnectionsStageNodes(nodes, 'card', policy.searchResultLimit).map(
-        (item) => item.title,
-      ),
-    ).toEqual(['Card A', 'Card B']);
-    expect(
-      queryConnectionsStageNodes(nodes, '＃10', policy.searchResultLimit).map(
-        (item) => item.title,
-      ),
-    ).toEqual(['Card J']);
-    expect(queryConnectionsStageNodes(nodes, 'missing')).toEqual([]);
-  });
-
   it('bounds a 10,000-card replica before it reaches the layout worker', () => {
     const cards = createClientPerformanceFixture();
     const current = cards[5_000];
     if (!current) throw new Error('10k fixture omitted its current card');
     const fullInput = selectConnectionsViewModel(cards, current.id);
 
-    const selected = selectConnectionsStage(fullInput, {
-      focusCardId: current.id,
-      expansionPage: 0,
-    });
+    const selected = selectConnectionsStage(fullInput, { expansionPage: 0 });
 
     expect(selected.totalNodeCount).toBe(10_000);
     expect(selected.visibleNodeCount).toBe(

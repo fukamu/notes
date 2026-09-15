@@ -25,18 +25,12 @@ export type ConnectionsInputModel = {
 
 export type ConnectionsSelectionActions = {
   openCard: (cardId: CardId) => void;
-  setSearchQuery: (query: string) => void;
-  focusCard: (cardId: CardId) => void;
-  focusCurrentCard: () => void;
   expand: () => void;
 };
 
 export type ConnectionsStagingViewModel = {
-  query: string;
-  searchResults: ConnectionsSemanticNode[];
   focusCardId: CardId | null;
   focusLabel: string | null;
-  currentCardId: CardId;
   totalNodeCount: number;
   visibleNodeCount: number;
   nodeLimit: number;

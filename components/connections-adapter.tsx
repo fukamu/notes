@@ -11,7 +11,6 @@ import type {
 import {
   defaultConnectionsStagingPolicy,
   nextConnectionsExpansionPage,
-  queryConnectionsStageNodes,
   selectConnectionsStage,
 } from '@/lib/graph/connections-staging';
 
@@ -28,38 +27,14 @@ function ConnectionsAdapterSession({
   presentation,
   Renderer,
 }: Props) {
-  const [query, setQuery] = useState('');
-  const [focusCardId, setFocusCardId] = useState(input.currentCardId);
   const [expansionPage, setExpansionPage] = useState(0);
 
   const selection = useMemo(
-    () =>
-      selectConnectionsStage(input, {
-        focusCardId,
-        expansionPage,
-      }),
-    [expansionPage, focusCardId, input],
-  );
-  const searchResults = useMemo(
-    () =>
-      queryConnectionsStageNodes(
-        input.nodes,
-        query,
-        defaultConnectionsStagingPolicy.searchResultLimit,
-      ),
-    [input.nodes, query],
+    () => selectConnectionsStage(input, { expansionPage }),
+    [expansionPage, input],
   );
   const model = useConnectionsController(selection.input, presentation);
 
-  const focusCard = useCallback((cardId: typeof input.currentCardId) => {
-    setFocusCardId(cardId);
-    setExpansionPage(0);
-  }, []);
-  const focusCurrentCard = useCallback(() => {
-    setQuery('');
-    setFocusCardId(input.currentCardId);
-    setExpansionPage(0);
-  }, [input.currentCardId]);
   const expand = useCallback(() => {
     if (!selection.canExpand) return;
     setExpansionPage((current) => nextConnectionsExpansionPage(current));
@@ -67,22 +42,16 @@ function ConnectionsAdapterSession({
   const rendererActions = useMemo<ConnectionsSelectionActions>(
     () => ({
       openCard: actions.openCard,
-      setSearchQuery: setQuery,
-      focusCard,
-      focusCurrentCard,
       expand,
     }),
-    [actions.openCard, expand, focusCard, focusCurrentCard],
+    [actions.openCard, expand],
   );
   const staging = useMemo(
     () => ({
-      query,
-      searchResults,
       focusCardId: selection.focusCardId,
       focusLabel:
         input.nodes.find((node) => node.cardId === selection.focusCardId)
           ?.accessibleName ?? null,
-      currentCardId: input.currentCardId,
       totalNodeCount: selection.totalNodeCount,
       visibleNodeCount: selection.visibleNodeCount,
       nodeLimit: selection.nodeLimit,
@@ -94,7 +63,7 @@ function ConnectionsAdapterSession({
       canExpand: selection.canExpand,
       stoppedAtMaximum: selection.stoppedAtMaximum,
     }),
-    [input.currentCardId, input.nodes, query, searchResults, selection],
+    [input.nodes, selection],
   );
   return (
     <Renderer
