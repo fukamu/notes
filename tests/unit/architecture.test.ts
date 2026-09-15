@@ -1704,6 +1704,7 @@ describe('swappable presentation architecture', () => {
     const files = [
       'lib/graph/connections-contract.ts',
       'lib/graph/connections-controller.ts',
+      'lib/graph/connections-staging.ts',
       'lib/graph/elk-layout.ts',
       'lib/graph/connections-viewport.ts',
     ];
@@ -1713,6 +1714,23 @@ describe('swappable presentation architecture', () => {
       const source = await readFile(file, 'utf8');
       expect(source, file).not.toMatch(forbidden);
     }
+  });
+
+  it('bounds connections before the worker-facing controller boundary', async () => {
+    const staging = await readFile('lib/graph/connections-staging.ts', 'utf8');
+    const adapter = await readFile(
+      'components/connections-adapter.tsx',
+      'utf8',
+    );
+
+    expect(staging).toContain('maximumNodeLimit: 256');
+    expect(staging).toContain('selectConnectionsStage');
+    expect(staging).not.toMatch(
+      /(?:react|window\.|document\.|Worker|HTMLElement|performance\.)/,
+    );
+    expect(adapter).toContain(
+      'useConnectionsController(selection.input, presentation)',
+    );
   });
 
   it('keeps camera geometry pure and browser gesture effects in the hook adapter', async () => {

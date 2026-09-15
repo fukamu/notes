@@ -2199,6 +2199,59 @@ test('10k history remains viewport-bounded and operable in the browser', async (
   });
 });
 
+test('10k connections bounds layout and DOM while expanding from current or search', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  const cards = createClientPerformanceFixture();
+  const current = cards[5_000];
+  const searched = cards[9_998];
+  if (!current || !searched) {
+    throw new Error('10k connections fixture omitted a required card');
+  }
+  await serveInitialPerformanceCards(page, cards);
+
+  const response = await page.goto(`/cards/${current.id}/connections`);
+  expect(response?.status()).toBe(200);
+  const graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-total-node-count', '10000', {
+    timeout: 30_000,
+  });
+  await expect(graph).toHaveAttribute('data-visible-node-count', '64');
+  await expect(graph).toHaveAttribute('data-node-limit', '64');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 30_000,
+  });
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(64);
+
+  await page.getByTestId('connections-expand').click();
+  await expect(graph).toHaveAttribute('data-visible-node-count', '128');
+  await expect(graph).toHaveAttribute('data-node-limit', '128');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 30_000,
+  });
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(128);
+
+  await page.getByTestId('connections-search').fill(searched.title);
+  const searchResult = page.getByRole('button', {
+    name: new RegExp(`${searched.title}の周辺を表示$`),
+  });
+  await expect(searchResult).toBeVisible();
+  await searchResult.click();
+  await expect(graph).toHaveAttribute('data-stage-focus-id', searched.id);
+  await expect(graph).toHaveAttribute('data-visible-node-count', '64');
+  await expect(graph).toHaveAttribute('data-node-limit', '64');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 30_000,
+  });
+  await expect(graph.locator(`[data-card-id="${searched.id}"]`)).toBeVisible();
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(64);
+
+  await page.getByRole('button', { name: '現在のカード周辺へ戻る' }).click();
+  await expect(graph).toHaveAttribute('data-stage-focus-id', current.id);
+  await expect(page.getByTestId('connections-search')).toHaveValue('');
+});
+
 test('layout failure fallback opens a card through URL navigation', async ({
   page,
 }, testInfo) => {
