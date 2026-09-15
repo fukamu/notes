@@ -379,6 +379,7 @@ export function planStripeCheckout(
       ['line_items[0][price]', configuration.priceReference],
       ['line_items[0][quantity]', '1'],
       ['payment_method_collection', 'always'],
+      ['payment_method_options[card][request_three_d_secure]', 'any'],
       ['subscription_data[trial_period_days]', '14'],
       [
         'subscription_data[trial_settings][end_behavior][missing_payment_method]',
