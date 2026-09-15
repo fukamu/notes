@@ -48,7 +48,7 @@ describe('terms consent ledger schema', () => {
     ]);
   });
 
-  it('adds an immutable empty-schema migration after privacy requests', async () => {
+  it('keeps the Sites migration trigger-free and production evidence immutable', async () => {
     const source = await readFile(
       'drizzle/0016_terms_consent_ledger.sql',
       'utf8',
@@ -57,12 +57,15 @@ describe('terms consent ledger schema', () => {
       'PRIMARY KEY (account_id, vault_id, consent_id)',
       'idx_terms_consent_submission',
       'idx_terms_consent_latest',
-      'terms_consent_immutable',
       "consent = 'affirmed'",
       'ON DELETE CASCADE',
     ]) {
       expect(source).toContain(marker);
     }
+    expect(source).not.toMatch(/CREATE\s+TRIGGER/i);
+    expect(termsConsentLedgerStatements.join('\n')).toContain(
+      'CREATE TRIGGER terms_consent_immutable',
+    );
     for (const excluded of [
       'email_address',
       'card_title',
