@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { PublicRouteLink } from '@/components/public-route-link';
 
 const legalHref = '/legal/commercial-transactions';
+const externalTransmissionHref = '/legal/external-transmission';
 const privacyHref = '/legal/privacy';
 const termsHref = '/legal/terms';
 
@@ -70,6 +71,12 @@ export default function PublicRouteLayout({
               href={privacyHref}
             >
               個人情報保護方針
+            </PublicRouteLink>
+            <PublicRouteLink
+              className="hover:text-foreground"
+              href={externalTransmissionHref}
+            >
+              外部送信
             </PublicRouteLink>
             <PublicRouteLink className="hover:text-foreground" href={termsHref}>
               利用規約

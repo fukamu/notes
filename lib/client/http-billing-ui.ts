@@ -15,6 +15,7 @@ import {
   parseSubscriptionCancellationIdempotencyKey,
   type SubscriptionCancellationIdempotencyKey,
 } from '@/server/billing/public';
+import { decideBrowserExternalDestination } from '@/lib/application/external-transmission';
 import {
   contractEvidenceIdDecoder,
   contractOfferHashDecoder,
@@ -277,10 +278,8 @@ function decodedError(input: unknown) {
 }
 
 function isTrustedCheckoutUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && url.hostname === 'checkout.stripe.com';
-  } catch {
-    return false;
-  }
+  return (
+    decideBrowserExternalDestination('stripe-checkout', value).kind ===
+    'allowed'
+  );
 }

@@ -1,5 +1,6 @@
 import type { PkceChallengePort } from '../oidc-boundary';
 import type { OidcAuthorizationRequest } from '../core/oidc';
+import { decideBrowserExternalDestination } from '../../lib/application/external-transmission';
 
 export const webCryptoPkce: PkceChallengePort = {
   async deriveS256(verifier) {
@@ -14,7 +15,14 @@ export const webCryptoPkce: PkceChallengePort = {
 export function serializeOidcAuthorizationRequest(
   request: OidcAuthorizationRequest,
 ): string {
-  const url = new URL(request.authorizationEndpoint);
+  const destination = decideBrowserExternalDestination(
+    'google-oidc',
+    request.authorizationEndpoint,
+  );
+  if (destination.kind === 'blocked') {
+    throw new Error('Google OIDC authorization destination is not declared');
+  }
+  const url = destination.url;
   url.searchParams.set('response_type', request.responseType);
   url.searchParams.set('client_id', request.clientId);
   url.searchParams.set('redirect_uri', request.redirectUri);
