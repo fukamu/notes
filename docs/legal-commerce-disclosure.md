@@ -25,6 +25,9 @@ fixture. Every identifying or commercial value is visibly marked as a developmen
 sample, and an accessible notice says that it is not a real seller, price,
 contract, or charge. This keeps `npm run dev`, local builds, CI, and the current
 Sites test environment independent of production legal decisions and services.
+The replaceable operator sample is defined once in
+`lib/application/legal-operator-fixture.ts` and shared with the local privacy and
+terms fixtures so those pages cannot accidentally identify different operators.
 
 The fixture is deliberately invalid for production. It must never be copied into
 a production configuration.
@@ -46,7 +49,7 @@ unknown and must have exactly this versioned shape:
   },
   "offer": {
     "planName": "法務・商品承認済みのプラン名",
-    "priceYen": 1280,
+    "priceYen": 980,
     "billingPeriod": "monthly",
     "taxIncluded": true,
     "trialDays": 14
@@ -65,14 +68,17 @@ non-positive price, non-tax-inclusive offers, a trial other than 14 days, empty
 requirements, and unsupported billing periods. Production validation additionally
 rejects development/placeholder markers, unreachable all-zero telephone values,
 non-HTTPS or local/example support URLs, and a seller name that does not contain
-the verified `株式会社` name.
+the verified `株式会社` name. The public paid product is fixed to **980 JPY,
+tax included, per month**; a production configuration with another price or an
+annual billing period fails closed before build.
 
 `npm run build` runs `check:legal-commerce` before creating artifacts. Therefore
 `public-paid` with missing or invalid data fails before a deployable build exists.
-This is a completeness and placeholder gate, not legal approval: price, billing
-cycle, cancellation/refund wording, corporate values, contact operation, and
-supported environment remain Decision Required until the user supplies them and
-a qualified Japanese lawyer reviews the rendered pages.
+This is a completeness and placeholder gate, not legal approval. The price and
+billing cycle are product decisions; cancellation/refund wording, corporate
+values, contact operation, and supported environment remain Decision Required
+until the user supplies them and a qualified Japanese lawyer reviews the
+rendered pages.
 
 ## Consistency and rollback
 

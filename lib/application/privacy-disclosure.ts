@@ -8,6 +8,7 @@ import {
   privacyRequestKinds,
   type PrivacyRequestKind,
 } from '../domain/privacy-request.ts';
+import { localLegalOperatorFixture } from './legal-operator-fixture.ts';
 
 export type { PrivacyRequestKind } from '../domain/privacy-request.ts';
 
@@ -84,10 +85,10 @@ export const localPrivacyDisclosureFixture: PrivacyDisclosure = {
   effectiveDate: '2026-09-15',
   serviceName: 'FUKAMU Notes',
   controller: {
-    legalName: 'FUKAMU Notes 開発用サンプル株式会社',
-    representative: '開発用サンプル責任者',
-    postalAddress: '〒000-0000 開発用サンプル住所',
-    contactUrl: 'http://localhost:3100/legal/privacy',
+    legalName: localLegalOperatorFixture.legalName,
+    representative: localLegalOperatorFixture.representative,
+    postalAddress: localLegalOperatorFixture.postalAddress,
+    contactUrl: localLegalOperatorFixture.privacyContactUrl,
   },
   collection: [
     {
@@ -159,7 +160,7 @@ export const localPrivacyDisclosureFixture: PrivacyDisclosure = {
     identityVerification:
       '開発用サンプル：不正な開示や変更を防ぐため、請求内容に応じて本人確認を行います。',
     fee: '開発用サンプル：手数料と回答方法は本番運用前に確定します。',
-    contactUrl: 'http://localhost:3100/legal/privacy',
+    contactUrl: localLegalOperatorFixture.privacyContactUrl,
   },
   policyChanges:
     '開発用サンプル：重要な変更は適用前にservice内または登録連絡先へ通知します。',

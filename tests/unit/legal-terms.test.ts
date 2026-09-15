@@ -13,6 +13,7 @@ import {
 } from '@/lib/application/legal-terms';
 import { localLegalCommerceFixture } from '@/lib/application/legal-commerce';
 import { localPrivacyDisclosureFixture } from '@/lib/application/privacy-disclosure';
+import { FUKAMU_SERVICE_ELIGIBILITY } from '@/lib/application/legal-product';
 
 function productionTerms(): LegalTermsDisclosure {
   return {
@@ -24,8 +25,7 @@ function productionTerms(): LegalTermsDisclosure {
       legalName: '株式会社深考ノート',
       supportUrl: 'https://support.fukamu-notes.jp/contact',
     },
-    serviceEligibility:
-      '18歳以上の方が利用できます。未成年者は法定代理人の同意を得てください。',
+    serviceEligibility: FUKAMU_SERVICE_ELIGIBILITY,
     accountSecurity:
       '認証情報と利用端末を適切に管理し、不正利用を確認した場合は直ちに窓口へ連絡してください。',
     authentication: {
@@ -176,6 +176,23 @@ describe('legal terms disclosure core', () => {
       source: 'production-configuration',
       disclosure: terms,
     });
+
+    expect(
+      resolveLegalTermsDisclosure({
+        FUKAMU_SERVICE_MODE: 'public-paid',
+        FUKAMU_LEGAL_TERMS_JSON: JSON.stringify({
+          ...terms,
+          serviceEligibility:
+            '成人だけが利用でき、未成年者は法定代理人の同意が必要です。',
+        }),
+      }),
+    ).toMatchObject({
+      kind: 'blocked',
+      reason: 'invalid-production-configuration',
+      issues: [
+        '$.serviceEligibility must match the approved contract-capacity policy',
+      ],
+    });
   });
 
   it('detects drift from commercial and privacy disclosures', () => {
@@ -253,6 +270,7 @@ describe('legal terms build and page contracts', () => {
     }
     expect(layout).toContain('/legal/terms');
     expect(notes).not.toMatch(/legal\/terms|利用規約/);
+    expect(page).not.toMatch(/対象年齢|18歳以上/);
     expect(documentation).toContain('does not mount the Notes');
   });
 });

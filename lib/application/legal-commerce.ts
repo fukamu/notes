@@ -1,3 +1,9 @@
+import { localLegalOperatorFixture } from './legal-operator-fixture.ts';
+import {
+  FUKAMU_BILLING_PERIOD,
+  FUKAMU_MONTHLY_PRICE_YEN,
+} from './legal-product.ts';
+
 export const LEGAL_COMMERCE_SCHEMA_VERSION = 1;
 export const LEGAL_TRIAL_DAYS = 14;
 
@@ -50,16 +56,16 @@ export type LegalCommerceResolution =
 export const localLegalCommerceFixture: LegalCommerceDisclosure = {
   schemaVersion: LEGAL_COMMERCE_SCHEMA_VERSION,
   seller: {
-    legalName: 'FUKAMU Notes 開発用サンプル株式会社',
-    representative: '開発用サンプル責任者',
-    postalAddress: '〒000-0000 開発用サンプル住所',
-    phone: '000-0000-0000',
-    supportUrl: 'http://localhost:3100/legal/commercial-transactions',
+    legalName: localLegalOperatorFixture.legalName,
+    representative: localLegalOperatorFixture.representative,
+    postalAddress: localLegalOperatorFixture.postalAddress,
+    phone: localLegalOperatorFixture.phone,
+    supportUrl: localLegalOperatorFixture.supportUrl,
   },
   offer: {
     planName: '開発用サンプル月額プラン',
-    priceYen: 980,
-    billingPeriod: 'monthly',
+    priceYen: FUKAMU_MONTHLY_PRICE_YEN,
+    billingPeriod: FUKAMU_BILLING_PERIOD,
     taxIncluded: true,
     trialDays: LEGAL_TRIAL_DAYS,
   },
@@ -363,6 +369,12 @@ function validateProductionDisclosure(
   disclosure: LegalCommerceDisclosure,
 ): readonly string[] {
   const issues: string[] = [];
+  if (disclosure.offer.priceYen !== FUKAMU_MONTHLY_PRICE_YEN) {
+    issues.push(`$.offer.priceYen must be ${FUKAMU_MONTHLY_PRICE_YEN}`);
+  }
+  if (disclosure.offer.billingPeriod !== FUKAMU_BILLING_PERIOD) {
+    issues.push(`$.offer.billingPeriod must be ${FUKAMU_BILLING_PERIOD}`);
+  }
   const strings = [
     ['$.seller.legalName', disclosure.seller.legalName],
     ['$.seller.representative', disclosure.seller.representative],

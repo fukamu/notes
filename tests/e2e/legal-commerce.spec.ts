@@ -8,6 +8,7 @@ test('pricing and public navigation lead to the dedicated legal disclosure', asy
     page.getByRole('heading', { name: '料金', exact: true }),
   ).toBeVisible();
   await expect(page.getByTestId('legal-fixture-notice')).toBeVisible();
+  await expect(page.getByText('980円（税込）')).toBeVisible();
   await expect(page.getByText('15日目に初回課金します。')).toBeVisible();
   await page
     .getByRole('link', { name: '特定商取引法に基づく表記' })

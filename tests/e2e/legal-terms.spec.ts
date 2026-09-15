@@ -22,6 +22,12 @@ test('public navigation reaches the dedicated versioned terms page', async ({
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
   await expect(page.getByText('terms-v1:2026-09-15')).toBeVisible();
+  await expect(
+    page.getByText(
+      '利用登録には、法定代理人の同意を要せず、ご本人が有料サブスクリプション契約を有効に締結できることが必要です。',
+    ),
+  ).toBeVisible();
+  await expect(page.getByText(/対象年齢|18歳以上/)).toHaveCount(0);
 });
 
 test('terms content and dialogs remain outside the normal Notes interface', async ({
