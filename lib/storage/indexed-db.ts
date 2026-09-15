@@ -281,20 +281,52 @@ async function persistCardAndMutation(
   },
 ): Promise<PendingMutation> {
   const database = await openNotesDatabase(scope);
-  const result = createPendingMutation(
-    card,
-    idGenerator.createMutationId(),
-    options,
-  );
-  if (!result.ok) {
-    throw new Error('Cannot resolve a conflict without a server revision');
-  }
-  const mutation = result.mutation;
   const transaction = database.transaction(['cards', 'mutations'], 'readwrite');
+  const cardStore = transaction.objectStore('cards');
+  const mutationStore = transaction.objectStore('mutations');
+  const completion = transactionComplete(transaction);
+  try {
+    const storedMutationInput = await requestResult(mutationStore.get(card.id));
+    const [existingMutation] = decodeStoredMutations(
+      storedMutationInput === undefined ? [] : [storedMutationInput],
+    );
+    const result = createPendingMutation(
+      card,
+      idGenerator.createMutationId(),
+      options,
+      existingMutation,
+    );
+    if (!result.ok) {
+      throw new Error(`Cannot persist pending mutation: ${result.reason}`);
+    }
+    const mutation = result.mutation;
+    cardStore.put(encodeStoredCard(card));
+    mutationStore.put(encodeStoredMutation(mutation));
+    await completion;
+    return mutation;
+  } catch (error) {
+    try {
+      transaction.abort();
+    } catch {
+      // The transaction may already have aborted or committed.
+    }
+    try {
+      await completion;
+    } catch {
+      // Preserve the original decode or planning failure.
+    }
+    throw error;
+  }
+}
+
+async function persistLocalCard(
+  scope: IndexedDbNotesScope,
+  card: CardRecord,
+): Promise<void> {
+  const database = await openNotesDatabase(scope);
+  const transaction = database.transaction('cards', 'readwrite');
   transaction.objectStore('cards').put(encodeStoredCard(card));
-  transaction.objectStore('mutations').put(encodeStoredMutation(mutation));
   await transactionComplete(transaction);
-  return mutation;
 }
 
 async function applySyncResponse(
@@ -468,6 +500,7 @@ export function createIndexedDbNotesRepository<
     loadConflicts: () => loadConflicts(scope),
     loadOrCreateDeviceId: () => loadOrCreateDeviceId(scope, idGenerator),
     loadPendingMutations: () => loadPendingMutations(scope),
+    persistLocalCard: (card) => persistLocalCard(scope, card),
     persistCardAndMutation: (card, options) =>
       persistCardAndMutation(scope, idGenerator, card, options),
     applySyncResponse: (input, sentMutations) =>

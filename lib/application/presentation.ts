@@ -36,6 +36,7 @@ export type HistoryViewModel = {
 };
 
 export type ConflictChoice = ConflictResolutionChoice;
+export type ConflictResolutionState = 'ready' | 'pending' | 'failed';
 
 export type ConflictOptionViewModel = {
   choice: ConflictChoice;
@@ -48,6 +49,7 @@ export type ConflictOptionViewModel = {
 export type ConflictViewModel = {
   conflictId: ConflictId;
   cardId: CardId;
+  resolutionState: ConflictResolutionState;
   options: [ConflictOptionViewModel, ConflictOptionViewModel];
 };
 

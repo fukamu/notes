@@ -19,6 +19,9 @@ const otherCursor = parseSyncV2Cursor(
   'sync.v2.replica.other.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
 );
 const newerMutationId = parseMutationId('01991f20-61d2-7000-8000-000000000006');
+const newerResolveEditId = parseMutationId(
+  '01991f20-61d2-7000-8000-000000000007',
+);
 
 function completePlan(): SyncV2CommitPlan {
   const fixture = createCompatibilityFixture();
@@ -163,6 +166,84 @@ describe('Sync v2 local replica commit planner', () => {
     expect(decision.operations).not.toContainEqual({
       type: 'delete-mutation',
       cardId: compatibilityIds.cardA,
+    });
+  });
+
+  it('does not resend resolved conflict IDs when an in-flight edit remains', () => {
+    const fixture = createCompatibilityFixture();
+    const local = fixture.cards[0];
+    const serverCard = fixture.response.cards[0];
+    if (local === undefined || serverCard === undefined) {
+      throw new Error('missing card fixture');
+    }
+    const sentResolve: PendingMutation = {
+      ...fixture.mutation,
+      kind: 'resolve',
+      baseServerRevision: 1,
+      conflictIds: [fixture.conflict.id],
+    };
+    const newerCard: CardRecord = {
+      ...local,
+      title: 'resolve送信中の追加入力',
+      localRevision: local.localRevision + 1,
+      updatedAt: local.updatedAt + 1,
+    };
+    const newerResolve: PendingMutation = {
+      ...sentResolve,
+      mutationId: newerResolveEditId,
+      title: newerCard.title,
+      updatedAt: newerCard.updatedAt,
+    };
+    const decision = planSyncV2ReplicaCommit({
+      plan: {
+        previousCheckpoint: initialSyncV2Checkpoint(),
+        nextCheckpoint: {
+          cursor: committedCursor,
+          highWatermark: parseSyncSequence(2),
+        },
+        changes: [
+          {
+            kind: 'card-upsert',
+            sequence: parseSyncSequence(1),
+            card: serverCard,
+          },
+          {
+            kind: 'conflict-tombstone',
+            sequence: parseSyncSequence(2),
+            conflictId: fixture.conflict.id,
+            cardId: local.id,
+            deletedAt: newerCard.updatedAt,
+          },
+        ],
+        receipts: [
+          {
+            mutationId: sentResolve.mutationId,
+            cardId: sentResolve.cardId,
+            appliedRevision: serverCard.revision,
+          },
+        ],
+      },
+      currentCheckpoint: initialSyncV2Checkpoint(),
+      localCards: [newerCard],
+      currentMutations: [newerResolve],
+      localConflicts: [fixture.conflict],
+      sentMutations: [sentResolve],
+    });
+
+    expect(decision.kind).toBe('apply');
+    if (decision.kind !== 'apply') return;
+    expect(decision.operations).toContainEqual({
+      type: 'put-mutation',
+      mutation: {
+        ...newerResolve,
+        kind: 'upsert',
+        baseServerRevision: serverCard.revision,
+        conflictIds: [],
+      },
+    });
+    expect(decision.operations).toContainEqual({
+      type: 'delete-conflict',
+      conflictId: fixture.conflict.id,
     });
   });
 

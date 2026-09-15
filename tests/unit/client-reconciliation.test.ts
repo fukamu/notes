@@ -200,6 +200,54 @@ describe('sync response application plan', () => {
     ]);
     expect(plan.conflicts).toEqual([conflict]);
   });
+
+  it('turns an edit saved during an acknowledged resolve into a fresh upsert', () => {
+    const localCard = card('resolve-edit', {
+      title: 'edited while resolve was in flight',
+      serverRevision: 5,
+    });
+    const conflictId = fixtureConflictId('resolve-edit');
+    const sent: PendingMutation = {
+      ...mutation('sent-resolve', localCard, {
+        title: 'selected before request',
+      }),
+      kind: 'resolve',
+      baseServerRevision: 5,
+      conflictIds: [conflictId],
+    };
+    const current: PendingMutation = {
+      ...mutation('newer-resolve-edit', localCard),
+      kind: 'resolve',
+      baseServerRevision: 5,
+      conflictIds: [conflictId],
+    };
+    const response: SyncResponse = {
+      cards: [serverCard(localCard, { revision: 6 })],
+      conflicts: [],
+      acknowledgedMutationIds: [sent.mutationId],
+    };
+
+    const plan = planSyncResponseApplication({
+      response,
+      localCards: [localCard],
+      currentMutations: [current],
+      sentMutations: [sent],
+    });
+
+    expect(plan.operations).toContainEqual({
+      type: 'put-mutation',
+      mutation: {
+        ...current,
+        kind: 'upsert',
+        baseServerRevision: 6,
+        conflictIds: [],
+      },
+    });
+    expect(plan.cards[0]).toMatchObject({
+      title: 'edited while resolve was in flight',
+      serverRevision: 6,
+    });
+  });
 });
 
 describe('visible card reconciliation after sync', () => {

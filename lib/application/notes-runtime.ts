@@ -30,6 +30,7 @@ export type NotesRepository<TScope extends NotesScope = NotesScope> = {
   loadConflicts: () => Promise<ConflictRecord[]>;
   loadOrCreateDeviceId: () => Promise<DeviceId>;
   loadPendingMutations: () => Promise<PendingMutation[]>;
+  persistLocalCard: (card: CardRecord) => Promise<void>;
   persistCardAndMutation: (
     card: CardRecord,
     options?: PendingMutationMode,

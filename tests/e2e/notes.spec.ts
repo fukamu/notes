@@ -1,9 +1,10 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { CONNECTIONS_ZOOM_PREFERENCE_KEY } from '@/lib/client/connections-zoom-preference';
 import type { CardRecord } from '@/lib/domain/types';
+import { decodeSyncRequest } from '@/lib/sync/protocol';
 import { connectionsBenchmarkFixtures } from '@/tests/fixtures/connections-layout';
 import { createClientPerformanceFixture } from '@/tests/fixtures/client-performance';
-import { fixtureCardId } from '@/tests/fixtures/ids';
+import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -2597,4 +2598,110 @@ test('concurrent device edits preserve both versions for explicit resolution', a
 
   await first.close();
   await second.close();
+});
+
+test('current input resolves every visible conflict from the notice close action', async ({
+  page,
+}) => {
+  const cardId = fixtureCardId('e2e-current-conflict-card');
+  const firstConflictId = fixtureConflictId('e2e-current-conflict-first');
+  const secondConflictId = fixtureConflictId('e2e-current-conflict-second');
+  const currentTitle = '現在入力を最終内容として残す';
+  let resolved = false;
+  let observedConflictIds: readonly string[] = [];
+  await page.route('**/api/sync', async (route) => {
+    const request = decodeSyncRequest(route.request().postDataJSON());
+    const resolveMutation = request.mutations.find(
+      (mutation) => mutation.kind === 'resolve',
+    );
+    if (resolveMutation) {
+      observedConflictIds = resolveMutation.conflictIds;
+      resolved = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          cards: [
+            {
+              id: cardId,
+              officialDisplayId: 29,
+              title: resolveMutation.title,
+              body: resolveMutation.body,
+              createdAt: 1,
+              updatedAt: resolveMutation.updatedAt,
+              revision: 4,
+            },
+          ],
+          conflicts: [],
+          acknowledgedMutationIds: [resolveMutation.mutationId],
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        cards: [
+          {
+            id: cardId,
+            officialDisplayId: 29,
+            title: resolved ? currentTitle : '同期済みの現在カード',
+            body: [],
+            createdAt: 1,
+            updatedAt: resolved ? 4 : 3,
+            revision: resolved ? 4 : 3,
+          },
+        ],
+        conflicts: resolved
+          ? []
+          : [
+              {
+                id: firstConflictId,
+                cardId,
+                serverRevision: 1,
+                localTitle: '編集案A-1',
+                localBody: [],
+                serverTitle: '編集案B-1',
+                serverBody: [],
+                createdAt: 2,
+              },
+              {
+                id: secondConflictId,
+                cardId,
+                serverRevision: 2,
+                localTitle: '編集案A-2',
+                localBody: [],
+                serverTitle: '編集案B-2',
+                serverBody: [],
+                createdAt: 3,
+              },
+            ],
+        acknowledgedMutationIds: [],
+      }),
+    });
+  });
+
+  const response = await page.goto(`/cards/${cardId}`);
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole('alert')).toHaveCount(2);
+  await page.getByTestId('card-title').fill(currentTitle);
+  await expect(page.getByTestId('save-sync-status')).toHaveText('保存済み');
+
+  await page
+    .getByRole('button', {
+      name: '現在の入力を残して競合案を破棄',
+    })
+    .first()
+    .click();
+  await expect(
+    page.getByText('選んだ内容で競合を解決しています。').first(),
+  ).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0, { timeout: 15_000 });
+  expect(observedConflictIds).toEqual([firstConflictId, secondConflictId]);
+  await expect(page.getByTestId('card-title')).toHaveValue(currentTitle);
+
+  await page.reload();
+  await expect(page.getByTestId('card-title')).toHaveValue(currentTitle);
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });

@@ -60,6 +60,7 @@ const {
   loadConflicts,
   loadOrCreateDeviceId,
   loadPendingMutations,
+  persistLocalCard,
   persistCardAndMutation,
 } = createIndexedDbNotesRepository(LEGACY_NOTES_SCOPE, browserIdGenerator);
 
@@ -314,6 +315,51 @@ describe('local persistence', () => {
     invariant(stored, 'Stored card was not loaded');
     expect(stored.title).toBe('二回目');
     expect(await loadPendingMutations()).toHaveLength(1);
+  });
+
+  it('keeps a pending resolve and its conflict IDs when a later edit is saved', async () => {
+    const fixture = createCompatibilityFixture();
+    const source = fixture.cards[0];
+    invariant(source, 'Compatibility card is missing');
+    await persistCardAndMutation(source, {
+      kind: 'resolve',
+      conflictIds: [fixture.conflict.id],
+    });
+
+    const edited = {
+      ...source,
+      title: '解決選択後の追加入力',
+      localRevision: source.localRevision + 1,
+      updatedAt: source.updatedAt + 1,
+    };
+    await persistCardAndMutation(edited);
+
+    const [storedMutation] = await loadPendingMutations();
+    invariant(storedMutation, 'Pending resolve was not loaded');
+    expect(storedMutation).toMatchObject({
+      kind: 'resolve',
+      cardId: source.id,
+      title: edited.title,
+      conflictIds: [fixture.conflict.id],
+    });
+    expect(await loadPendingMutations()).toHaveLength(1);
+  });
+
+  it('persists edits made before explicit conflict resolution without creating a mutation', async () => {
+    const fixture = createCompatibilityFixture();
+    const source = fixture.cards[0];
+    invariant(source, 'Compatibility card is missing');
+    const edited = {
+      ...source,
+      title: '競合を選ぶ前の現在入力',
+      localRevision: source.localRevision + 1,
+      updatedAt: source.updatedAt + 1,
+    };
+
+    await persistLocalCard(edited);
+
+    expect(await loadCards()).toEqual([edited]);
+    expect(await loadPendingMutations()).toEqual([]);
   });
 
   it('rebases an edit saved while a sync request is in flight', async () => {

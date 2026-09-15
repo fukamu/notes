@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, LoaderCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type {
   ConflictChoice,
@@ -13,6 +13,7 @@ type Props = {
 };
 
 export function ConflictNotice({ model, onResolve }: Props) {
+  const pending = model.resolutionState === 'pending';
   return (
     <aside
       className="conflict-notice mb-5 rounded-xl border p-4 text-sm"
@@ -24,9 +25,31 @@ export function ConflictNotice({ model, onResolve }: Props) {
           className="conflict-notice-icon mt-0.5 size-5 shrink-0"
         />
         <div className="min-w-0 flex-1">
-          <p className="font-semibold">別の端末の編集と重なりました</p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="pt-2 font-semibold">別の端末の編集と重なりました</p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-lg"
+              className="min-h-11 min-w-11 shrink-0"
+              aria-label="現在の入力を残して競合案を破棄"
+              title="現在の入力を残して競合案を破棄"
+              disabled={pending}
+              onClick={() => onResolve('current')}
+            >
+              {pending ? (
+                <LoaderCircle aria-hidden="true" className="animate-spin" />
+              ) : (
+                <X aria-hidden="true" />
+              )}
+            </Button>
+          </div>
           <p className="conflict-notice-muted mt-1 text-xs leading-5">
-            どちらも保持されています。残したい内容を選んでください。
+            {model.resolutionState === 'pending'
+              ? '選んだ内容で競合を解決しています。入力内容は端末に保存されています。'
+              : model.resolutionState === 'failed'
+                ? '競合を同期できませんでした。内容は端末に残っています。案を選び直すか同期を再試行してください。'
+                : 'どちらも保持されています。案を選ぶか、×で現在の入力を残してください。'}
           </p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {model.options.map((option) => (
@@ -46,6 +69,7 @@ export function ConflictNotice({ model, onResolve }: Props) {
                   size="sm"
                   variant={option.choice === 'server' ? 'outline' : 'default'}
                   aria-label={option.accessibleName}
+                  disabled={pending}
                   onClick={() => onResolve(option.choice)}
                 >
                   この案を使う

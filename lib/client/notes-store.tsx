@@ -32,7 +32,7 @@ import { reconcileProvisionalDisplayIds } from '@/lib/domain/display-id';
 import {
   applyCardEdit,
   createLocalCard,
-  resolveCardConflict,
+  resolveCardConflicts,
   type CardEdit,
   type ConflictResolutionChoice,
 } from '@/lib/domain/card-transitions';
@@ -52,6 +52,7 @@ export type NotesDataStore = {
   initialization: NotesInitializationLifecycle;
   saveState: SaveState;
   syncState: SyncState;
+  resolvingConflictCardIds: CardId[];
   createCard: () => Promise<CardRecord>;
   hasCard: (cardId: CardId) => boolean;
   updateCard: (cardId: CardId, edit: CardEdit) => void;
@@ -81,7 +82,12 @@ export function NotesProvider({
     useState<NotesInitializationLifecycle>(INITIAL_NOTES_INITIALIZATION);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [syncState, setSyncState] = useState<SyncState>('idle');
+  const [resolvingConflictCardIds, setResolvingConflictCardIds] = useState<
+    CardId[]
+  >([]);
   const cardsRef = useRef(cards);
+  const conflictsRef = useRef(conflicts);
+  const resolvingConflictCardIdsRef = useRef(resolvingConflictCardIds);
   const operationLifecycleRef = useRef(
     createStoppedNotesOperationLifecycle(ports.scope),
   );
@@ -103,6 +109,7 @@ export function NotesProvider({
     syncRequestedRef.current = false;
     saveSequenceRef.current = 0;
     saveQueueRef.current = Promise.resolve();
+    resolvingConflictCardIdsRef.current = [];
 
     return () => {
       operationLifecycleRef.current = stopNotesOperationLifecycle(
@@ -127,6 +134,14 @@ export function NotesProvider({
   useEffect(() => {
     cardsRef.current = cards;
   }, [cards]);
+
+  useEffect(() => {
+    conflictsRef.current = conflicts;
+  }, [conflicts]);
+
+  useEffect(() => {
+    resolvingConflictCardIdsRef.current = resolvingConflictCardIds;
+  }, [resolvingConflictCardIds]);
 
   const synchronizeNow = useCallback(async () => {
     if (!initialized) return;
@@ -225,8 +240,19 @@ export function NotesProvider({
           mergedCards: merged.cards,
         });
         cardsRef.current = visibleCards;
+        conflictsRef.current = [...merged.conflicts];
         setCards(visibleCards);
         setConflicts([...merged.conflicts]);
+        const unresolvedCardIds = new Set(
+          merged.conflicts.map((conflict) => conflict.cardId),
+        );
+        setResolvingConflictCardIds((current) => {
+          const next = current.filter((cardId) =>
+            unresolvedCardIds.has(cardId),
+          );
+          resolvingConflictCardIdsRef.current = next;
+          return next;
+        });
       } while (
         operationIsCurrent(operationLifecycleRef.current, operationToken) &&
         syncRequestedRef.current &&
@@ -258,15 +284,26 @@ export function NotesProvider({
       ports.repository.loadCards(),
       ports.repository.loadConflicts(),
       ports.repository.loadOrCreateDeviceId(),
+      ports.repository.loadPendingMutations(),
     ])
-      .then(([storedCards, storedConflicts, deviceId]) => {
+      .then(([storedCards, storedConflicts, deviceId, storedMutations]) => {
         if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
           return;
         const reconciled = reconcileProvisionalDisplayIds(storedCards);
         cardsRef.current = reconciled;
+        conflictsRef.current = storedConflicts;
         deviceIdRef.current = deviceId;
         setCards(reconciled);
         setConflicts(storedConflicts);
+        const resolvingCardIds = [
+          ...new Set(
+            storedMutations
+              .filter((mutation) => mutation.kind === 'resolve')
+              .map((mutation) => mutation.cardId),
+          ),
+        ];
+        resolvingConflictCardIdsRef.current = resolvingCardIds;
+        setResolvingConflictCardIds(resolvingCardIds);
         setSyncState(ports.connectivity.isOnline() ? 'idle' : 'offline');
         setInitialization((lifecycle) =>
           transitionNotesInitialization(lifecycle, {
@@ -332,6 +369,7 @@ export function NotesProvider({
     (
       card: CardRecord,
       options:
+        | { kind: 'local-only' }
         | { kind: 'upsert' }
         | { kind: 'resolve'; conflictIds: [ConflictId, ...ConflictId[]] } = {
         kind: 'upsert',
@@ -354,10 +392,14 @@ export function NotesProvider({
           const latestCard = cardsRef.current.find(
             (candidate) => candidate.id === card.id,
           );
-          await ports.repository.persistCardAndMutation(
-            latestCard ?? card,
-            options,
-          );
+          if (options.kind === 'local-only') {
+            await ports.repository.persistLocalCard(latestCard ?? card);
+          } else {
+            await ports.repository.persistCardAndMutation(
+              latestCard ?? card,
+              options,
+            );
+          }
           return operationIsCurrent(
             operationLifecycleRef.current,
             operationToken,
@@ -366,12 +408,14 @@ export function NotesProvider({
         .then((operationAccepted) => {
           if (!operationAccepted) return;
           if (sequence === saveSequenceRef.current) setSaveState('saved');
-          if (syncTimerRef.current !== undefined)
-            window.clearTimeout(syncTimerRef.current);
-          syncTimerRef.current = window.setTimeout(
-            () => void synchronizeNow(),
-            250,
-          );
+          if (options.kind !== 'local-only') {
+            if (syncTimerRef.current !== undefined)
+              window.clearTimeout(syncTimerRef.current);
+            syncTimerRef.current = window.setTimeout(
+              () => void synchronizeNow(),
+              250,
+            );
+          }
         })
         .catch((error) => {
           if (
@@ -409,7 +453,17 @@ export function NotesProvider({
       );
       cardsRef.current = nextCards;
       setCards(nextCards);
-      queueSave(updated);
+      const hasUnresolvedConflict = conflictsRef.current.some(
+        (conflict) => conflict.cardId === cardId,
+      );
+      const resolutionIsPending =
+        resolvingConflictCardIdsRef.current.includes(cardId);
+      queueSave(
+        updated,
+        hasUnresolvedConflict && !resolutionIsPending
+          ? { kind: 'local-only' }
+          : { kind: 'upsert' },
+      );
     },
     [ports.clock, queueSave],
   );
@@ -420,14 +474,18 @@ export function NotesProvider({
   );
 
   const resolveConflict = useCallback(
-    (conflict: ConflictRecord, choice: 'local' | 'server') => {
+    (conflict: ConflictRecord, choice: ConflictResolutionChoice) => {
       const existing = cardsRef.current.find(
         (card) => card.id === conflict.cardId,
       );
       if (!existing) return undefined;
-      const result = resolveCardConflict(
+      const cardConflicts = conflictsRef.current.filter(
+        (candidate) => candidate.cardId === conflict.cardId,
+      );
+      const result = resolveCardConflicts(
         existing,
-        conflict,
+        cardConflicts,
+        conflict.id,
         choice,
         ports.clock.now(),
       );
@@ -438,9 +496,17 @@ export function NotesProvider({
       );
       cardsRef.current = nextCards;
       setCards(nextCards);
+      if (!resolvingConflictCardIdsRef.current.includes(conflict.cardId)) {
+        const nextResolving = [
+          ...resolvingConflictCardIdsRef.current,
+          conflict.cardId,
+        ];
+        resolvingConflictCardIdsRef.current = nextResolving;
+        setResolvingConflictCardIds(nextResolving);
+      }
       queueSave(updated, {
         kind: 'resolve',
-        conflictIds: [conflict.id],
+        conflictIds: result.conflictIds,
       });
       return updated;
     },
@@ -454,6 +520,7 @@ export function NotesProvider({
       initialization,
       saveState,
       syncState,
+      resolvingConflictCardIds,
       createCard,
       hasCard,
       updateCard,
@@ -466,6 +533,7 @@ export function NotesProvider({
       initialization,
       saveState,
       syncState,
+      resolvingConflictCardIds,
       createCard,
       hasCard,
       updateCard,

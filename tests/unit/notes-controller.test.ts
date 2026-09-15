@@ -32,6 +32,7 @@ function fakeStore(initialCards: CardRecord[] = []): NotesStorePort & {
     initialization: { stage: 'ready', loadOutcome: 'succeeded' },
     saveState: 'saved',
     syncState: 'idle',
+    resolvingConflictCardIds: [],
     calls: [],
     createCard: async () => {
       const created = card(
@@ -58,10 +59,14 @@ function fakeStore(initialCards: CardRecord[] = []): NotesStorePort & {
         (candidate) => candidate.id === conflict.cardId,
       );
       if (!existing) return undefined;
-      const updated = {
-        ...existing,
-        title: choice === 'local' ? conflict.localTitle : conflict.serverTitle,
-      };
+      const updated =
+        choice === 'current'
+          ? existing
+          : {
+              ...existing,
+              title:
+                choice === 'local' ? conflict.localTitle : conflict.serverTitle,
+            };
       store.cards = store.cards.map((candidate) =>
         candidate.id === updated.id ? updated : candidate,
       );
