@@ -46,6 +46,17 @@ describe('ChatGPT Sites Drizzle migration compatibility', () => {
     }
   });
 
+  it('keeps every Sites migration free of trigger statements', async () => {
+    const migrationFiles = (await readdir('drizzle'))
+      .filter((file) => /^\d{4}_.+\.sql$/.test(file))
+      .sort();
+
+    for (const migrationFile of migrationFiles) {
+      const source = await readFile(`drizzle/${migrationFile}`, 'utf8');
+      expect(source, migrationFile).not.toMatch(/CREATE\s+TRIGGER/i);
+    }
+  });
+
   it('keeps the quota finalization assertion table in one trigger-free migration statement', async () => {
     const source = await readFile(
       'drizzle/0013_vault_quota_finalize_assertions.sql',
@@ -71,14 +82,12 @@ describe('ChatGPT Sites Drizzle migration compatibility', () => {
            'contract_evidence',
            'vault_quota_finalization_assertions',
            'idx_contract_evidence_submission',
-           'contract_evidence_immutable',
            'privacy_requests',
            'idx_privacy_requests_submission',
            'idx_privacy_requests_state',
            'terms_consent_evidence',
            'idx_terms_consent_submission',
-           'idx_terms_consent_latest',
-           'terms_consent_immutable'
+           'idx_terms_consent_latest'
          )
          ORDER BY name`,
       )
@@ -86,7 +95,6 @@ describe('ChatGPT Sites Drizzle migration compatibility', () => {
 
     expect(schema.results).toEqual([
       { name: 'contract_evidence', type: 'table' },
-      { name: 'contract_evidence_immutable', type: 'trigger' },
       { name: 'idx_contract_evidence_submission', type: 'index' },
       { name: 'idx_privacy_requests_state', type: 'index' },
       { name: 'idx_privacy_requests_submission', type: 'index' },
@@ -94,12 +102,11 @@ describe('ChatGPT Sites Drizzle migration compatibility', () => {
       { name: 'idx_terms_consent_submission', type: 'index' },
       { name: 'privacy_requests', type: 'table' },
       { name: 'terms_consent_evidence', type: 'table' },
-      { name: 'terms_consent_immutable', type: 'trigger' },
       { name: 'vault_quota_finalization_assertions', type: 'table' },
     ]);
   });
 
-  it('keeps legal trigger bodies intact and immutable evidence enforced', async () => {
+  it('keeps legal evidence owner-scoped and preserves account deletion cascade', async () => {
     await database
       .prepare('INSERT INTO accounts(account_id, created_at) VALUES (?, ?)')
       .bind('01991f20-61d2-7000-8000-000000000001', 1)
@@ -155,22 +162,23 @@ describe('ChatGPT Sites Drizzle migration compatibility', () => {
       )
       .run();
 
-    await expect(
-      database
-        .prepare(
-          'UPDATE contract_evidence SET confirmed_at = 3 WHERE evidence_id = ?',
-        )
-        .bind('01991f20-61d2-7000-8000-000000000003')
-        .run(),
-    ).rejects.toThrow(/immutable/);
-    await expect(
-      database
-        .prepare(
-          `UPDATE terms_consent_evidence
-           SET accepted_at = 3 WHERE consent_id = ?`,
-        )
-        .bind('01991f20-61d2-7000-8000-000000000005')
-        .run(),
-    ).rejects.toThrow(/immutable/);
+    await database
+      .prepare(
+        `DELETE FROM personal_vaults
+         WHERE account_id = ? AND vault_id = ?`,
+      )
+      .bind(
+        '01991f20-61d2-7000-8000-000000000001',
+        '01991f20-61d2-7000-8000-000000000002',
+      )
+      .run();
+    const remaining = await database
+      .prepare(
+        `SELECT
+           (SELECT count(*) FROM contract_evidence) AS contracts,
+           (SELECT count(*) FROM terms_consent_evidence) AS consents`,
+      )
+      .first<{ consents: number; contracts: number }>();
+    expect(remaining).toEqual({ consents: 0, contracts: 0 });
   });
 });

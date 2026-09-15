@@ -31,10 +31,17 @@ same tenant scope.
 
 Migration `0015_terms_consent_ledger` creates a fresh empty table after the
 privacy request journal. A composite owner foreign key rejects unknown Vaults
-and cascades live evidence when that Personal Vault is deleted. A trigger rejects
-all `UPDATE` statements, while scoped primary and submission keys make insert
-replay and identifier collision distinguishable. The checked-in SQL and
-application manifest are checksum-pinned; no request handler performs DDL.
+and cascades live evidence when that Personal Vault is deleted. Scoped primary
+and submission keys make insert replay and identifier collision distinguishable.
+The explicit production migration adds a trigger that rejects all `UPDATE`
+statements; its manifest is checksum-pinned and no request handler performs DDL.
+
+ChatGPT Sites cannot reliably apply multi-statement trigger bodies, so its
+checked-in `drizzle` migration creates the table and indexes without that
+trigger. The Sites repository remains INSERT/SELECT-only and architecture tests
+reject application SQL that directly UPDATEs or DELETEs either legal evidence
+table. A D1 administrator can still bypass that application boundary in the
+Sites test environment; production keeps the trigger as defense in depth.
 
 ## Failure, rollback, and retained decisions
 

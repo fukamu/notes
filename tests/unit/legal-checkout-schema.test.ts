@@ -34,17 +34,20 @@ describe('contract evidence owned schema', () => {
     ]);
   });
 
-  it('checks in an additive provider-neutral migration after quota', async () => {
+  it('keeps the Sites migration trigger-free and production evidence immutable', async () => {
     const source = await readFile('drizzle/0014_contract_evidence.sql', 'utf8');
     for (const marker of [
       'contract_evidence',
       'account_id, vault_id, evidence_id',
       'idx_contract_evidence_submission',
-      'contract_evidence_immutable',
       'ON DELETE CASCADE',
     ]) {
       expect(source).toContain(marker);
     }
+    expect(source).not.toMatch(/CREATE\s+TRIGGER/i);
+    expect(contractEvidenceStatements.join('\n')).toContain(
+      'CREATE TRIGGER contract_evidence_immutable',
+    );
     for (const excluded of [
       'stripe',
       'card_number',

@@ -1105,6 +1105,67 @@ function legalCheckoutBoundaryViolation(file: string, source: string): boolean {
   );
 }
 
+function appendOnlyLegalEvidenceMutationViolation(source: string): boolean {
+  return (
+    /\bUPDATE\s+(?:contract_evidence|terms_consent_evidence)\s+SET\b/i.test(
+      source,
+    ) ||
+    /\bDELETE\s+FROM\s+(?:contract_evidence|terms_consent_evidence)\b/i.test(
+      source,
+    )
+  );
+}
+
+describe('Legal evidence append-only boundary', () => {
+  it('rejects direct UPDATE or DELETE statements across application source', async () => {
+    const files = (await Promise.all(roots.map(sourceFiles))).flat();
+    const violations: string[] = [];
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (appendOnlyLegalEvidenceMutationViolation(source)) {
+        violations.push(file);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('detects representative mutations and keeps repositories append/read-only', async () => {
+    expect(
+      appendOnlyLegalEvidenceMutationViolation(
+        'UPDATE contract_evidence SET confirmed_at = 1',
+      ),
+    ).toBe(true);
+    expect(
+      appendOnlyLegalEvidenceMutationViolation(
+        'DELETE FROM terms_consent_evidence WHERE account_id = ?',
+      ),
+    ).toBe(true);
+    expect(
+      appendOnlyLegalEvidenceMutationViolation(
+        'INSERT INTO contract_evidence(account_id) VALUES (?)',
+      ),
+    ).toBe(false);
+
+    const [contractPublic, contractAdapter, termsPublic, termsAdapter] =
+      await Promise.all([
+        readFile('server/legal-checkout/public.ts', 'utf8'),
+        readFile('server/legal-checkout/d1-adapter.ts', 'utf8'),
+        readFile('server/terms-consent/public.ts', 'utf8'),
+        readFile('server/terms-consent/d1-adapter.ts', 'utf8'),
+      ]);
+    for (const repositoryContract of [contractPublic, termsPublic]) {
+      expect(repositoryContract).not.toMatch(
+        /\b(?:update|delete|remove|replace|upsert)\s*\(/i,
+      );
+    }
+    for (const adapter of [contractAdapter, termsAdapter]) {
+      expect(appendOnlyLegalEvidenceMutationViolation(adapter)).toBe(false);
+      expect(adapter).toMatch(/INSERT\s+INTO/i);
+      expect(adapter).toMatch(/SELECT\s+/i);
+    }
+  });
+});
+
 describe('Contract evidence module ownership', () => {
   it('keeps private persistence and hashing adapters inside their owner module', async () => {
     const files = (await Promise.all(roots.map(sourceFiles))).flat();

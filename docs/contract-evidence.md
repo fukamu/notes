@@ -37,9 +37,19 @@ malformed values, owner mismatch, and identifier conflicts.
 
 The D1 repository keys every lookup and write by Account and Vault. Repeating
 the same scoped submission with identical terms is a replay; reusing an
-identifier for different terms is a conflict. The schema permits no UPDATE,
-and production migrations are explicit rather than request-time DDL. Stored
-JSON and metadata are decoded and cross-checked before entering the domain.
+identifier for different terms is a conflict. The repository exposes only
+append and scoped reads. Explicit production migrations reject UPDATE with an
+immutable trigger and are never run as request-time DDL. Stored JSON and
+metadata are decoded and cross-checked before entering the domain.
+
+ChatGPT Sites applies the checked-in `drizzle` migration set with a runner that
+cannot preserve multi-statement trigger bodies. Its contract-evidence migration
+therefore creates only the table and scoped index. Architecture tests reject
+direct UPDATE or DELETE statements against the evidence table anywhere in the
+application, while the repository remains INSERT/SELECT-only. This keeps normal
+Sites application paths append-only, but it does not prevent a D1 administrator
+from issuing a direct mutation in that test environment. Production retains the
+database trigger as defense in depth.
 
 The in-memory repository and Web Crypto hasher are explicit adapters for tests
 and local composition. They do not enable billing or grant access, and no

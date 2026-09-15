@@ -27,11 +27,3 @@ CREATE TABLE contract_evidence (
 
 CREATE UNIQUE INDEX idx_contract_evidence_submission
   ON contract_evidence(account_id, vault_id, submission_id);
---> statement-breakpoint
-
-CREATE TRIGGER contract_evidence_immutable
-  BEFORE UPDATE ON contract_evidence
-  FOR EACH ROW
-  BEGIN
-    SELECT RAISE(ABORT, 'contract evidence is immutable');
-  END;
