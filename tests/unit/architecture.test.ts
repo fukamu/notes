@@ -1834,6 +1834,35 @@ describe('swappable presentation architecture', () => {
     expect(importsMainThreadAdapter).toEqual([]);
   });
 
+  it('keeps the full-network worker scope-bound and its layout core renderer-neutral', async () => {
+    const core = await readFile('lib/graph/full-network-layout.ts', 'utf8');
+    const controller = await readFile(
+      'lib/application/full-network-layout-controller.ts',
+      'utf8',
+    );
+    const adapter = await readFile(
+      'lib/client/full-network-layout-worker.ts',
+      'utf8',
+    );
+    const worker = await readFile(
+      'workers/full-network-layout.worker.ts',
+      'utf8',
+    );
+    const packageJson = await readFile('package.json', 'utf8');
+
+    expect(core).not.toMatch(
+      /(?:react|window\.|document\.|new Worker|Canvas|WebGL|fetch\(|indexedDB|Date\.|crypto\.)/,
+    );
+    expect(controller).toContain('scope: VaultNotesScope');
+    expect(controller).toContain('scope mismatch');
+    expect(adapter).toContain('createBrowserFullNetworkLayoutExecution');
+    expect(adapter).toContain("{ type: 'module'");
+    expect(adapter).not.toMatch(/title|body/);
+    expect(worker).not.toMatch(/title|body|accountId|vaultId|sessionId/);
+    expect(packageJson).toContain('typecheck:worker');
+    expect(packageJson).toContain('lint:worker');
+  });
+
   it('joins feature adapters and concrete renderers only at the composition root', async () => {
     const files = await sourceFiles('components');
     const violations: string[] = [];
