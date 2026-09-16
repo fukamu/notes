@@ -302,11 +302,47 @@ UI and does not invoke layout from a camera operation. #291 owns composition,
 real card-route/deep-link coverage and the final removal of the focused staging
 path.
 
+## Issue #290 bounded accessibility and failure boundary
+
+The complete graph remains in the typed dataset and renderer rather than being
+duplicated into 10,000 hidden DOM nodes or an all-link list. One named,
+focusable graph region reports the total card/link counts, semantic level,
+current card and logical selection. Its pure cursor can move spatially, cycle
+every node or directed edge, follow incident links, and move between weakly
+connected components. Therefore every semantic identity remains reachable with
+finite keyboard input even when it is outside the current viewport. The camera
+keeps unmodified Arrow keys; the semantic cursor uses Alt+Arrow, N/Shift+N,
+E/Shift+E, L/Shift+L and C/Shift+C. Enter opens the selected card and Home
+returns the logical cursor to the current card.
+
+At Detail only, visible node hit targets are projected into 44 CSS-pixel cells.
+At most one accessible button is emitted per viewport cell, with current and
+selected nodes considered first. This bounds DOM and touch targets by viewport
+dimensions rather than Vault size; Overview and Network emit no node-button
+overlay. The region plus its live selection text still provides the complete
+non-pointer path. Reduced-motion and forced-colors/increased-contrast media
+preferences are surfaced to the composition without changing graph membership.
+
+Layout and renderer availability are a discriminated pure policy. A refresh or
+failed replacement may keep an older complete layout and announces that it is
+stale. Loading or failure without a complete layout clears the semantic overlay
+and is not reported as ready. Worker rejection, invalid geometry, WebGL context
+loss and renderer allocation failure expose one explicit Retry action; the
+adapter never retries automatically and disables repeat activation until the
+owner publishes another state. It does not build a card-list fallback. Destroy
+removes listeners, overlay nodes, live text and scope-derived attributes, and an
+update from another Account/Vault/session/epoch is rejected.
+
+This adapter is still isolated from the default UI. #291 owns composition with
+the layout controller, renderer and camera, including which retry command is
+sent to which failed boundary and real-route focus restoration.
+
 ## Rollback
 
-Issues #285–#289 introduce no persistent data or schema migration. Their PRs can
+Issues #285–#290 introduce no persistent data or schema migration. Their PRs can
 be reverted in reverse dependency order to remove rendering, routing,
-camera/session, layout/worker, and then benchmark/decision artifacts. None is
+accessibility/failure UX, camera/session, layout/worker, and then
+benchmark/decision artifacts. None is
 connected to the default UI yet. The feature remains isolated on
 `integration/106-full-network-semantic-zoom`; canonical integration and `main`
 are unchanged until their separate roll-up approvals.
