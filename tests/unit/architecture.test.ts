@@ -1836,6 +1836,7 @@ describe('swappable presentation architecture', () => {
 
   it('keeps the full-network worker scope-bound and its layout core renderer-neutral', async () => {
     const core = await readFile('lib/graph/full-network-layout.ts', 'utf8');
+    const routing = await readFile('lib/graph/full-network-routing.ts', 'utf8');
     const controller = await readFile(
       'lib/application/full-network-layout-controller.ts',
       'utf8',
@@ -1853,6 +1854,10 @@ describe('swappable presentation architecture', () => {
     expect(core).not.toMatch(
       /(?:react|window\.|document\.|new Worker|Canvas|WebGL|fetch\(|indexedDB|Date\.|crypto\.)/,
     );
+    expect(routing).not.toMatch(
+      /(?:react|window\.|document\.|new Worker|Canvas|WebGL|fetch\(|indexedDB|Date\.|crypto\.)/,
+    );
+    expect(routing).not.toMatch(/title|body|accountId|vaultId|sessionId/);
     expect(controller).toContain('scope: VaultNotesScope');
     expect(controller).toContain('scope mismatch');
     expect(adapter).toContain('createBrowserFullNetworkLayoutExecution');

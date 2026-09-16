@@ -75,6 +75,7 @@ export default defineConfig({
         'lib/editor/body-document.ts',
         'lib/graph/full-network-layout-protocol.ts',
         'lib/graph/full-network-layout.ts',
+        'lib/graph/full-network-routing.ts',
         'lib/sync/**/*.ts',
         'lib/storage/**/*.ts',
         'server/**/*.ts',
