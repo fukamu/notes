@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["es2022", "webworker"],
+    "types": []
+  },
+  "include": [
+    "workers/**/*.ts",
+    "lib/codec/core.ts",
+    "lib/domain/id.ts",
+    "lib/graph/connections-contract.ts",
+    "lib/graph/full-network-layout.ts",
+    "lib/graph/full-network-layout-protocol.ts"
+  ],
+  "exclude": ["node_modules"]
+}

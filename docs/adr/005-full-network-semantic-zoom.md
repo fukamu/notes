@@ -156,6 +156,30 @@ record those browser results before cutover. If a supported browser cannot retai
 the complete overview, it must use the progressive Canvas fallback or show an
 explicit recoverable failure; it must not silently return to a card/edge cap.
 
+## Issue #286 implementation boundary
+
+Issue #286 implements the renderer-neutral part of this decision. A typed pure
+core builds deterministic weakly-connected components, BFS placement, and compact
+shelf packing from card IDs plus numeric edge arrays. Its cache key excludes
+title, body, current-card selection, and camera state. When topology changes, an
+exact identity check reuses unaffected component-local geometry; the fingerprint
+is only a lookup hint and is never trusted without comparing node and edge
+identities.
+
+A Vault/session-scoped controller and browser worker adapter own the asynchronous
+lifecycle. Superseding work is cancelled, stale or malformed responses are
+rejected, and the last complete layout remains available while a replacement is
+in flight. The controller retains at most that ready result and one pending
+request. Logout or scope destruction terminates the worker and clears both. The
+worker receives card IDs, source/target indexes, and layout configuration only;
+card titles and bodies never cross this boundary.
+
+This implementation is not connected to the default connections UI in #286.
+Rendering, semantic zoom, spatial detail, camera policy, accessibility, and the
+default cutover remain isolated in Issues #287–#290. Reverting #286 therefore
+removes the new core/worker path without changing stored content, migrations, or
+the current connections behavior.
+
 ## Rollback
 
 This Issue changes only benchmark infrastructure and documentation. Reverting its
