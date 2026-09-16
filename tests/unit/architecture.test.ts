@@ -1918,6 +1918,34 @@ describe('swappable presentation architecture', () => {
     );
   });
 
+  it('keeps full-network accessibility decisions pure and its DOM proxy bounded', async () => {
+    const [core, adapter, composition, coverage] = await Promise.all([
+      readFile('lib/graph/full-network-accessibility.ts', 'utf8'),
+      readFile('lib/client/full-network-accessibility-adapter.ts', 'utf8'),
+      readFile('components/notes-app.tsx', 'utf8'),
+      readFile('vitest.config.ts', 'utf8'),
+    ]);
+
+    expect(core).not.toMatch(
+      /(?:react|window\.|document\.|localStorage|sessionStorage|history\.|Canvas|WebGL|fetch\(|indexedDB|Date\.|crypto\.)/,
+    );
+    expect(core).not.toMatch(
+      /layoutFullNetworkTopology|createFullNetworkRouting/,
+    );
+    expect(adapter).toContain('createFullNetworkAccessibilityOverlay');
+    expect(adapter).toContain("input.region.setAttribute('role', 'region')");
+    expect(adapter).toContain('input.overlay.replaceChildren()');
+    expect(adapter).toContain('Full-network accessibility scope mismatch');
+    expect(adapter).not.toMatch(/localStorage|sessionStorage|indexedDB/);
+    expect(adapter).not.toMatch(/index\.nodes\.(?:map|forEach)/);
+    expect(adapter).not.toMatch(/index\.edges\.(?:map|forEach)/);
+    expect(composition).not.toContain('full-network-accessibility-adapter');
+    expect(coverage).toContain("'lib/graph/full-network-accessibility.ts'");
+    expect(coverage).toContain(
+      "'lib/client/full-network-accessibility-adapter.ts'",
+    );
+  });
+
   it('joins feature adapters and concrete renderers only at the composition root', async () => {
     const files = await sourceFiles('components');
     const violations: string[] = [];
