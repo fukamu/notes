@@ -36,6 +36,7 @@
     "benchmark:client:presentation": "vitest run tests/benchmarks/client-demand-driven-presentation.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
     "benchmark:client:link-index": "vitest run tests/benchmarks/client-link-candidate-index.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
     "benchmark:client:history-index": "vitest run tests/benchmarks/client-history-preview-index.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
+    "benchmark:semantic-zoom": "vitest run tests/benchmarks/client-full-network-semantic-zoom.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
     "benchmark:server-load": "vitest run --config vitest.server-load.config.ts --disableConsoleIntercept",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build",
     "check:environment": "node scripts/verify-environment.mjs",

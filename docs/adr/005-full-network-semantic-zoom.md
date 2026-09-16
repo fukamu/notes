@@ -1,0 +1,164 @@
+# ADR 005: Full-network semantic zoom uses a retained overview layer
+
+- Status: accepted for parent Issue #283
+- Date: 2026-09-16
+- Decision owner: benchmark and architecture Issue #285
+- Baseline commit: `4341bed780b0fd2d797f5bef3505fd64c3670495`
+- Evidence: [`full-network-semantic-zoom.json`](../benchmarks/full-network-semantic-zoom.json)
+
+## Context
+
+The connections view must return from the current-card/256-card staged view to a
+complete network. Every card, isolated component, and unique directed link remains
+represented. Search is not a substitute for the paper-Zettelkasten overview. At
+the same time, mounting 10,000 DOM cards or asking ELK Layered to construct a port
+and orthogonal route for every link is not a viable global-view architecture.
+
+The product envelope is 10,000 active cards, 8 KiB serialized plaintext per card,
+and about 128 MiB per Vault. The canonical content codec fits 116 unique link
+segments in 8,169 bytes; a 117th uses 8,239 bytes. The deliberately hostile but
+quota-valid graph therefore has 10,000 nodes and 1,160,000 directed edges. The
+existing repeatable fixture has 10,000 nodes and 19,951 valid directed edges.
+
+The benchmark also covers empty, one-node, all-isolated, disconnected, chain,
+cycle, self-link, mutual-link, star, and high-degree graphs. It uses only synthetic
+content and makes no network or production-data request.
+
+## Decision
+
+Use two coordinated layers, both derived from one complete typed graph:
+
+1. A worker computes deterministic component-aware positions from packed numeric
+   node/edge arrays. The selected baseline is component BFS plus serpentine
+   component packing. It won the predefined hard-geometry then minimax p95/max
+   normalized-link-length ordering over the representative and dense graphs.
+2. A retained overview raster contains every global edge and node. WebGL2 is the
+   primary renderer. The canvas is transformed by the camera without redrawing
+   the complete graph for each pan or zoom. Canvas2D remains a progressively built
+   fallback; it is not used as a synchronous all-edge redraw loop.
+3. At closer zoom levels, a viewport-derived detail layer adds card shapes,
+   labels, hit targets, direction styling, and node-safe routes. Its spatial query
+   decides detail, not existence: the retained overview continues to represent
+   every node and edge. Zoom never changes graph membership.
+
+No graph sampling, edge cap, hidden card limit, or connections search is introduced.
+At the outermost level, coincident pixels intentionally communicate density; an
+individual link becomes distinguishable after zooming. “All links” means every
+semantic edge contributes to the overview and retains its identity for detail,
+not that 1.16 million overlapping one-pixel strokes are individually legible at
+fit-to-screen scale.
+
+The overview is regenerated only when topology or layout changes. Card title/body
+editing, camera motion, selection, and hover must not trigger global layout or a
+full redraw. Generation is coalesced, cancellable by operation/session epoch, and
+performed outside the React render path. WebGL context loss rebuilds from the
+typed graph; failure must be explicit and must never silently omit edges.
+
+Do not add a graph-rendering package for this implementation. WebGL2,
+OffscreenCanvas, typed arrays, the existing worker boundary, and the existing
+camera are sufficient. `elkjs` 0.12.0 remains available for bounded detail routes;
+it is not the global 10k layout engine. Its installed declaration remains
+`EPL-2.0 OR GPL-3.0-or-later`, and this decision adds no runtime dependency or
+production bundle bytes by itself.
+
+## Evidence
+
+The committed raw artifact contains every sample. Timings are reference-host
+evidence, not universal service-level objectives. The browser was Playwright
+Chromium using ANGLE with SwiftShader, not a hardware GPU.
+
+### Layout and transfer
+
+| Graph                 | Selected layout median / p95 | Packed graph bytes | Structured-clone median / p95 |
+| --------------------- | ---------------------------: | -----------------: | ----------------------------: |
+| 10k / 19,951 edges    |             3.018 / 3.189 ms |            159,608 |              0.041 / 0.094 ms |
+| 10k / 1,160,000 edges |           50.433 / 51.350 ms |          9,280,000 |              3.175 / 4.605 ms |
+
+Every candidate returned finite, unique positions for all 10,000 nodes without
+mutating the input. The selected candidate's worst normalized p95/max link lengths
+were 81.664/105.730, versus 92.418/139.386 for identity and DFS order. Across the
+two scale graphs its deterministic crossing sample was 385,221 versus 630,763,
+and its node-intrusion sample was 6,871 versus 7,187. On the representative graph
+alone BFS has more sampled crossings and intrusions than identity order; that cost
+is retained rather than hidden. Issue #287 must improve the visible-detail route
+without changing global membership.
+
+### Rendering and camera reuse
+
+| Graph                 | Canvas full-redraw gap median / p95 | WebGL full-redraw gap median / p95 | Retained camera gap median / p95 |
+| --------------------- | ----------------------------------: | ---------------------------------: | -------------------------------: |
+| 10k / 19,951 edges    |                      48.3 / 49.8 ms |                     36.1 / 39.5 ms |                   16.8 / 17.0 ms |
+| 10k / 1,160,000 edges |                2,291.5 / 2,293.5 ms |               1,742.3 / 1,744.5 ms |                   16.8 / 16.8 ms |
+
+The dense WebGL vertex buffers use 18,640,000 bytes and represent all 1,160,000
+edges plus all nodes. Both candidates also retain a 1,280 × 720 RGBA backing store
+of 3,686,400 bytes in this harness. The same Chromium worker reported both
+OffscreenCanvas and WebGL2 support. This proves the boundary on the reference
+environment, not every browser. The multi-second software-rendered dense first
+raster is unacceptable as a per-camera redraw but can be an explicit, cancellable
+first-build state followed by compositor camera reuse. The production browser
+benchmark must keep both first-ready and retained-camera measurements; a quick
+JavaScript submission time must not be reported as paint completion.
+
+## Stable budgets and gates
+
+These are structural gates, not host-clock gates:
+
+- exactly 10,000/19,951 and 10,000/1,160,000 node/edge identities enter layout and
+  rendering in the two scale fixtures;
+- packed topology is O(V + E), at most 9,280,000 bytes for the measured dense
+  source/target arrays, with no title or body copied to the worker;
+- base WebGL position geometry is O(V + E) and exactly 18,640,000 bytes for the
+  measured dense fixture; added style/index buffers must be separately reported;
+- placement is finite, deterministic, input-immutable, and has no duplicate node
+  positions; all isolated and disconnected components are retained;
+- camera input does not invoke global layout, rebuild edge vertices, or redraw all
+  edges; global rebuilds are coalesced by topology/layout version;
+- the overview renderer accounts for every edge; detailed visibility culling may
+  reduce labels/card DOM/routes but never the overview topology;
+- capability loss, worker failure, context loss, and stale-session results fail
+  explicitly and preserve the last valid graph or a recoverable status.
+
+Wall-clock samples must be compared on the same host and kept raw. No fixed
+five-second or frame-time completion rule is added by this ADR. A production change
+that increases packed topology or base position-buffer bytes beyond the formulas
+above must explain the new per-node/per-edge fields rather than weakening a test.
+
+## Alternatives rejected
+
+- **Current-card/256-card staging:** bounded, but directly contradicts the complete
+  network decision.
+- **10,000 DOM nodes plus SVG paths:** makes DOM and accessibility-tree size scale
+  with all nodes/edges and defeats semantic detail virtualization.
+- **Full ELK global routing:** the current input allocates per-edge ports and rich
+  objects. It remains useful for bounded detail but is not needed for the overview's
+  density layer.
+- **Canvas2D full redraw on every camera event:** the dense visible-frame evidence
+  is worse than WebGL and blocks retained-camera reuse as an explicit invariant.
+- **Identity or DFS packing:** both have worse worst-fixture p95/max link length and
+  aggregate sampled crossings in the measured corpus. DFS also took materially
+  longer on the dense graph.
+- **Graph/edge sampling:** faster, but violates the approved all-network contract.
+
+## Consequences and remaining risks
+
+The implementation must manage a WebGL lifecycle, capability fallback, context
+loss, and an overview/detail transition. Pixel density means links can be visually
+indistinguishable at fit scale; this is expected aggregation by projection, not
+data removal. Straight overview segments still cross nodes and each other. Routing,
+spatial indexing, labels, direction cues, accessibility, reduced motion, and
+failure UX remain in Issues #287–#290 and must be measured without changing the
+complete-graph invariant.
+
+Hardware-GPU results, mobile thermal behavior, maximum texture size, context-loss
+recovery time, and production bundle deltas are not measured here. Issue #288 must
+record those browser results before cutover. If a supported browser cannot retain
+the complete overview, it must use the progressive Canvas fallback or show an
+explicit recoverable failure; it must not silently return to a card/edge cap.
+
+## Rollback
+
+This Issue changes only benchmark infrastructure and documentation. Reverting its
+PR removes the command, artifact, and decision without migrating user data. The
+feature remains isolated on `integration/106-full-network-semantic-zoom`; canonical
+integration and `main` are unchanged until their separate roll-up approvals.

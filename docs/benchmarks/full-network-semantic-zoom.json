@@ -1,0 +1,802 @@
+{
+  "schemaVersion": 1,
+  "issue": 285,
+  "branchPoint": "4341bed780b0fd2d797f5bef3505fd64c3670495",
+  "generatedAt": "2026-09-16T10:51:58.255Z",
+  "host": {
+    "platform": "linux",
+    "release": "7.0.0-31-generic",
+    "cpuModel": "11th Gen Intel(R) Core(TM) i7-1195G7 @ 2.90GHz",
+    "logicalCpuCount": 8,
+    "totalMemoryBytes": 16463360000,
+    "node": "v26.8.1",
+    "chromium": "Playwright bundled Chromium"
+  },
+  "policy": {
+    "timing": "raw evidence only; no host-dependent pass/fail threshold",
+    "crossingMetric": "deterministic sample of at most 2,000 edges",
+    "nodeIntrusionMetric": "deterministic sample of at most 200 edges against every non-endpoint node; 3 world-unit radius",
+    "displaySampling": false
+  },
+  "quotaDerivedEnvelope": {
+    "activeCards": 10000,
+    "serializedPlaintextBytesPerCard": 8192,
+    "links": 116,
+    "bytes": 8169,
+    "nextBytes": 8239,
+    "directedEdges": 1160000
+  },
+  "graphs": {
+    "representative": {
+      "nodes": 10000,
+      "directedEdges": 19951,
+      "typedInputBytes": 159608
+    },
+    "dense": {
+      "nodes": 10000,
+      "directedEdges": 1160000,
+      "typedInputBytes": 9280000
+    }
+  },
+  "corpus": [
+    {
+      "candidate": "component-bfs-serpentine",
+      "nodeCount": 0,
+      "edgeCount": 0,
+      "componentCount": 0,
+      "width": 0,
+      "height": 0,
+      "area": 0,
+      "duplicatePositions": 0,
+      "nonFiniteValues": 0,
+      "totalLinkLength": 0,
+      "medianLinkLength": 0,
+      "p95LinkLength": 0,
+      "maximumLinkLength": 0,
+      "medianNormalizedLinkLength": 0,
+      "p95NormalizedLinkLength": 0,
+      "maximumNormalizedLinkLength": 0,
+      "crossingSample": {
+        "edgeCount": 0,
+        "crossings": 0
+      },
+      "nodeIntrusionSample": {
+        "edgeCount": 0,
+        "nodesChecked": 0,
+        "intrusions": 0
+      }
+    },
+    {
+      "candidate": "component-bfs-serpentine",
+      "nodeCount": 1,
+      "edgeCount": 0,
+      "componentCount": 1,
+      "width": 16,
+      "height": 12,
+      "area": 192,
+      "duplicatePositions": 0,
+      "nonFiniteValues": 0,
+      "totalLinkLength": 0,
+      "medianLinkLength": 0,
+      "p95LinkLength": 0,
+      "maximumLinkLength": 0,
+      "medianNormalizedLinkLength": 0,
+      "p95NormalizedLinkLength": 0,
+      "maximumNormalizedLinkLength": 0,
+      "crossingSample": {
+        "edgeCount": 0,
+        "crossings": 0
+      },
+      "nodeIntrusionSample": {
+        "edgeCount": 0,
+        "nodesChecked": 0,
+        "intrusions": 0
+      }
+    },
+    {
+      "candidate": "component-bfs-serpentine",
+      "nodeCount": 10,
+      "edgeCount": 0,
+      "componentCount": 10,
+      "width": 16,
+      "height": 552,
+      "area": 8832,
+      "duplicatePositions": 0,
+      "nonFiniteValues": 0,
+      "totalLinkLength": 0,
+      "medianLinkLength": 0,
+      "p95LinkLength": 0,
+      "maximumLinkLength": 0,
+      "medianNormalizedLinkLength": 0,
+      "p95NormalizedLinkLength": 0,
+      "maximumNormalizedLinkLength": 0,
+      "crossingSample": {
+        "edgeCount": 0,
+        "crossings": 0
+      },
+      "nodeIntrusionSample": {
+        "edgeCount": 0,
+        "nodesChecked": 0,
+        "intrusions": 0
+      }
+    },
+    {
+      "candidate": "component-bfs-serpentine",
+      "nodeCount": 8,
+      "edgeCount": 4,
+      "componentCount": 4,
+      "width": 32,
+      "height": 204,
+      "area": 6528,
+      "duplicatePositions": 0,
+      "nonFiniteValues": 0,
+      "totalLinkLength": 68,
+      "medianLinkLength": 16,
+      "p95LinkLength": 20,
+      "maximumLinkLength": 20,
+      "medianNormalizedLinkLength": 0.56,
+      "p95NormalizedLinkLength": 0.7,
+      "maximumNormalizedLinkLength": 0.7,
+      "crossingSample": {
+        "edgeCount": 4,
+        "crossings": 0
+      },
+      "nodeIntrusionSample": {
+        "edgeCount": 4,
+        "nodesChecked": 24,
+        "intrusions": 0
+      }
+    },
+    {
+      "candidate": "component-bfs-serpentine",
+      "nodeCount": 32,
+      "edgeCount": 31,
+      "componentCount": 1,
+      "width": 80,
+      "height": 84,
+      "area": 6720,
+      "duplicatePositions": 0,
+      "nonFiniteValues": 0,
+      "totalLinkLength": 504,
+      "medianLinkLength": 16,
+      "p95LinkLength": 32,
+      "maximumLinkLength": 32,
+      "medianNormalizedLinkLength": 1.104,
+      "p95NormalizedLinkLength": 2.208,
+      "maximumNormalizedLinkLength": 2.208,
+      "crossingSample": {
+        "edgeCount": 31,
+        "crossings": 0
+      },
+      "nodeIntrusionSample": {
+        "edgeCount": 31,
+        "nodesChecked": 930,
+        "intrusions": 2
+      }
+    },
+    {
+      "candidate": "component-bfs-serpentine",
+      "nodeCount": 32,
+      "edgeCount": 32,
+      "componentCount": 1,
+      "width": 80,
+      "height": 84,
+      "area": 6720,
+      "duplicatePositions": 0,
+      "nonFiniteValues": 0,
+      "totalLinkLength": 848,
+      "medianLinkLength": 32,
+      "p95LinkLength": 32,
+      "maximumLinkLength": 32,
+      "medianNormalizedLinkLength": 2.208,
+      "p95NormalizedLinkLength": 2.208,
+      "maximumNormalizedLinkLength": 2.208,
+      "crossingSample": {
+        "edgeCount": 32,
+        "crossings": 6
+      },
+      "nodeIntrusionSample": {
+        "edgeCount": 32,
+        "nodesChecked": 960,
+        "intrusions": 18
+      }
+    },
+    {
+      "candidate": "component-bfs-serpentine",
+      "nodeCount": 3,
+      "edgeCount": 1,
+      "componentCount": 3,
+      "width": 16,
+      "height": 132,
+      "area": 2112,
+      "duplicatePositions": 0,
+      "nonFiniteValues": 0,
+      "totalLinkLength": 0,
+      "medianLinkLength": 0,
+      "p95LinkLength": 0,
+      "maximumLinkLength": 0,
+      "medianNormalizedLinkLength": 0,
+      "p95NormalizedLinkLength": 0,
+      "maximumNormalizedLinkLength": 0,
+      "crossingSample": {
+        "edgeCount": 1,
+        "crossings": 0
+      },
+      "nodeIntrusionSample": {
+        "edgeCount": 1,
+        "nodesChecked": 2,
+        "intrusions": 0
+      }
+    },
+    {
+      "candidate": "component-bfs-serpentine",
+      "nodeCount": 3,
+      "edgeCount": 2,
+      "componentCount": 2,
+      "width": 32,
+      "height": 72,
+      "area": 2304,
+      "duplicatePositions": 0,
+      "nonFiniteValues": 0,
+      "totalLinkLength": 32,
+      "medianLinkLength": 16,
+      "p95LinkLength": 16,
+      "maximumLinkLength": 16,
+      "medianNormalizedLinkLength": 0.577,
+      "p95NormalizedLinkLength": 0.577,
+      "maximumNormalizedLinkLength": 0.577,
+      "crossingSample": {
+        "edgeCount": 2,
+        "crossings": 0
+      },
+      "nodeIntrusionSample": {
+        "edgeCount": 2,
+        "nodesChecked": 2,
+        "intrusions": 0
+      }
+    },
+    {
+      "candidate": "component-bfs-serpentine",
+      "nodeCount": 256,
+      "edgeCount": 255,
+      "componentCount": 1,
+      "width": 224,
+      "height": 228,
+      "area": 51072,
+      "duplicatePositions": 0,
+      "nonFiniteValues": 0,
+      "totalLinkLength": 41009.061,
+      "medianLinkLength": 168,
+      "p95LinkLength": 252.982,
+      "maximumLinkLength": 291.342,
+      "medianNormalizedLinkLength": 11.894,
+      "p95NormalizedLinkLength": 17.911,
+      "maximumNormalizedLinkLength": 20.627,
+      "crossingSample": {
+        "edgeCount": 255,
+        "crossings": 0
+      },
+      "nodeIntrusionSample": {
+        "edgeCount": 200,
+        "nodesChecked": 50800,
+        "intrusions": 1060
+      }
+    },
+    {
+      "candidate": "component-bfs-serpentine",
+      "nodeCount": 10000,
+      "edgeCount": 116,
+      "componentCount": 9884,
+      "width": 1696,
+      "height": 22104,
+      "area": 37488384,
+      "duplicatePositions": 0,
+      "nonFiniteValues": 0,
+      "totalLinkLength": 12473.635,
+      "medianLinkLength": 112,
+      "p95LinkLength": 173.113,
+      "maximumLinkLength": 195.346,
+      "medianNormalizedLinkLength": 1.829,
+      "p95NormalizedLinkLength": 2.827,
+      "maximumNormalizedLinkLength": 3.19,
+      "crossingSample": {
+        "edgeCount": 116,
+        "crossings": 0
+      },
+      "nodeIntrusionSample": {
+        "edgeCount": 116,
+        "nodesChecked": 1159768,
+        "intrusions": 343
+      }
+    }
+  ],
+  "layouts": [
+    {
+      "graph": "representative-10k",
+      "candidate": "identity-serpentine",
+      "warmupIterations": 1,
+      "measuredIterations": 3,
+      "timing": {
+        "minimumMs": 1.287,
+        "medianMs": 1.331,
+        "p95Ms": 1.852,
+        "maximumMs": 1.852,
+        "samplesMs": [1.852, 1.331, 1.287]
+      },
+      "observedProcessMemoryDeltaBytes": {
+        "heapUsed": 8090792,
+        "arrayBuffers": 1468848,
+        "rss": 393216
+      },
+      "metrics": {
+        "candidate": "identity-serpentine",
+        "nodeCount": 10000,
+        "edgeCount": 19951,
+        "componentCount": 1,
+        "width": 1392,
+        "height": 1380,
+        "area": 1920960,
+        "duplicatePositions": 0,
+        "nonFiniteValues": 0,
+        "totalLinkLength": 7384762.465,
+        "medianLinkLength": 16,
+        "p95LinkLength": 1200,
+        "maximumLinkLength": 1884.42,
+        "medianNormalizedLinkLength": 1.154,
+        "p95NormalizedLinkLength": 86.581,
+        "maximumNormalizedLinkLength": 135.962,
+        "crossingSample": {
+          "edgeCount": 2000,
+          "crossings": 181739
+        },
+        "nodeIntrusionSample": {
+          "edgeCount": 200,
+          "nodesChecked": 1999600,
+          "intrusions": 2966
+        }
+      }
+    },
+    {
+      "graph": "representative-10k",
+      "candidate": "component-bfs-serpentine",
+      "warmupIterations": 1,
+      "measuredIterations": 3,
+      "timing": {
+        "minimumMs": 3.006,
+        "medianMs": 3.018,
+        "p95Ms": 3.189,
+        "maximumMs": 3.189,
+        "samplesMs": [3.006, 3.018, 3.189]
+      },
+      "observedProcessMemoryDeltaBytes": {
+        "heapUsed": 21692000,
+        "arrayBuffers": 1528848,
+        "rss": 131072
+      },
+      "metrics": {
+        "candidate": "component-bfs-serpentine",
+        "nodeCount": 10000,
+        "edgeCount": 19951,
+        "componentCount": 1,
+        "width": 1392,
+        "height": 1380,
+        "area": 1920960,
+        "duplicatePositions": 0,
+        "nonFiniteValues": 0,
+        "totalLinkLength": 11823362.401,
+        "medianLinkLength": 555.698,
+        "p95LinkLength": 1131.852,
+        "maximumLinkLength": 1465.398,
+        "medianNormalizedLinkLength": 40.094,
+        "p95NormalizedLinkLength": 81.664,
+        "maximumNormalizedLinkLength": 105.73,
+        "crossingSample": {
+          "edgeCount": 2000,
+          "crossings": 247246
+        },
+        "nodeIntrusionSample": {
+          "edgeCount": 200,
+          "nodesChecked": 1999600,
+          "intrusions": 3667
+        }
+      }
+    },
+    {
+      "graph": "representative-10k",
+      "candidate": "component-dfs-serpentine",
+      "warmupIterations": 1,
+      "measuredIterations": 3,
+      "timing": {
+        "minimumMs": 2.716,
+        "medianMs": 3.052,
+        "p95Ms": 3.28,
+        "maximumMs": 3.28,
+        "samplesMs": [3.28, 2.716, 3.052]
+      },
+      "observedProcessMemoryDeltaBytes": {
+        "heapUsed": -822608,
+        "arrayBuffers": 320000,
+        "rss": 131072
+      },
+      "metrics": {
+        "candidate": "component-dfs-serpentine",
+        "nodeCount": 10000,
+        "edgeCount": 19951,
+        "componentCount": 1,
+        "width": 1392,
+        "height": 1380,
+        "area": 1920960,
+        "duplicatePositions": 0,
+        "nonFiniteValues": 0,
+        "totalLinkLength": 7384762.465,
+        "medianLinkLength": 16,
+        "p95LinkLength": 1200,
+        "maximumLinkLength": 1884.42,
+        "medianNormalizedLinkLength": 1.154,
+        "p95NormalizedLinkLength": 86.581,
+        "maximumNormalizedLinkLength": 135.962,
+        "crossingSample": {
+          "edgeCount": 2000,
+          "crossings": 181739
+        },
+        "nodeIntrusionSample": {
+          "edgeCount": 200,
+          "nodesChecked": 1999600,
+          "intrusions": 2966
+        }
+      }
+    },
+    {
+      "graph": "dense-10000-116",
+      "candidate": "identity-serpentine",
+      "warmupIterations": 1,
+      "measuredIterations": 3,
+      "timing": {
+        "minimumMs": 43.228,
+        "medianMs": 43.553,
+        "p95Ms": 44.517,
+        "maximumMs": 44.517,
+        "samplesMs": [43.553, 43.228, 44.517]
+      },
+      "observedProcessMemoryDeltaBytes": {
+        "heapUsed": 4194120,
+        "arrayBuffers": 28830024,
+        "rss": 9175040
+      },
+      "metrics": {
+        "candidate": "identity-serpentine",
+        "nodeCount": 10000,
+        "edgeCount": 1160000,
+        "componentCount": 1,
+        "width": 1392,
+        "height": 1380,
+        "area": 1920960,
+        "duplicatePositions": 0,
+        "nonFiniteValues": 0,
+        "totalLinkLength": 824407254.53,
+        "medianLinkLength": 760.474,
+        "p95LinkLength": 1280.9,
+        "maximumLinkLength": 1931.867,
+        "medianNormalizedLinkLength": 54.869,
+        "p95NormalizedLinkLength": 92.418,
+        "maximumNormalizedLinkLength": 139.386,
+        "crossingSample": {
+          "edgeCount": 2000,
+          "crossings": 449024
+        },
+        "nodeIntrusionSample": {
+          "edgeCount": 200,
+          "nodesChecked": 1999600,
+          "intrusions": 4221
+        }
+      }
+    },
+    {
+      "graph": "dense-10000-116",
+      "candidate": "component-bfs-serpentine",
+      "warmupIterations": 1,
+      "measuredIterations": 3,
+      "timing": {
+        "minimumMs": 49.77,
+        "medianMs": 50.433,
+        "p95Ms": 51.35,
+        "maximumMs": 51.35,
+        "samplesMs": [49.77, 51.35, 50.433]
+      },
+      "observedProcessMemoryDeltaBytes": {
+        "heapUsed": 10214544,
+        "arrayBuffers": 28890024,
+        "rss": 0
+      },
+      "metrics": {
+        "candidate": "component-bfs-serpentine",
+        "nodeCount": 10000,
+        "edgeCount": 1160000,
+        "componentCount": 1,
+        "width": 1392,
+        "height": 1380,
+        "area": 1920960,
+        "duplicatePositions": 0,
+        "nonFiniteValues": 0,
+        "totalLinkLength": 604325718.755,
+        "medianLinkLength": 455.807,
+        "p95LinkLength": 1095.978,
+        "maximumLinkLength": 1405.816,
+        "medianNormalizedLinkLength": 32.887,
+        "p95NormalizedLinkLength": 79.076,
+        "maximumNormalizedLinkLength": 101.431,
+        "crossingSample": {
+          "edgeCount": 2000,
+          "crossings": 137975
+        },
+        "nodeIntrusionSample": {
+          "edgeCount": 200,
+          "nodesChecked": 1999600,
+          "intrusions": 3204
+        }
+      }
+    },
+    {
+      "graph": "dense-10000-116",
+      "candidate": "component-dfs-serpentine",
+      "warmupIterations": 1,
+      "measuredIterations": 3,
+      "timing": {
+        "minimumMs": 106.57,
+        "medianMs": 110.342,
+        "p95Ms": 113.576,
+        "maximumMs": 113.576,
+        "samplesMs": [113.576, 106.57, 110.342]
+      },
+      "observedProcessMemoryDeltaBytes": {
+        "heapUsed": 57523224,
+        "arrayBuffers": 19240008,
+        "rss": 25821184
+      },
+      "metrics": {
+        "candidate": "component-dfs-serpentine",
+        "nodeCount": 10000,
+        "edgeCount": 1160000,
+        "componentCount": 1,
+        "width": 1392,
+        "height": 1380,
+        "area": 1920960,
+        "duplicatePositions": 0,
+        "nonFiniteValues": 0,
+        "totalLinkLength": 824407254.53,
+        "medianLinkLength": 760.474,
+        "p95LinkLength": 1280.9,
+        "maximumLinkLength": 1931.867,
+        "medianNormalizedLinkLength": 54.869,
+        "p95NormalizedLinkLength": 92.418,
+        "maximumNormalizedLinkLength": 139.386,
+        "crossingSample": {
+          "edgeCount": 2000,
+          "crossings": 449024
+        },
+        "nodeIntrusionSample": {
+          "edgeCount": 200,
+          "nodesChecked": 1999600,
+          "intrusions": 4221
+        }
+      }
+    }
+  ],
+  "candidateDecision": {
+    "selected": "component-bfs-serpentine",
+    "priority": "worst-p95-link-length",
+    "scores": [
+      {
+        "candidate": "identity-serpentine",
+        "graphCount": 2,
+        "hardViolations": 0,
+        "worstP95NormalizedLinkLength": 92.418,
+        "worstMaximumNormalizedLinkLength": 139.386,
+        "sampledCrossings": 630763,
+        "sampledNodeIntrusions": 7187
+      },
+      {
+        "candidate": "component-bfs-serpentine",
+        "graphCount": 2,
+        "hardViolations": 0,
+        "worstP95NormalizedLinkLength": 81.664,
+        "worstMaximumNormalizedLinkLength": 105.73,
+        "sampledCrossings": 385221,
+        "sampledNodeIntrusions": 6871
+      },
+      {
+        "candidate": "component-dfs-serpentine",
+        "graphCount": 2,
+        "hardViolations": 0,
+        "worstP95NormalizedLinkLength": 92.418,
+        "worstMaximumNormalizedLinkLength": 139.386,
+        "sampledCrossings": 630763,
+        "sampledNodeIntrusions": 7187
+      }
+    ]
+  },
+  "workerBoundary": [
+    {
+      "graph": "representative-10k",
+      "payloadBytes": 159608,
+      "semantics": "structured clone copy; transferable ownership is not claimed",
+      "timing": {
+        "minimumMs": 0.031,
+        "medianMs": 0.041,
+        "p95Ms": 0.094,
+        "maximumMs": 0.094,
+        "samplesMs": [0.094, 0.031, 0.041]
+      }
+    },
+    {
+      "graph": "dense-10000-116",
+      "payloadBytes": 9280000,
+      "semantics": "structured clone copy; transferable ownership is not claimed",
+      "timing": {
+        "minimumMs": 2.971,
+        "medianMs": 3.175,
+        "p95Ms": 4.605,
+        "maximumMs": 4.605,
+        "samplesMs": [4.605, 2.971, 3.175]
+      }
+    }
+  ],
+  "renderer": [
+    {
+      "graph": "representative-10k",
+      "nodeCount": 10000,
+      "edgeCount": 19951,
+      "workerCapability": {
+        "offscreenCanvas": true,
+        "webgl2": true
+      },
+      "canvas2d": {
+        "draw": {
+          "minimumMs": 1.4,
+          "medianMs": 1.8,
+          "p95Ms": 1.8,
+          "maximumMs": 1.8,
+          "samplesMs": [1.8, 1.8, 1.4]
+        },
+        "fullRedrawFrameGap": {
+          "minimumMs": 48,
+          "medianMs": 48.3,
+          "p95Ms": 49.8,
+          "maximumMs": 49.8,
+          "samplesMs": [48, 48.3, 49.8]
+        },
+        "retainedCameraFrameGap": {
+          "minimumMs": 16.4,
+          "medianMs": 16.6,
+          "p95Ms": 17,
+          "maximumMs": 17,
+          "samplesMs": [17, 16.6, 16.4]
+        },
+        "retainedGeometryBytes": 0,
+        "backingStoreBytes": 3686400
+      },
+      "webgl2": {
+        "supported": true,
+        "renderer": {
+          "vendor": "WebKit",
+          "renderer": "WebKit WebGL",
+          "unmaskedVendor": "Google Inc. (Google)",
+          "unmaskedRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+        },
+        "upload": {
+          "minimumMs": 0.1,
+          "medianMs": 0.4,
+          "p95Ms": 0.4,
+          "maximumMs": 0.4,
+          "samplesMs": [0.4, 0.4, 0.1]
+        },
+        "draw": {
+          "minimumMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maximumMs": 0,
+          "samplesMs": [0, 0, 0]
+        },
+        "fullRedrawFrameGap": {
+          "minimumMs": 34.9,
+          "medianMs": 36.1,
+          "p95Ms": 39.5,
+          "maximumMs": 39.5,
+          "samplesMs": [36.1, 39.5, 34.9]
+        },
+        "retainedCameraFrameGap": {
+          "minimumMs": 16.7,
+          "medianMs": 16.8,
+          "p95Ms": 17,
+          "maximumMs": 17,
+          "samplesMs": [16.7, 17, 16.8]
+        },
+        "retainedGeometryBytes": 399216,
+        "backingStoreBytes": 3686400
+      }
+    },
+    {
+      "graph": "dense-10000-116",
+      "nodeCount": 10000,
+      "edgeCount": 1160000,
+      "workerCapability": {
+        "offscreenCanvas": true,
+        "webgl2": true
+      },
+      "canvas2d": {
+        "draw": {
+          "minimumMs": 44.7,
+          "medianMs": 44.8,
+          "p95Ms": 45.6,
+          "maximumMs": 45.6,
+          "samplesMs": [44.7, 44.8, 45.6]
+        },
+        "fullRedrawFrameGap": {
+          "minimumMs": 2291.3,
+          "medianMs": 2291.5,
+          "p95Ms": 2293.5,
+          "maximumMs": 2293.5,
+          "samplesMs": [2291.3, 2293.5, 2291.5]
+        },
+        "retainedCameraFrameGap": {
+          "minimumMs": 16.6,
+          "medianMs": 16.6,
+          "p95Ms": 16.7,
+          "maximumMs": 16.7,
+          "samplesMs": [16.6, 16.6, 16.7]
+        },
+        "retainedGeometryBytes": 0,
+        "backingStoreBytes": 3686400
+      },
+      "webgl2": {
+        "supported": true,
+        "renderer": {
+          "vendor": "WebKit",
+          "renderer": "WebKit WebGL",
+          "unmaskedVendor": "Google Inc. (Google)",
+          "unmaskedRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+        },
+        "upload": {
+          "minimumMs": 2.6,
+          "medianMs": 2.9,
+          "p95Ms": 9.6,
+          "maximumMs": 9.6,
+          "samplesMs": [9.6, 2.6, 2.9]
+        },
+        "draw": {
+          "minimumMs": 0,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maximumMs": 0,
+          "samplesMs": [0, 0, 0]
+        },
+        "fullRedrawFrameGap": {
+          "minimumMs": 1719.9,
+          "medianMs": 1742.3,
+          "p95Ms": 1744.5,
+          "maximumMs": 1744.5,
+          "samplesMs": [1719.9, 1742.3, 1744.5]
+        },
+        "retainedCameraFrameGap": {
+          "minimumMs": 16.7,
+          "medianMs": 16.8,
+          "p95Ms": 16.8,
+          "maximumMs": 16.8,
+          "samplesMs": [16.8, 16.7, 16.8]
+        },
+        "retainedGeometryBytes": 18640000,
+        "backingStoreBytes": 3686400
+      }
+    }
+  ],
+  "dependencyAndBundle": {
+    "newRuntimeDependencies": [],
+    "productionBundleBytesAddedByBenchmarkPr": 0,
+    "existingLayoutDependency": {
+      "name": "elkjs",
+      "version": "0.12.0",
+      "license": "EPL-2.0 OR GPL-3.0-or-later",
+      "disposition": "retain for current bounded detail view; do not use for global 10k placement"
+    }
+  }
+}
