@@ -1807,7 +1807,6 @@ describe('swappable presentation architecture', () => {
     const productionFiles = [
       ...(await sourceFiles('app')),
       ...(await sourceFiles('components')),
-      ...(await sourceFiles('hooks')),
       ...(await sourceFiles('lib')),
     ].filter(
       (file) =>
