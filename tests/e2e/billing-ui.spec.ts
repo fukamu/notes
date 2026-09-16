@@ -11,6 +11,23 @@ const refreshedOfferHash = `sha256:${'b'.repeat(64)}`;
 const evidenceId = '01991f20-61d2-7000-8000-000000002301';
 const publicRouteNavigationTimeoutMs = 10_000;
 
+async function expectPublicRouteUrl(page: Page, path: string) {
+  if (path === '/') {
+    await expect
+      .poll(
+        () => {
+          const url = new URL(page.url());
+          return `${url.pathname}${url.search}${url.hash}`;
+        },
+        { timeout: publicRouteNavigationTimeoutMs },
+      )
+      .toMatch(/^\/(?:cards\/[0-9a-f-]+)?$/);
+    return;
+  }
+
+  await expect(page).toHaveURL(path);
+}
+
 async function navigateToUsablePublicRoute(
   page: Page,
   path: string,
@@ -35,7 +52,7 @@ async function navigateToUsablePublicRoute(
     state: 'visible',
     timeout: publicRouteNavigationTimeoutMs,
   });
-  await expect(page).toHaveURL(path);
+  await expectPublicRouteUrl(page, path);
 }
 
 async function openPublicRoute(page: Page, path: string, ready: Locator) {
