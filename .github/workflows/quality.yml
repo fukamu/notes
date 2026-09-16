@@ -5,10 +5,12 @@ on:
     branches:
       - main
       - integration/106-multi-user-production
+      - integration/106-full-network-semantic-zoom
   push:
     branches:
       - main
       - integration/106-multi-user-production
+      - integration/106-full-network-semantic-zoom
       - 'work/**'
 
 permissions:
