@@ -180,9 +180,44 @@ default cutover remain isolated in Issues #287–#290. Reverting #286 therefore
 removes the new core/worker path without changing stored content, migrations, or
 the current connections behavior.
 
+## Issue #287 routing and spatial-index boundary
+
+Every canonical directed source/target pair is the identity of exactly one
+logical route. The stable public route ID is derived from both Card IDs rather
+than the edge's array position, so unrelated insertions do not rename a link.
+Self-links and both directions of a mutual link remain distinct. No route is
+bundled, sampled, ranked, or inferred.
+
+Detail geometry uses deterministic orthogonal cell corridors. Endpoint stubs
+leave each node for the half-cell corridor, long vertical and horizontal
+segments remain between node rows or columns, and the final stub enters the
+target. Mutual directions choose opposite corridors; a self-link uses a compact
+loop around its own cell. The node-detail half-width and half-height must remain
+strictly smaller than the corresponding half-cell, which makes non-endpoint node
+interiors an invariant for the packed layout. A non-self detour is bounded by
+the endpoint Manhattan distance plus two cell widths and one cell height.
+
+The dense graph does not retain six point objects per edge. Route points are
+materialized only for viewport detail. The immutable index stores four Float32
+bounds, one Uint32 sorted edge index, and one Float32 prefix maximum per edge:
+24 bytes/edge, or 27,840,000 bytes at the measured 1,160,000-edge envelope.
+Its interval query checks actual orthogonal segments after the bounds filter, so
+a segment crossing the viewport is returned even when both endpoints are
+outside. A viewport containing the aggregate bounds returns all canonical edge
+indexes directly. The worst case remains O(E), which is necessary when fit-all
+must account for all E edges; the index never changes membership to improve a
+query time.
+
+This Issue still does not connect a renderer or alter the default UI. The later
+renderer can use straight retained overview vertices for density and materialize
+these node-safe routes only for bounded detail, while both layers retain the
+same semantic edge identity.
+
 ## Rollback
 
-This Issue changes only benchmark infrastructure and documentation. Reverting its
-PR removes the command, artifact, and decision without migrating user data. The
-feature remains isolated on `integration/106-full-network-semantic-zoom`; canonical
-integration and `main` are unchanged until their separate roll-up approvals.
+Issues #285–#287 introduce no persistent data or schema migration. Their PRs can
+be reverted in reverse dependency order to remove routing, layout/worker, and
+then benchmark/decision artifacts. None is connected to the default UI yet. The
+feature remains isolated on `integration/106-full-network-semantic-zoom`;
+canonical integration and `main` are unchanged until their separate roll-up
+approvals.
