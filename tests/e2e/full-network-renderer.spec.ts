@@ -39,6 +39,7 @@ test('retained semantic renderer draws every identity and coalesces camera frame
   ).toBe(1);
   expect(camera.overviewTransform).toContain('translate(');
   expect(camera.overviewTransform).toContain('scale(');
+  expect(camera.detailQuadraticCurveCount).toBeGreaterThan(0);
 
   const themed = await page.evaluate(() =>
     window.__fukamuFullNetworkRendererHarness.changeTheme(),
@@ -112,6 +113,7 @@ test('progressive Canvas2D fallback completes without edge or node caps', async 
   );
   expect(camera.after.overviewDrawCount).toBe(camera.before.overviewDrawCount);
   expect(camera.after.detailDrawCount - camera.before.detailDrawCount).toBe(1);
+  expect(camera.detailQuadraticCurveCount).toBeGreaterThan(0);
 
   const themed = await page.evaluate(() =>
     window.__fukamuFullNetworkRendererHarness.changeTheme(),

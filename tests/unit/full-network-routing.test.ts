@@ -182,7 +182,8 @@ describe('full-network routing and spatial index', () => {
         expect(fullNetworkRouteLength(route)).toBeLessThanOrEqual(
           directLength +
             defaultFullNetworkLayoutConfiguration.cellWidth * 2 +
-            defaultFullNetworkLayoutConfiguration.cellHeight,
+            defaultFullNetworkLayoutConfiguration.cellHeight +
+            0.000_1,
         );
       }
     }

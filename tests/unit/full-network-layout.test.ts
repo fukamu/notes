@@ -5,6 +5,7 @@ import type { ConnectionsInputModel } from '@/lib/graph/connections-contract';
 import {
   createFullNetworkTopology,
   createFullNetworkTopologyFromNumeric,
+  defaultFullNetworkLayoutConfiguration,
   layoutFullNetworkTopology,
   sameFullNetworkTopology,
   validateFullNetworkLayout,
@@ -94,6 +95,42 @@ describe('full-network deterministic layout core', () => {
     expect([...topology.targets]).toEqual(beforeTargets);
   });
 
+  it('places a connected branch on a deterministic bounded warp instead of a row-column lattice', () => {
+    const topology = createFullNetworkTopology(
+      input([
+        [0, 1],
+        [0, 2],
+        [0, 3],
+        [0, 4],
+        [0, 5],
+        [0, 6],
+        [0, 7],
+      ]),
+    );
+    const layout = layoutFullNetworkTopology(topology);
+    const rootX = layout.x[0];
+    const rootY = layout.y[0];
+    if (rootX === undefined || rootY === undefined) {
+      throw new Error('Warped fixture omitted its root');
+    }
+    let axisAlignedSpokes = 0;
+    for (let node = 1; node < ids.length; node += 1) {
+      const x = layout.x[node];
+      const y = layout.y[node];
+      if (x === undefined || y === undefined) {
+        throw new Error(`Warped fixture omitted node ${node}`);
+      }
+      const deltaX = x - rootX;
+      const deltaY = y - rootY;
+      if (Math.abs(deltaX) < 0.001 || Math.abs(deltaY) < 0.001) {
+        axisAlignedSpokes += 1;
+      }
+    }
+    expect(axisAlignedSpokes).toBeLessThan(2);
+    expect(new Set(layout.x)).toHaveLength(ids.length);
+    expect(new Set(layout.y)).toHaveLength(ids.length);
+  });
+
   it('reuses only component-local geometry whose exact topology survived', () => {
     const firstTopology = createFullNetworkTopology(
       input([
@@ -148,6 +185,22 @@ describe('full-network deterministic layout core', () => {
           JSON.stringify([...component.nodeIndexes]) === JSON.stringify([1, 2]),
       ),
     ).toBe(true);
+  });
+
+  it('does not reuse component geometry from another layout configuration', () => {
+    const topology = createFullNetworkTopology(input([[0, 1]]));
+    const previousLayout = layoutFullNetworkTopology(topology);
+    const next = layoutFullNetworkTopology(
+      topology,
+      {
+        ...defaultFullNetworkLayoutConfiguration,
+        cellWidth: defaultFullNetworkLayoutConfiguration.cellWidth + 1,
+      },
+      { topology, layout: previousLayout },
+    );
+
+    expect(next.layoutKey).not.toBe(previousLayout.layoutKey);
+    expect(next.reusedComponentCount).toBe(0);
   });
 
   it('keeps 10,000 isolated cards compact without overlap', () => {

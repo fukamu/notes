@@ -172,6 +172,19 @@ evidence; exact identity, memory formulas, deterministic geometry, and no hidden
 node/edge cap are the stable gates. ADR 005 records the resulting retained
 overview/detail-layer decision.
 
+Issue #301 compares the grid-like v1 placement with the bounded-warp v2
+production placement without changing graph membership:
+
+```bash
+npm run benchmark:organic-wiring
+```
+
+It writes `docs/benchmarks/full-network-organic-wiring.json`. The artifact keeps
+host timings as evidence and records exact node/edge counts, coordinate
+concentration, link-length/crossing/node-intrusion samples, and retained geometry
+bytes for both the 10,000/19,951 and 10,000/1,160,000 graphs. No fixed wall-clock
+gate or display sampling is introduced.
+
 ## Issue #204 browser windowing
 
 `docs/benchmarks/10k-browser-final.json` records three desktop Chromium and

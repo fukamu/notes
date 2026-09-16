@@ -1,10 +1,10 @@
 # ADR 005: Full-network semantic zoom uses a retained overview layer
 
-- Status: accepted; cutover implemented by Issues #285–#291
+- Status: accepted; cutover implemented by Issues #285–#291, layout corrected by #301
 - Date: 2026-09-16
 - Decision owner: benchmark and architecture Issue #285
 - Baseline commit: `4341bed780b0fd2d797f5bef3505fd64c3670495`
-- Evidence: [`full-network-semantic-zoom.json`](../benchmarks/full-network-semantic-zoom.json)
+- Evidence: [`full-network-semantic-zoom.json`](../benchmarks/full-network-semantic-zoom.json), [`full-network-organic-wiring.json`](../benchmarks/full-network-organic-wiring.json)
 
 ## Context
 
@@ -29,9 +29,11 @@ content and makes no network or production-data request.
 Use two coordinated layers, both derived from one complete typed graph:
 
 1. A worker computes deterministic component-aware positions from packed numeric
-   node/edge arrays. The selected baseline is component BFS plus serpentine
-   component packing. It won the predefined hard-geometry then minimax p95/max
-   normalized-link-length ordering over the representative and dense graphs.
+   node/edge arrays. Component BFS still assigns nearby topology to compact
+   serpentine slots, but layout v2 applies a bounded continuous warp and stable
+   Card-ID jitter. This preserves compact all-card packing and routing clearance
+   while removing the coincident rows and columns that made the production view
+   look like a rectangular grid.
 2. A retained overview raster contains every global edge and node. WebGL2 is the
    primary renderer. The canvas is transformed by the camera without redrawing
    the complete graph for each pan or zoom. Canvas2D remains a progressively built
@@ -82,6 +84,26 @@ and its node-intrusion sample was 6,871 versus 7,187. On the representative grap
 alone BFS has more sampled crossings and intrusions than identity order; that cost
 is retained rather than hidden. Issue #287 must improve the visible-detail route
 without changing global membership.
+
+### Layout v2 de-latticing evidence
+
+Issue #301 compares production layout v2 with the exact v1 serpentine baseline on
+the same two complete graphs. It does not sample layout input or rendering
+membership. Timing is raw host evidence, not a completion gate.
+
+| Graph                 | v1 / v2 median layout | v1 / v2 unique X | v1 / v2 unique Y | v1 / v2 normalized p95 link |
+| --------------------- | --------------------: | ---------------: | ---------------: | --------------------------: |
+| 10k / 19,951 edges    |     4.578 / 23.054 ms |       87 / 9,992 |      115 / 9,990 |             81.664 / 80.061 |
+| 10k / 1,160,000 edges |   47.799 / 172.118 ms |       87 / 9,989 |      115 / 9,988 |             79.076 / 77.514 |
+
+At v1, up to 115 nodes shared one X coordinate and up to 87 shared one Y
+coordinate. At v2 both maxima are two. Retained geometry remains exactly 399,216
+bytes and 18,640,000 bytes respectively because the change adds no node/edge
+buffer fields. The deterministic crossing samples changed from 247,246 to
+248,099 and from 137,975 to 138,616; these small increases are recorded rather
+than hidden. Sampled node intrusions changed from 3,667 to 3,642 and from 3,204
+to 3,261. The detail router's exhaustive fixture still rejects every tested
+non-endpoint node intrusion.
 
 ### Rendering and camera reuse
 
@@ -188,14 +210,16 @@ than the edge's array position, so unrelated insertions do not rename a link.
 Self-links and both directions of a mutual link remain distinct. No route is
 bundled, sampled, ranked, or inferred.
 
-Detail geometry uses deterministic orthogonal cell corridors. Endpoint stubs
-leave each node for the half-cell corridor, long vertical and horizontal
-segments remain between node rows or columns, and the final stub enters the
-target. Mutual directions choose opposite corridors; a self-link uses a compact
-loop around its own cell. The node-detail half-width and half-height must remain
-strictly smaller than the corresponding half-cell, which makes non-endpoint node
-interiors an invariant for the packed layout. A non-self detour is bounded by
-the endpoint Manhattan distance plus two cell widths and one cell height.
+Detail geometry uses deterministic orthogonal slot corridors. Layout v2 warps a
+slot center by at most 0.14 of each cell dimension, leaving enough of the
+half-cell corridor for the configured node clearance. Endpoint stubs leave each
+node for that corridor, and the final stub enters the target. Mutual directions
+choose opposite corridors; a self-link uses a compact loop around its own slot.
+The node-detail half-width and half-height must remain strictly smaller than the
+remaining corridor. A non-self detour is bounded by the endpoint Manhattan
+distance plus two cell widths and one cell height. The Canvas detail adapter
+rounds the visible corners without changing route identity, bounds, or viewport
+query semantics.
 
 The dense graph does not retain six point objects per edge. Route points are
 materialized only for viewport detail. The immutable index stores four Float32
@@ -365,9 +389,26 @@ viewport-bounded DOM. A burst of 480 wheel inputs is coalesced to 120 render-pla
 writes in the deterministic browser fixture; that is interaction evidence, not a
 production frame-time guarantee.
 
+## Issue #301 organic wiring correction
+
+The v1 slot centers shared a small set of exact X and Y coordinates. With all
+overview edges retained, that regularity dominated the drawing as a rectangular
+grid. Layout v2 keeps the component BFS order and compact shelf packing, then
+applies a deterministic bounded sine warp plus Card-ID jitter. The calculation
+uses every topology edge through the BFS index; it introduces no sampling, cap,
+or approximate membership. The layout key and worker codec move to version 2 so
+v1 component geometry cannot be reused as v2.
+
+Close-detail orthogonal routes remain the spatial-query source of truth, while
+their Canvas strokes use rounded corners. All-card/all-link overview geometry,
+WebGL buffer formulas, camera state, accessibility identity, and session/Vault
+teardown remain unchanged. Persistent cross-session layout-result caching is not
+part of #301; it requires a separate design for topology keys, storage budget,
+scope isolation, invalidation, and logout deletion.
+
 ## Rollback
 
-Issues #285–#291 introduce no persistent data or schema migration. #291 is the
+Issues #285–#291 and #301 introduce no persistent data or schema migration. #291 is the
 single production cutover and can be reverted as one merge before removing its
 supporting Issues in reverse dependency order. The exact rehearsal and canary
 checks are in

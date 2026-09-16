@@ -33,6 +33,7 @@ type CameraBurstResult = Readonly<{
   visibleNodeCount: number;
   visibleEdgeCount: number;
   overviewTransform: string;
+  detailQuadraticCurveCount: number;
 }>;
 
 type RendererHarness = Readonly<{
@@ -72,6 +73,7 @@ type ActiveHarness = Readonly<{
   detailCanvas: HTMLCanvasElement;
   width: number;
   height: number;
+  detailQuadraticCurves: { value: number };
 }>;
 
 let active: ActiveHarness | null = null;
@@ -216,6 +218,14 @@ window.__fukamuFullNetworkRendererHarness = {
   async initialize(preferredBackend) {
     active?.renderer.dispose();
     const { root, overview, detail } = createSurface();
+    const detailContext = detail.getContext('2d');
+    if (!detailContext) throw new Error('Detail Canvas2D is unavailable');
+    const detailQuadraticCurves = { value: 0 };
+    const quadraticCurveTo = detailContext.quadraticCurveTo.bind(detailContext);
+    detailContext.quadraticCurveTo = (...parameters) => {
+      detailQuadraticCurves.value += 1;
+      quadraticCurveTo(...parameters);
+    };
     const width = Math.max(320, root.clientWidth);
     const height = Math.max(240, root.clientHeight);
     const dataset = createDataset();
@@ -239,6 +249,7 @@ window.__fukamuFullNetworkRendererHarness = {
       detailCanvas: detail,
       width,
       height,
+      detailQuadraticCurves,
     };
     const snapshot = await waitUntilReady(renderer);
     await nextFrames(2);
@@ -282,6 +293,7 @@ window.__fukamuFullNetworkRendererHarness = {
       visibleNodeCount: finalPlan.visibleNodeIndexes.length,
       visibleEdgeCount: finalPlan.visibleEdgeIndexes.length,
       overviewTransform: state.overviewCanvas.style.transform,
+      detailQuadraticCurveCount: state.detailQuadraticCurves.value,
     };
   },
   async changeTheme() {

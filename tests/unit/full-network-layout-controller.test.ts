@@ -289,7 +289,7 @@ function createTopologyForTransition(withSecondEdge = false) {
 
 function requestConfiguration() {
   return {
-    version: 1,
+    version: 2,
     cellWidth: 16,
     cellHeight: 12,
     componentGap: 48,
