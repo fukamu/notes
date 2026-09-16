@@ -265,11 +265,48 @@ wall-clock SLA. The test host still uses Chromium/ANGLE and mobile emulation; re
 hardware-GPU throughput, thermal behavior and device-specific driver loss remain
 deployment/canary risks rather than claims made by this Issue.
 
+## Issue #289 camera and map-session boundary
+
+The full-network camera starts with an exact fit of the complete graph. Changing
+the current card changes emphasis only: it does not pan, zoom, or request a new
+layout. “現在地” is the sole current-card centering command and may raise the
+scale enough to make centering meaningful when the fit-all graph occupies less
+than the viewport. “全体” returns to fit-all. Panning, anchored wheel zoom,
+pinching, viewport resize, hit testing, semantic node activation, clamping and
+snapshot restore are typed pure decisions; the browser adapter owns Pointer
+Events, capture, cancellation, wheel and keyboard listeners.
+
+Overview and Network activation selects the exact Card ID and zooms one semantic
+step. Detail activation emits an open-card command. A gesture crossing the drag
+threshold suppresses its synthetic click, and `pointercancel` or the viewport's
+own `lostpointercapture` clears the active pointer state. Arrow keys pan, `+` and
+`-` zoom, `0` fits all, `Home` centers the current card, and `Enter` opens the
+selected card only at Detail. Issue #290 supplies the bounded semantic proxy that
+makes individual card focus practical; #289 does not add a hidden all-card DOM.
+
+Camera, LOD and selection live in an in-memory map session created for one exact
+Account/Vault/session/epoch runtime scope. No global `localStorage`,
+`sessionStorage` or IndexedDB key is used. An exact layout restores camera and
+selection after card navigation or a composition remount. A changed topology
+preserves the screen anchor of a surviving Card ID; if no anchor survives it
+fails safely to fit-all. Destroying the runtime on logout discards the map
+session, so a later session or another Vault cannot inherit it. Desktop and
+mobile browser tests cover pointer, pinch, cancellation, lost capture, keyboard,
+route teardown/remount and an offline restore. The hash-based test route isolates
+the camera contract from framework navigation; actual Back/Forward and
+offline navigation remain covered by the existing Notes E2E, while the real
+full-network URL/deep-link composition is the #291 cutover test boundary.
+
+This Issue still does not import the camera adapter into the default connections
+UI and does not invoke layout from a camera operation. #291 owns composition,
+real card-route/deep-link coverage and the final removal of the focused staging
+path.
+
 ## Rollback
 
-Issues #285–#288 introduce no persistent data or schema migration. Their PRs can
+Issues #285–#289 introduce no persistent data or schema migration. Their PRs can
 be reverted in reverse dependency order to remove rendering, routing,
-layout/worker, and then benchmark/decision artifacts. None is connected to the
-default UI yet. The feature remains isolated on
+camera/session, layout/worker, and then benchmark/decision artifacts. None is
+connected to the default UI yet. The feature remains isolated on
 `integration/106-full-network-semantic-zoom`; canonical integration and `main`
 are unchanged until their separate roll-up approvals.

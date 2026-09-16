@@ -1894,6 +1894,30 @@ describe('swappable presentation architecture', () => {
     expect(composition).not.toContain('full-network-renderer');
   });
 
+  it('keeps full-network camera decisions pure and session state runtime-scoped', async () => {
+    const [camera, session, adapter] = await Promise.all([
+      readFile('lib/graph/full-network-camera.ts', 'utf8'),
+      readFile('lib/application/full-network-map-session.ts', 'utf8'),
+      readFile('lib/client/full-network-camera-adapter.ts', 'utf8'),
+    ]);
+
+    expect(camera).not.toMatch(
+      /(?:react|window\.|document\.|localStorage|sessionStorage|history\.|Canvas|WebGL|fetch\(|indexedDB|Date\.|crypto\.)/,
+    );
+    expect(camera).not.toMatch(/accountId|vaultId|sessionId|sessionEpoch/);
+    expect(camera).not.toMatch(
+      /layoutFullNetworkTopology|createFullNetworkRouting/,
+    );
+    expect(session).toContain('scope: VaultNotesScope');
+    expect(session).not.toMatch(/localStorage|sessionStorage|indexedDB/);
+    expect(adapter).toContain('Full-network map session scope mismatch');
+    expect(adapter).toContain("window.addEventListener('pointercancel'");
+    expect(adapter).toContain("'lostpointercapture'");
+    expect(adapter).not.toMatch(
+      /layoutFullNetworkTopology|createFullNetworkRouting/,
+    );
+  });
+
   it('joins feature adapters and concrete renderers only at the composition root', async () => {
     const files = await sourceFiles('components');
     const violations: string[] = [];
