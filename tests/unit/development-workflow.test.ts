@@ -2,8 +2,12 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
 const integrationBranch = 'integration/106-multi-user-production';
+const semanticZoomIntegrationBranch =
+  'integration/106-full-network-semantic-zoom';
 const currentParent = '#106';
 const currentBranchPoint = '2c7e968f6b4567f73a692f384b1b2c6d569040b7';
+const semanticZoomParent = '#283';
+const semanticZoomBranchPoint = '4a2780153bcdef82cd650d19f3c8c58b94f7944f';
 
 function normalizeWhitespace(source: string): string {
   return source.replace(/\s+/g, ' ');
@@ -27,10 +31,16 @@ describe('issue-based delivery contract', () => {
       '原則1 Issue / 1 work branch / 1 PR',
     );
     expect(workflow).toContain(integrationBranch);
+    expect(agents).toContain(semanticZoomIntegrationBranch);
+    expect(workflow).toContain(semanticZoomIntegrationBranch);
     expect(agents).toContain(currentParent);
     expect(workflow).toContain(currentParent);
+    expect(agents).toContain(semanticZoomParent);
+    expect(workflow).toContain(semanticZoomParent);
     expect(agents).toContain(currentBranchPoint);
     expect(workflow).toContain(currentBranchPoint);
+    expect(agents).toContain(semanticZoomBranchPoint);
+    expect(workflow).toContain(semanticZoomBranchPoint);
     expect(workflow).toContain('完了済み親 #41');
   });
 
@@ -56,9 +66,16 @@ describe('issue-based delivery contract', () => {
     const branchFilters = quality.match(
       new RegExp(`- ${integrationBranch.replaceAll('/', '\\/')}`, 'g'),
     );
+    const semanticZoomBranchFilters = quality.match(
+      new RegExp(
+        `- ${semanticZoomIntegrationBranch.replaceAll('/', '\\/')}`,
+        'g',
+      ),
+    );
     const mainBranchFilters = quality.match(/- main/g);
 
     expect(branchFilters).toHaveLength(2);
+    expect(semanticZoomBranchFilters).toHaveLength(2);
     expect(mainBranchFilters).toHaveLength(2);
     expect(quality).toContain("- 'work/**'");
     expect(quality).toContain('permissions:\n  contents: read');
@@ -78,7 +95,9 @@ describe('issue-based delivery contract', () => {
 
     expect(agents).toContain('self-bootstrap CI');
     expect(agents).toContain('exact head commit');
+    expect(agents).toContain('Feature bootstrap Issue #284');
     expect(workflow).toContain('self-bootstrap方式');
+    expect(workflow).toContain('#284も同じ手順');
     expect(workflow).toContain('CI省略ではなく');
   });
 
