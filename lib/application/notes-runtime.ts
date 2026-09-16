@@ -24,6 +24,25 @@ export type LegacyNotesScope = typeof LEGACY_NOTES_SCOPE;
 /** Every runtime scope accepted by the notes application composition. */
 export type NotesScope = LegacyNotesScope | VaultNotesScope;
 
+export function sameNotesScope(left: NotesScope, right: NotesScope): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === 'legacy' && right.kind === 'legacy') {
+    return (
+      left.databaseName === right.databaseName &&
+      left.syncEndpoint === right.syncEndpoint
+    );
+  }
+  if (left.kind === 'vault' && right.kind === 'vault') {
+    return (
+      left.accountId === right.accountId &&
+      left.vaultId === right.vaultId &&
+      left.sessionId === right.sessionId &&
+      left.sessionEpoch === right.sessionEpoch
+    );
+  }
+  return false;
+}
+
 export type NotesRepository<TScope extends NotesScope = NotesScope> = {
   readonly scope: TScope;
   loadCards: () => Promise<CardRecord[]>;

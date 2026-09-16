@@ -1,10 +1,8 @@
 'use client';
 
-import { memo, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowRight,
   LocateFixed,
-  LoaderCircle,
   Maximize2,
   Minus,
   Move,
@@ -13,103 +11,420 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import type { ConnectionsRendererProps } from '@/components/presentation-contract';
-import { useConnectionsViewport } from '@/hooks/use-connections-viewport';
-import type { ConnectionsReadyEdge } from '@/lib/graph/connections-contract';
-import { createConnectionsSvgPath } from '@/lib/graph/connections-path';
+import type { FullNetworkLayoutControllerState } from '@/lib/application/full-network-layout-controller';
+import {
+  createFullNetworkAccessibilityAdapter,
+  type FullNetworkAccessibilityAdapter,
+  type FullNetworkAccessibilityPreferences,
+} from '@/lib/client/full-network-accessibility-adapter';
+import {
+  createFullNetworkCameraAdapter,
+  type FullNetworkCameraAdapter,
+  type FullNetworkCameraAdapterState,
+} from '@/lib/client/full-network-camera-adapter';
+import {
+  createFullNetworkBrowserRenderer,
+  darkFullNetworkRenderPalette,
+  highContrastFullNetworkRenderPalette,
+  lightFullNetworkRenderPalette,
+  type FullNetworkBrowserRenderer,
+  type FullNetworkRendererStatus,
+  type FullNetworkVisibleNodeDetail,
+} from '@/lib/client/full-network-renderer';
+import {
+  createFullNetworkAccessibilityIndex,
+  type FullNetworkAvailabilityInput,
+} from '@/lib/graph/full-network-accessibility';
+import {
+  defaultFullNetworkCameraConfiguration,
+  fitFullNetworkCamera,
+} from '@/lib/graph/full-network-camera';
+import {
+  createFullNetworkRenderDataset,
+  createFullNetworkRenderPlan,
+  type FullNetworkRenderDataset,
+  type FullNetworkRenderPlan,
+} from '@/lib/graph/full-network-render-plan';
+import { createFullNetworkRouting } from '@/lib/graph/full-network-routing';
 
-type ConnectionsEdgeLayerProps = {
-  layoutKey: string;
-  edges: ConnectionsReadyEdge[];
-  maximumRadius: number;
-  nodeClearance: number;
-};
+type MapRuntime = Readonly<{
+  accessibility: FullNetworkAccessibilityAdapter;
+  camera: FullNetworkCameraAdapter;
+  renderer: FullNetworkBrowserRenderer;
+  dataset: FullNetworkRenderDataset;
+  plan: () => FullNetworkRenderPlan;
+  rendererStatus: () => FullNetworkRendererStatus;
+}>;
 
-const ConnectionsEdgeLayer = memo(
-  function ConnectionsEdgeLayer({
-    edges,
-    maximumRadius,
-    nodeClearance,
-  }: ConnectionsEdgeLayerProps) {
-    const paths = useMemo(
-      () =>
-        edges.map((edge) =>
-          edge.sections.map(
-            (section) =>
-              createConnectionsSvgPath(section, {
-                maximumRadius,
-                nodeClearance,
-              }).d,
-          ),
-        ),
-      [edges, maximumRadius, nodeClearance],
-    );
-    return edges.map((edge, edgeIndex) => (
-      <g key={edge.id}>
-        {edge.sections.map((section, sectionIndex) => {
-          const path = paths[edgeIndex]?.[sectionIndex];
-          if (!path) return null;
-          const isLastSection = sectionIndex === edge.sections.length - 1;
-          return (
-            <g key={section.id}>
-              <path
-                d={path}
-                fill="none"
-                stroke="var(--card)"
-                strokeWidth="8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              />
-              <path
-                d={path}
-                fill="none"
-                stroke="var(--primary)"
-                strokeOpacity="0.72"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                markerEnd={
-                  isLastSection ? 'url(#connection-edge-arrow)' : undefined
-                }
-              />
-            </g>
-          );
-        })}
-      </g>
-    ));
-  },
-  (previous, next) =>
-    previous.layoutKey === next.layoutKey &&
-    previous.maximumRadius === next.maximumRadius &&
-    previous.nodeClearance === next.nodeClearance,
-);
+function completeLayout(state: FullNetworkLayoutControllerState) {
+  switch (state.status) {
+    case 'ready':
+    case 'refreshing':
+      return state.ready;
+    case 'error':
+      return state.ready;
+    case 'idle':
+    case 'loading':
+    case 'destroyed':
+      return null;
+  }
+}
+
+function layoutAvailability(
+  state: FullNetworkLayoutControllerState,
+): FullNetworkAvailabilityInput['layout'] {
+  const hasCompleteLayout = completeLayout(state) !== null;
+  if (state.status === 'error') {
+    return {
+      status: 'error',
+      hasCompleteLayout,
+      reason: state.reason,
+    };
+  }
+  return { status: state.status, hasCompleteLayout };
+}
+
+function rendererAvailability(
+  status: FullNetworkRendererStatus,
+): FullNetworkAvailabilityInput['renderer'] {
+  switch (status.kind) {
+    case 'idle':
+    case 'building':
+    case 'ready':
+    case 'disposed':
+      return { status: status.kind };
+    case 'context-lost':
+      return { status: 'context-lost' };
+    case 'error':
+      return { status: 'error', message: status.message };
+  }
+}
+
+function availability(
+  state: FullNetworkLayoutControllerState,
+  rendererStatus: FullNetworkRendererStatus,
+): FullNetworkAvailabilityInput {
+  return {
+    layout: layoutAvailability(state),
+    renderer: rendererAvailability(rendererStatus),
+  };
+}
+
+function visibleDetails(
+  plan: FullNetworkRenderPlan,
+  state: NonNullable<ReturnType<typeof completeLayout>>,
+): readonly FullNetworkVisibleNodeDetail[] {
+  const details: FullNetworkVisibleNodeDetail[] = [];
+  for (const nodeIndex of plan.visibleNodeIndexes) {
+    const node = state.input.nodes[nodeIndex];
+    if (!node) continue;
+    details.push({
+      nodeIndex,
+      displayLabel: node.displayLabel,
+      title: node.title,
+    });
+  }
+  return details;
+}
+
+function palette(preferences: FullNetworkAccessibilityPreferences) {
+  if (preferences.highContrast) return highContrastFullNetworkRenderPalette;
+  return document.documentElement.classList.contains('dark')
+    ? darkFullNetworkRenderPalette
+    : lightFullNetworkRenderPalette;
+}
 
 export function ConnectionsView({
-  model,
-  staging,
+  state,
   actions,
-  presentation,
+  scope,
+  session,
+  retryLayout,
 }: ConnectionsRendererProps) {
-  const readyModel = model.status === 'ready' ? model : null;
-  const {
-    viewportRef,
-    worldRef,
-    zoomOutputRef,
-    zoomInRef,
-    zoomOutRef,
-    keyboardRef,
-    zoomIn,
-    zoomOut,
-    fit,
-    centerCurrent,
-    ensureNodeVisible,
-  } = useConnectionsViewport(readyModel, presentation.viewportPadding);
+  const ready = completeLayout(state);
+  const dataset = useMemo(() => {
+    if (!ready) return null;
+    return createFullNetworkRenderDataset(
+      createFullNetworkRouting(
+        ready.topology,
+        ready.layout,
+        ready.configuration,
+      ),
+    );
+  }, [ready]);
+  const accessibilityIndex = useMemo(
+    () =>
+      ready && dataset
+        ? createFullNetworkAccessibilityIndex(ready.input, dataset)
+        : null,
+    [dataset, ready],
+  );
+  const viewportRef = useRef<HTMLElement>(null);
+  const overviewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const detailCanvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const summaryRef = useRef<HTMLParagraphElement>(null);
+  const liveRef = useRef<HTMLParagraphElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+  const runtimeRef = useRef<MapRuntime | null>(null);
+  const stateRef = useRef(state);
+  const openCardRef = useRef(actions.openCard);
+  const retryLayoutRef = useRef(retryLayout);
+  const [rendererGeneration, setRendererGeneration] = useState(0);
+  const [rendererStatus, setRendererStatus] =
+    useState<FullNetworkRendererStatus>({ kind: 'idle' });
+  const [semanticLevel, setSemanticLevel] = useState('overview');
+  const [cameraScale, setCameraScale] = useState<number | null>(null);
+  const [minimumCameraScale, setMinimumCameraScale] = useState<number | null>(
+    null,
+  );
+
+  useEffect(() => {
+    stateRef.current = state;
+    openCardRef.current = actions.openCard;
+    retryLayoutRef.current = retryLayout;
+  }, [actions.openCard, retryLayout, state]);
+
+  useEffect(() => {
+    if (!ready || !dataset || !accessibilityIndex) return;
+    const viewport = viewportRef.current;
+    const overviewCanvas = overviewCanvasRef.current;
+    const detailCanvas = detailCanvasRef.current;
+    const overlay = overlayRef.current;
+    const summary = summaryRef.current;
+    const liveRegion = liveRef.current;
+    const statusRegion = statusRef.current;
+    if (
+      !viewport ||
+      !overviewCanvas ||
+      !detailCanvas ||
+      !overlay ||
+      !summary ||
+      !liveRegion ||
+      !statusRegion
+    ) {
+      return;
+    }
+
+    let active = true;
+    setRendererStatus({ kind: 'idle' });
+    let currentRendererStatus: FullNetworkRendererStatus = { kind: 'idle' };
+    let preferences: FullNetworkAccessibilityPreferences = {
+      reducedMotion: false,
+      highContrast: false,
+    };
+    let currentPlan: FullNetworkRenderPlan | null = null;
+    let previousLevel: FullNetworkRenderPlan['level'] | undefined;
+    let accessibility: FullNetworkAccessibilityAdapter | null = null;
+    let cameraRenderCount = 0;
+    let pendingCameraState: FullNetworkCameraAdapterState | null = null;
+    let cameraFrame: number | null = null;
+
+    const renderer = createFullNetworkBrowserRenderer({
+      overviewCanvas,
+      detailCanvas,
+      onStatus: (next) => {
+        currentRendererStatus = next;
+        if (!active) return;
+        setRendererStatus(next);
+        if (accessibility && currentPlan) {
+          accessibility.update({
+            scope,
+            index: accessibilityIndex,
+            dataset,
+            plan: currentPlan,
+            availability: availability(stateRef.current, next),
+          });
+        }
+      },
+    });
+
+    const renderCameraNow = (
+      cameraState: FullNetworkCameraAdapterState,
+    ): void => {
+      currentPlan = createFullNetworkRenderPlan({
+        dataset,
+        camera: cameraState.camera,
+        ...(previousLevel ? { previousLevel } : {}),
+        currentCardId: cameraState.currentCardId,
+        selectedCardId: cameraState.selectedCardId,
+        reducedMotion: preferences.reducedMotion,
+      });
+      previousLevel = currentPlan.level;
+      renderer.render(currentPlan, visibleDetails(currentPlan, ready));
+      cameraRenderCount += 1;
+      viewport.dataset.renderPlanKey = currentPlan.planKey;
+      viewport.dataset.cameraX = String(cameraState.camera.offsetX);
+      viewport.dataset.cameraY = String(cameraState.camera.offsetY);
+      viewport.dataset.cameraRenderCount = String(cameraRenderCount);
+      viewport.dataset.semanticLevel = currentPlan.level;
+      viewport.dataset.visibleNodeCount = String(
+        currentPlan.visibleNodeIndexes.length,
+      );
+      viewport.dataset.visibleEdgeCount = String(
+        currentPlan.visibleEdgeIndexes.length,
+      );
+      setSemanticLevel(currentPlan.level);
+      setCameraScale(cameraState.camera.scale);
+      if (accessibility) {
+        accessibility.update({
+          scope,
+          index: accessibilityIndex,
+          dataset,
+          plan: currentPlan,
+          availability: availability(stateRef.current, currentRendererStatus),
+        });
+      }
+    };
+    const scheduleCameraRender = (
+      cameraState: FullNetworkCameraAdapterState,
+    ): void => {
+      pendingCameraState = cameraState;
+      if (!currentPlan) {
+        pendingCameraState = null;
+        renderCameraNow(cameraState);
+        return;
+      }
+      if (cameraFrame !== null) return;
+      cameraFrame = window.requestAnimationFrame(() => {
+        cameraFrame = null;
+        const next = pendingCameraState;
+        pendingCameraState = null;
+        if (active && next) renderCameraNow(next);
+      });
+    };
+
+    const bounds = viewport.getBoundingClientRect();
+    const width = Math.max(1, viewport.clientWidth || bounds.width);
+    const height = Math.max(1, viewport.clientHeight || bounds.height);
+    setMinimumCameraScale(fitFullNetworkCamera(dataset, width, height).scale);
+    renderer.resize({
+      width,
+      height,
+      devicePixelRatio: Math.max(1, window.devicePixelRatio),
+    });
+    renderer.replaceDataset(dataset);
+    const camera = createFullNetworkCameraAdapter({
+      viewport,
+      scope,
+      session,
+      dataset,
+      currentCardId: ready.input.currentCardId,
+      onChange: scheduleCameraRender,
+      onOpenCard: (cardId) => openCardRef.current(cardId),
+    });
+    if (!currentPlan) {
+      camera.destroy();
+      renderer.dispose();
+      throw new Error('Full-network camera did not publish its initial plan');
+    }
+    accessibility = createFullNetworkAccessibilityAdapter({
+      scope,
+      region: viewport,
+      overlay,
+      summary,
+      liveRegion,
+      statusRegion,
+      index: accessibilityIndex,
+      dataset,
+      plan: currentPlan,
+      availability: availability(stateRef.current, currentRendererStatus),
+      selectedCardId: camera.getState().selectedCardId,
+      onSelectCard: camera.selectCard,
+      onOpenCard: (cardId) => openCardRef.current(cardId),
+      onRetry: () => {
+        if (stateRef.current.status === 'error') retryLayoutRef.current();
+        else setRendererGeneration((current) => current + 1);
+      },
+      onPreferences: (next) => {
+        preferences = next;
+        renderer.setPalette(palette(next));
+        const nextCamera = pendingCameraState ?? camera.getState();
+        pendingCameraState = null;
+        if (cameraFrame !== null) window.cancelAnimationFrame(cameraFrame);
+        cameraFrame = null;
+        renderCameraNow(nextCamera);
+      },
+    });
+    const runtime: MapRuntime = {
+      accessibility,
+      camera,
+      renderer,
+      dataset,
+      plan: () => {
+        if (!currentPlan) {
+          throw new Error('Full-network render plan is unavailable');
+        }
+        return currentPlan;
+      },
+      rendererStatus: () => currentRendererStatus,
+    };
+    runtimeRef.current = runtime;
+
+    const resize = (): void => {
+      const nextBounds = viewport.getBoundingClientRect();
+      const nextWidth = Math.max(1, viewport.clientWidth || nextBounds.width);
+      const nextHeight = Math.max(
+        1,
+        viewport.clientHeight || nextBounds.height,
+      );
+      renderer.resize({
+        width: nextWidth,
+        height: nextHeight,
+        devicePixelRatio: Math.max(1, window.devicePixelRatio),
+      });
+      setMinimumCameraScale(
+        fitFullNetworkCamera(dataset, nextWidth, nextHeight).scale,
+      );
+      camera.resize(nextWidth, nextHeight);
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(viewport);
+
+    return () => {
+      active = false;
+      observer.disconnect();
+      if (cameraFrame !== null) window.cancelAnimationFrame(cameraFrame);
+      cameraFrame = null;
+      pendingCameraState = null;
+      accessibility?.destroy();
+      camera.destroy();
+      renderer.dispose();
+      if (runtimeRef.current === runtime) runtimeRef.current = null;
+    };
+  }, [accessibilityIndex, dataset, ready, rendererGeneration, scope, session]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || !accessibilityIndex) return;
+    runtime.accessibility.update({
+      scope,
+      index: accessibilityIndex,
+      dataset: runtime.dataset,
+      plan: runtime.plan(),
+      availability: availability(state, runtime.rendererStatus()),
+    });
+  }, [accessibilityIndex, scope, state]);
+
+  const nodeCount = ready?.input.nodes.length ?? 0;
+  const edgeCount = ready?.input.edges.length ?? 0;
+  const controlsDisabled = !ready;
+  const zoomOutDisabled =
+    controlsDisabled ||
+    (cameraScale !== null &&
+      minimumCameraScale !== null &&
+      cameraScale <= minimumCameraScale + Number.EPSILON);
+  const zoomInDisabled =
+    controlsDisabled ||
+    (cameraScale !== null &&
+      cameraScale >=
+        defaultFullNetworkCameraConfiguration.maximumScale - Number.EPSILON);
 
   return (
     <section className="w-full min-w-0" aria-labelledby="connections-heading">
       <div className="connections-map-heading mb-4">
         <div>
-          <p className="eyebrow">FOCUSED DIRECTED LINKS</p>
+          <p className="eyebrow">FULL DIRECTED NETWORK</p>
           <h1
             id="connections-heading"
             className="font-heading text-2xl font-semibold"
@@ -117,11 +432,10 @@ export function ConnectionsView({
             つながり
           </h1>
           <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-            現在のカードの周辺を、段階的に表示します。
-            <ArrowRight aria-hidden="true" className="size-4 shrink-0" />
+            全カードと全リンクを俯瞰し、拡大すると詳細を表示します。
+            <Network aria-hidden="true" className="size-4 shrink-0" />
           </p>
         </div>
-
         <div
           className="connections-map-toolbar"
           role="toolbar"
@@ -130,8 +444,8 @@ export function ConnectionsView({
           <button
             type="button"
             className="connections-map-control"
-            onClick={fit}
-            disabled={!readyModel}
+            onClick={() => runtimeRef.current?.camera.fitAll()}
+            disabled={controlsDisabled}
             aria-label="全体表示"
           >
             <Maximize2 aria-hidden="true" className="size-4" />
@@ -140,49 +454,45 @@ export function ConnectionsView({
           <button
             type="button"
             className="connections-map-control"
-            onClick={centerCurrent}
-            disabled={!readyModel?.currentNode}
+            onClick={() => runtimeRef.current?.camera.centerCurrent()}
+            disabled={controlsDisabled || ready?.input.currentCardId === null}
             aria-label="現在のカードへ戻る"
           >
             <LocateFixed aria-hidden="true" className="size-4" />
             <span>現在地</span>
           </button>
           <button
-            ref={keyboardRef}
             type="button"
             className="connections-map-control"
-            disabled={!readyModel}
+            onClick={() => runtimeRef.current?.accessibility.focus()}
+            disabled={controlsDisabled}
             aria-label="キーボードでマップを操作"
             aria-describedby="connections-map-instructions"
-            aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown + - 0 Home"
           >
             <Move aria-hidden="true" className="size-4" />
             <span>操作</span>
           </button>
           <button
-            ref={zoomOutRef}
             type="button"
             className="connections-map-control connections-map-control-square"
-            onClick={zoomOut}
-            disabled={!readyModel}
+            onClick={() => runtimeRef.current?.camera.zoomOut()}
+            disabled={zoomOutDisabled}
             aria-label="縮小"
           >
             <Minus aria-hidden="true" className="size-4" />
           </button>
           <output
-            ref={zoomOutputRef}
-            className="min-w-12 text-center font-mono text-xs text-muted-foreground"
+            className="min-w-14 text-center font-mono text-xs text-muted-foreground"
             aria-label="現在のズーム"
             aria-live="polite"
           >
-            --
+            {cameraScale === null ? '--' : `${Math.round(cameraScale * 100)}%`}
           </output>
           <button
-            ref={zoomInRef}
             type="button"
             className="connections-map-control connections-map-control-square"
-            onClick={zoomIn}
-            disabled={!readyModel}
+            onClick={() => runtimeRef.current?.camera.zoomIn()}
+            disabled={zoomInDisabled}
             aria-label="拡大"
           >
             <Plus aria-hidden="true" className="size-4" />
@@ -192,175 +502,84 @@ export function ConnectionsView({
 
       <p
         className="mb-4 text-xs text-muted-foreground"
-        aria-live="polite"
-        data-testid="connections-stage-summary"
+        data-testid="connections-network-summary"
       >
-        全{staging.totalNodeCount.toLocaleString('ja-JP')}枚のうち
-        {staging.visibleNodeCount.toLocaleString('ja-JP')}枚を表示
-        {staging.focusLabel ? `・起点: ${staging.focusLabel}` : ''}
+        {ready
+          ? `全${nodeCount.toLocaleString('ja-JP')}枚・全${edgeCount.toLocaleString('ja-JP')}本・${semanticLevel}`
+          : 'つながりを準備しています'}
       </p>
-
+      <p
+        ref={summaryRef}
+        id="full-network-accessibility-summary"
+        className="sr-only"
+        data-testid="connections-accessibility-summary"
+      />
+      <p
+        ref={liveRef}
+        className="sr-only"
+        data-testid="connections-accessibility-selection"
+      />
       <p id="connections-map-instructions" className="sr-only">
         ドラッグまたは一本指で移動、ピンチまたは Control
-        キーを押しながらホイールで拡大縮小できます。矢印キーで移動、プラスとマイナスで拡大縮小、0で全体表示、Homeで現在のカードへ戻ります。
+        キーを押しながらホイールで拡大縮小できます。矢印キーで移動、プラスとマイナスで拡大縮小、0で全体表示、Homeで現在のカードへ戻ります。Nでカード、Eでリンク、Lで隣接カード、Cで連結成分を順に確認できます。
       </p>
 
       <section
         ref={viewportRef}
         className="connections-viewport-structure connections-viewport"
         data-testid="connections-graph"
-        data-layout-status={model.status}
-        data-dragging="false"
-        data-camera-render-count="0"
+        data-layout-status={state.status}
+        data-renderer-status={rendererStatus.kind}
+        data-total-node-count={nodeCount}
+        data-total-edge-count={edgeCount}
+        data-camera-level={semanticLevel}
         data-active-pointers="0"
+        data-dragging="false"
         data-click-suppression="false"
-        data-total-node-count={staging.totalNodeCount}
-        data-visible-node-count={staging.visibleNodeCount}
-        data-node-limit={staging.nodeLimit}
-        data-stage-focus-id={staging.focusCardId ?? ''}
-        aria-busy={model.status === 'loading'}
-        aria-label="現在のカード周辺の一方向リンクマップ"
-        aria-describedby="connections-map-instructions"
       >
-        {model.status === 'loading' && (
-          <output className="grid h-full min-h-64 place-items-center text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-2">
-              <LoaderCircle
-                aria-hidden="true"
-                className="size-4 animate-spin"
-              />
-              つながりを配置しています
-            </span>
-          </output>
-        )}
-
-        {model.status === 'error' && (
-          <div className="min-h-64 p-2" role="alert">
-            <p className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
-              <TriangleAlert aria-hidden="true" className="size-5" />
-              配置を計算できませんでした。カードは一覧から開けます。
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {model.fallbackItems.map((item) => (
-                <button
-                  key={item.cardId}
-                  type="button"
-                  onClick={() => actions.openCard(item.cardId)}
-                  aria-current={item.current ? 'true' : undefined}
-                  aria-label={item.accessibleName}
-                  className="rounded-xl border bg-card px-4 py-3 text-left shadow-sm focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span className="font-mono text-[11px] font-semibold text-accent-foreground">
-                    {item.displayLabel}
-                  </span>
-                  <span className="mt-1 block truncate font-heading font-semibold">
-                    {item.title}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {model.status === 'ready' && (
+        <canvas
+          ref={overviewCanvasRef}
+          className="connections-full-network-layer"
+          data-testid="connections-overview-canvas"
+          aria-hidden="true"
+        />
+        <canvas
+          ref={detailCanvasRef}
+          className="connections-full-network-layer"
+          data-testid="connections-detail-canvas"
+          aria-hidden="true"
+        />
+        <div
+          ref={overlayRef}
+          className="connections-full-network-overlay"
+          data-testid="connections-accessibility-overlay"
+        />
+        <div
+          ref={statusRef}
+          className="connections-full-network-status"
+          data-testid="connections-map-status"
+        />
+        {!ready && (
           <div
-            ref={worldRef}
-            className="connections-canvas-structure connections-world"
-            style={{ width: model.width, height: model.height }}
-            data-testid="connections-canvas"
-            data-layout-width={model.width}
-            data-layout-height={model.height}
+            className="connections-full-network-bootstrap-status"
+            role={state.status === 'error' ? 'alert' : 'status'}
           >
-            <svg
-              className="pointer-events-none absolute inset-0 overflow-visible"
-              width={model.width}
-              height={model.height}
-              viewBox={`0 0 ${model.width} ${model.height}`}
-              aria-hidden="true"
-            >
-              <defs>
-                <marker
-                  id="connection-edge-arrow"
-                  viewBox="0 0 10 10"
-                  refX="9"
-                  refY="5"
-                  markerWidth="7"
-                  markerHeight="7"
-                  orient="auto-start-reverse"
-                  markerUnits="strokeWidth"
-                >
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--primary)" />
-                </marker>
-              </defs>
-
-              <ConnectionsEdgeLayer
-                layoutKey={model.layoutKey}
-                edges={model.edges}
-                maximumRadius={presentation.edgeMaximumRadius}
-                nodeClearance={presentation.layoutMetrics.edgeNodeSpacing}
-              />
-            </svg>
-
-            <ul className="sr-only" aria-label="カード間の一方向リンク一覧">
-              {model.edges.map((edge) => (
-                <li key={`accessible-${edge.id}`}>{edge.accessibleName}</li>
-              ))}
-            </ul>
-
-            {model.nodes.map((node) => (
-              <button
-                key={node.cardId}
-                type="button"
-                onClick={() => actions.openCard(node.cardId)}
-                aria-current={node.current ? 'true' : undefined}
-                aria-label={node.accessibleName}
-                className="connections-node-structure connections-node"
-                style={{
-                  left: node.x,
-                  top: node.y,
-                  width: node.width,
-                  height: node.height,
-                }}
-                data-card-id={node.cardId}
-                onFocus={() => ensureNodeVisible(node)}
-                draggable={false}
-              >
-                <span className="font-mono text-[11px] font-semibold text-accent-foreground">
-                  {node.displayLabel}
-                </span>
-                <span className="mt-1 block w-full truncate font-heading font-semibold">
-                  {node.title}
-                </span>
-                {node.current && <span className="sr-only">現在のカード</span>}
-              </button>
-            ))}
+            {state.status === 'error' ? (
+              <>
+                <TriangleAlert aria-hidden="true" className="size-5" />
+                <span>つながりの配置を計算できませんでした。</span>
+                <button type="button" onClick={retryLayout}>
+                  再試行
+                </button>
+              </>
+            ) : (
+              <span>つながりを準備しています</span>
+            )}
           </div>
         )}
       </section>
 
-      {staging.canExpand && (
-        <div className="mt-4 flex justify-center">
-          <button
-            type="button"
-            className="connections-map-control"
-            onClick={actions.expand}
-            data-testid="connections-expand"
-          >
-            <Plus aria-hidden="true" className="size-4" />
-            さらに
-            {staging.nextExpansionCount.toLocaleString('ja-JP')}
-            枚を表示
-          </button>
-        </div>
-      )}
-
-      {staging.stoppedAtMaximum && (
-        <p className="mt-4 text-center text-sm text-muted-foreground">
-          一度に表示できる上限に達しました。別のカードを開くと、そのカードの周辺を表示できます。
-        </p>
-      )}
-
-      {model.status === 'ready' && model.edges.length === 0 && (
+      {ready && edgeCount === 0 && (
         <div className="mt-4 flex items-center gap-3 rounded-xl border border-dashed px-4 py-4 text-sm text-muted-foreground">
           <Network aria-hidden="true" className="size-5" />
           本文でカードをリンクすると、カード間の一方向リンクが現れます。

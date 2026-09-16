@@ -21,9 +21,9 @@ import {
   verifyBrowserServiceWorkerCaches,
 } from '@/lib/client/browser-service-worker-purge';
 import {
-  connectionsLayoutWorkerIsReset,
-  resetConnectionsLayoutWorker,
-} from '@/lib/client/connections-layout-worker';
+  fullNetworkLayoutWorkersAreReset,
+  resetFullNetworkLayoutWorkers,
+} from '@/lib/client/full-network-layout-worker';
 import { assertNever } from '@/lib/shared/invariant';
 import {
   closeNotesDatabase,
@@ -87,8 +87,8 @@ export function createBrowserLogoutPurgeTargets(
       }
     },
     async resetGraphWorker() {
-      resetConnectionsLayoutWorker();
-      return connectionsLayoutWorkerIsReset()
+      resetFullNetworkLayoutWorkers();
+      return fullNetworkLayoutWorkersAreReset()
         ? { kind: 'completed' }
         : { kind: 'failed', reason: 'verification-failed' };
     },
@@ -111,7 +111,7 @@ export function createBrowserLogoutPurgeTargets(
       if (!notesDatabaseConnectionIsClosed(scope)) {
         return { kind: 'failed', reason: 'verification-failed' };
       }
-      if (!connectionsLayoutWorkerIsReset()) {
+      if (!fullNetworkLayoutWorkersAreReset()) {
         return { kind: 'failed', reason: 'verification-failed' };
       }
       const cacheResult = await verifyBrowserServiceWorkerCaches();

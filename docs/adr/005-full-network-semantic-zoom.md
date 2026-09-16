@@ -1,6 +1,6 @@
 # ADR 005: Full-network semantic zoom uses a retained overview layer
 
-- Status: accepted for parent Issue #283
+- Status: accepted; cutover implemented by Issues #285–#291
 - Date: 2026-09-16
 - Decision owner: benchmark and architecture Issue #285
 - Baseline commit: `4341bed780b0fd2d797f5bef3505fd64c3670495`
@@ -55,9 +55,9 @@ performed outside the React render path. WebGL context loss rebuilds from the
 typed graph; failure must be explicit and must never silently omit edges.
 
 Do not add a graph-rendering package for this implementation. WebGL2,
-OffscreenCanvas, typed arrays, the existing worker boundary, and the existing
-camera are sufficient. `elkjs` 0.12.0 remains available for bounded detail routes;
-it is not the global 10k layout engine. Its installed declaration remains
+OffscreenCanvas, typed arrays, the worker boundary, and the pure camera are
+sufficient. `elkjs` 0.12.0 remains available only for historical routing research
+and reproducible benchmark tests; production does not import it. Its installed declaration remains
 `EPL-2.0 OR GPL-3.0-or-later`, and this decision adds no runtime dependency or
 production bundle bytes by itself.
 
@@ -228,7 +228,9 @@ neither number hides graph or edge sampling.
 
 LOD is a pure render-plan decision based on projected node diameter. The default
 overview/network hysteresis enters at 3 px and exits at 2 px; network/detail enters
-at 24 px and exits at 18 px. A jump may cross two levels directly. The plan keeps
+at 32 px and exits at 28 px. The wider label threshold prevents close-up text from
+overlapping before a card has enough projected space. A jump may cross two levels
+directly. The plan keeps
 overview node/edge counts equal to the complete dataset at every level, while its
 viewport query materializes node-safe routes, card shapes, direction cues and
 labels only for Network or Detail. Current and selected nodes and their incident
@@ -337,12 +339,39 @@ This adapter is still isolated from the default UI. #291 owns composition with
 the layout controller, renderer and camera, including which retry command is
 sent to which failed boundary and real-route focus restoration.
 
+## Issue #291 production cutover
+
+The default Connections composition now sends the complete semantic input to one
+scope-bound layout controller. The resulting topology flows through routing,
+render-dataset, camera, retained renderer, and bounded accessibility adapters.
+The former current-card stage selector, 64/256 limits, ELK browser worker, SVG
+renderer, hidden fallback list, and persisted zoom preference are removed from
+the production path. Historical ELK research fixtures remain test-only and an
+architecture check prevents production imports.
+
+The map session is created once per Notes runtime and reused across Card,
+History, and Connections routes. A card navigation therefore preserves the
+camera and logical selection, while a reload creates a fresh runtime session and
+logout destroys the session and registered layout workers. Both legacy and Vault
+compositions use the same `NotesScope` discriminated union; equality retains the
+complete Account/Vault/session/epoch check for Vault scopes.
+
+Functional browser evidence verifies exact seven-node/eight-edge semantics,
+self-links, mutual links, disconnected and isolated cards, Back/Forward, offline
+deep links, touch/pinch/pointer cancellation, keyboard traversal, explicit worker
+failure/retry, and a complete 10,000-card graph. The 10,000-card check asserts
+exact node/edge and accessibility counts, no search/staging controls, and a
+viewport-bounded DOM. A burst of 480 wheel inputs is coalesced to 120 render-plan
+writes in the deterministic browser fixture; that is interaction evidence, not a
+production frame-time guarantee.
+
 ## Rollback
 
-Issues #285–#290 introduce no persistent data or schema migration. Their PRs can
-be reverted in reverse dependency order to remove rendering, routing,
-accessibility/failure UX, camera/session, layout/worker, and then
-benchmark/decision artifacts. None is
-connected to the default UI yet. The feature remains isolated on
-`integration/106-full-network-semantic-zoom`; canonical integration and `main`
-are unchanged until their separate roll-up approvals.
+Issues #285–#291 introduce no persistent data or schema migration. #291 is the
+single production cutover and can be reverted as one merge before removing its
+supporting Issues in reverse dependency order. The exact rehearsal and canary
+checks are in
+[full-network semantic zoom rollout](../full-network-semantic-zoom-rollout.md).
+The feature remains isolated on `integration/106-full-network-semantic-zoom`;
+canonical integration and `main` remain unchanged until their separate roll-up
+approvals.

@@ -1,23 +1,21 @@
-import type { VaultNotesScope } from '@/lib/application/notes-access';
+import {
+  sameNotesScope,
+  type NotesScope,
+} from '@/lib/application/notes-runtime';
 import type { FullNetworkMapSnapshot } from '@/lib/graph/full-network-camera';
 
 export type FullNetworkMapSession = Readonly<{
-  scope: VaultNotesScope;
+  scope: NotesScope;
   read: () => FullNetworkMapSnapshot | null;
   write: (snapshot: FullNetworkMapSnapshot) => void;
   clear: () => void;
 }>;
 
 export function sameFullNetworkMapSessionScope(
-  left: VaultNotesScope,
-  right: VaultNotesScope,
+  left: NotesScope,
+  right: NotesScope,
 ): boolean {
-  return (
-    left.accountId === right.accountId &&
-    left.vaultId === right.vaultId &&
-    left.sessionId === right.sessionId &&
-    left.sessionEpoch === right.sessionEpoch
-  );
+  return sameNotesScope(left, right);
 }
 
 /**
@@ -26,7 +24,7 @@ export function sameFullNetworkMapSessionScope(
  * also destroys its camera and selection state.
  */
 export function createFullNetworkMapSession(
-  scope: VaultNotesScope,
+  scope: NotesScope,
 ): FullNetworkMapSession {
   let snapshot: FullNetworkMapSnapshot | null = null;
   return {

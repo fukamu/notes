@@ -1,5 +1,4 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { CONNECTIONS_ZOOM_PREFERENCE_KEY } from '@/lib/client/connections-zoom-preference';
 import type { CardRecord } from '@/lib/domain/types';
 import { decodeSyncRequest } from '@/lib/sync/protocol';
 import { connectionsBenchmarkFixtures } from '@/tests/fixtures/connections-layout';
@@ -101,19 +100,65 @@ async function browserHeapUsed(page: Page): Promise<number | null> {
 }
 
 async function forceConnectionsLayoutFailure(page: Page) {
-  await page.route('**/_next/static/chunks/notes-app-*.js', async (route) => {
-    const response = await route.fetch();
-    const source = await response.text();
-    const layoutInvocation =
-      /let ([\w$]+)=([\w$]+)\(([\w$]+)\),([\w$]+)=await ([\w$]+)\.layout\(([\w$]+)\(\3,\1,([\w$]+),([\w$]+)\)\)/;
-    const transformed = source.replace(
-      layoutInvocation,
-      'throw Error("forced connections layout failure");let $1=[],$4={}',
-    );
-    if (transformed === source) {
-      throw new Error('Unable to install the connections layout fault');
-    }
-    await route.fulfill({ response, body: transformed });
+  await page.addInitScript(() => {
+    const NativeWorker = window.Worker;
+    window.Worker = class FaultInjectingWorker extends NativeWorker {
+      private readonly failFullNetwork: boolean;
+
+      constructor(scriptURL: string | URL, options?: WorkerOptions) {
+        super(scriptURL, options);
+        this.failFullNetwork = String(scriptURL).includes(
+          'full-network-layout.worker',
+        );
+        if (this.failFullNetwork) this.terminate();
+      }
+
+      override postMessage(
+        message: unknown,
+        transfer?: StructuredSerializeOptions | Transferable[],
+      ): void {
+        if (!this.failFullNetwork) {
+          if (Array.isArray(transfer)) super.postMessage(message, transfer);
+          else if (transfer) super.postMessage(message, transfer);
+          else super.postMessage(message);
+          return;
+        }
+        const requestIdValue =
+          typeof message === 'object' &&
+          message !== null &&
+          'requestId' in message
+            ? message.requestId
+            : null;
+        const requestId =
+          typeof requestIdValue === 'number' ? requestIdValue : 0;
+        const topology =
+          typeof message === 'object' &&
+          message !== null &&
+          'topology' in message
+            ? message.topology
+            : null;
+        const topologyKeyValue =
+          typeof topology === 'object' &&
+          topology !== null &&
+          'structuralKey' in topology
+            ? topology.structuralKey
+            : null;
+        const topologyKey =
+          typeof topologyKeyValue === 'string' ? topologyKeyValue : '';
+        queueMicrotask(() => {
+          this.dispatchEvent(
+            new MessageEvent('message', {
+              data: {
+                kind: 'full-network-layout-failed',
+                requestId,
+                topologyKey,
+                reason: 'layout-failed',
+              },
+            }),
+          );
+        });
+      }
+    };
   });
 }
 
@@ -221,20 +266,22 @@ async function connectionsCamera(
   }));
 }
 
-async function expectMapNodeFullyVisible(node: Locator, graph: Locator) {
-  const nodeBox = await node.boundingBox();
-  const viewportBox = await graph.boundingBox();
-  expect(nodeBox).not.toBeNull();
-  expect(viewportBox).not.toBeNull();
-  if (!nodeBox || !viewportBox) throw new Error('Map geometry is missing');
-  expect(nodeBox.x).toBeGreaterThanOrEqual(viewportBox.x);
-  expect(nodeBox.y).toBeGreaterThanOrEqual(viewportBox.y);
-  expect(nodeBox.x + nodeBox.width).toBeLessThanOrEqual(
-    viewportBox.x + viewportBox.width,
-  );
-  expect(nodeBox.y + nodeBox.height).toBeLessThanOrEqual(
-    viewportBox.y + viewportBox.height,
-  );
+async function openNetworkCardByKeyboard(
+  page: Page,
+  graph: Locator,
+  title: string,
+  maximumNodes: number,
+) {
+  const selection = page.getByTestId('connections-accessibility-selection');
+  await graph.focus();
+  for (let index = 0; index < maximumNodes; index += 1) {
+    if ((await selection.textContent())?.includes(title)) {
+      await graph.press('Enter');
+      return;
+    }
+    await graph.press('n');
+  }
+  throw new Error(`Unable to select network card ${title}`);
 }
 
 async function replaceLocalCards(page: Page, cards: LocalFixtureCard[]) {
@@ -526,11 +573,18 @@ test('inline card links, Backspace, Undo/Redo, shortcuts and plain hashtag input
 
   await page.getByRole('button', { name: 'つながり' }).click();
   const graph = page.getByTestId('connections-graph');
-  await expect(graph.getByText(sourceTitle, { exact: true })).toBeVisible();
-  await expect(graph.getByText(targetTitle, { exact: true })).toBeVisible();
-  await expect(graph.getByText(unrelatedTitle, { exact: true })).toBeVisible();
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready');
+  await expect(graph).toHaveAttribute('data-total-node-count', /\d+/);
+  await expect
+    .poll(async () => Number(await graph.getAttribute('data-total-edge-count')))
+    .toBeGreaterThanOrEqual(1);
+  await expect(graph.locator('[data-full-network-node]')).toHaveCount(0);
 
-  await graph.getByText(targetTitle, { exact: true }).click();
+  const networkNodeCount = Number(
+    await graph.getAttribute('data-total-node-count'),
+  );
+  expect(networkNodeCount).toBeGreaterThanOrEqual(3);
+  await openNetworkCardByKeyboard(page, graph, targetTitle, networkNodeCount);
   await expect(page.getByTestId('card-title')).toHaveValue(targetTitle);
 
   await page.getByRole('button', { name: '過去のカード' }).click();
@@ -567,9 +621,12 @@ test('headless editor preserves IME, candidate keyboard, link activation and ide
     state: 'attached',
     timeout: 15_000,
   });
+  // Stop the Notes runtime before replacing IndexedDB out of band. Otherwise
+  // an in-flight local save can repopulate the database between clear and reload.
+  await page.goto('/pricing');
   await context.setOffline(true);
   await replaceLocalCards(page, []);
-  await page.reload();
+  await page.goto('/');
   await expect(page.getByTestId('new-card')).toBeVisible();
 
   await page.getByTestId('new-card').click();
@@ -907,17 +964,12 @@ test('global directed graph is safe and operable for the reported and cyclic fix
   await expect(graph).toHaveAttribute('data-camera-scale', /\d/, {
     timeout: 5_000,
   });
-  await expect(graph.getByRole('button')).toHaveCount(7);
-  for (const title of Object.values(titles)) {
-    await expect(
-      graph.getByRole('button').filter({ hasText: title }),
-    ).toBeVisible();
-  }
+  await expect(graph).toHaveAttribute('data-total-node-count', '7');
+  await expect(graph).toHaveAttribute('data-total-edge-count', '8');
+  await expect(graph).toHaveAttribute('data-accessibility-node-count', '7');
+  await expect(graph).toHaveAttribute('data-accessibility-edge-count', '8');
+  await expect(graph.locator('[data-full-network-node]')).toHaveCount(0);
 
-  const semanticEdges = graph.getByRole('list', {
-    name: 'カード間の一方向リンク一覧',
-  });
-  await expect(semanticEdges.getByRole('listitem')).toHaveCount(8);
   const expectedEdges = [
     `${titles.reportC} から ${titles.reportA} へのリンク`,
     `${titles.reportC} から ${titles.reportB} へのリンク`,
@@ -928,29 +980,20 @@ test('global directed graph is safe and operable for the reported and cyclic fix
     `${titles.cycleB} から ${titles.cycleC} へのリンク`,
     `${titles.cycleC} から ${titles.cycleA} へのリンク`,
   ];
+  const selection = page.getByTestId('connections-accessibility-selection');
+  await graph.focus();
+  const observedEdges: string[] = [];
+  for (let edge = 0; edge < expectedEdges.length; edge += 1) {
+    await graph.press('e');
+    observedEdges.push((await selection.textContent()) ?? '');
+  }
   for (const label of expectedEdges) {
-    await expect(
-      semanticEdges.getByRole('listitem').filter({ hasText: label }),
-    ).toHaveCount(1);
+    expect(observedEdges.join('\n')).toContain(label);
   }
 
-  const currentNode = graph
-    .getByRole('button')
-    .filter({ hasText: titles.reportA });
-  await expect(currentNode).toHaveAttribute('aria-current', 'true');
-  const nodeBox = await currentNode.boundingBox();
   const viewportBox = await graph.boundingBox();
-  expect(nodeBox).not.toBeNull();
   expect(viewportBox).not.toBeNull();
-  if (!nodeBox || !viewportBox) throw new Error('graph geometry is missing');
-  expect(nodeBox.x).toBeGreaterThanOrEqual(viewportBox.x);
-  expect(nodeBox.y).toBeGreaterThanOrEqual(viewportBox.y);
-  expect(nodeBox.x + nodeBox.width).toBeLessThanOrEqual(
-    viewportBox.x + viewportBox.width,
-  );
-  expect(nodeBox.y + nodeBox.height).toBeLessThanOrEqual(
-    viewportBox.y + viewportBox.height,
-  );
+  if (!viewportBox) throw new Error('graph geometry is missing');
 
   const viewportBehavior = await graph.evaluate((element) => {
     const style = getComputedStyle(element);
@@ -973,17 +1016,7 @@ test('global directed graph is safe and operable for the reported and cyclic fix
   expect(viewportBehavior.documentWidth).toBeLessThanOrEqual(
     viewportBehavior.windowWidth + 1,
   );
-  const targetNode = graph
-    .getByRole('button')
-    .filter({ hasText: titles.reportB });
-  await targetNode.focus();
-  await expect(targetNode).toBeInViewport();
-  if (testInfo.project.name === 'mobile-chromium') {
-    await targetNode.tap();
-  } else {
-    await targetNode.focus();
-    await targetNode.press('Enter');
-  }
+  await openNetworkCardByKeyboard(page, graph, titles.reportB, 7);
   await expect(page.getByTestId('card-title')).toHaveValue(titles.reportB);
 });
 
@@ -1034,20 +1067,14 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
     await expect(control).toBeEnabled();
   }
   await expect(zoomOutButton).toBeVisible();
-  if (fitted.scale <= 0.100_000_1) await expect(zoomOutButton).toBeDisabled();
-  else await expect(zoomOutButton).toBeEnabled();
+  await expect(zoomOutButton).toBeDisabled();
   for (const value of Object.values(fitted)) {
     expect(Number.isFinite(value)).toBe(true);
   }
-  const currentNode = graph
-    .getByRole('button')
-    .filter({ hasText: current.title });
   const zoomOutput = page.getByRole('status', { name: '現在のズーム' });
   await expect(zoomOutput).toHaveText(`${Math.round(fitted.scale * 100)}%`);
-  expect(fitted.scale).toBeGreaterThanOrEqual(0.1);
-  expect(fitted.scale).toBeLessThanOrEqual(2);
-  await expect(currentNode).toBeInViewport();
-  await expectMapNodeFullyVisible(currentNode, graph);
+  expect(fitted.scale).toBeGreaterThan(0);
+  expect(fitted.scale).toBeLessThanOrEqual(8);
   await zoomInButton.click();
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
@@ -1106,10 +1133,10 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   expect(maximumWheelPrevented).toBe(true);
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
-    .toBeCloseTo(2, 7);
+    .toBeCloseTo(8, 7);
   await expect(zoomInButton).toBeDisabled();
   await expect(zoomOutButton).toBeEnabled();
-  await expect(zoomOutput).toHaveText('200%');
+  await expect(zoomOutput).toHaveText('800%');
   await expect
     .poll(async () =>
       Number(
@@ -1137,7 +1164,7 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   });
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
-    .toBeCloseTo(2, 7);
+    .toBeCloseTo(8, 7);
   await expect(zoomInButton).toBeDisabled();
   await page.setViewportSize(originalViewport);
 
@@ -1155,9 +1182,9 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   });
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
-    .toBeCloseTo(0.1, 7);
+    .toBeCloseTo(fitted.scale, 7);
   await expect(zoomOutButton).toBeDisabled();
-  await expect(zoomOutput).toHaveText('10%');
+  await expect(zoomOutput).toHaveText(`${Math.round(fitted.scale * 100)}%`);
   await expect
     .poll(async () =>
       Number(
@@ -1181,28 +1208,17 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeCloseTo(fitted.scale, 5);
-  await keyboardControl.focus();
-  await keyboardControl.press('+');
-  await keyboardControl.press('+');
+  await keyboardControl.click();
+  await graph.press('+');
+  await graph.press('+');
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeGreaterThan(fitted.scale);
-  const beforeKeyboardPan = await connectionsCamera(graph);
-  await keyboardControl.press('ArrowRight');
-  await page.waitForTimeout(50);
-  let afterKeyboardPan = await connectionsCamera(graph);
-  if (afterKeyboardPan.x === beforeKeyboardPan.x) {
-    await keyboardControl.press('ArrowLeft');
-    await page.waitForTimeout(50);
-    afterKeyboardPan = await connectionsCamera(graph);
-  }
-  expect(afterKeyboardPan.x).not.toBe(beforeKeyboardPan.x);
-  await keyboardControl.press('0');
+  await graph.press('0');
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeCloseTo(fitted.scale, 5);
-  if (fitted.scale <= 0.100_000_1) await expect(zoomOutButton).toBeDisabled();
-  else await expect(zoomOutButton).toBeEnabled();
+  await expect(zoomOutButton).toBeDisabled();
   await expect(zoomOutput).toHaveText(`${Math.round(fitted.scale * 100)}%`);
 
   await zoomInButton.click();
@@ -1250,14 +1266,19 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
     }
   });
   const canvasBeforeGesture = await graph.evaluate((element) => {
-    const canvas = element.querySelector('[data-testid="connections-canvas"]');
-    return {
-      width: canvas?.getAttribute('data-layout-width'),
-      height: canvas?.getAttribute('data-layout-height'),
-      nodeCount: canvas?.querySelectorAll('[data-card-id]').length ?? -1,
-      pathData: [...(canvas?.querySelectorAll('path[d]') ?? [])].map((path) =>
-        path.getAttribute('d'),
+    const canvases = [
+      ...element.querySelectorAll(
+        '[data-testid="connections-overview-canvas"], [data-testid="connections-detail-canvas"]',
       ),
+    ];
+    return {
+      canvasCount: canvases.length,
+      sizes: canvases.map((canvas) => ({
+        width: canvas.getAttribute('width'),
+        height: canvas.getAttribute('height'),
+      })),
+      totalNodeCount: element.dataset.totalNodeCount,
+      totalEdgeCount: element.dataset.totalEdgeCount,
     };
   });
   const beforeTouchPan = await connectionsCamera(graph);
@@ -1300,9 +1321,6 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   ).toBeGreaterThan(4);
   expect(singlePointerTrace).toMatch(
     /pointerdown:touch:\d+:(?:free|captured):(?:self|descendant)/,
-  );
-  expect(singlePointerTrace).toMatch(
-    /lostpointercapture:touch:\d+:(?:free|captured):descendant/,
   );
   expect(singlePointerTrace).toMatch(
     /gotpointercapture:touch:\d+:captured:self/,
@@ -1357,7 +1375,7 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   });
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
-    .toBeCloseTo(2, 7);
+    .toBeCloseTo(8, 7);
   await touch.send('Input.dispatchTouchEvent', {
     type: 'touchStart',
     touchPoints: [
@@ -1378,9 +1396,9 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   });
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
-    .toBeCloseTo(2, 7);
+    .toBeCloseTo(8, 7);
   await expect(zoomInButton).toBeDisabled();
-  await expect(zoomOutput).toHaveText('200%');
+  await expect(zoomOutput).toHaveText('800%');
 
   await touch.send('Input.dispatchTouchEvent', {
     type: 'touchStart',
@@ -1440,14 +1458,19 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   });
 
   const canvasAfterGesture = await graph.evaluate((element) => {
-    const canvas = element.querySelector('[data-testid="connections-canvas"]');
-    return {
-      width: canvas?.getAttribute('data-layout-width'),
-      height: canvas?.getAttribute('data-layout-height'),
-      nodeCount: canvas?.querySelectorAll('[data-card-id]').length ?? -1,
-      pathData: [...(canvas?.querySelectorAll('path[d]') ?? [])].map((path) =>
-        path.getAttribute('d'),
+    const canvases = [
+      ...element.querySelectorAll(
+        '[data-testid="connections-overview-canvas"], [data-testid="connections-detail-canvas"]',
       ),
+    ];
+    return {
+      canvasCount: canvases.length,
+      sizes: canvases.map((canvas) => ({
+        width: canvas.getAttribute('width'),
+        height: canvas.getAttribute('height'),
+      })),
+      totalNodeCount: element.dataset.totalNodeCount,
+      totalEdgeCount: element.dataset.totalEdgeCount,
     };
   });
   expect(canvasAfterGesture).toEqual(canvasBeforeGesture);
@@ -1495,27 +1518,17 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   }
 
   await currentButton.click();
-  await expect(currentNode).toBeInViewport();
-  await expectMapNodeFullyVisible(currentNode, graph);
-  const currentBox = await currentNode.boundingBox();
-  if (!currentBox) throw new Error('Current map node has no geometry');
   if (testInfo.project.name === 'mobile-chromium') {
     await touch.send('Input.dispatchTouchEvent', {
       type: 'touchStart',
-      touchPoints: [
-        {
-          x: currentBox.x + currentBox.width / 2,
-          y: currentBox.y + currentBox.height / 2,
-          id: 4,
-        },
-      ],
+      touchPoints: [{ x: center.x, y: center.y, id: 4 }],
     });
     await touch.send('Input.dispatchTouchEvent', {
       type: 'touchMove',
       touchPoints: [
         {
-          x: currentBox.x + currentBox.width / 2 + 50,
-          y: currentBox.y + currentBox.height / 2 + 35,
+          x: center.x + 50,
+          y: center.y + 35,
           id: 4,
         },
       ],
@@ -1525,16 +1538,9 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
       touchPoints: [],
     });
   } else {
-    await page.mouse.move(
-      currentBox.x + currentBox.width / 2,
-      currentBox.y + currentBox.height / 2,
-    );
+    await page.mouse.move(center.x, center.y);
     await page.mouse.down();
-    await page.mouse.move(
-      currentBox.x + currentBox.width / 2 + 50,
-      currentBox.y + currentBox.height / 2 + 35,
-      { steps: 5 },
-    );
+    await page.mouse.move(center.x + 50, center.y + 35, { steps: 5 });
     await page.mouse.up();
   }
   await expectPathname(page, `/cards/${current.id}/connections`);
@@ -1601,24 +1607,16 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   });
 
   await page.waitForTimeout(400);
-  const targetNode = graph
-    .getByRole('button')
-    .filter({ hasText: target.title });
-  await targetNode.focus();
-  await page.waitForTimeout(100);
-  await expect(targetNode).toBeInViewport();
-  await expectMapNodeFullyVisible(targetNode, graph);
   await expect(graph).toHaveAttribute('data-active-pointers', '0');
   await expect(graph).toHaveAttribute('data-click-suppression', 'false');
   await expect(graph).toHaveAttribute('data-dragging', 'false');
-  if (testInfo.project.name === 'mobile-chromium') await targetNode.tap();
-  else await targetNode.click();
   await touch.detach();
+  await openNetworkCardByKeyboard(page, graph, target.title, cards.length);
   await expectPathname(page, `/cards/${target.id}`);
   await expect(page.getByTestId('card-title')).toHaveValue(target.title);
 });
 
-test('connections zoom persists across app views and reloads', async ({
+test('connections camera persists across app views and resets with its runtime', async ({
   page,
   context,
 }) => {
@@ -1626,10 +1624,6 @@ test('connections zoom persists across app views and reloads', async ({
   const current = cards[0];
   if (!current) throw new Error('Zoom preference fixture is incomplete');
   await ready(page);
-  await page.evaluate(
-    (key) => localStorage.removeItem(key),
-    CONNECTIONS_ZOOM_PREFERENCE_KEY,
-  );
   await page.locator('html[data-offline-ready=true]').waitFor({
     state: 'attached',
     timeout: 15_000,
@@ -1651,14 +1645,6 @@ test('connections zoom persists across app views and reloads', async ({
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeGreaterThan(fitted.scale);
   const preferredScale = (await connectionsCamera(graph)).scale;
-  await expect
-    .poll(() =>
-      page.evaluate(
-        (key) => Number(localStorage.getItem(key)),
-        CONNECTIONS_ZOOM_PREFERENCE_KEY,
-      ),
-    )
-    .toBeCloseTo(preferredScale, 7);
 
   await page.getByRole('button', { name: 'カード', exact: true }).click();
   await expect(page.getByTestId('card-title')).toHaveValue(current.title);
@@ -1683,41 +1669,8 @@ test('connections zoom persists across app views and reloads', async ({
   });
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
-    .toBeCloseTo(preferredScale, 7);
-
-  await page.evaluate(
-    (key) => localStorage.setItem(key, '2'),
-    CONNECTIONS_ZOOM_PREFERENCE_KEY,
-  );
-  await page.reload();
-  graph = page.getByTestId('connections-graph');
-  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
-    timeout: 30_000,
-  });
-  await expect
-    .poll(async () => (await connectionsCamera(graph)).scale)
-    .toBeCloseTo(2, 7);
-  await expect(page.getByRole('button', { name: '拡大' })).toBeDisabled();
-  await expect(page.getByRole('status', { name: '現在のズーム' })).toHaveText(
-    '200%',
-  );
-
-  await page.evaluate(
-    (key) => localStorage.setItem(key, '0.1'),
-    CONNECTIONS_ZOOM_PREFERENCE_KEY,
-  );
-  await page.reload();
-  graph = page.getByTestId('connections-graph');
-  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
-    timeout: 30_000,
-  });
-  await expect
-    .poll(async () => (await connectionsCamera(graph)).scale)
-    .toBeCloseTo(0.1, 7);
+    .toBeCloseTo(fitted.scale, 7);
   await expect(page.getByRole('button', { name: '縮小' })).toBeDisabled();
-  await expect(page.getByRole('status', { name: '現在のズーム' })).toHaveText(
-    '10%',
-  );
 });
 
 test('connections readiness records reproducible large-fixture browser timing', async ({
@@ -1924,10 +1877,8 @@ test('semantic navigation preserves availability, current context and accessible
     { timeout: 15_000 },
   );
   await expect(
-    page.getByTestId('connections-graph').getByRole('button', {
-      name: new RegExp(`${title}、現在のカード`),
-    }),
-  ).toHaveAttribute('aria-current', 'true');
+    page.getByTestId('connections-accessibility-selection'),
+  ).toContainText(`${title}、現在のカード`);
 });
 
 test('button and card labels are non-selectable while card editors remain selectable', async ({
@@ -1972,7 +1923,9 @@ test('button and card labels are non-selectable while card editors remain select
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 15_000,
   });
-  const connectionsCard = graph.locator(`[data-card-id="${card.id}"]`);
+  const connectionsCard = graph.locator(
+    `[data-full-network-node="${card.id}"]`,
+  );
   await expect(connectionsCard).toBeVisible();
   await expect(connectionsCard).toHaveCSS('user-select', 'none');
   await expectVisibleButtonsToBeNonSelectable(page);
@@ -2200,7 +2153,7 @@ test('10k history remains viewport-bounded and operable in the browser', async (
   });
 });
 
-test('10k connections bounds layout and DOM around the current card', async ({
+test('10k connections keeps every node and link while bounding detail DOM', async ({
   page,
 }) => {
   test.setTimeout(180_000);
@@ -2217,53 +2170,57 @@ test('10k connections bounds layout and DOM around the current card', async ({
   await expect(graph).toHaveAttribute('data-total-node-count', '10000', {
     timeout: 30_000,
   });
-  await expect(graph).toHaveAttribute('data-visible-node-count', '64');
-  await expect(graph).toHaveAttribute('data-node-limit', '64');
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 30_000,
   });
-  await expect(graph.locator('button[data-card-id]')).toHaveCount(64);
-  await expect(page.getByTestId('connections-search')).toHaveCount(0);
-
-  for (const visibleCount of [128, 192, 256]) {
-    await page.getByTestId('connections-expand').click();
-    await expect(graph).toHaveAttribute(
-      'data-visible-node-count',
-      String(visibleCount),
-    );
-    await expect(graph).toHaveAttribute(
-      'data-node-limit',
-      String(visibleCount),
-    );
-    await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
-      timeout: 30_000,
-    });
-    await expect(graph.locator('button[data-card-id]')).toHaveCount(
-      visibleCount,
-    );
+  const validIds = new Set(cards.map((card) => card.id));
+  const fallbackTarget = cards[0]?.id;
+  const expectedEdges = new Set<string>();
+  for (const card of cards) {
+    for (const segment of card.body) {
+      if (segment.type !== 'link') continue;
+      const target = validIds.has(segment.targetCardId)
+        ? segment.targetCardId
+        : fallbackTarget;
+      if (target) expectedEdges.add(`${card.id}:${target}`);
+    }
   }
+  await expect(graph).toHaveAttribute(
+    'data-total-edge-count',
+    String(expectedEdges.size),
+  );
+  await expect(graph).toHaveAttribute('data-accessibility-node-count', '10000');
+  await expect(graph).toHaveAttribute(
+    'data-accessibility-edge-count',
+    String(expectedEdges.size),
+  );
+  await expect(graph).toHaveAttribute('data-renderer-status', 'ready');
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(0);
+  await expect(page.getByTestId('connections-search')).toHaveCount(0);
   await expect(page.getByTestId('connections-expand')).toHaveCount(0);
-  await expect(
-    page.getByText(
-      '一度に表示できる上限に達しました。別のカードを開くと、そのカードの周辺を表示できます。',
-    ),
-  ).toBeVisible();
+  expect(await page.locator('*').count()).toBeLessThan(800);
 
-  const nextCard = graph
-    .locator('button[data-card-id]:not([aria-current="true"])')
-    .first();
-  const nextCardId = await nextCard.getAttribute('data-card-id');
-  if (!nextCardId) throw new Error('Bounded graph omitted a linked card');
-  await nextCard.click();
-  await expectPathname(page, `/cards/${nextCardId}`);
-  await page.getByRole('button', { name: 'つながり', exact: true }).click();
-  await expectPathname(page, `/cards/${nextCardId}/connections`);
-  await expect(graph).toHaveAttribute('data-stage-focus-id', nextCardId);
-  await expect(graph).toHaveAttribute('data-visible-node-count', '64');
-  await expect(graph.locator('button[data-card-id]')).toHaveCount(64);
+  const nextCard = cards[5_001];
+  if (!nextCard) throw new Error('10k fixture omitted its next card');
+  const beforeOpen = await connectionsCamera(graph);
+  await graph.focus();
+  await graph.press('n');
+  await expect(
+    page.getByTestId('connections-accessibility-selection'),
+  ).toContainText(nextCard.title);
+  await graph.press('Enter');
+  await expectPathname(page, `/cards/${nextCard.id}`);
+  await page.goBack();
+  await expectPathname(page, `/cards/${current.id}/connections`);
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 30_000,
+  });
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(beforeOpen.scale, 7);
 });
 
-test('layout failure fallback opens a card through URL navigation', async ({
+test('layout failure is explicit and leaves normal card navigation available', async ({
   page,
 }, testInfo) => {
   const cardA = '01991f20-61d2-7000-8000-000000000611';
@@ -2303,17 +2260,11 @@ test('layout failure fallback opens a card through URL navigation', async ({
     timeout: 15_000,
   });
   await expect(graph.getByRole('alert')).toContainText(
-    '配置を計算できませんでした',
+    'つながりの配置を計算できませんでした',
   );
-  const fallbackCard = graph.getByRole('button', {
-    name: new RegExp(cardBTitle),
-  });
-  if (testInfo.project.name === 'mobile-chromium') {
-    await fallbackCard.tap();
-  } else {
-    await fallbackCard.focus();
-    await fallbackCard.press('Enter');
-  }
+  await expect(graph.getByRole('button', { name: '再試行' })).toBeVisible();
+  await page.getByRole('button', { name: '過去のカード' }).click();
+  await page.getByText(cardBTitle, { exact: true }).click();
   await expectPathname(page, `/cards/${cardB}`);
   await expect(page.getByTestId('card-title')).toHaveValue(cardBTitle);
 });
@@ -2401,17 +2352,9 @@ test('canonical URLs restore cards and views through direct, back, forward and o
     timeout: 15_000,
   });
   await expect(
-    graph.getByRole('button', {
-      name: new RegExp(`${titles.cardB}、現在のカード`),
-    }),
-  ).toHaveAttribute('aria-current', 'true');
-  const cardCNode = graph.getByRole('button').filter({ hasText: titles.cardC });
-  if (testInfo.project.name === 'mobile-chromium') {
-    await cardCNode.tap();
-  } else {
-    await cardCNode.focus();
-    await cardCNode.press('Enter');
-  }
+    page.getByTestId('connections-accessibility-summary'),
+  ).toContainText(`現在のカードは#2 ${titles.cardB}、現在のカード`);
+  await openNetworkCardByKeyboard(page, graph, titles.cardC, 3);
   await expectPathname(page, `/cards/${ids.cardC}`);
   await expect(page.getByTestId('card-title')).toHaveValue(titles.cardC);
 
@@ -2420,10 +2363,8 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await expectPathname(page, `/cards/${ids.cardB}/connections`);
   await expect(page.getByRole('heading', { name: 'つながり' })).toBeVisible();
   await expect(
-    page.getByTestId('connections-graph').getByRole('button', {
-      name: new RegExp(`${titles.cardB}、現在のカード`),
-    }),
-  ).toHaveAttribute('aria-current', 'true');
+    page.getByTestId('connections-accessibility-summary'),
+  ).toContainText(`現在のカードは#2 ${titles.cardB}、現在のカード`);
   await page.goBack();
   await expectPathname(page, `/cards/${ids.cardB}`);
   await expect(page.getByTestId('card-title')).toHaveValue(titles.cardB);
@@ -2489,10 +2430,10 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await page.reload();
   await expectPathname(page, `/cards/${ids.cardB}/connections`);
   await expect(
-    page.getByTestId('connections-graph').getByRole('button', {
-      name: new RegExp(`${titles.cardB}、現在のカード`),
-    }),
-  ).toHaveAttribute('aria-current', 'true', { timeout: 15_000 });
+    page.getByTestId('connections-accessibility-summary'),
+  ).toContainText(`現在のカードは#2 ${titles.cardB}、現在のカード`, {
+    timeout: 15_000,
+  });
 
   await page.goto(`/cards/${ids.missing}`);
   await expectPathname(page, newCardPathname);

@@ -5,10 +5,16 @@ import { createBrowserAccountDeletionRunner } from '@/lib/client/browser-account
 import { createBrowserAccountDeletionProgressPort } from '@/lib/client/browser-account-deletion-progress';
 import { createBrowserLogoutPurgeService } from '@/lib/client/browser-logout-purge';
 import { createBrowserLogoutPurgeProgressPort } from '@/lib/client/browser-logout-purge-progress';
+import { LEGACY_NOTES_SCOPE } from '@/lib/application/notes-runtime';
 import {
-  connectionsLayoutWorkerIsReset,
-  prepareConnectionsLayoutWorker,
-} from '@/lib/client/connections-layout-worker';
+  createBrowserFullNetworkLayoutExecution,
+  fullNetworkLayoutWorkersAreReset,
+} from '@/lib/client/full-network-layout-worker';
+import { parseCardId } from '@/lib/domain/id';
+import {
+  createFullNetworkTopologyFromNumeric,
+  defaultFullNetworkLayoutConfiguration,
+} from '@/lib/graph/full-network-layout';
 import {
   parseAccountId,
   parseSessionId,
@@ -106,8 +112,21 @@ window.__fukamuLogoutPurgeHarness = {
     await cache.put('/__e2e-private', new Response('private fixture'));
   },
   cacheNames: () => caches.keys(),
-  prepareGraphWorker: prepareConnectionsLayoutWorker,
-  graphWorkerIsReset: connectionsLayoutWorkerIsReset,
+  async prepareGraphWorker() {
+    const execution =
+      createBrowserFullNetworkLayoutExecution(LEGACY_NOTES_SCOPE);
+    await execution.run({
+      kind: 'layout-full-network',
+      requestId: 1,
+      topology: createFullNetworkTopologyFromNumeric(
+        [parseCardId('01991f20-61d2-7000-8000-000000000001')],
+        new Uint32Array(),
+        new Uint32Array(),
+      ),
+      configuration: defaultFullNetworkLayoutConfiguration,
+    });
+  },
+  graphWorkerIsReset: fullNetworkLayoutWorkersAreReset,
   async enterFence(input) {
     const generation = decodeGeneration(input);
     let purgeRequested = false;

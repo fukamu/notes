@@ -52,6 +52,17 @@ export const darkFullNetworkRenderPalette = {
   text: { css: '#f5eee4', rgba: [0.961, 0.933, 0.894, 1] },
 } as const satisfies FullNetworkRenderPalette;
 
+export const highContrastFullNetworkRenderPalette = {
+  background: { css: '#000000', rgba: [0, 0, 0, 1] },
+  edge: { css: '#ffffff', rgba: [1, 1, 1, 0.72] },
+  node: { css: '#ffffff', rgba: [1, 1, 1, 1] },
+  detailEdge: { css: '#ffffff', rgba: [1, 1, 1, 1] },
+  detailNode: { css: '#000000', rgba: [0, 0, 0, 1] },
+  current: { css: '#ffff00', rgba: [1, 1, 0, 1] },
+  selected: { css: '#00ffff', rgba: [0, 1, 1, 1] },
+  text: { css: '#ffffff', rgba: [1, 1, 1, 1] },
+} as const satisfies FullNetworkRenderPalette;
+
 export type FullNetworkVisibleNodeDetail = Readonly<{
   nodeIndex: number;
   displayLabel: string;
@@ -626,6 +637,14 @@ function drawDetailLayer(
   context.fillStyle = palette.text.css;
   context.font = '12px system-ui, sans-serif';
   context.textBaseline = 'middle';
+  const maximumLabelWidth = Math.max(
+    0,
+    (dataset.routing.layoutConfiguration.cellWidth -
+      dataset.routing.routingConfiguration.nodeHalfWidth * 2) *
+      camera.scale -
+      8,
+  );
+  if (maximumLabelWidth < 12) return;
   for (const detail of view.details) {
     const point = canvasPoint(
       camera,
@@ -633,7 +652,7 @@ function drawDetailLayer(
       typedValue(dataset.routing.layout.y, detail.nodeIndex, 'label node y'),
     );
     const text = detail.title || detail.displayLabel;
-    context.fillText(text, point.x + halfWidth + 4, point.y, 180);
+    context.fillText(text, point.x + halfWidth + 4, point.y, maximumLabelWidth);
   }
 }
 

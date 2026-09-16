@@ -1,5 +1,7 @@
 import type { ComponentType, ReactNode } from 'react';
-import type { ConnectionsPresentationAdapter } from '@/components/connections-presentation';
+import type { FullNetworkLayoutControllerState } from '@/lib/application/full-network-layout-controller';
+import type { FullNetworkMapSession } from '@/lib/application/full-network-map-session';
+import type { NotesScope } from '@/lib/application/notes-runtime';
 import type {
   CardEditorInputModel,
   ConnectionsViewModel,
@@ -10,11 +12,7 @@ import type {
   CardEditorCommands,
   CardEditorModel,
 } from '@/lib/editor/use-card-editor';
-import type {
-  ConnectionsControllerState,
-  ConnectionsSelectionActions,
-  ConnectionsStagingViewModel,
-} from '@/lib/graph/connections-contract';
+import type { ConnectionsSelectionActions } from '@/lib/graph/connections-contract';
 
 export type CardEditorRendererProps = {
   model: CardEditorModel;
@@ -22,10 +20,11 @@ export type CardEditorRendererProps = {
 };
 
 export type ConnectionsRendererProps = {
-  model: ConnectionsControllerState;
-  staging: ConnectionsStagingViewModel;
-  actions: ConnectionsSelectionActions;
-  presentation: ConnectionsPresentationAdapter;
+  state: FullNetworkLayoutControllerState;
+  actions: Pick<ConnectionsSelectionActions, 'openCard'>;
+  scope: NotesScope;
+  session: FullNetworkMapSession;
+  retryLayout: () => void;
 };
 
 export type CardEditorFeatureProps = {

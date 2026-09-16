@@ -318,6 +318,11 @@ Desktop/mobile × light/dark visual evidence and its review checklist are in
 
 ## 10,000-card staging addendum
 
+> Superseded by ADR 005 and Issue #291. The 64/64/256 staging policy below is
+> retained as historical decision evidence only; it is no longer a production
+> path. Production now displays the complete graph with retained overview and
+> viewport-bounded semantic detail.
+
 Issue #266 applies the approved large-Vault product decision: connections no
 longer sends every card to ELK when a Vault exceeds the small-graph bound. A
 typed pure selector treats incoming and outgoing links as neighborhood
@@ -351,5 +356,5 @@ required structural gate; wall-clock timings remain observational.
   route. It smooths corners but is not labeled a routing improvement.
 - Keep the benchmark artifact and fixed fixtures as reproducible compatibility
   evidence. Raw timing remains informational rather than a flaky CI threshold.
-- Preserve the 64/64/256 staging policy unless a later reviewed Issue changes
-  both the structural worker/DOM bounds and the user-visible navigation path.
+- ADR 005 and Issues #283/#291 replace the 64/64/256 staging policy with a
+  complete retained overview, bounded detail DOM, and explicit failure path.

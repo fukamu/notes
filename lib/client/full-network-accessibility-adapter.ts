@@ -1,6 +1,9 @@
 'use client';
 
-import type { VaultNotesScope } from '@/lib/application/notes-access';
+import {
+  sameNotesScope,
+  type NotesScope,
+} from '@/lib/application/notes-runtime';
 import type { CardId } from '@/lib/domain/id';
 import {
   createFullNetworkAccessibilityOverlay,
@@ -34,7 +37,7 @@ export type FullNetworkAccessibilityAdapterState = Readonly<{
 export type FullNetworkAccessibilityAdapter = Readonly<{
   getState: () => FullNetworkAccessibilityAdapterState;
   update: (input: {
-    scope: VaultNotesScope;
+    scope: NotesScope;
     index: FullNetworkAccessibilityIndex;
     dataset: FullNetworkRenderDataset;
     plan: FullNetworkRenderPlan;
@@ -45,15 +48,6 @@ export type FullNetworkAccessibilityAdapter = Readonly<{
 }>;
 
 type MediaQueryFactory = (query: string) => MediaQueryList;
-
-function sameScope(left: VaultNotesScope, right: VaultNotesScope): boolean {
-  return (
-    left.accountId === right.accountId &&
-    left.vaultId === right.vaultId &&
-    left.sessionId === right.sessionId &&
-    left.sessionEpoch === right.sessionEpoch
-  );
-}
 
 function keyboardEvent(event: KeyboardEvent):
   | Readonly<{
@@ -149,7 +143,7 @@ function buttonForOverlay(
 
 export function createFullNetworkAccessibilityAdapter(
   input: Readonly<{
-    scope: VaultNotesScope;
+    scope: NotesScope;
     region: HTMLElement;
     overlay: HTMLElement;
     summary: HTMLElement;
@@ -365,9 +359,11 @@ export function createFullNetworkAccessibilityAdapter(
     getState: state,
     update(next) {
       if (destroyed) throw new Error('Accessibility adapter is destroyed');
-      if (!sameScope(scope, next.scope)) {
+      if (!sameNotesScope(scope, next.scope)) {
         throw new Error('Full-network accessibility scope mismatch');
       }
+      const previousDatasetKey = dataset.datasetKey;
+      const previousEdgeIndex = cursor.edgeIndex;
       const selectedCardId =
         cursor.nodeIndex === null
           ? null
@@ -377,7 +373,19 @@ export function createFullNetworkAccessibilityAdapter(
       plan = next.plan;
       availability = deriveFullNetworkAvailability(next.availability);
       retryPending = false;
-      cursor = initialFullNetworkAccessibilityCursor(index, selectedCardId);
+      const nextCursor = initialFullNetworkAccessibilityCursor(
+        index,
+        selectedCardId,
+      );
+      cursor = {
+        ...nextCursor,
+        edgeIndex:
+          previousDatasetKey === dataset.datasetKey &&
+          previousEdgeIndex !== null &&
+          previousEdgeIndex < index.edges.length
+            ? previousEdgeIndex
+            : null,
+      };
       render();
       publish();
     },

@@ -1,7 +1,8 @@
 'use client';
 
-import type { VaultNotesScope } from '@/lib/application/notes-access';
+import type { NotesScope } from '@/lib/application/notes-runtime';
 import type { FullNetworkLayoutExecutionPort } from '@/lib/application/full-network-layout-controller';
+import { fullNetworkLayoutWorkerUrl } from '@/lib/client/full-network-layout-worker-url';
 import type { FullNetworkLayoutWorkerRequest } from '@/lib/graph/full-network-layout-protocol';
 
 const cancelledMessage = 'Full-network layout worker operation was cancelled';
@@ -32,8 +33,9 @@ type Pending = Readonly<{
 }>;
 
 export function createFullNetworkLayoutWorkerExecution(input: {
-  readonly scope: VaultNotesScope;
+  readonly scope: NotesScope;
   readonly createWorker: () => FullNetworkLayoutWorkerPort;
+  readonly onDestroy?: () => void;
 }): FullNetworkLayoutWorkerExecution {
   let worker: FullNetworkLayoutWorkerPort | null = null;
   let pending: Pending | null = null;
@@ -102,6 +104,7 @@ export function createFullNetworkLayoutWorkerExecution(input: {
       destroyed = true;
       rejectPending(destroyedMessage);
       disposeWorker();
+      input.onDestroy?.();
     },
     isDestroyed: () => destroyed && worker === null && pending === null,
     hasInFlightRequest: () => pending !== null,
@@ -109,14 +112,32 @@ export function createFullNetworkLayoutWorkerExecution(input: {
 }
 
 export function createBrowserFullNetworkLayoutExecution(
-  scope: VaultNotesScope,
+  scope: NotesScope,
 ): FullNetworkLayoutWorkerExecution {
-  return createFullNetworkLayoutWorkerExecution({
+  let unregister = (): void => undefined;
+  const execution = createFullNetworkLayoutWorkerExecution({
     scope,
     createWorker: () =>
-      new Worker(
-        new URL('../../workers/full-network-layout.worker.ts', import.meta.url),
-        { type: 'module', name: 'fukamu-full-network-layout' },
-      ),
+      new Worker(fullNetworkLayoutWorkerUrl, {
+        type: 'module',
+        name: 'fukamu-full-network-layout',
+      }),
+    onDestroy: () => unregister(),
   });
+  const reset = (): void => execution.destroy();
+  activeBrowserExecutions.add(reset);
+  unregister = (): void => {
+    activeBrowserExecutions.delete(reset);
+  };
+  return execution;
+}
+
+const activeBrowserExecutions = new Set<() => void>();
+
+export function resetFullNetworkLayoutWorkers(): void {
+  for (const reset of activeBrowserExecutions) reset();
+}
+
+export function fullNetworkLayoutWorkersAreReset(): boolean {
+  return activeBrowserExecutions.size === 0;
 }

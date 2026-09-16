@@ -8,10 +8,6 @@ import {
 } from '@/components/body-editor';
 import { BodyEditorAdapter } from '@/components/body-editor-adapter';
 import { ConnectionsAdapter } from '@/components/connections-adapter';
-import {
-  defaultConnectionsPresentation,
-  type ConnectionsPresentationAdapter,
-} from '@/components/connections-presentation';
 import { ConnectionsView } from '@/components/connections-view';
 import { NotesPresentation } from '@/components/notes-presentation';
 import type {
@@ -21,6 +17,7 @@ import type {
   NotesPresentationFeatures,
 } from '@/components/presentation-contract';
 import type { NotesRuntimePorts } from '@/lib/application/notes-runtime';
+import { createFullNetworkMapSession } from '@/lib/application/full-network-map-session';
 import { createLegacyNotesRuntimePorts } from '@/lib/client/legacy-notes-runtime';
 import { NotesProvider, useNotesDataStore } from '@/lib/client/notes-store';
 import { useNotesApplication } from '@/lib/client/use-notes-application';
@@ -31,7 +28,6 @@ export type NotesAppConfiguration = {
   CardEditorRenderer: ComponentType<CardEditorRendererProps>;
   cardEditorPresentation: CardEditorPresentationAdapter;
   ConnectionsRenderer: ComponentType<ConnectionsRendererProps>;
-  connectionsPresentation: ConnectionsPresentationAdapter;
 };
 
 export const defaultNotesAppConfiguration: NotesAppConfiguration = {
@@ -39,13 +35,16 @@ export const defaultNotesAppConfiguration: NotesAppConfiguration = {
   CardEditorRenderer: BodyEditor,
   cardEditorPresentation: defaultCardEditorPresentation,
   ConnectionsRenderer: ConnectionsView,
-  connectionsPresentation: defaultConnectionsPresentation,
 };
 
 function NotesConnector({
   configuration,
+  runtimePorts,
+  mapSession,
 }: {
   configuration: NotesAppConfiguration;
+  runtimePorts: NotesRuntimePorts;
+  mapSession: ReturnType<typeof createFullNetworkMapSession>;
 }) {
   const store = useNotesDataStore();
   const { model, actions } = useNotesApplication(store);
@@ -63,12 +62,13 @@ function NotesConnector({
         <ConnectionsAdapter
           input={input}
           actions={connectionsActions}
-          presentation={configuration.connectionsPresentation}
+          scope={runtimePorts.scope}
+          session={mapSession}
           Renderer={configuration.ConnectionsRenderer}
         />
       ),
     }),
-    [configuration],
+    [configuration, mapSession, runtimePorts.scope],
   );
   const Presentation = configuration.Presentation;
   return <Presentation model={model} actions={actions} features={features} />;
@@ -85,13 +85,21 @@ export function NotesApp({
   runtimeFenced?: boolean;
   runtimeFencedFallback?: ReactNode;
 }) {
+  const mapSession = useMemo(
+    () => createFullNetworkMapSession(runtimePorts.scope),
+    [runtimePorts.scope],
+  );
   return (
     <NotesProvider
       ports={runtimePorts}
       fenced={runtimeFenced}
       fencedFallback={runtimeFencedFallback}
     >
-      <NotesConnector configuration={configuration} />
+      <NotesConnector
+        configuration={configuration}
+        runtimePorts={runtimePorts}
+        mapSession={mapSession}
+      />
     </NotesProvider>
   );
 }

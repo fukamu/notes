@@ -205,91 +205,58 @@ collections. See [Card editor contracts](card-editor.md).
 
 The application selector converts the domain graph to `ConnectionsInputModel`:
 semantic nodes, directed edges, labels, accessible names, current state, and
-branded IDs. `ConnectionsController` owns the graph/metrics key, asynchronous
-ELK request lifecycle, `loading | ready | error` state, stale-result rejection,
-geometry mapping, current node, and complete fallback items. A current-card or
-label-only update remaps the cached geometry without rerunning ELK; a graph or
-metrics change starts a new request. An older promise can never replace the
-new request's graph, metrics, or current semantics.
+branded IDs. `FullNetworkLayoutController` converts the complete semantic graph
+to compact topology, owns the asynchronous Worker lifecycle, rejects stale or
+malformed results, and retains the last complete layout during a refresh. A
+current-card, title, or accessible-label change updates the retained semantic
+input without recomputing topology. Only a node/edge identity change starts a new
+layout request.
 
-`ConnectionsLayoutMetrics` makes node width/height, port size, component/node/
-edge spacing, layer spacing, and four-sided padding explicit. The default
-presentation supplies the former `196 × 72` geometry and spacing values;
-alternate presentations can supply compact or spacious metrics without
-changing graph/layout code. ELK returns finite node, port, section, and bend
-point geometry. The deterministic `connections-path` presentation core validates
-finite orthogonal sections, removes duplicate and forward-collinear points, and
-turns real corners into quadratic SVG commands without reading the DOM. Radius is
-bounded by the presentation adapter, half of both adjacent segments, and half of
-the configured edge/node clearance; endpoints and the final straight tangent are
-unchanged. The memoized default edge layer recomputes these paths only when the
-layout key or curve settings change. SVG elements, arrows, halo, colors,
-decoration, and path layering remain in the default renderer, while the semantic
-edge list remains renderer-independent input.
+The pure full-network layout, routing, render-plan, camera, and accessibility
+modules contain no React, DOM, Worker, storage, clock, or network effects. The
+Worker receives Card IDs and numeric source/target arrays but never card titles or
+bodies. Deterministic component-aware placement retains isolated cards,
+disconnected components, self-links, and both directions of mutual links. Detail
+routing uses node-safe cell corridors; it never changes graph membership.
 
-`useConnectionsViewport` is the browser interaction adapter. It owns Pointer
-Events, pointer capture/cancellation, wheel and keyboard input, ResizeObserver,
-and requestAnimationFrame scheduling. Typed pure functions own fit, pan, zoom,
-pinch anchoring, centering, visibility recovery, resize preservation, and finite
-camera clamps. Every camera path shares the 0.10–2.00 scale range. The same rAF
-commit derives the rounded percentage and the native disabled state of the zoom
-buttons, with an epsilon only for boundary-state stability. Raw moves update only
-one world-wrapper CSS transform at most once per animation frame; they do not
-rerender the React node/edge tree or rerun ELK.
-The initial camera fits the padded graph and recovers the current card when the
-minimum zoom cannot fit everything. A focus event minimally reveals the whole
-node and its focus ring. Both a ready node and every error fallback item dispatch
-the same typed `openCard(CardId)` action.
+The default renderer owns a retained, viewport-sized overview canvas and a detail
+canvas. WebGL2 uploads the complete overview geometry once per layout key;
+Canvas2D builds the same complete geometry in bounded animation-frame chunks when
+WebGL2 is unavailable. Pan and zoom reuse the retained overview. The pure semantic
+plan changes from Overview to Network to Detail by projected node size and only
+the visible detail window materializes labels, card shapes, directional routes,
+and hit targets. Every card and unique directed link remains represented at all
+levels; there is no search or 64/256-card staging path.
 
-An explicitly selected zoom scale is a versioned device-local preference. The
-client adapter decodes and clamps only that scalar, debounces gesture writes, and
-flushes a pending value when the view unmounts. Re-entering the connections view
-or reloading restores the scale against the latest viewport and layout, then
-recenters the current card when necessary. Camera translation, layout geometry,
-and current-card identity are never persisted, synced, or written to IndexedDB or
-D1. Automatic fit, resize, pan, and current-card recovery do not overwrite the
-preference.
+`FullNetworkCameraAdapter` owns Pointer Events, capture/cancellation, wheel,
+keyboard, resize, and animation-frame coalescing. Pure camera functions own fit,
+pan, anchored zoom, pinch, centering, selection activation, resize restore, and
+finite clamping. The initial view fits the complete graph. “現在地” is the only
+automatic current-card centering command; opening a card does not silently
+recenter the map. Camera, selection, and semantic level live in a map session
+owned by the exact Notes runtime scope. They survive card/history/connections
+navigation in that runtime but are not written to localStorage, IndexedDB, D1, or
+sync and are discarded on logout/runtime destruction.
 
-The reproducible desktop/mobile continuous-gesture measurements live in
-`docs/benchmarks/connections-camera-gesture.json`; the post-deployment pointer
-sequence, zoom-boundary, bundle, and three-run measurements live in
-`docs/benchmarks/connections-camera-follow-up.json`. A touch starts with the
-browser's implicit capture on the hit descendant. When a real drag transfers
-capture to the viewport, the descendant's bubbling `lostpointercapture` is not a
-viewport cleanup signal; only a loss targeted at the viewport clears the active
-pointer. This preserves short node taps and makes subsequent single-finger moves
-continuous. Timing values are recorded as evidence rather than unstable CI gates;
-deterministic one-write-per-frame coalescing is asserted in unit and browser
-tests.
+One bounded accessibility proxy exposes complete node/link counts and a logical
+cursor without creating 10,000 hidden DOM nodes. Keyboard commands can enumerate
+all nodes and edges, follow adjacent links, and move between disconnected
+components. At Detail, at most one 44-pixel target per viewport cell is emitted.
+Worker, renderer, and context failures have explicit status and retry actions;
+they never silently fall back to an incomplete graph.
 
-The production layout runner uses the installed ELK build through a dedicated
-browser Web Worker. Offline preparation caches and prewarms the hashed worker
-asset before declaring the app offline-ready. A four-entry bounded cache shares
-in-flight and settled immutable layouts across view re-entry, evicts failures for
-retry, and keys only on semantic graph structure plus layout metrics. The
-controller still owns stale-result rejection and reruns layout only when that key
-changes. Node tests and reproducible route benchmarks use a separate main-thread
-ELK adapter that production modules do not import. Measurements and bundle impact
-are recorded in `docs/benchmarks/connections-worker-cache.json`.
-
-The routing default is ELK Layered with `RIGHT`, `ORTHOGONAL`, and `FREE` port
-constraints. Endpoint side hints are omitted, so the same single ELK pass chooses
-each semantic source and target port position. The adapter infers and validates
-the returned NORTH/EAST/SOUTH/WEST side from finite port geometry before passing
-it inward. Fixed EAST/WEST ports, relative-position two-pass layout, visibility
-post-routing, and splines remain benchmark-only candidates. The full fixed-corpus
-comparison and production worker evidence are in
-`docs/benchmarks/connections-routing-follow-up.json` and
-`docs/benchmarks/connections-routing-production.json`.
+The former ELK/SVG implementation remains only as reproducible historical routing
+research and tests. Production modules do not import its main-thread adapter,
+path builder, or ELK layout. Current architecture and measurements are recorded
+in [ADR 005](adr/005-full-network-semantic-zoom.md).
 
 ## Style and interaction boundary
 
 Structural styles are named separately from the default visual theme:
 `.card-editor-structure`, `.card-link-structure`,
-`.connections-viewport-structure`, `.connections-canvas-structure`,
-`.connections-world`, and `.connections-node-structure` define browser behavior
-or geometry. Visual classes such as `.fukamu-editor`, `.card-link-capsule`,
-`.connections-viewport`, `.connections-map-toolbar`, and `.connections-node` are
+`.connections-viewport-structure` and `.connections-full-network-layer` define
+browser behavior or geometry. Visual classes such as `.fukamu-editor`,
+`.card-link-capsule`, `.connections-viewport`, and `.connections-map-toolbar` are
 replaceable theme choices. `.history-stack` only supplies functional scroll
 padding; fixed history row geometry and viewport-bounded overscan are shared
 with the pure range contract and final 10,000-card browser evidence.

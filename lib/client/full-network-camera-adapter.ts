@@ -4,7 +4,7 @@ import {
   sameFullNetworkMapSessionScope,
   type FullNetworkMapSession,
 } from '@/lib/application/full-network-map-session';
-import type { VaultNotesScope } from '@/lib/application/notes-access';
+import type { NotesScope } from '@/lib/application/notes-runtime';
 import type { CardId } from '@/lib/domain/id';
 import {
   activateFullNetworkNode,
@@ -49,6 +49,7 @@ export type FullNetworkCameraAdapter = Readonly<{
   centerCurrent: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
+  selectCard: (cardId: CardId) => void;
   activateAt: (point: FullNetworkScreenPoint) => void;
   activateCard: (cardId: CardId) => void;
   destroy: () => void;
@@ -86,7 +87,7 @@ function viewportSize(viewport: HTMLElement): Readonly<{
 
 export function createFullNetworkCameraAdapter(input: {
   readonly viewport: HTMLElement;
-  readonly scope: VaultNotesScope;
+  readonly scope: NotesScope;
   readonly session: FullNetworkMapSession;
   readonly dataset: FullNetworkRenderDataset;
   readonly currentCardId: CardId | null;
@@ -271,6 +272,10 @@ export function createFullNetworkCameraAdapter(input: {
       input.onOpenCard(activation.command.cardId);
     }
   };
+  const selectCard = (cardId: CardId): void => {
+    if (!dataset.nodeIndexesByCardId.has(cardId)) return;
+    publish(state.camera, cardId);
+  };
   const activateAt = (screenPoint: FullNetworkScreenPoint): void => {
     const cardId = hitTestFullNetworkNode(dataset, state.camera, screenPoint);
     if (cardId) activateCard(cardId);
@@ -414,6 +419,7 @@ export function createFullNetworkCameraAdapter(input: {
     centerCurrent,
     zoomIn: () => zoom(defaultFullNetworkCameraConfiguration.zoomStep),
     zoomOut: () => zoom(1 / defaultFullNetworkCameraConfiguration.zoomStep),
+    selectCard,
     activateAt,
     activateCard,
     destroy() {

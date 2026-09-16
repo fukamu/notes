@@ -110,9 +110,11 @@ describe('scope-bound full-network worker execution', () => {
 
   it('rejects worker errors and destroys scope resources idempotently', async () => {
     const worker = new FakeWorker();
+    const onDestroy = vi.fn<() => void>();
     const execution = createFullNetworkLayoutWorkerExecution({
       scope,
       createWorker: () => worker,
+      onDestroy,
     });
     const pending = execution.run(request(1));
     worker.emitError();
@@ -122,6 +124,7 @@ describe('scope-bound full-network worker execution', () => {
     execution.destroy();
     execution.destroy();
     expect(execution.isDestroyed()).toBe(true);
+    expect(onDestroy).toHaveBeenCalledOnce();
     await expect(execution.run(request(2))).rejects.toThrow('destroyed');
   });
 });

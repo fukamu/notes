@@ -29,8 +29,8 @@ export const defaultFullNetworkRenderConfiguration = {
   version: 1,
   overviewToNetworkPixels: 3,
   networkToOverviewPixels: 2,
-  networkToDetailPixels: 24,
-  detailToNetworkPixels: 18,
+  networkToDetailPixels: 32,
+  detailToNetworkPixels: 28,
   detailOverscanPixels: 64,
 } as const satisfies FullNetworkRenderConfiguration;
 

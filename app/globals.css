@@ -214,14 +214,23 @@
   background-size: 24px 24px;
 }
 
-.connections-canvas-structure {
-  @apply absolute left-0 top-0;
+.connections-full-network-layer {
+  @apply pointer-events-none absolute inset-0 block;
+  transform-origin: 0 0;
 }
 
-.connections-world {
-  contain: layout style paint;
-  transform-origin: 0 0;
-  will-change: transform;
+.connections-full-network-overlay {
+  @apply absolute inset-0 z-10;
+}
+
+.connections-full-network-status,
+.connections-full-network-bootstrap-status {
+  @apply pointer-events-none absolute inset-0 z-20 grid place-content-center gap-3 p-6 text-center text-sm text-muted-foreground;
+}
+
+.connections-full-network-status button,
+.connections-full-network-bootstrap-status button {
+  @apply pointer-events-auto mx-auto rounded-lg border bg-card px-3 py-2 font-medium text-foreground shadow-sm focus-visible:ring-2 focus-visible:ring-ring;
 }
 
 .connections-viewport-structure[data-dragging='true'] {
@@ -242,14 +251,6 @@
 
 .connections-map-control-square {
   @apply min-w-11 px-0;
-}
-
-.connections-node-structure {
-  @apply absolute z-10 flex flex-col justify-center px-4 text-left;
-}
-
-.connections-node {
-  @apply rounded-xl border bg-card shadow-sm transition hover:border-primary/40 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring aria-[current=true]:border-primary aria-[current=true]:shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary),transparent_72%)];
 }
 
 @media (min-width: 64rem) {

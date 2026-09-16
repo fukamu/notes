@@ -9,8 +9,15 @@ import type {
   NotesPresentationActions,
   NotesPresentationModel,
 } from '@/lib/application/presentation';
-import type { ConnectionsControllerState } from '@/lib/graph/connections-contract';
+import type { FullNetworkLayoutControllerState } from '@/lib/application/full-network-layout-controller';
+import { createFullNetworkMapSession } from '@/lib/application/full-network-map-session';
+import { LEGACY_NOTES_SCOPE } from '@/lib/application/notes-runtime';
 import { createCardEditorCandidateIndex } from '@/lib/application/card-editor-index';
+import {
+  createFullNetworkTopology,
+  defaultFullNetworkLayoutConfiguration,
+  layoutFullNetworkTopology,
+} from '@/lib/graph/full-network-layout';
 import { invariant } from '@/lib/shared/invariant';
 import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
 import {
@@ -179,48 +186,43 @@ function presentationProps(
 }
 
 function controllerState(
-  status: ConnectionsControllerState['status'],
-): ConnectionsControllerState {
+  status: 'loading' | 'error' | 'ready',
+): FullNetworkLayoutControllerState {
   const connections = model({
     kind: 'connections',
     cardId: firstId,
   }).connections;
   invariant(connections, 'Alternate fixture requires connections');
-  const fallbackItems = connections.nodes;
-  const firstItem = fallbackItems[0];
-  invariant(firstItem, 'Alternate fixture requires one connection node');
-  const base = {
-    layoutKey: 'alternate-layout',
-    currentCardId: firstId,
-    fallbackItems,
-  };
-  if (status !== 'ready') return { ...base, status };
-  const node = {
-    ...firstItem,
-    x: 10,
-    y: 20,
-    width: 148,
-    height: 56,
-    ports: [],
-  };
-  return {
-    ...base,
-    status,
-    width: 200,
-    height: 120,
-    nodes: [node],
-    edges: [
-      {
-        sourceCardId: firstId,
-        targetCardId: firstId,
-        accessibleName: 'First から First へのリンク',
-        id: 'edge-0',
-        sourcePortId: 'source-0',
-        targetPortId: 'target-0',
-        sections: [],
+  const topology = createFullNetworkTopology(connections);
+  const configuration = defaultFullNetworkLayoutConfiguration;
+  if (status === 'loading') {
+    return {
+      status,
+      request: {
+        requestId: 1,
+        input: connections,
+        topology,
+        configuration,
       },
-    ],
-    currentNode: node,
+    };
+  }
+  if (status === 'error') {
+    return {
+      status,
+      input: connections,
+      topology,
+      ready: null,
+      reason: 'worker-failure',
+    };
+  }
+  return {
+    status,
+    ready: {
+      input: connections,
+      topology,
+      layout: layoutFullNetworkTopology(topology, configuration),
+      configuration,
+    },
   };
 }
 
@@ -346,28 +348,16 @@ describe('alternate presentation contract', () => {
     const openCard = vi.fn();
     for (const status of ['loading', 'error', 'ready'] as const) {
       const props: ConnectionsRendererProps = {
-        model: controllerState(status),
-        staging: {
-          focusCardId: firstId,
-          focusLabel: '#1 First、現在のカード',
-          totalNodeCount: 1,
-          visibleNodeCount: 1,
-          nodeLimit: 64,
-          hiddenReachableNodeCount: 0,
-          nextExpansionCount: 0,
-          canExpand: false,
-          stoppedAtMaximum: false,
-        },
-        actions: {
-          openCard,
-          expand: vi.fn(),
-        },
-        presentation: alternateNotesAppConfiguration.connectionsPresentation,
+        state: controllerState(status),
+        actions: { openCard },
+        scope: LEGACY_NOTES_SCOPE,
+        session: createFullNetworkMapSession(LEGACY_NOTES_SCOPE),
+        retryLayout: vi.fn(),
       };
       const probe = createAlternateConnectionsProbe(props);
       expect(probe.summary).toContain(status);
       if (status === 'ready') {
-        expect(probe.summary).toContain('200x120:10,20');
+        expect(probe.summary).toContain('First');
       }
       probe.openFirst();
     }
@@ -385,14 +375,8 @@ describe('alternate presentation contract', () => {
     expect(typeof alternateNotesAppConfiguration.ConnectionsRenderer).toBe(
       'function',
     );
-    expect(
-      alternateNotesAppConfiguration.connectionsPresentation.viewportPadding,
-    ).toEqual({ top: 8, right: 8, bottom: 8, left: 8 });
-    expect(
-      alternateNotesAppConfiguration.connectionsPresentation.layoutMetrics,
-    ).toMatchObject({ nodeWidth: 148, nodeHeight: 56, layerSpacing: 80 });
-    expect(
-      alternateNotesAppConfiguration.connectionsPresentation.edgeMaximumRadius,
-    ).toBe(7);
+    expect(Object.keys(alternateNotesAppConfiguration)).not.toContain(
+      'connectionsPresentation',
+    );
   });
 });
