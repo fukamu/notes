@@ -224,7 +224,7 @@ describe('full-network bounded accessibility core', () => {
       camera: {
         offsetX: 320,
         offsetY: 210,
-        scale: 6,
+        scale: 8,
         viewportWidth: 640,
         viewportHeight: 420,
       },

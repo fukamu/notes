@@ -27,24 +27,25 @@ domain implementations.
 
 ## Raw interactive element audit
 
-| Element                   | Why raw/native remains                                           | Role and name                                                             | Focus, keyboard, and touch contract                                    |
-| ------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Title input               | Native single-line editing, selection, and IME                   | textbox, `カードのタイトル`                                               | Native focus/edit/IME; touch caret; updates typed title action         |
-| Tiptap contenteditable    | ProseMirror selection, composition, input, atomic nodes, history | multiline textbox, `カードの本文`                                         | Native focus/IME; candidate keys; platform Undo/Redo; touch caret      |
-| Card link NodeView        | Atomic inline semantic navigation inside contenteditable         | link with action-oriented card label                                      | Direct click/tap and Enter/Space call typed `openCard` once            |
-| Candidate buttons         | Selection must retain editor insertion point                     | named buttons inside `リンクするカードを選ぶ`; active uses `aria-current` | Arrow keys/Enter/Escape through editor; click/tap preserves focus      |
-| Undo/Redo buttons         | Toolbar commands need disabled availability                      | named buttons in toolbar `編集履歴`                                       | Tab + Enter/Space and touch; same history as shortcuts                 |
-| Navigation buttons        | Three semantic application intents                               | nav `表示切り替え`; named buttons; active uses `aria-current=page`        | Tab + Enter/Space and touch; disabled without card context             |
-| History cards             | Semantic selection of a completed item model                     | named buttons; current uses `aria-current`                                | Tab + Enter/Space and touch; current ref scrolls without parent lookup |
-| Conflict choices          | Explicit destructive ambiguity resolution                        | alert plus accessible choice buttons using shared `Button`                | Tab + Enter/Space and touch; typed conflict choice                     |
-| Status button             | Retry is an optional action, not a link                          | live named button; disabled unless retryable                              | Tab + Enter/Space/touch only when retryable                            |
-| Connection nodes/fallback | Every card must remain selectable if layout succeeds or fails    | named buttons; current uses `aria-current`; semantic edge list is named   | Tab + Enter/Space and touch; both variants call the same `openCard`    |
-| Scrollable graph viewport | Large directed graph requires two-axis pan                       | labelled region with busy state                                           | Wheel/trackpad/touch pan; current/resize notifications center safely   |
+| Element                   | Why raw/native remains                                               | Role and name                                                             | Focus, keyboard, and touch contract                                    |
+| ------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Title input               | Native single-line editing, selection, and IME                       | textbox, `カードのタイトル`                                               | Native focus/edit/IME; touch caret; updates typed title action         |
+| Tiptap contenteditable    | ProseMirror selection, composition, input, atomic nodes, history     | multiline textbox, `カードの本文`                                         | Native focus/IME; candidate keys; platform Undo/Redo; touch caret      |
+| Card link NodeView        | Atomic inline semantic navigation inside contenteditable             | link with action-oriented card label                                      | Direct click/tap and Enter/Space call typed `openCard` once            |
+| Candidate buttons         | Selection must retain editor insertion point                         | named buttons inside `リンクするカードを選ぶ`; active uses `aria-current` | Arrow keys/Enter/Escape through editor; click/tap preserves focus      |
+| Undo/Redo buttons         | Toolbar commands need disabled availability                          | named buttons in toolbar `編集履歴`                                       | Tab + Enter/Space and touch; same history as shortcuts                 |
+| Navigation buttons        | Three semantic application intents                                   | nav `表示切り替え`; named buttons; active uses `aria-current=page`        | Tab + Enter/Space and touch; disabled without card context             |
+| History cards             | Semantic selection of a completed item model                         | named buttons; current uses `aria-current`                                | Tab + Enter/Space and touch; current ref scrolls without parent lookup |
+| Conflict choices          | Explicit destructive ambiguity resolution                            | alert plus accessible choice buttons using shared `Button`                | Tab + Enter/Space and touch; typed conflict choice                     |
+| Status button             | Retry is an optional action, not a link                              | live named button; disabled unless retryable                              | Tab + Enter/Space/touch only when retryable                            |
+| Full-network proxy        | Every card/link must remain logically reachable without all-card DOM | named graph region, live cursor and total counts                          | N/E/L/C and modified arrows traverse; Enter uses typed `openCard`      |
+| Graph detail targets      | Visible close-up cards need direct activation                        | bounded named buttons generated only for visible detail cells             | Tab/Enter/Space and touch; exact Card ID selection                     |
+| Scrollable graph viewport | Large directed graph requires two-axis pan and semantic zoom         | labelled region with explicit loading/error/retry state                   | Wheel/trackpad/touch pan/zoom; current/fit commands are explicit       |
 
 Native buttons are retained where they provide correct keyboard activation,
-focus, disabled, and touch behavior without recreating those semantics. SVG is
-decorative (`aria-hidden`); directed meaning is exposed by the accessible edge
-list and tested independently from path tags or marker attributes.
+focus, disabled, and touch behavior without recreating those semantics. Canvas
+graphics are decorative; directed meaning is exposed by the bounded semantic
+cursor and live region, independently from renderer pixels.
 
 ## Structural CSS and theme
 
@@ -80,11 +81,11 @@ changes.
 | 17  | current-history scrolling uses an explicit ref hook                                         | architecture + E2E                                  |
 | 18  | Conflict options and typed resolution are precomputed                                       | view-model/controller tests                         |
 | 19  | Status priority/label/retry semantics are precomputed                                       | view-model + alternate tests                        |
-| 20  | graph key, async layout, stale rejection, and three states are outside SVG                  | connections-controller tests                        |
-| 21  | semantic nodes/edges/geometry/current/fallback and typed open are complete                  | controller + alternate tests                        |
-| 22  | graph and metrics changes supersede stale promises/current state                            | controller tests                                    |
-| 23  | all node/spacing/padding metrics are explicit; compact/spacious work                        | ELK layout tests                                    |
-| 24  | centering takes viewport/node/padding/current/resize inputs safely                          | viewport unit + E2E                                 |
+| 20  | complete graph key, async layout, stale rejection, and explicit failure are outside Canvas  | full-network controller tests                       |
+| 21  | semantic nodes/edges/current and typed open remain complete without a card cap              | controller + alternate + 10k E2E                    |
+| 22  | topology changes supersede stale work; label/current changes reuse geometry                 | full-network controller tests                       |
+| 23  | layout/routing/render budgets and semantic thresholds are explicit                          | full-network layout/routing/render tests            |
+| 24  | fit/pan/zoom/pinch/centering/resize/restore remain pure and scope-bound                     | camera unit + desktop/mobile E2E                    |
 | 25  | controllers/view models contain no renderer, icon, theme, SVG, or DOM dependency            | architecture tests                                  |
 | 26  | semantic tokens/UI primitive remove fixed Conflict palette                                  | architecture/style tests                            |
 | 27  | raw controls have role/name/focus/keyboard/touch contracts                                  | this audit + semantic E2E                           |

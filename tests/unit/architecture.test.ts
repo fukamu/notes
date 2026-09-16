@@ -377,7 +377,7 @@ describe('pure-core dependency direction', () => {
         readFile('lib/client/browser-logout-purge.ts', 'utf8'),
         readFile('lib/client/browser-logout-purge-progress.ts', 'utf8'),
         readFile('lib/client/browser-service-worker-purge.ts', 'utf8'),
-        readFile('lib/client/connections-layout-worker.ts', 'utf8'),
+        readFile('lib/client/full-network-layout-worker.ts', 'utf8'),
         readFile('vitest.config.ts', 'utf8'),
       ]);
 
@@ -392,14 +392,16 @@ describe('pure-core dependency direction', () => {
     expect(progress).toContain('createBrowserLogoutPurgeProgressPort');
     expect(progress).toContain('transaction');
     expect(serviceWorker).toContain('LOGOUT_CACHE_PURGE_RESULT');
-    expect(graphWorker).toContain('terminateWorker');
-    expect(graphWorker).toContain('resetConnectionsLayoutWorker');
+    expect(graphWorker).toContain('active.terminate()');
+    expect(graphWorker).toContain('resetFullNetworkLayoutWorkers');
+    expect(browser).toContain('resetFullNetworkLayoutWorkers');
+    expect(browser).toContain('fullNetworkLayoutWorkersAreReset');
     for (const path of [
       'lib/application/logout-purge-runner.ts',
       'lib/client/browser-logout-purge-progress.ts',
       'lib/client/browser-logout-purge.ts',
       'lib/client/browser-service-worker-purge.ts',
-      'lib/client/connections-layout-worker.ts',
+      'lib/client/full-network-layout-worker.ts',
     ]) {
       expect(testConfig).toContain(`'${path}'`);
     }
@@ -1703,10 +1705,13 @@ describe('swappable presentation architecture', () => {
   it('keeps connections state and geometry controllers renderer-neutral', async () => {
     const files = [
       'lib/graph/connections-contract.ts',
-      'lib/graph/connections-controller.ts',
-      'lib/graph/connections-staging.ts',
-      'lib/graph/elk-layout.ts',
-      'lib/graph/connections-viewport.ts',
+      'lib/graph/full-network-layout.ts',
+      'lib/graph/full-network-routing.ts',
+      'lib/graph/full-network-render-plan.ts',
+      'lib/graph/full-network-camera.ts',
+      'lib/graph/full-network-accessibility.ts',
+      'lib/application/full-network-layout-controller.ts',
+      'lib/application/full-network-map-session.ts',
     ];
     const forbidden =
       /(?:@\/components|lucide|tailwind|className|document\.|window\.|HTMLElement|SVG(?:Path|Element)|marker|halo|--primary)/;
@@ -1716,8 +1721,7 @@ describe('swappable presentation architecture', () => {
     }
   });
 
-  it('bounds connections before the worker-facing controller boundary', async () => {
-    const staging = await readFile('lib/graph/connections-staging.ts', 'utf8');
+  it('sends the complete semantic graph to the full-network boundary without staging or search', async () => {
     const contract = await readFile(
       'lib/graph/connections-contract.ts',
       'utf8',
@@ -1728,110 +1732,103 @@ describe('swappable presentation architecture', () => {
     );
     const view = await readFile('components/connections-view.tsx', 'utf8');
 
-    expect(staging).toContain('maximumNodeLimit: 256');
-    expect(staging).toContain('selectConnectionsStage');
-    expect(staging).not.toContain('queryConnectionsStageNodes');
     expect(contract).not.toContain('setSearchQuery');
     expect(contract).not.toContain('searchResults');
-    expect(adapter).toContain(
-      'selectConnectionsStage(input, { expansionPage })',
-    );
+    expect(adapter).toContain('controller.update(input)');
+    expect(adapter).toContain('createFullNetworkLayoutController');
+    expect(adapter).toContain('createBrowserFullNetworkLayoutExecution');
+    expect(adapter).not.toMatch(/selectConnectionsStage|maximumNodeLimit/);
     expect(view).not.toContain('connections-search');
-    expect(staging).not.toMatch(
-      /(?:react|window\.|document\.|Worker|HTMLElement|performance\.)/,
-    );
-    expect(adapter).toContain(
-      'useConnectionsController(selection.input, presentation)',
-    );
+    expect(view).not.toMatch(/maximumNodeLimit|256枚|さらに表示/);
+    expect(view).toContain('data-total-node-count={nodeCount}');
+    expect(view).toContain('data-total-edge-count={edgeCount}');
+    expect(view).toContain('connections-overview-canvas');
+    expect(view).toContain('connections-detail-canvas');
   });
 
-  it('keeps camera geometry pure and browser gesture effects in the hook adapter', async () => {
-    const camera = await readFile('lib/graph/connections-viewport.ts', 'utf8');
-    const hook = await readFile('hooks/use-connections-viewport.ts', 'utf8');
-    const preference = await readFile(
-      'lib/client/connections-zoom-preference.ts',
+  it('keeps camera geometry pure and browser gesture effects in the scoped adapter', async () => {
+    const camera = await readFile('lib/graph/full-network-camera.ts', 'utf8');
+    const adapter = await readFile(
+      'lib/client/full-network-camera-adapter.ts',
+      'utf8',
+    );
+    const session = await readFile(
+      'lib/application/full-network-map-session.ts',
       'utf8',
     );
 
-    expect(camera).toContain('fitConnectionsCamera');
-    expect(camera).toContain('pinchConnectionsCamera');
-    expect(camera).toContain('ensureConnectionsRectVisible');
+    expect(camera).toContain('fitFullNetworkCamera');
+    expect(camera).toContain('zoomFullNetworkCamera');
+    expect(camera).toContain('restoreFullNetworkMapSnapshot');
     expect(camera).not.toMatch(
       /(?:react|window\.|document\.|PointerEvent|ResizeObserver|HTMLElement)/,
     );
     for (const boundary of [
       'PointerEvent',
-      'ResizeObserver',
-      'requestAnimationFrame',
       'setPointerCapture',
-      'world.style.transform',
+      "window.addEventListener('pointercancel'",
+      "viewport.addEventListener('wheel'",
     ]) {
-      expect(hook).toContain(boundary);
+      expect(adapter).toContain(boundary);
     }
-    expect(hook).not.toMatch(/useState|setCamera/);
-    expect(hook).toContain('readConnectionsZoomPreference');
-    expect(hook).toContain('writeConnectionsZoomPreference');
-    expect(preference).toContain('decodeConnectionsCameraScale');
-    expect(preference).toContain('storage.getItem');
-    expect(preference).toContain('storage.setItem');
+    expect(adapter).not.toMatch(/localStorage|sessionStorage|indexedDB/);
+    expect(session).not.toMatch(/localStorage|sessionStorage|indexedDB/);
   });
 
-  it('keeps curve math pure and recomputes SVG paths only with layout geometry', async () => {
-    const path = await readFile('lib/graph/connections-path.ts', 'utf8');
+  it('keeps semantic render decisions pure and uses retained browser canvases', async () => {
+    const plan = await readFile(
+      'lib/graph/full-network-render-plan.ts',
+      'utf8',
+    );
+    const adapter = await readFile(
+      'lib/client/full-network-renderer.ts',
+      'utf8',
+    );
     const renderer = await readFile('components/connections-view.tsx', 'utf8');
 
-    expect(path).toContain('normalizeConnectionsOrthogonalPoints');
-    expect(path).toContain('createConnectionsSvgPath');
-    expect(path).toContain('`Q ${coordinate');
-    expect(path).not.toMatch(
-      /(?:react|window\.|document\.|PointerEvent|HTMLElement|SVGPathElement|--primary|--card)/,
+    expect(plan).toContain('selectFullNetworkSemanticLevel');
+    expect(plan).toContain('createFullNetworkRenderPlan');
+    expect(plan).not.toMatch(
+      /(?:react|window\.|document\.|requestAnimationFrame|Canvas|WebGL)/,
     );
-    expect(renderer).toContain('const ConnectionsEdgeLayer = memo(');
-    expect(renderer).toContain('previous.layoutKey === next.layoutKey');
-    expect(renderer).toContain('strokeWidth="8"');
-    expect(renderer).toContain("'url(#connection-edge-arrow)'");
-    expect(renderer).toContain('aria-label="カード間の一方向リンク一覧"');
+    expect(adapter).toContain('createFullNetworkBrowserRenderer');
+    expect(adapter).toContain("canvas.getContext('webgl2'");
+    expect(adapter).toContain("canvas.getContext('2d'");
+    expect(renderer).toContain('createFullNetworkRenderPlan');
+    expect(renderer).toContain('createFullNetworkBrowserRenderer');
+    expect(renderer).not.toMatch(/<svg|SVGPathElement|connections-node/);
   });
 
-  it('isolates the ELK Web Worker and keeps the main-thread engine out of production', async () => {
-    const layout = await readFile('lib/graph/elk-layout.ts', 'utf8');
-    const controller = await readFile(
-      'lib/graph/connections-controller.ts',
-      'utf8',
-    );
-    const hook = await readFile('hooks/use-connections-controller.ts', 'utf8');
-    const worker = await readFile(
-      'lib/client/connections-layout-worker.ts',
-      'utf8',
-    );
-    const mainThread = await readFile(
-      'lib/client/connections-layout-main-thread.ts',
-      'utf8',
-    );
+  it('keeps historical ELK research adapters out of production', async () => {
     const offline = await readFile('lib/client/offline.ts', 'utf8');
-
-    expect(layout).not.toMatch(/elk\.bundled|new Worker|new ElkConstructor/);
-    expect(controller).not.toMatch(/connections-layout-worker|elk\.bundled/);
-    expect(hook).toContain('layoutConnectionsGraphInWorker');
-    expect(worker).toContain('new Worker(connectionsLayoutWorkerUrl)');
-    expect(worker).toContain('createBoundedConnectionsLayoutRunner');
-    expect(mainThread).toContain('elkjs/lib/elk.bundled.js');
-    expect(offline).toContain('connectionsLayoutWorkerUrl');
+    expect(offline).toContain('fullNetworkLayoutWorkerUrl');
+    expect(offline).not.toContain('connectionsLayoutWorkerUrl');
 
     const productionFiles = [
       ...(await sourceFiles('app')),
       ...(await sourceFiles('components')),
       ...(await sourceFiles('hooks')),
       ...(await sourceFiles('lib')),
-    ].filter((file) => file !== 'lib/client/connections-layout-main-thread.ts');
-    const importsMainThreadAdapter: string[] = [];
+    ].filter(
+      (file) =>
+        ![
+          'lib/client/connections-layout-main-thread.ts',
+          'lib/graph/elk-layout.ts',
+          'lib/graph/connections-path.ts',
+        ].includes(file),
+    );
+    const importsHistoricalAdapter: string[] = [];
     for (const file of productionFiles) {
       const source = await readFile(file, 'utf8');
-      if (source.includes('connections-layout-main-thread')) {
-        importsMainThreadAdapter.push(file);
+      if (
+        /connections-layout-main-thread|graph\/elk-layout|graph\/connections-path/.test(
+          source,
+        )
+      ) {
+        importsHistoricalAdapter.push(file);
       }
     }
-    expect(importsMainThreadAdapter).toEqual([]);
+    expect(importsHistoricalAdapter).toEqual([]);
   });
 
   it('keeps the full-network worker scope-bound and its layout core renderer-neutral', async () => {
@@ -1858,10 +1855,11 @@ describe('swappable presentation architecture', () => {
       /(?:react|window\.|document\.|new Worker|Canvas|WebGL|fetch\(|indexedDB|Date\.|crypto\.)/,
     );
     expect(routing).not.toMatch(/title|body|accountId|vaultId|sessionId/);
-    expect(controller).toContain('scope: VaultNotesScope');
+    expect(controller).toContain('scope: NotesScope');
+    expect(controller).toContain('sameNotesScope');
     expect(controller).toContain('scope mismatch');
     expect(adapter).toContain('createBrowserFullNetworkLayoutExecution');
-    expect(adapter).toContain("{ type: 'module'");
+    expect(adapter).toContain("type: 'module'");
     expect(adapter).not.toMatch(/title|body/);
     expect(worker).not.toMatch(/title|body|accountId|vaultId|sessionId/);
     expect(packageJson).toContain('typecheck:worker');
@@ -1908,7 +1906,8 @@ describe('swappable presentation architecture', () => {
     expect(camera).not.toMatch(
       /layoutFullNetworkTopology|createFullNetworkRouting/,
     );
-    expect(session).toContain('scope: VaultNotesScope');
+    expect(session).toContain('scope: NotesScope');
+    expect(session).toContain('sameNotesScope');
     expect(session).not.toMatch(/localStorage|sessionStorage|indexedDB/);
     expect(adapter).toContain('Full-network map session scope mismatch');
     expect(adapter).toContain("window.addEventListener('pointercancel'");
@@ -1991,19 +1990,32 @@ describe('swappable presentation architecture', () => {
     expect(violations).toEqual([]);
   });
 
-  it('uses one typed card-selection action for ready and fallback connections', async () => {
-    const renderer = await readFile('components/connections-view.tsx', 'utf8');
-    expect(renderer.match(/actions\.openCard/g)).toHaveLength(2);
+  it('uses one typed card-selection action across the full-network adapters', async () => {
+    const [contract, adapter, renderer] = await Promise.all([
+      readFile('components/presentation-contract.ts', 'utf8'),
+      readFile('components/connections-adapter.tsx', 'utf8'),
+      readFile('components/connections-view.tsx', 'utf8'),
+    ]);
+    expect(contract).toContain("Pick<ConnectionsSelectionActions, 'openCard'>");
+    expect(adapter).toContain('actions={actions}');
+    expect(renderer).toContain('const openCardRef = useRef(actions.openCard)');
+    expect(renderer).toContain(
+      'onOpenCard: (cardId) => openCardRef.current(cardId)',
+    );
     expect(renderer).not.toMatch(/CardRecord|formatDisplayId|visibleTitle/);
   });
 
-  it('keeps renderer-specific SVG assertions out of functional E2E', async () => {
+  it('keeps renderer-specific graphics assertions out of functional E2E', async () => {
     const e2e = await readFile('tests/e2e/notes.spec.ts', 'utf8');
     expect(e2e).not.toMatch(
       /marker-end|getTotalLength|connection-edge-section|SVGPathElement|data-source-port|data-target-port/,
     );
-    expect(e2e).toContain('カード間の一方向リンク一覧');
-    expect(e2e).toContain("toHaveAttribute('aria-current', 'true')");
+    expect(e2e).toContain("toHaveAttribute('data-total-node-count', '10000'");
+    expect(e2e).toContain("'data-total-edge-count'");
+    expect(e2e).toContain("page.getByTestId('connections-search')");
+    expect(e2e).toContain(
+      "page.getByTestId('connections-accessibility-summary')",
+    );
   });
 
   it('uses semantic warning tokens instead of a fixed conflict palette', async () => {

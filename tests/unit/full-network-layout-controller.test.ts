@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { VaultNotesScope } from '@/lib/application/notes-access';
 import {
+  LEGACY_NOTES_SCOPE,
+  type NotesScope,
+} from '@/lib/application/notes-runtime';
+import {
   createFullNetworkLayoutController,
   transitionFullNetworkLayout,
   type FullNetworkLayoutExecutionPort,
@@ -73,7 +77,7 @@ function completed(
 
 function execution(
   run: FullNetworkLayoutExecutionPort['run'],
-  executionScope: VaultNotesScope = scope,
+  executionScope: NotesScope = scope,
 ) {
   const cancel = vi.fn<() => void>();
   const destroy = vi.fn<() => void>();
@@ -115,7 +119,13 @@ describe('scope-bound full-network layout controller', () => {
       title: 'Renamed without topology change',
     };
     controller.update(renamed);
-    expect(controller.getState().status).toBe('ready');
+    const ready = controller.getState();
+    expect(ready.status).toBe('ready');
+    if (ready.status !== 'ready') return;
+    expect(ready.ready.input.currentCardId).toBe(secondId);
+    expect(ready.ready.input.nodes[0]?.title).toBe(
+      'Renamed without topology change',
+    );
     expect(run).toHaveBeenCalledOnce();
   });
 
@@ -223,11 +233,26 @@ describe('scope-bound full-network layout controller', () => {
     expect(port.destroy).toHaveBeenCalledOnce();
   });
 
+  it('accepts the exact legacy runtime scope without weakening scope checks', async () => {
+    const run = vi.fn<FullNetworkLayoutExecutionPort['run']>(async (request) =>
+      completed(request),
+    );
+    const controller = createFullNetworkLayoutController({
+      scope: LEGACY_NOTES_SCOPE,
+      execution: execution(run, LEGACY_NOTES_SCOPE),
+    });
+
+    controller.update(model());
+    await vi.waitFor(() => expect(controller.getState().status).toBe('ready'));
+    expect(run).toHaveBeenCalledOnce();
+  });
+
   it('keeps the pure transition bounded to one ready and one in-flight generation', () => {
     const topology = createTopologyForTransition();
     const initial: FullNetworkLayoutControllerState = { status: 'idle' };
     const loading = transitionFullNetworkLayout(initial, {
       type: 'topology-observed',
+      input: model(),
       topology,
       requestId: 1,
       configuration: requestConfiguration(),
@@ -239,6 +264,7 @@ describe('scope-bound full-network layout controller', () => {
     });
     const superseded = transitionFullNetworkLayout(loading.state, {
       type: 'topology-observed',
+      input: model(firstId, true),
       topology: createTopologyForTransition(true),
       requestId: 2,
       configuration: requestConfiguration(),

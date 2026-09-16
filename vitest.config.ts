@@ -68,7 +68,6 @@ export default defineConfig({
         'lib/client/terms-consent-ui.ts',
         'lib/client/vault-notes-runtime.ts',
         'lib/client/fake-logout-purge-progress.ts',
-        'lib/client/connections-layout-worker.ts',
         'lib/client/full-network-layout-worker.ts',
         'lib/client/full-network-camera-adapter.ts',
         'lib/client/full-network-accessibility-adapter.ts',

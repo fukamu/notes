@@ -1,4 +1,7 @@
-import type { VaultNotesScope } from '@/lib/application/notes-access';
+import {
+  sameNotesScope,
+  type NotesScope,
+} from '@/lib/application/notes-runtime';
 import type { ConnectionsInputModel } from '@/lib/graph/connections-contract';
 import {
   createFullNetworkTopology,
@@ -14,12 +17,15 @@ import {
 } from '@/lib/graph/full-network-layout-protocol';
 
 export type FullNetworkReadyLayout = Readonly<{
+  input: ConnectionsInputModel;
   topology: FullNetworkTopology;
   layout: FullNetworkLayout;
+  configuration: FullNetworkLayoutConfiguration;
 }>;
 
 type FullNetworkPendingRequest = Readonly<{
   requestId: number;
+  input: ConnectionsInputModel;
   topology: FullNetworkTopology;
   configuration: FullNetworkLayoutConfiguration;
 }>;
@@ -41,6 +47,7 @@ export type FullNetworkLayoutControllerState =
     }
   | {
       readonly status: 'error';
+      readonly input: ConnectionsInputModel;
       readonly topology: FullNetworkTopology;
       readonly ready: FullNetworkReadyLayout | null;
       readonly reason:
@@ -53,6 +60,7 @@ export type FullNetworkLayoutControllerState =
 export type FullNetworkLayoutTransitionEvent =
   | {
       readonly type: 'topology-observed';
+      readonly input: ConnectionsInputModel;
       readonly topology: FullNetworkTopology;
       readonly requestId: number;
       readonly configuration: FullNetworkLayoutConfiguration;
@@ -91,7 +99,7 @@ export type FullNetworkLayoutTransition = Readonly<{
 }>;
 
 export type FullNetworkLayoutExecutionPort = Readonly<{
-  scope: VaultNotesScope;
+  scope: NotesScope;
   run: (request: FullNetworkLayoutWorkerRequest) => Promise<unknown>;
   cancel: () => void;
   destroy: () => void;
@@ -163,6 +171,25 @@ function startRequest(
   };
 }
 
+function updateObservedInput(
+  state: FullNetworkLayoutControllerState,
+  input: ConnectionsInputModel,
+): FullNetworkLayoutControllerState {
+  switch (state.status) {
+    case 'loading':
+      return { ...state, request: { ...state.request, input } };
+    case 'refreshing':
+      return { ...state, request: { ...state.request, input } };
+    case 'ready':
+      return { ...state, ready: { ...state.ready, input } };
+    case 'error':
+      return { ...state, input };
+    case 'idle':
+    case 'destroyed':
+      return state;
+  }
+}
+
 export function transitionFullNetworkLayout(
   state: FullNetworkLayoutControllerState,
   event: FullNetworkLayoutTransitionEvent,
@@ -174,10 +201,14 @@ export function transitionFullNetworkLayout(
     case 'topology-observed': {
       const requested = requestedTopology(state);
       if (requested && sameFullNetworkTopology(requested, event.topology)) {
-        return { state, command: { kind: 'none' } };
+        return {
+          state: updateObservedInput(state, event.input),
+          command: { kind: 'none' },
+        };
       }
       return startRequest(state, {
         requestId: event.requestId,
+        input: event.input,
         topology: event.topology,
         configuration: event.configuration,
       });
@@ -188,6 +219,7 @@ export function transitionFullNetworkLayout(
       }
       return startRequest(state, {
         requestId: event.requestId,
+        input: state.input,
         topology: state.topology,
         configuration: event.configuration,
       });
@@ -204,7 +236,12 @@ export function transitionFullNetworkLayout(
       return {
         state: {
           status: 'ready',
-          ready: { topology: event.topology, layout: event.layout },
+          ready: {
+            input: request.input,
+            topology: event.topology,
+            layout: event.layout,
+            configuration: request.configuration,
+          },
         },
         command: { kind: 'none' },
       };
@@ -217,6 +254,7 @@ export function transitionFullNetworkLayout(
       return {
         state: {
           status: 'error',
+          input: request.input,
           topology: request.topology,
           ready: currentReady(state),
           reason: event.reason,
@@ -232,21 +270,12 @@ export function transitionFullNetworkLayout(
   }
 }
 
-function sameScope(left: VaultNotesScope, right: VaultNotesScope): boolean {
-  return (
-    left.accountId === right.accountId &&
-    left.vaultId === right.vaultId &&
-    left.sessionId === right.sessionId &&
-    left.sessionEpoch === right.sessionEpoch
-  );
-}
-
 export function createFullNetworkLayoutController(input: {
-  readonly scope: VaultNotesScope;
+  readonly scope: NotesScope;
   readonly execution: FullNetworkLayoutExecutionPort;
   readonly configuration?: FullNetworkLayoutConfiguration;
 }): FullNetworkLayoutController {
-  if (!sameScope(input.scope, input.execution.scope)) {
+  if (!sameNotesScope(input.scope, input.execution.scope)) {
     throw new Error('Full-network layout execution scope mismatch');
   }
   const configuration =
@@ -272,7 +301,9 @@ export function createFullNetworkLayoutController(input: {
     if (transition.command.cancelInFlight) input.execution.cancel();
     const request: FullNetworkLayoutWorkerRequest = {
       kind: 'layout-full-network',
-      ...transition.command.request,
+      requestId: transition.command.request.requestId,
+      topology: transition.command.request.topology,
+      configuration: transition.command.request.configuration,
     };
     void input.execution.run(request).then(
       (candidate) => {
@@ -328,6 +359,7 @@ export function createFullNetworkLayoutController(input: {
       apply(
         transitionFullNetworkLayout(state, {
           type: 'topology-observed',
+          input: model,
           topology,
           requestId: nextRequestId,
           configuration,

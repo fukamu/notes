@@ -170,9 +170,9 @@ function createGraph(nodeCount: number, prefix: string) {
   const plan = createFullNetworkRenderPlan({
     dataset,
     camera: {
-      offsetX: 320 - firstX * 6,
-      offsetY: 210 - firstY * 6,
-      scale: 6,
+      offsetX: 320 - firstX * 8,
+      offsetY: 210 - firstY * 8,
+      scale: 8,
       viewportWidth: 640,
       viewportHeight: 420,
     },

@@ -151,24 +151,38 @@ export function AlternateCardEditorRenderer(props: CardEditorRendererProps) {
 }
 
 export function createAlternateConnectionsProbe({
-  model,
+  state,
   actions,
 }: ConnectionsRendererProps) {
-  const items = model.status === 'ready' ? model.nodes : model.fallbackItems;
-  const edgeLabels =
-    model.status === 'ready'
-      ? model.edges.map((edge) => edge.accessibleName)
-      : [];
+  const ready =
+    state.status === 'ready' || state.status === 'refreshing'
+      ? state.ready
+      : state.status === 'error'
+        ? state.ready
+        : null;
+  const input =
+    ready?.input ??
+    (state.status === 'loading' || state.status === 'refreshing'
+      ? state.request.input
+      : state.status === 'error'
+        ? state.input
+        : null);
+  const items = input?.nodes ?? [];
+  const edgeLabels = input?.edges.map((edge) => edge.accessibleName) ?? [];
+  const currentIndex = ready
+    ? ready.input.nodes.findIndex(
+        (node) => node.cardId === ready.input.currentCardId,
+      )
+    : -1;
+  const current = currentIndex < 0 ? undefined : items[currentIndex];
   return {
     summary: [
-      model.status,
+      state.status,
       items.map((item) => item.title).join('|'),
       edgeLabels.join('|'),
-      model.status === 'ready'
-        ? (model.currentNode?.title ?? 'missing-current')
-        : 'layout-unavailable',
-      model.status === 'ready'
-        ? `${model.width}x${model.height}:${model.currentNode?.x ?? 'x'},${model.currentNode?.y ?? 'y'}`
+      ready ? (current?.title ?? 'missing-current') : 'layout-unavailable',
+      ready
+        ? `${ready.layout.width}x${ready.layout.height}:${currentIndex < 0 ? 'x' : ready.layout.x[currentIndex]},${currentIndex < 0 ? 'y' : ready.layout.y[currentIndex]}`
         : 'no-geometry',
     ].join(';'),
     openFirst: () => {
@@ -200,19 +214,4 @@ export const alternateNotesAppConfiguration = {
     cardLinkNodeView: { className: 'alternate-card-link' },
   },
   ConnectionsRenderer: AlternateConnectionsRenderer,
-  connectionsPresentation: {
-    layoutMetrics: {
-      nodeWidth: 148,
-      nodeHeight: 56,
-      portSize: 2,
-      componentSpacing: 64,
-      nodeSpacing: 48,
-      edgeNodeSpacing: 24,
-      layerSpacing: 80,
-      edgeLayerSpacing: 28,
-      padding: { top: 16, right: 16, bottom: 16, left: 16 },
-    },
-    viewportPadding: { top: 8, right: 8, bottom: 8, left: 8 },
-    edgeMaximumRadius: 7,
-  },
 } satisfies NotesAppConfiguration;

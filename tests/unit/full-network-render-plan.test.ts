@@ -103,9 +103,9 @@ describe('full-network semantic render plan', () => {
     expect(selectFullNetworkSemanticLevel(3, 'overview')).toBe('network');
     expect(selectFullNetworkSemanticLevel(2.5, 'network')).toBe('network');
     expect(selectFullNetworkSemanticLevel(2, 'network')).toBe('overview');
-    expect(selectFullNetworkSemanticLevel(24, 'network')).toBe('detail');
-    expect(selectFullNetworkSemanticLevel(20, 'detail')).toBe('detail');
-    expect(selectFullNetworkSemanticLevel(18, 'detail')).toBe('network');
+    expect(selectFullNetworkSemanticLevel(32, 'network')).toBe('detail');
+    expect(selectFullNetworkSemanticLevel(30, 'detail')).toBe('detail');
+    expect(selectFullNetworkSemanticLevel(28, 'detail')).toBe('network');
     expect(() =>
       selectFullNetworkSemanticLevel(4, undefined, {
         ...configuration,

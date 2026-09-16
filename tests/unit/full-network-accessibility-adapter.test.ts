@@ -156,6 +156,17 @@ describe('full-network accessibility browser adapter', () => {
       new KeyboardEvent('keydown', { key: 'e', bubbles: true }),
     );
     expect(elements.liveRegion.textContent).toContain('リンク 1/10');
+    adapter.update({
+      scope,
+      index: value.index,
+      dataset: value.dataset,
+      plan: value.plan,
+      availability: {
+        layout: { status: 'ready', hasCompleteLayout: true },
+        renderer: { status: 'ready' },
+      },
+    });
+    expect(elements.liveRegion.textContent).toContain('リンク 1/10');
     elements.region.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
     );

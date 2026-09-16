@@ -1,6 +1,5 @@
 import type { OfflineAppPort } from '@/lib/application/notes-runtime';
-import { prepareConnectionsLayoutWorker } from '@/lib/client/connections-layout-worker';
-import { connectionsLayoutWorkerUrl } from '@/lib/client/connections-layout-worker-url';
+import { fullNetworkLayoutWorkerUrl } from '@/lib/client/full-network-layout-worker-url';
 
 export async function prepareOfflineApp(): Promise<void> {
   const controller = await ensureServiceWorkerController();
@@ -21,7 +20,7 @@ export async function prepareOfflineApp(): Promise<void> {
     '/',
     '/manifest.webmanifest',
     '/favicon.svg',
-    connectionsLayoutWorkerUrl,
+    fullNetworkLayoutWorkerUrl,
   );
 
   await sendWorkerCommand(
@@ -30,7 +29,6 @@ export async function prepareOfflineApp(): Promise<void> {
     'CACHE_URLS_RESULT',
     'ready',
   );
-  await prepareConnectionsLayoutWorker();
   document.documentElement.dataset.offlineReady = 'true';
 }
 
