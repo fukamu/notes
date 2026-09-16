@@ -11,6 +11,23 @@ const refreshedOfferHash = `sha256:${'b'.repeat(64)}`;
 const evidenceId = '01991f20-61d2-7000-8000-000000002301';
 const publicRouteNavigationTimeoutMs = 10_000;
 
+async function expectPublicRouteUrl(page: Page, path: string) {
+  if (path === '/') {
+    await expect
+      .poll(
+        () => {
+          const url = new URL(page.url());
+          return `${url.pathname}${url.search}${url.hash}`;
+        },
+        { timeout: publicRouteNavigationTimeoutMs },
+      )
+      .toMatch(/^\/(?:cards\/[0-9a-f-]+)?$/);
+    return;
+  }
+
+  await expect(page).toHaveURL(path);
+}
+
 async function navigateToUsablePublicRoute(
   page: Page,
   path: string,
@@ -19,10 +36,6 @@ async function navigateToUsablePublicRoute(
 ) {
   try {
     await navigate();
-    await ready.waitFor({
-      state: 'visible',
-      timeout: publicRouteNavigationTimeoutMs,
-    });
   } catch (error) {
     if (!(error instanceof errors.TimeoutError)) throw error;
 
@@ -34,39 +47,63 @@ async function navigateToUsablePublicRoute(
       waitUntil: 'commit',
       timeout: publicRouteNavigationTimeoutMs,
     });
-    await ready.waitFor({
-      state: 'visible',
-      timeout: publicRouteNavigationTimeoutMs,
-    });
   }
-  await expect(page).toHaveURL(path);
+  await ready.waitFor({
+    state: 'visible',
+    timeout: publicRouteNavigationTimeoutMs,
+  });
+  await expectPublicRouteUrl(page, path);
+}
+
+async function openPublicRoute(page: Page, path: string, ready: Locator) {
+  await navigateToUsablePublicRoute(page, path, ready, () =>
+    page.goto(path, {
+      waitUntil: 'commit',
+      timeout: publicRouteNavigationTimeoutMs,
+    }),
+  );
+}
+
+async function followPublicRouteLink(
+  page: Page,
+  link: Locator,
+  path: string,
+  ready: Locator,
+) {
+  await expect(link).toHaveAttribute('href', path);
+  await navigateToUsablePublicRoute(page, path, ready, () =>
+    link.click({ timeout: publicRouteNavigationTimeoutMs }),
+  );
+}
+
+async function goBackToPublicRoute(page: Page, path: string, ready: Locator) {
+  await navigateToUsablePublicRoute(page, path, ready, () =>
+    page.goBack({
+      waitUntil: 'commit',
+      timeout: publicRouteNavigationTimeoutMs,
+    }),
+  );
 }
 
 test('local fixture exercises checkout and cancellation without a provider', async ({
   page,
 }) => {
-  await navigateToUsablePublicRoute(
+  await openPublicRoute(
     page,
     '/pricing',
     page.getByRole('heading', { name: '料金', level: 1 }),
-    () =>
-      page.goto('/pricing', {
-        waitUntil: 'commit',
-        timeout: publicRouteNavigationTimeoutMs,
-      }),
   );
   const checkoutLink = page.getByRole('link', {
     name: '申込み内容を確認する',
   });
-  await expect(checkoutLink).toHaveAttribute('href', '/checkout');
-  await navigateToUsablePublicRoute(
+  await followPublicRouteLink(
     page,
+    checkoutLink,
     '/checkout',
     page.getByRole('heading', {
       name: '申込み内容の最終確認',
       level: 1,
     }),
-    () => checkoutLink.click({ timeout: publicRouteNavigationTimeoutMs }),
   );
   await expect(page.getByTestId('billing-fixture-notice')).toBeVisible();
   await page
@@ -85,12 +122,11 @@ test('local fixture exercises checkout and cancellation without a provider', asy
   const accountBillingLink = page.getByRole('link', {
     name: '契約管理のサンプルを開く',
   });
-  await expect(accountBillingLink).toHaveAttribute('href', '/account/billing');
-  await navigateToUsablePublicRoute(
+  await followPublicRouteLink(
     page,
+    accountBillingLink,
     '/account/billing',
     page.getByRole('button', { name: 'サブスクリプションを解約' }),
-    () => accountBillingLink.click({ timeout: publicRouteNavigationTimeoutMs }),
   );
   await page.getByRole('button', { name: 'サブスクリプションを解約' }).click();
   await page.getByRole('button', { name: '解約を申し込む' }).click();
@@ -123,7 +159,11 @@ test('dedicated checkout keeps legal detail out of Notes and requires affirmativ
     });
   });
 
-  await page.goto('/checkout');
+  await openPublicRoute(
+    page,
+    '/checkout',
+    page.getByRole('heading', { name: '申込み内容の最終確認' }),
+  );
   await expect(
     page.getByRole('heading', { name: '申込み内容の最終確認' }),
   ).toBeVisible();
@@ -179,11 +219,23 @@ test('dedicated checkout keeps legal detail out of Notes and requires affirmativ
     await expect(checkbox).not.toBeChecked();
   }
 
-  await page.getByRole('link', { name: '料金へ戻って確認・訂正' }).click();
+  const pricingLink = page.getByRole('link', {
+    name: '料金へ戻って確認・訂正',
+  });
+  await followPublicRouteLink(
+    page,
+    pricingLink,
+    '/pricing',
+    page.getByRole('heading', { name: '料金', exact: true }),
+  );
   await expect(
     page.getByRole('heading', { name: '料金', exact: true }),
   ).toBeVisible();
-  await page.goBack();
+  await goBackToPublicRoute(
+    page,
+    '/checkout',
+    page.getByRole('heading', { name: '申込み内容の最終確認' }),
+  );
   await expect(
     page.getByRole('heading', { name: '申込み内容の最終確認' }),
   ).toBeVisible();
@@ -213,7 +265,11 @@ test('a stale offer is reloaded and must be accepted again', async ({
     });
   });
 
-  await page.goto('/checkout');
+  await openPublicRoute(
+    page,
+    '/checkout',
+    page.getByRole('heading', { name: '申込み内容の最終確認' }),
+  );
   await page
     .getByRole('checkbox', { name: /有料サブスクリプションの申込み/ })
     .check();
@@ -256,7 +312,11 @@ test('a server terms gate rejection reloads and clears both checkout consents', 
     });
   });
 
-  await page.goto('/checkout');
+  await openPublicRoute(
+    page,
+    '/checkout',
+    page.getByRole('heading', { name: '申込み内容の最終確認' }),
+  );
   await page
     .getByRole('checkbox', { name: /有料サブスクリプションの申込み/ })
     .check();
@@ -306,7 +366,11 @@ test('checkout retry reuses the same submission identifier', async ({
     });
   });
 
-  await page.goto('/checkout');
+  await openPublicRoute(
+    page,
+    '/checkout',
+    page.getByRole('heading', { name: '申込み内容の最終確認' }),
+  );
   await page
     .getByRole('checkbox', { name: /有料サブスクリプションの申込み/ })
     .check();
@@ -349,7 +413,11 @@ test('account billing cancellation uses an accessible dialog, focus return, and 
     });
   });
 
-  await page.goto('/account/billing');
+  await openPublicRoute(
+    page,
+    '/account/billing',
+    page.getByRole('button', { name: 'サブスクリプションを解約' }),
+  );
   const trigger = page.getByRole('button', {
     name: 'サブスクリプションを解約',
   });
@@ -373,7 +441,11 @@ test('account billing cancellation uses an accessible dialog, focus return, and 
 test('account terms uses a dedicated keyboard-accessible page and resets on navigation', async ({
   page,
 }) => {
-  await page.goto('/account/terms');
+  await openPublicRoute(
+    page,
+    '/account/terms',
+    page.getByRole('heading', { name: '利用規約の確認' }),
+  );
   await expect(
     page.getByRole('heading', { name: '利用規約の確認' }),
   ).toBeVisible();
@@ -386,9 +458,21 @@ test('account terms uses a dedicated keyboard-accessible page and resets on navi
   await expect(checkbox).not.toBeChecked();
   await expect(accept).toBeDisabled();
 
-  await page.getByRole('link', { name: '独立した利用規約ページ' }).click();
+  const termsLink = page.getByRole('link', {
+    name: '独立した利用規約ページ',
+  });
+  await followPublicRouteLink(
+    page,
+    termsLink,
+    '/legal/terms',
+    page.getByRole('heading', { name: '利用規約' }),
+  );
   await expect(page.getByRole('heading', { name: '利用規約' })).toBeVisible();
-  await page.goBack();
+  await goBackToPublicRoute(
+    page,
+    '/account/terms',
+    page.getByRole('heading', { name: '利用規約の確認' }),
+  );
   await expect(
     page.getByRole('heading', { name: '利用規約の確認' }),
   ).toBeVisible();
@@ -404,10 +488,20 @@ test('account terms uses a dedicated keyboard-accessible page and resets on navi
   );
   await expect(page.getByRole('checkbox')).toHaveCount(0);
 
-  await page.getByRole('link', { name: 'ノートへ戻る' }).click();
+  const notesLink = page.getByRole('link', { name: 'ノートへ戻る' });
+  await followPublicRouteLink(
+    page,
+    notesLink,
+    '/',
+    page.getByTestId('new-card'),
+  );
   await expect(page.getByTestId('new-card')).toBeVisible();
   await expect(page.getByTestId('terms-consent-panel')).toHaveCount(0);
-  await page.goBack();
+  await goBackToPublicRoute(
+    page,
+    '/account/terms',
+    page.getByRole('heading', { name: '利用規約の確認' }),
+  );
   await expect(
     page.getByRole('heading', { name: '利用規約の確認' }),
   ).toBeVisible();
@@ -416,13 +510,17 @@ test('account terms uses a dedicated keyboard-accessible page and resets on navi
 test('billing pages do not mount in the normal Notes interface', async ({
   page,
 }) => {
-  await page.goto('/');
+  await openPublicRoute(page, '/', page.getByTestId('new-card'));
   await expect(page.getByTestId('new-card')).toBeVisible();
   await expect(page.getByTestId('billing-fixture-notice')).toHaveCount(0);
   await expect(page.getByTestId('billing-terms')).toHaveCount(0);
   await expect(page.getByTestId('terms-consent-panel')).toHaveCount(0);
 
-  await page.goto('/account/billing');
+  await openPublicRoute(
+    page,
+    '/account/billing',
+    page.getByRole('heading', { name: '契約管理' }),
+  );
   await expect(page.getByTestId('new-card')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '契約管理' })).toBeVisible();
   await expect(
