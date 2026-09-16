@@ -621,9 +621,12 @@ test('headless editor preserves IME, candidate keyboard, link activation and ide
     state: 'attached',
     timeout: 15_000,
   });
+  // Stop the Notes runtime before replacing IndexedDB out of band. Otherwise
+  // an in-flight local save can repopulate the database between clear and reload.
+  await page.goto('/pricing');
   await context.setOffline(true);
   await replaceLocalCards(page, []);
-  await page.reload();
+  await page.goto('/');
   await expect(page.getByTestId('new-card')).toBeVisible();
 
   await page.getByTestId('new-card').click();
