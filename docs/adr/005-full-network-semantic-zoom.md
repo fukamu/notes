@@ -213,11 +213,63 @@ renderer can use straight retained overview vertices for density and materialize
 these node-safe routes only for bounded detail, while both layers retain the
 same semantic edge identity.
 
+## Issue #288 semantic renderer boundary
+
+The renderer keeps a topology/layout keyed dataset independent from the camera.
+Its retained overview geometry is exactly four Float32 coordinates per directed
+edge and two per node. An x-sorted node index and an incident-edge index support
+bounded detail and current/selected emphasis without placing titles or bodies in
+the global geometry. For the representative 10,000/19,951 graph these renderer
+arrays total 638,828 bytes: 319,216 edge positions, 80,000 node positions, 40,000
+node-index bytes, 40,004 incident offsets, and 159,608 incident edge indexes. For
+the quota-derived 10,000/1,160,000 envelope the same formula is 28,000,004 bytes.
+The separate 24-byte-per-edge routing index from #287 remains separately reported;
+neither number hides graph or edge sampling.
+
+LOD is a pure render-plan decision based on projected node diameter. The default
+overview/network hysteresis enters at 3 px and exits at 2 px; network/detail enters
+at 24 px and exits at 18 px. A jump may cross two levels directly. The plan keeps
+overview node/edge counts equal to the complete dataset at every level, while its
+viewport query materializes node-safe routes, card shapes, direction cues and
+labels only for Network or Detail. Current and selected nodes and their incident
+edges remain a bounded emphasis overlay even in Overview. Reduced-motion changes
+the level transition from a crossfade to an immediate cut; it never changes graph
+membership.
+
+The browser adapter uses a viewport-sized retained overview canvas plus a
+viewport-sized detail canvas. WebGL2 is attempted first. Its position buffers are
+uploaded once per geometry key, every edge and node is submitted, and the retained
+fit-all raster is moved by a CSS camera transform without a global redraw. Resize,
+DPR and theme changes redraw from retained buffers but do not rerun layout or
+routing. The adapter checks the actual backing dimensions against
+`MAX_TEXTURE_SIZE`, treats context loss as an explicit status, and rebuilds from
+the typed dataset after restoration. When WebGL2 is unavailable or Canvas2D is
+explicitly selected, the full overview is built in 20,000-item rAF chunks rather
+than a synchronous all-edge loop. Camera submissions are latest-wins and share at
+most one scheduled frame; only the viewport detail layer is redrawn.
+
+The renderer accepts label/title values only for node indexes already selected by
+the current detail plan. It has no `CardRecord`, account, Vault or session payload,
+and `dispose()` cancels pending frames, deletes GPU resources, clears both backing
+stores and rejects later work. The production composition does not import this
+adapter yet, so #288 adds no default application path or production bundle entry;
+the scoped connection in #291 must remeasure its bundle effect.
+
+Focused Playwright coverage runs the actual bundled adapter on Desktop Chromium
+and Pixel 7 emulation. A deterministic 256-node/20,480-edge graph reaches ready in
+both WebGL2 and multi-frame Canvas2D modes, preserves exact ready counts, coalesces
+20 camera submissions into one frame/detail draw without another overview draw,
+redraws both layers for a theme change, and rebuilds after a synthetic WebGL
+context-loss/restoration sequence. These are structural browser checks, not a
+wall-clock SLA. The test host still uses Chromium/ANGLE and mobile emulation; real
+hardware-GPU throughput, thermal behavior and device-specific driver loss remain
+deployment/canary risks rather than claims made by this Issue.
+
 ## Rollback
 
-Issues #285–#287 introduce no persistent data or schema migration. Their PRs can
-be reverted in reverse dependency order to remove routing, layout/worker, and
-then benchmark/decision artifacts. None is connected to the default UI yet. The
-feature remains isolated on `integration/106-full-network-semantic-zoom`;
-canonical integration and `main` are unchanged until their separate roll-up
-approvals.
+Issues #285–#288 introduce no persistent data or schema migration. Their PRs can
+be reverted in reverse dependency order to remove rendering, routing,
+layout/worker, and then benchmark/decision artifacts. None is connected to the
+default UI yet. The feature remains isolated on
+`integration/106-full-network-semantic-zoom`; canonical integration and `main`
+are unchanged until their separate roll-up approvals.

@@ -1868,6 +1868,32 @@ describe('swappable presentation architecture', () => {
     expect(packageJson).toContain('lint:worker');
   });
 
+  it('keeps semantic zoom decisions pure and graphics effects in the client adapter', async () => {
+    const [plan, renderer, composition] = await Promise.all([
+      readFile('lib/graph/full-network-render-plan.ts', 'utf8'),
+      readFile('lib/client/full-network-renderer.ts', 'utf8'),
+      readFile('components/notes-app.tsx', 'utf8'),
+    ]);
+
+    expect(plan).not.toMatch(
+      /(?:react|window\.|document\.|requestAnimationFrame|Canvas|WebGL|fetch\(|indexedDB|Date\.|crypto\.)/,
+    );
+    expect(plan).not.toMatch(/title|body|accountId|vaultId|sessionId/);
+    expect(plan).not.toMatch(
+      /layoutFullNetworkTopology|createFullNetworkRouting/,
+    );
+    expect(renderer).toContain('createFullNetworkBrowserRenderer');
+    expect(renderer).toContain("canvas.getContext('webgl2'");
+    expect(renderer).toContain("canvas.getContext('2d'");
+    expect(renderer).toContain("'webglcontextlost'");
+    expect(renderer).toContain("'webglcontextrestored'");
+    expect(renderer).not.toMatch(/CardRecord|accountId|vaultId|sessionId/);
+    expect(renderer).not.toMatch(
+      /layoutFullNetworkTopology|createFullNetworkRouting/,
+    );
+    expect(composition).not.toContain('full-network-renderer');
+  });
+
   it('joins feature adapters and concrete renderers only at the composition root', async () => {
     const files = await sourceFiles('components');
     const violations: string[] = [];
