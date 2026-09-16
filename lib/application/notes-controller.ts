@@ -16,7 +16,7 @@ import type {
 } from '@/lib/application/presentation';
 import {
   selectCardEditorInputModel,
-  selectConflictViewModel,
+  selectConflictViewModels,
   selectConnectionsViewModel,
   selectHistoryViewModel,
   selectNotesStatus,
@@ -30,6 +30,7 @@ import type {
   SaveState,
   SyncState,
 } from '@/lib/domain/types';
+import type { CardEditorCandidateIndex } from '@/lib/application/card-editor-index';
 
 export type NotesStorePort = {
   cards: CardRecord[];
@@ -37,6 +38,7 @@ export type NotesStorePort = {
   initialization: NotesInitializationLifecycle;
   saveState: SaveState;
   syncState: SyncState;
+  resolvingConflictCardIds: CardId[];
   createCard: () => Promise<CardRecord>;
   hasCard: (cardId: CardId) => boolean;
   updateCard: (cardId: CardId, edit: CardEdit) => void;
@@ -123,6 +125,9 @@ export function createNotesApplicationController(
 export function createNotesPresentationModel(
   store: NotesStorePort,
   location: NotesLocation,
+  options: Readonly<{
+    cardEditorIndex: CardEditorCandidateIndex | null;
+  }> = { cardEditorIndex: null },
 ): NotesPresentationModel {
   const currentCardId = notesLocationCardId(location);
   const currentCard =
@@ -130,10 +135,9 @@ export function createNotesPresentationModel(
   const view = activeView(location);
   const hasCurrentCard = currentCard !== null;
 
-  return {
+  const common = {
     initialized: isNotesInitialized(store.initialization),
     location,
-    activeView: view,
     availableViews: {
       card: hasCurrentCard,
       history: true,
@@ -143,18 +147,56 @@ export function createNotesPresentationModel(
     currentCardDisplayLabel: currentCard
       ? formatDisplayId(currentCard.displayId)
       : null,
-    cardEditor: currentCard
-      ? selectCardEditorInputModel(store.cards, currentCard)
-      : null,
-    history: selectHistoryViewModel(store.cards, currentCardId),
-    conflicts: currentCard
-      ? store.conflicts
-          .filter((conflict) => conflict.cardId === currentCard.id)
-          .map((conflict) => selectConflictViewModel(conflict, store.cards))
-      : [],
-    connections: currentCard
-      ? selectConnectionsViewModel(store.cards, currentCard.id)
-      : null,
     status: selectNotesStatus(store.saveState, store.syncState),
   };
+
+  switch (view) {
+    case 'card':
+      return {
+        ...common,
+        activeView: view,
+        cardEditor: currentCard
+          ? selectCardEditorInputModel(
+              store.cards,
+              currentCard,
+              options.cardEditorIndex,
+            )
+          : null,
+        history: null,
+        conflicts: currentCard
+          ? selectConflictViewModels(
+              store.conflicts.filter(
+                (conflict) => conflict.cardId === currentCard.id,
+              ),
+              store.cards,
+              {
+                resolvingCardIds: store.resolvingConflictCardIds,
+                failed:
+                  store.saveState === 'failed' || store.syncState === 'failed',
+              },
+            )
+          : [],
+        connections: null,
+      };
+    case 'history':
+      return {
+        ...common,
+        activeView: view,
+        cardEditor: null,
+        history: selectHistoryViewModel(store.cards, currentCardId),
+        conflicts: [],
+        connections: null,
+      };
+    case 'connections':
+      return {
+        ...common,
+        activeView: view,
+        cardEditor: null,
+        history: null,
+        conflicts: [],
+        connections: currentCard
+          ? selectConnectionsViewModel(store.cards, currentCard.id)
+          : null,
+      };
+  }
 }

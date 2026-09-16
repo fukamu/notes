@@ -1,7 +1,10 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { CONNECTIONS_ZOOM_PREFERENCE_KEY } from '@/lib/client/connections-zoom-preference';
+import type { CardRecord } from '@/lib/domain/types';
+import { decodeSyncRequest } from '@/lib/sync/protocol';
 import { connectionsBenchmarkFixtures } from '@/tests/fixtures/connections-layout';
-import { fixtureCardId } from '@/tests/fixtures/ids';
+import { createClientPerformanceFixture } from '@/tests/fixtures/client-performance';
+import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -50,6 +53,53 @@ async function serveSyncCards(page: Page, cards: LocalFixtureCard[]) {
   });
 }
 
+async function serveInitialPerformanceCards(
+  page: Page,
+  cards: readonly CardRecord[],
+) {
+  const cardIds = new Set(cards.map((card) => card.id));
+  const fallbackTargetId = cards[0]?.id;
+  const responseBody = JSON.stringify({
+    cards: cards.map((card) => ({
+      id: card.id,
+      officialDisplayId: card.displayId.value,
+      title: card.title,
+      body: card.body.map((segment) =>
+        segment.type === 'link' &&
+        !cardIds.has(segment.targetCardId) &&
+        fallbackTargetId
+          ? { ...segment, targetCardId: fallbackTargetId }
+          : segment,
+      ),
+      createdAt: card.createdAt,
+      updatedAt: card.updatedAt,
+      revision: card.serverRevision ?? 1,
+    })),
+    conflicts: [],
+    acknowledgedMutationIds: [],
+  });
+  const emptyResponseBody = JSON.stringify({
+    cards: [],
+    conflicts: [],
+    acknowledgedMutationIds: [],
+  });
+  let initialResponsePending = true;
+  await page.route('**/api/sync', async (route) => {
+    const body = initialResponsePending ? responseBody : emptyResponseBody;
+    initialResponsePending = false;
+    await route.fulfill({ status: 200, contentType: 'application/json', body });
+  });
+}
+
+async function browserHeapUsed(page: Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const memory: unknown = Reflect.get(performance, 'memory');
+    if (typeof memory !== 'object' || memory === null) return null;
+    const heap: unknown = Reflect.get(memory, 'usedJSHeapSize');
+    return typeof heap === 'number' && Number.isFinite(heap) ? heap : null;
+  });
+}
+
 async function forceConnectionsLayoutFailure(page: Page) {
   await page.route('**/_next/static/chunks/notes-app-*.js', async (route) => {
     const response = await route.fetch();
@@ -69,10 +119,50 @@ async function forceConnectionsLayoutFailure(page: Page) {
 
 async function openFromHistory(page: Page, title: string) {
   await page.getByRole('button', { name: '過去のカード' }).click();
-  await page
-    .getByTestId('history-list')
-    .getByText(title, { exact: true })
-    .click();
+  const historyList = page.getByTestId('history-list');
+  await expect(historyList).toHaveAttribute('data-history-total-count', /\d+/);
+  const target = historyList.getByText(title, { exact: true });
+  const scanCurrentHistory = async (): Promise<boolean> => {
+    await historyList.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await expect
+      .poll(() =>
+        historyList
+          .getAttribute('data-history-window-start')
+          .then((value) => Number(value)),
+      )
+      .toBe(0);
+
+    for (;;) {
+      if ((await target.count()) > 0) return true;
+      const state = await historyList.evaluate((element) => ({
+        end: Number(element.dataset.historyWindowEnd),
+        total: Number(element.dataset.historyTotalCount),
+        rowHeight: Number(element.dataset.historyRowHeight),
+        rowGap: Number(element.dataset.historyRowGap),
+      }));
+      if (state.end >= state.total) return false;
+      const previousStart = Number(
+        await historyList.getAttribute('data-history-window-start'),
+      );
+      await historyList.evaluate(
+        (element, nextScrollTop) => {
+          element.scrollTop = nextScrollTop;
+        },
+        state.end * (state.rowHeight + state.rowGap),
+      );
+      await expect
+        .poll(() =>
+          historyList
+            .getAttribute('data-history-window-start')
+            .then((value) => Number(value)),
+        )
+        .toBeGreaterThan(previousStart);
+    }
+  };
+  await expect.poll(scanCurrentHistory, { timeout: 30_000 }).toBe(true);
+  await target.click();
   await expect(page.getByTestId('card-title')).toHaveValue(title);
 }
 
@@ -150,7 +240,7 @@ async function expectMapNodeFullyVisible(node: Locator, graph: Locator) {
 async function replaceLocalCards(page: Page, cards: LocalFixtureCard[]) {
   await page.evaluate(async (fixtureCards) => {
     await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open('fukamu-notes', 1);
+      const request = indexedDB.open('fukamu-notes', 2);
       request.addEventListener('error', () => reject(request.error), {
         once: true,
       });
@@ -1910,12 +2000,17 @@ test('history centers the current card without obscuring its page chrome', async
 
   const historyList = page.getByTestId('history-list');
   const historyItems = historyList.locator('[data-display-value]');
-  await expect(historyItems).toHaveCount(12, { timeout: 15_000 });
-  expect(
-    await historyItems.evaluateAll((items) =>
-      items.map((item) => Number(item.getAttribute('data-display-value'))),
+  await expect(historyList).toHaveAttribute('data-history-total-count', '12');
+  await expect(historyItems.first()).toBeVisible({ timeout: 15_000 });
+  const initialDisplayValues = await historyItems.evaluateAll((items) =>
+    items.map((item) => Number(item.getAttribute('data-display-value'))),
+  );
+  expect(initialDisplayValues).toEqual(
+    Array.from(
+      { length: initialDisplayValues.length },
+      (_, index) => 12 - index,
     ),
-  ).toEqual([12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
+  );
   const currentItem = historyList.locator('[data-current=true]');
   await expect(currentItem).toHaveAttribute('aria-current', 'page', {
     timeout: 15_000,
@@ -1950,6 +2045,222 @@ test('history centers the current card without obscuring its page chrome', async
   if (testInfo.project.name === 'mobile-chromium') {
     expect(layout.listBottom).toBeLessThan(layout.navigationTop);
   }
+
+  await historyList.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(historyList).toHaveAttribute('data-history-window-end', '12');
+  const finalDisplayValues = await historyItems.evaluateAll((items) =>
+    items.map((item) => Number(item.getAttribute('data-display-value'))),
+  );
+  expect(finalDisplayValues.at(-1)).toBe(1);
+  expect(finalDisplayValues).toEqual(
+    [...finalDisplayValues].sort((left, right) => right - left),
+  );
+});
+
+test('10k history remains viewport-bounded and operable in the browser', async ({
+  page,
+  context,
+}, testInfo) => {
+  test.setTimeout(180_000);
+  const cards = createClientPerformanceFixture();
+  const current = cards[Math.floor(cards.length / 2)];
+  if (!current) throw new Error('10k browser fixture omitted its current card');
+  await serveInitialPerformanceCards(page, cards);
+
+  const initialStarted = performance.now();
+  const response = await page.goto(`/cards/${current.id}`);
+  expect(response?.status()).toBe(200);
+  await expect(page.getByTestId('card-title')).toHaveValue(current.title, {
+    timeout: 30_000,
+  });
+  const initialRenderMs = performance.now() - initialStarted;
+  const initialDomCount = await page.locator('*').count();
+  const heapAfterInitialBytes = await browserHeapUsed(page);
+
+  const historyStarted = performance.now();
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  const historyList = page.getByTestId('history-list');
+  await expect(historyList).toHaveAttribute(
+    'data-history-total-count',
+    '10000',
+    { timeout: 30_000 },
+  );
+  await expect(historyList.locator('[data-current=true]')).toBeVisible();
+  const historyOpenMs = performance.now() - historyStarted;
+  const initialHistorySnapshot = await historyList.evaluate((element) => {
+    const renderCount = Number(element.dataset.historyRenderCount);
+    const rowHeight = Number(element.dataset.historyRowHeight);
+    const rowGap = Number(element.dataset.historyRowGap);
+    const overscan = Number(element.dataset.historyOverscan);
+    const extent = rowHeight + rowGap;
+    return {
+      renderCount,
+      renderLimit: Math.ceil(element.clientHeight / extent) + 1 + overscan * 2,
+      totalDomCount: document.getElementsByTagName('*').length,
+      viewportHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      scrollTop: element.scrollTop,
+      windowStart: Number(element.dataset.historyWindowStart),
+      windowEnd: Number(element.dataset.historyWindowEnd),
+    };
+  });
+  expect(initialHistorySnapshot.renderCount).toBeGreaterThan(0);
+  expect(initialHistorySnapshot.renderCount).toBeLessThanOrEqual(
+    initialHistorySnapshot.renderLimit,
+  );
+  expect(initialHistorySnapshot.windowStart).toBeGreaterThan(0);
+  expect(initialHistorySnapshot.windowEnd).toBeLessThan(10_000);
+  expect(initialHistorySnapshot.scrollTop).toBeGreaterThan(0);
+
+  const scrollStarted = performance.now();
+  await historyList.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(historyList).toHaveAttribute('data-history-window-end', '10000');
+  const historyScrollMs = performance.now() - scrollStarted;
+  const bottomRenderCount = Number(
+    await historyList.getAttribute('data-history-render-count'),
+  );
+  expect(bottomRenderCount).toBeLessThanOrEqual(
+    initialHistorySnapshot.renderLimit,
+  );
+
+  const lastVisibleButton = historyList.locator('button[data-card-id]').last();
+  await lastVisibleButton.focus();
+  await lastVisibleButton.press('Home');
+  await expect(page.locator('button[data-card-id]:focus')).toHaveAttribute(
+    'data-display-value',
+    '10000',
+  );
+  await page.locator('button[data-card-id]:focus').press('End');
+  await expect(page.locator('button[data-card-id]:focus')).toHaveAttribute(
+    'data-display-value',
+    '1',
+  );
+  await page.locator('button[data-card-id]:focus').press('Enter');
+  await expect(page.getByTestId('card-title')).toHaveValue(
+    'Performance card 00001',
+  );
+  await page.goBack();
+  await expect(historyList).toHaveAttribute(
+    'data-history-total-count',
+    '10000',
+  );
+
+  await page.goto(`/cards/${current.id}`);
+  await expect(page.getByTestId('card-title')).toHaveValue(current.title);
+  const editor = page.getByTestId('body-editor');
+  await editor.focus();
+  await editor.press('End');
+  const input = await context.newCDPSession(page);
+  const linkQueryStarted = performance.now();
+  await input.send('Input.insertText', { text: ' #99' });
+  const candidates = page.getByTestId('link-candidates').getByRole('button');
+  await expect(candidates).toHaveCount(111);
+  const linkQueryMs = performance.now() - linkQueryStarted;
+  await input.detach();
+
+  const artifact = {
+    schemaVersion: 1,
+    issue: 204,
+    project: testInfo.project.name,
+    fixture: {
+      cards: cards.length,
+      seed: '0x1260cafe',
+      textCharactersPerCard: 768,
+    },
+    measurements: {
+      initialRenderMs,
+      historyOpenMs,
+      historyScrollMs,
+      linkQueryMs,
+      initialDomCount,
+      historyDomCount: initialHistorySnapshot.totalDomCount,
+      historyMountedRows: initialHistorySnapshot.renderCount,
+      historyMountedRowLimit: initialHistorySnapshot.renderLimit,
+      historyViewportHeight: initialHistorySnapshot.viewportHeight,
+      historyScrollHeight: initialHistorySnapshot.scrollHeight,
+      heapAfterInitialBytes,
+      heapAfterInteractionsBytes: await browserHeapUsed(page),
+    },
+    policy: {
+      timing: 'observational; no absolute wall-clock CI threshold',
+      memory:
+        'observational; availability and GC behavior are browser-specific',
+      requiredGate:
+        'mounted history rows <= viewport rows + one partial row + 2x fixed overscan',
+    },
+  };
+  console.info(`history-10k-browser-benchmark ${JSON.stringify(artifact)}`);
+  await testInfo.attach('history-10k-browser-benchmark.json', {
+    body: Buffer.from(`${JSON.stringify(artifact, null, 2)}\n`),
+    contentType: 'application/json',
+  });
+});
+
+test('10k connections bounds layout and DOM around the current card', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  const cards = createClientPerformanceFixture();
+  const current = cards[5_000];
+  if (!current) {
+    throw new Error('10k connections fixture omitted its current card');
+  }
+  await serveInitialPerformanceCards(page, cards);
+
+  const response = await page.goto(`/cards/${current.id}/connections`);
+  expect(response?.status()).toBe(200);
+  const graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-total-node-count', '10000', {
+    timeout: 30_000,
+  });
+  await expect(graph).toHaveAttribute('data-visible-node-count', '64');
+  await expect(graph).toHaveAttribute('data-node-limit', '64');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 30_000,
+  });
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(64);
+  await expect(page.getByTestId('connections-search')).toHaveCount(0);
+
+  for (const visibleCount of [128, 192, 256]) {
+    await page.getByTestId('connections-expand').click();
+    await expect(graph).toHaveAttribute(
+      'data-visible-node-count',
+      String(visibleCount),
+    );
+    await expect(graph).toHaveAttribute(
+      'data-node-limit',
+      String(visibleCount),
+    );
+    await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+      timeout: 30_000,
+    });
+    await expect(graph.locator('button[data-card-id]')).toHaveCount(
+      visibleCount,
+    );
+  }
+  await expect(page.getByTestId('connections-expand')).toHaveCount(0);
+  await expect(
+    page.getByText(
+      '一度に表示できる上限に達しました。別のカードを開くと、そのカードの周辺を表示できます。',
+    ),
+  ).toBeVisible();
+
+  const nextCard = graph
+    .locator('button[data-card-id]:not([aria-current="true"])')
+    .first();
+  const nextCardId = await nextCard.getAttribute('data-card-id');
+  if (!nextCardId) throw new Error('Bounded graph omitted a linked card');
+  await nextCard.click();
+  await expectPathname(page, `/cards/${nextCardId}`);
+  await page.getByRole('button', { name: 'つながり', exact: true }).click();
+  await expectPathname(page, `/cards/${nextCardId}/connections`);
+  await expect(graph).toHaveAttribute('data-stage-focus-id', nextCardId);
+  await expect(graph).toHaveAttribute('data-visible-node-count', '64');
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(64);
 });
 
 test('layout failure fallback opens a card through URL navigation', async ({
@@ -2297,4 +2608,110 @@ test('concurrent device edits preserve both versions for explicit resolution', a
 
   await first.close();
   await second.close();
+});
+
+test('current input resolves every visible conflict from the notice close action', async ({
+  page,
+}) => {
+  const cardId = fixtureCardId('e2e-current-conflict-card');
+  const firstConflictId = fixtureConflictId('e2e-current-conflict-first');
+  const secondConflictId = fixtureConflictId('e2e-current-conflict-second');
+  const currentTitle = '現在入力を最終内容として残す';
+  let resolved = false;
+  let observedConflictIds: readonly string[] = [];
+  await page.route('**/api/sync', async (route) => {
+    const request = decodeSyncRequest(route.request().postDataJSON());
+    const resolveMutation = request.mutations.find(
+      (mutation) => mutation.kind === 'resolve',
+    );
+    if (resolveMutation) {
+      observedConflictIds = resolveMutation.conflictIds;
+      resolved = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          cards: [
+            {
+              id: cardId,
+              officialDisplayId: 29,
+              title: resolveMutation.title,
+              body: resolveMutation.body,
+              createdAt: 1,
+              updatedAt: resolveMutation.updatedAt,
+              revision: 4,
+            },
+          ],
+          conflicts: [],
+          acknowledgedMutationIds: [resolveMutation.mutationId],
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        cards: [
+          {
+            id: cardId,
+            officialDisplayId: 29,
+            title: resolved ? currentTitle : '同期済みの現在カード',
+            body: [],
+            createdAt: 1,
+            updatedAt: resolved ? 4 : 3,
+            revision: resolved ? 4 : 3,
+          },
+        ],
+        conflicts: resolved
+          ? []
+          : [
+              {
+                id: firstConflictId,
+                cardId,
+                serverRevision: 1,
+                localTitle: '編集案A-1',
+                localBody: [],
+                serverTitle: '編集案B-1',
+                serverBody: [],
+                createdAt: 2,
+              },
+              {
+                id: secondConflictId,
+                cardId,
+                serverRevision: 2,
+                localTitle: '編集案A-2',
+                localBody: [],
+                serverTitle: '編集案B-2',
+                serverBody: [],
+                createdAt: 3,
+              },
+            ],
+        acknowledgedMutationIds: [],
+      }),
+    });
+  });
+
+  const response = await page.goto(`/cards/${cardId}`);
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole('alert')).toHaveCount(2);
+  await page.getByTestId('card-title').fill(currentTitle);
+  await expect(page.getByTestId('save-sync-status')).toHaveText('保存済み');
+
+  await page
+    .getByRole('button', {
+      name: '現在の入力を残して競合案を破棄',
+    })
+    .first()
+    .click();
+  await expect(
+    page.getByText('選んだ内容で競合を解決しています。').first(),
+  ).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0, { timeout: 15_000 });
+  expect(observedConflictIds).toEqual([firstConflictId, secondConflictId]);
+  await expect(page.getByTestId('card-title')).toHaveValue(currentTitle);
+
+  await page.reload();
+  await expect(page.getByTestId('card-title')).toHaveValue(currentTitle);
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });

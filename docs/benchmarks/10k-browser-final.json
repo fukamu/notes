@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "issue": 204,
+  "branchPoint": "70e816b14183e0abe3df1206be24c756f1f68261",
+  "generatedAt": "2026-09-14T18:18:44+09:00",
+  "fixture": {
+    "cardCount": 10000,
+    "seed": "0x1260cafe",
+    "textCharactersPerCard": 768,
+    "v1WireAdjustment": "The 48 deterministic missing-link targets are rebound to fixture card 1 because the existing v1 snapshot decoder requires every link target to be present in the same response. No production data is used."
+  },
+  "environment": {
+    "node": "v26.8.1",
+    "playwright": "1.63.0",
+    "browser": "Chrome for Testing 153.0.8010.12",
+    "platform": "Linux 7.0.0-31-generic x86_64",
+    "cpu": "11th Gen Intel(R) Core(TM) i7-1195G7 @ 2.90GHz",
+    "cpuCount": 8
+  },
+  "methodology": {
+    "command": "npx playwright test --grep '10k history remains viewport-bounded' --repeat-each=3",
+    "projects": ["chromium", "mobile-chromium"],
+    "sampleCountPerProject": 3,
+    "outlierPolicy": "No sample is removed. Median and nearest-rank p95 are retained.",
+    "timingPolicy": "Browser timings are observational and are not an absolute wall-clock CI gate.",
+    "memoryPolicy": "performance.memory is browser-specific, GC-sensitive, and coarse in this configuration; raw observations are retained but are not a CI gate.",
+    "requiredMechanismGate": "Mounted history rows must be no greater than ceil(viewportHeight / 120) + one partial row + two times the fixed 4-row overscan."
+  },
+  "windowContract": {
+    "rowHeightPx": 108,
+    "rowGapPx": 12,
+    "contentPaddingPx": 12,
+    "overscanRowsPerSide": 4,
+    "totalScrollHeightPx": 1200012
+  },
+  "projects": [
+    {
+      "name": "chromium",
+      "viewportHeightPx": 494,
+      "historyMountedRows": 13,
+      "historyMountedRowLimit": 14,
+      "initialDomCount": 109,
+      "historyDomCount": 205,
+      "heapAfterInitialSamplesBytes": [29400000, 29400000, 29400000],
+      "heapAfterInteractionsSamplesBytes": [29400000, 29400000, 29400000],
+      "timings": {
+        "initialRender": {
+          "medianMs": 1053.986,
+          "p95Ms": 1075.398,
+          "samplesMs": [1047.426, 1053.986, 1075.398]
+        },
+        "historyOpen": {
+          "medianMs": 123.866,
+          "p95Ms": 124.54,
+          "samplesMs": [124.54, 123.866, 111.1]
+        },
+        "historyScroll": {
+          "medianMs": 20.157,
+          "p95Ms": 20.309,
+          "samplesMs": [20.157, 20.309, 17.288]
+        },
+        "linkQuery99": {
+          "medianMs": 272.847,
+          "p95Ms": 294.242,
+          "samplesMs": [94.365, 294.242, 272.847]
+        }
+      }
+    },
+    {
+      "name": "mobile-chromium",
+      "viewportHeightPx": 545,
+      "historyMountedRows": 13,
+      "historyMountedRowLimit": 14,
+      "initialDomCount": 109,
+      "historyDomCount": 205,
+      "heapAfterInitialSamplesBytes": [29400000, 29400000, 39600000],
+      "heapAfterInteractionsSamplesBytes": [29400000, 29400000, 39600000],
+      "timings": {
+        "initialRender": {
+          "medianMs": 1046.771,
+          "p95Ms": 1056.821,
+          "samplesMs": [1056.821, 1038.902, 1046.771]
+        },
+        "historyOpen": {
+          "medianMs": 104.626,
+          "p95Ms": 124.756,
+          "samplesMs": [92.098, 124.756, 104.626]
+        },
+        "historyScroll": {
+          "medianMs": 19.962,
+          "p95Ms": 38.857,
+          "samplesMs": [38.857, 19.348, 19.962]
+        },
+        "linkQuery99": {
+          "medianMs": 277.46,
+          "p95Ms": 296.417,
+          "samplesMs": [277.46, 275.034, 296.417]
+        }
+      }
+    }
+  ],
+  "verifiedInteractions": [
+    "current item is restored and visible at the 10,000-card midpoint",
+    "scrolling reaches the final item while remaining within the mounted-row limit",
+    "Home and End move focus across unmounted ranges",
+    "Enter opens a virtualized card and browser Back restores history",
+    "prefix 99 exposes the same 111 explicit link candidates",
+    "desktop and Pixel 7 projects both pass"
+  ],
+  "connectionsBoundary": {
+    "automaticFullGraphBuildDuringCardOrHistory": false,
+    "existingInputBoundaryMedianMs": 15.272,
+    "existingInputBoundaryP95Ms": 16.709,
+    "source": "docs/benchmarks/10k-client-baseline.json",
+    "decisionRequired": "Whether connections should render all 10,000 cards or progressively disclose the current neighborhood/search results remains unresolved. This benchmark does not activate the full graph."
+  }
+}

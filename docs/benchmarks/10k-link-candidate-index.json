@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "issue": 202,
+  "branchPoint": "137e78af5ad4283859153518a9c3f541a84f67cc",
+  "generatedAt": "2026-09-14T08:12:34.290Z",
+  "environment": {
+    "node": "v26.8.1",
+    "platform": "linux",
+    "release": "7.0.0-31-generic",
+    "cpu": "11th Gen Intel(R) Core(TM) i7-1195G7 @ 2.90GHz",
+    "cpuCount": 8
+  },
+  "fixture": {
+    "cards": 10000,
+    "source": "tests/fixtures/client-performance.ts",
+    "currentCardId": "01991f20-61d2-7000-8000-000000001389",
+    "prefixes": ["", "9", "99", "999"]
+  },
+  "mechanismBudget": {
+    "exactLegacyOrderAndFiltering": true,
+    "bodyAndRevisionOnlyEditReusesIndexIdentity": true,
+    "indexedPrefixQuery": "One ReadonlyMap lookup; no card-replica scan and no candidate sort.",
+    "maximumResults": 9999,
+    "rebuildInputs": [
+      "card id/order/create/delete",
+      "display-id kind/value",
+      "title",
+      "createdAt tie-break",
+      "current card id"
+    ],
+    "ignoredInputs": ["body", "updatedAt", "localRevision", "serverRevision"]
+  },
+  "comparisonPolicy": "Legacy and indexed queries run on the same host, fixture, current card and prefix sequence. Timing is review evidence; exact result equivalence, direct prefix lookup and index identity reuse are the required gates.",
+  "measurements": [
+    {
+      "name": "legacy-prefix-sequence-scan-sort",
+      "warmupIterations": 1,
+      "measuredIterations": 5,
+      "timing": {
+        "minimumMs": 2.435,
+        "medianMs": 3.153,
+        "p95Ms": 3.333,
+        "maximumMs": 3.333,
+        "samplesMs": [3.282, 3.153, 3.333, 2.744, 2.435]
+      }
+    },
+    {
+      "name": "candidate-index-build",
+      "warmupIterations": 1,
+      "measuredIterations": 5,
+      "timing": {
+        "minimumMs": 6.221,
+        "medianMs": 10.432,
+        "p95Ms": 10.889,
+        "maximumMs": 10.889,
+        "samplesMs": [10.432, 10.481, 10.889, 6.221, 6.411]
+      }
+    },
+    {
+      "name": "indexed-prefix-sequence",
+      "warmupIterations": 20,
+      "measuredIterations": 100,
+      "timing": {
+        "minimumMs": 0.001,
+        "medianMs": 0.001,
+        "p95Ms": 0.001,
+        "maximumMs": 0.003,
+        "samplesMs": [
+          0.002, 0.003, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001,
+          0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001,
+          0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001,
+          0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001,
+          0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001,
+          0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001,
+          0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001,
+          0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001,
+          0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001,
+          0.001, 0.001, 0.001, 0.002, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001
+        ]
+      }
+    },
+    {
+      "name": "body-only-index-reconcile",
+      "warmupIterations": 5,
+      "measuredIterations": 30,
+      "timing": {
+        "minimumMs": 0.356,
+        "medianMs": 0.394,
+        "p95Ms": 0.403,
+        "maximumMs": 0.407,
+        "samplesMs": [
+          0.356, 0.407, 0.395, 0.393, 0.393, 0.402, 0.388, 0.401, 0.395, 0.398,
+          0.394, 0.391, 0.393, 0.389, 0.396, 0.394, 0.399, 0.394, 0.398, 0.392,
+          0.403, 0.388, 0.391, 0.392, 0.39, 0.397, 0.39, 0.402, 0.394, 0.393
+        ]
+      }
+    }
+  ]
+}

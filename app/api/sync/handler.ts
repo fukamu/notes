@@ -3,6 +3,7 @@ import { synchronize } from '@/db/d1-sync';
 import { BoundaryDecodeError } from '@/lib/codec/core';
 import { CONTRACT_LIMITS } from '@/lib/domain/types';
 import { decodeSyncRequest, decodeSyncResponse } from '@/lib/sync/protocol';
+import { legacySyncIsEnabled } from '@/server/runtime-mode';
 
 class PayloadTooLargeError extends Error {}
 
@@ -31,6 +32,12 @@ export async function handleSyncRequest(
   request: Request,
   environment: unknown,
 ): Promise<Response> {
+  if (!legacySyncIsEnabled(environment)) {
+    return Response.json(
+      { error: 'この同期経路は利用できません。' },
+      { status: 404, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
   let input: ReturnType<typeof decodeSyncRequest>;
   try {
     input = decodeSyncRequest(await readJson(request));
@@ -49,13 +56,10 @@ export async function handleSyncRequest(
     return Response.json(response, {
       headers: { 'Cache-Control': 'no-store' },
     });
-  } catch (error) {
+  } catch {
     // Keep operational diagnostics server-side without serializing request data
     // or database values into logs or responses.
-    console.error(
-      'sync failed',
-      error instanceof Error ? error.name : 'UnknownError',
-    );
+    console.error('sync failed', 'Error');
     return Response.json(
       { error: '同期に失敗しました。入力内容は端末に残っています。' },
       { status: 500 },

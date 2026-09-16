@@ -7,7 +7,7 @@ import {
   stringDecoder,
   type DecodeIssue,
   type InferDecoder,
-} from '@/lib/codec/core';
+} from '../codec/core';
 import {
   bodyDecoder,
   conflictRecordDecoder,
@@ -17,14 +17,14 @@ import {
   nonNegativeSafeIntegerDecoder,
   type BodySegment,
   type PendingMutation,
-} from '@/lib/domain/types';
+} from '../domain/types';
 import {
   cardIdDecoder,
   deviceIdDecoder,
   mutationIdDecoder,
   type DeviceId,
-} from '@/lib/domain/id';
-import { assertNever } from '@/lib/shared/invariant';
+} from '../domain/id';
+import { assertNever } from '../shared/invariant';
 
 export const syncRequestDecoder = objectDecoder({
   deviceId: deviceIdDecoder,

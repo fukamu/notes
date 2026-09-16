@@ -1,0 +1,1743 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "5722c00a-2eed-4c16-9f2e-814c3f6bd830",
+  "prevId": "3a12b39e-a6fc-4fb4-9bfd-2e260cd4049d",
+  "tables": {
+    "card_mutations": {
+      "name": "card_mutations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "card_id": {
+          "name": "card_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_card_mutations_card_id": {
+          "name": "idx_card_mutations_card_id",
+          "columns": ["card_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "cards": {
+      "name": "cards",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_id": {
+          "name": "display_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "body_json": {
+          "name": "body_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_mutation_id": {
+          "name": "last_mutation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_cards_display_id": {
+          "name": "idx_cards_display_id",
+          "columns": ["display_id"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "cards_display_id_check": {
+          "name": "cards_display_id_check",
+          "value": "\"cards\".\"display_id\" > 0"
+        },
+        "cards_revision_check": {
+          "name": "cards_revision_check",
+          "value": "\"cards\".\"revision\" > 0"
+        }
+      }
+    },
+    "conflicts": {
+      "name": "conflicts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "card_id": {
+          "name": "card_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "server_revision": {
+          "name": "server_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "local_title": {
+          "name": "local_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "local_body_json": {
+          "name": "local_body_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "server_title": {
+          "name": "server_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "server_body_json": {
+          "name": "server_body_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_conflicts_card_id": {
+          "name": "idx_conflicts_card_id",
+          "columns": ["card_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "sync_state": {
+      "name": "sync_state",
+      "columns": {
+        "singleton": {
+          "name": "singleton",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "next_display_id": {
+          "name": "next_display_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sync_state_singleton_check": {
+          "name": "sync_state_singleton_check",
+          "value": "\"sync_state\".\"singleton\" = 1"
+        },
+        "sync_state_next_display_id_check": {
+          "name": "sync_state_next_display_id_check",
+          "value": "\"sync_state\".\"next_display_id\" > 0"
+        }
+      }
+    },
+    "billing_checkout_intents": {
+      "name": "billing_checkout_intents",
+      "columns": {
+        "checkout_intent_id": {
+          "name": "checkout_intent_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subscription_id": {
+          "name": "subscription_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_checkout_ref": {
+          "name": "provider_checkout_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "opened_at": {
+          "name": "opened_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_billing_checkout_provider_ref": {
+          "name": "idx_billing_checkout_provider_ref",
+          "columns": ["provider", "provider_checkout_ref"],
+          "isUnique": true
+        },
+        "idx_billing_checkout_subscription": {
+          "name": "idx_billing_checkout_subscription",
+          "columns": ["subscription_id", "created_at"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "billing_checkout_subscription_fk": {
+          "name": "billing_checkout_subscription_fk",
+          "tableFrom": "billing_checkout_intents",
+          "tableTo": "billing_subscriptions",
+          "columnsFrom": ["subscription_id"],
+          "columnsTo": ["subscription_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "billing_checkout_intents_shape_check": {
+          "name": "billing_checkout_intents_shape_check",
+          "value": "\"billing_checkout_intents\".\"status\" IN ('created', 'opened')\n        AND \"billing_checkout_intents\".\"created_at\" >= 0\n        AND (\n          (\"billing_checkout_intents\".\"status\" = 'created' AND \"billing_checkout_intents\".\"provider_checkout_ref\" IS NULL AND \"billing_checkout_intents\".\"opened_at\" IS NULL)\n          OR (\"billing_checkout_intents\".\"status\" = 'opened' AND \"billing_checkout_intents\".\"provider_checkout_ref\" IS NOT NULL AND \"billing_checkout_intents\".\"opened_at\" >= \"billing_checkout_intents\".\"created_at\")\n        )"
+        }
+      }
+    },
+    "billing_provider_event_receipts": {
+      "name": "billing_provider_event_receipts",
+      "columns": {
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_event_id": {
+          "name": "provider_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subscription_id": {
+          "name": "subscription_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fact_kind": {
+          "name": "fact_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "applied_version": {
+          "name": "applied_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_billing_provider_events_subscription": {
+          "name": "idx_billing_provider_events_subscription",
+          "columns": ["subscription_id", "occurred_at", "provider_event_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "billing_provider_events_subscription_fk": {
+          "name": "billing_provider_events_subscription_fk",
+          "tableFrom": "billing_provider_event_receipts",
+          "tableTo": "billing_subscriptions",
+          "columnsFrom": ["subscription_id"],
+          "columnsTo": ["subscription_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "billing_provider_event_receipts_provider_provider_event_id_pk": {
+          "columns": ["provider", "provider_event_id"],
+          "name": "billing_provider_event_receipts_provider_provider_event_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "billing_provider_events_shape_check": {
+          "name": "billing_provider_events_shape_check",
+          "value": "\"billing_provider_event_receipts\".\"fact_kind\" IN (\n          'trial-started', 'payment-method-updated', 'invoice-paid',\n          'invoice-payment-failed', 'invoice-payment-action-required',\n          'cancellation-scheduled', 'subscription-cancelled'\n        )\n        AND \"billing_provider_event_receipts\".\"outcome\" IN ('applied', 'ignored')\n        AND \"billing_provider_event_receipts\".\"occurred_at\" >= 0 AND \"billing_provider_event_receipts\".\"applied_version\" > 0\n        AND \"billing_provider_event_receipts\".\"recorded_at\" >= 0"
+        }
+      }
+    },
+    "billing_reconciliation_checkpoints": {
+      "name": "billing_reconciliation_checkpoints",
+      "columns": {
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subscription_id": {
+          "name": "subscription_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "applied_version": {
+          "name": "applied_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_billing_reconcile_subscription": {
+          "name": "idx_billing_reconcile_subscription",
+          "columns": ["subscription_id", "observed_at", "snapshot_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "billing_reconcile_subscription_fk": {
+          "name": "billing_reconcile_subscription_fk",
+          "tableFrom": "billing_reconciliation_checkpoints",
+          "tableTo": "billing_subscriptions",
+          "columnsFrom": ["subscription_id"],
+          "columnsTo": ["subscription_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "billing_reconciliation_checkpoints_provider_snapshot_id_pk": {
+          "columns": ["provider", "snapshot_id"],
+          "name": "billing_reconciliation_checkpoints_provider_snapshot_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "billing_reconcile_shape_check": {
+          "name": "billing_reconcile_shape_check",
+          "value": "\"billing_reconciliation_checkpoints\".\"observed_at\" >= 0 AND \"billing_reconciliation_checkpoints\".\"applied_version\" > 0 AND \"billing_reconciliation_checkpoints\".\"recorded_at\" >= 0"
+        }
+      }
+    },
+    "billing_subscriptions": {
+      "name": "billing_subscriptions",
+      "columns": {
+        "subscription_id": {
+          "name": "subscription_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "vault_id": {
+          "name": "vault_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_customer_ref": {
+          "name": "provider_customer_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provider_subscription_ref": {
+          "name": "provider_subscription_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payment_method_ready": {
+          "name": "payment_method_ready",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payment_method_updated_at": {
+          "name": "payment_method_updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "trial_started_at": {
+          "name": "trial_started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "trial_ends_at": {
+          "name": "trial_ends_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "trial_observed_at": {
+          "name": "trial_observed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "paid_period_started_at": {
+          "name": "paid_period_started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "paid_period_ends_at": {
+          "name": "paid_period_ends_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_paid_at": {
+          "name": "last_paid_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_paid_invoice_ref": {
+          "name": "last_paid_invoice_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "delinquency_reason": {
+          "name": "delinquency_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "delinquency_since": {
+          "name": "delinquency_since",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "delinquency_invoice_ref": {
+          "name": "delinquency_invoice_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cancel_at": {
+          "name": "cancel_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cancellation_updated_at": {
+          "name": "cancellation_updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cancelled_at": {
+          "name": "cancelled_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_reconciled_at": {
+          "name": "last_reconciled_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_billing_subscriptions_owner": {
+          "name": "idx_billing_subscriptions_owner",
+          "columns": ["account_id", "vault_id"],
+          "isUnique": true
+        },
+        "idx_billing_subscriptions_customer": {
+          "name": "idx_billing_subscriptions_customer",
+          "columns": ["provider", "provider_customer_ref"],
+          "isUnique": true
+        },
+        "idx_billing_subscriptions_provider_subscription": {
+          "name": "idx_billing_subscriptions_provider_subscription",
+          "columns": ["provider", "provider_subscription_ref"],
+          "isUnique": true
+        },
+        "idx_billing_subscriptions_status": {
+          "name": "idx_billing_subscriptions_status",
+          "columns": ["status", "updated_at", "subscription_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "billing_subscriptions_owner_fk": {
+          "name": "billing_subscriptions_owner_fk",
+          "tableFrom": "billing_subscriptions",
+          "tableTo": "personal_vaults",
+          "columnsFrom": ["account_id", "vault_id"],
+          "columnsTo": ["account_id", "vault_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "billing_subscriptions_shape_check": {
+          "name": "billing_subscriptions_shape_check",
+          "value": "\"billing_subscriptions\".\"version\" > 0\n        AND \"billing_subscriptions\".\"status\" IN ('checkout-pending', 'trialing', 'active', 'delinquent', 'cancelled')\n        AND \"billing_subscriptions\".\"payment_method_ready\" IN (0, 1)\n        AND (\"billing_subscriptions\".\"provider_customer_ref\" IS NULL) = (\"billing_subscriptions\".\"provider_subscription_ref\" IS NULL)\n        AND (\"billing_subscriptions\".\"last_paid_at\" IS NULL) = (\"billing_subscriptions\".\"last_paid_invoice_ref\" IS NULL)\n        AND \"billing_subscriptions\".\"created_at\" >= 0 AND \"billing_subscriptions\".\"updated_at\" >= \"billing_subscriptions\".\"created_at\"\n        AND (\"billing_subscriptions\".\"status\" <> 'trialing' OR (\n          \"billing_subscriptions\".\"trial_started_at\" IS NOT NULL AND \"billing_subscriptions\".\"trial_ends_at\" > \"billing_subscriptions\".\"trial_started_at\"\n        ))\n        AND (\"billing_subscriptions\".\"status\" <> 'active' OR (\n          \"billing_subscriptions\".\"paid_period_started_at\" IS NOT NULL AND \"billing_subscriptions\".\"paid_period_ends_at\" > \"billing_subscriptions\".\"paid_period_started_at\"\n          AND \"billing_subscriptions\".\"delinquency_reason\" IS NULL AND \"billing_subscriptions\".\"delinquency_since\" IS NULL\n          AND \"billing_subscriptions\".\"delinquency_invoice_ref\" IS NULL\n        ))\n        AND (\"billing_subscriptions\".\"status\" <> 'delinquent' OR (\n          \"billing_subscriptions\".\"delinquency_reason\" IN ('payment-failed', 'payment-action-required')\n          AND \"billing_subscriptions\".\"delinquency_since\" IS NOT NULL AND \"billing_subscriptions\".\"delinquency_invoice_ref\" IS NOT NULL\n        ))\n        AND (\"billing_subscriptions\".\"status\" <> 'cancelled' OR \"billing_subscriptions\".\"cancelled_at\" IS NOT NULL)"
+        }
+      }
+    },
+    "accounts": {
+      "name": "accounts",
+      "columns": {
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "accounts_created_at_check": {
+          "name": "accounts_created_at_check",
+          "value": "\"accounts\".\"created_at\" >= 0"
+        }
+      }
+    },
+    "identities": {
+      "name": "identities",
+      "columns": {
+        "identity_id": {
+          "name": "identity_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "issuer": {
+          "name": "issuer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_identities_issuer_subject": {
+          "name": "idx_identities_issuer_subject",
+          "columns": ["issuer", "subject"],
+          "isUnique": true
+        },
+        "idx_identities_account": {
+          "name": "idx_identities_account",
+          "columns": ["account_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "identities_account_fk": {
+          "name": "identities_account_fk",
+          "tableFrom": "identities",
+          "tableTo": "accounts",
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["account_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "identities_provider_check": {
+          "name": "identities_provider_check",
+          "value": "\"identities\".\"provider\" IN ('google-oidc', 'email-otp')"
+        },
+        "identities_created_at_check": {
+          "name": "identities_created_at_check",
+          "value": "\"identities\".\"created_at\" >= 0"
+        }
+      }
+    },
+    "personal_vaults": {
+      "name": "personal_vaults",
+      "columns": {
+        "vault_id": {
+          "name": "vault_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_personal_vaults_account": {
+          "name": "idx_personal_vaults_account",
+          "columns": ["account_id"],
+          "isUnique": true
+        },
+        "idx_personal_vaults_owner": {
+          "name": "idx_personal_vaults_owner",
+          "columns": ["account_id", "vault_id"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "personal_vaults_account_fk": {
+          "name": "personal_vaults_account_fk",
+          "tableFrom": "personal_vaults",
+          "tableTo": "accounts",
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["account_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "personal_vaults_created_at_check": {
+          "name": "personal_vaults_created_at_check",
+          "value": "\"personal_vaults\".\"created_at\" >= 0"
+        }
+      }
+    },
+    "schema_migrations": {
+      "name": "schema_migrations",
+      "columns": {
+        "migration_id": {
+          "name": "migration_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "checksum": {
+          "name": "checksum",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "applied_at": {
+          "name": "applied_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "schema_migrations_applied_at_check": {
+          "name": "schema_migrations_applied_at_check",
+          "value": "\"schema_migrations\".\"applied_at\" >= 0"
+        }
+      }
+    },
+    "sessions": {
+      "name": "sessions",
+      "columns": {
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "vault_id": {
+          "name": "vault_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "session_epoch": {
+          "name": "session_epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revocation_reason": {
+          "name": "revocation_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_sessions_token_hash": {
+          "name": "idx_sessions_token_hash",
+          "columns": ["token_hash"],
+          "isUnique": true
+        },
+        "idx_sessions_account": {
+          "name": "idx_sessions_account",
+          "columns": ["account_id"],
+          "isUnique": false
+        },
+        "idx_sessions_vault": {
+          "name": "idx_sessions_vault",
+          "columns": ["vault_id"],
+          "isUnique": false
+        },
+        "idx_sessions_expires_at": {
+          "name": "idx_sessions_expires_at",
+          "columns": ["expires_at"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "sessions_owner_fk": {
+          "name": "sessions_owner_fk",
+          "tableFrom": "sessions",
+          "tableTo": "personal_vaults",
+          "columnsFrom": ["account_id", "vault_id"],
+          "columnsTo": ["account_id", "vault_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sessions_epoch_check": {
+          "name": "sessions_epoch_check",
+          "value": "\"sessions\".\"session_epoch\" > 0"
+        },
+        "sessions_timeline_check": {
+          "name": "sessions_timeline_check",
+          "value": "\"sessions\".\"issued_at\" >= 0 AND \"sessions\".\"expires_at\" > \"sessions\".\"issued_at\""
+        },
+        "sessions_revocation_check": {
+          "name": "sessions_revocation_check",
+          "value": "(\n        \"sessions\".\"revoked_at\" IS NULL AND \"sessions\".\"revocation_reason\" IS NULL\n      ) OR (\n        \"sessions\".\"revoked_at\" >= \"sessions\".\"issued_at\"\n        AND \"sessions\".\"revocation_reason\" IN ('logout', 'rotated', 'security')\n      )"
+        }
+      }
+    },
+    "vault_dek_versions": {
+      "name": "vault_dek_versions",
+      "columns": {
+        "vault_id": {
+          "name": "vault_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "dek_version": {
+          "name": "dek_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kek_key_reference": {
+          "name": "kek_key_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "wrapped_dek": {
+          "name": "wrapped_dek",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "is_write_key": {
+          "name": "is_write_key",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_vault_dek_versions_write": {
+          "name": "idx_vault_dek_versions_write",
+          "columns": ["vault_id", "is_write_key"],
+          "isUnique": true,
+          "where": "\"vault_dek_versions\".\"is_write_key\" = 1"
+        },
+        "idx_vault_dek_versions_created": {
+          "name": "idx_vault_dek_versions_created",
+          "columns": ["vault_id", "created_at", "dek_version"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "vault_dek_versions_vault_id_dek_version_pk": {
+          "columns": ["vault_id", "dek_version"],
+          "name": "vault_dek_versions_vault_id_dek_version_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vault_dek_versions_version_check": {
+          "name": "vault_dek_versions_version_check",
+          "value": "\"vault_dek_versions\".\"dek_version\" > 0"
+        },
+        "vault_dek_versions_write_check": {
+          "name": "vault_dek_versions_write_check",
+          "value": "\"vault_dek_versions\".\"is_write_key\" IN (0, 1)"
+        },
+        "vault_dek_versions_wrapped_check": {
+          "name": "vault_dek_versions_wrapped_check",
+          "value": "length(\"vault_dek_versions\".\"wrapped_dek\") BETWEEN 1 AND 16384"
+        },
+        "vault_dek_versions_created_at_check": {
+          "name": "vault_dek_versions_created_at_check",
+          "value": "\"vault_dek_versions\".\"created_at\" >= 0"
+        }
+      }
+    },
+    "vault_encrypted_objects": {
+      "name": "vault_encrypted_objects",
+      "columns": {
+        "vault_id": {
+          "name": "vault_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_type": {
+          "name": "object_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_revision": {
+          "name": "object_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "write_id": {
+          "name": "write_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "plaintext_bytes": {
+          "name": "plaintext_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ciphertext_bytes": {
+          "name": "ciphertext_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "crypto_version": {
+          "name": "crypto_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "dek_version": {
+          "name": "dek_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_vault_encrypted_objects_write": {
+          "name": "idx_vault_encrypted_objects_write",
+          "columns": ["vault_id", "write_id"],
+          "isUnique": true
+        },
+        "idx_vault_encrypted_objects_key": {
+          "name": "idx_vault_encrypted_objects_key",
+          "columns": ["vault_id", "object_key"],
+          "isUnique": true
+        },
+        "idx_vault_encrypted_objects_current": {
+          "name": "idx_vault_encrypted_objects_current",
+          "columns": [
+            "vault_id",
+            "object_type",
+            "object_id",
+            "object_revision"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vault_encrypted_objects_route_fk": {
+          "name": "vault_encrypted_objects_route_fk",
+          "tableFrom": "vault_encrypted_objects",
+          "tableTo": "vault_partition_mappings",
+          "columnsFrom": ["vault_id"],
+          "columnsTo": ["vault_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "vault_encrypted_objects_vault_id_object_type_object_id_object_revision_pk": {
+          "columns": [
+            "vault_id",
+            "object_type",
+            "object_id",
+            "object_revision"
+          ],
+          "name": "vault_encrypted_objects_vault_id_object_type_object_id_object_revision_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vault_encrypted_objects_shape_check": {
+          "name": "vault_encrypted_objects_shape_check",
+          "value": "\"vault_encrypted_objects\".\"object_type\" IN ('card', 'conflict')\n        AND \"vault_encrypted_objects\".\"object_revision\" > 0\n        AND length(\"vault_encrypted_objects\".\"object_key\") = 50\n        AND \"vault_encrypted_objects\".\"plaintext_bytes\" >= 0\n        AND \"vault_encrypted_objects\".\"ciphertext_bytes\" > 0\n        AND \"vault_encrypted_objects\".\"crypto_version\" = 'fukamu-envelope-aes-256-gcm/v1'\n        AND \"vault_encrypted_objects\".\"dek_version\" > 0\n        AND \"vault_encrypted_objects\".\"created_at\" >= 0"
+        }
+      }
+    },
+    "vault_encrypted_write_intents": {
+      "name": "vault_encrypted_write_intents",
+      "columns": {
+        "vault_id": {
+          "name": "vault_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "write_id": {
+          "name": "write_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_type": {
+          "name": "object_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expected_revision": {
+          "name": "expected_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "object_revision": {
+          "name": "object_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "plaintext_bytes": {
+          "name": "plaintext_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "crypto_version": {
+          "name": "crypto_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "dek_version": {
+          "name": "dek_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_vault_encrypted_write_intents_target": {
+          "name": "idx_vault_encrypted_write_intents_target",
+          "columns": [
+            "vault_id",
+            "object_type",
+            "object_id",
+            "object_revision"
+          ],
+          "isUnique": true
+        },
+        "idx_vault_encrypted_write_intents_key": {
+          "name": "idx_vault_encrypted_write_intents_key",
+          "columns": ["vault_id", "object_key"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "vault_encrypted_write_intents_route_fk": {
+          "name": "vault_encrypted_write_intents_route_fk",
+          "tableFrom": "vault_encrypted_write_intents",
+          "tableTo": "vault_partition_mappings",
+          "columnsFrom": ["vault_id"],
+          "columnsTo": ["vault_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "vault_encrypted_write_intents_vault_id_write_id_pk": {
+          "columns": ["vault_id", "write_id"],
+          "name": "vault_encrypted_write_intents_vault_id_write_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vault_encrypted_write_intents_shape_check": {
+          "name": "vault_encrypted_write_intents_shape_check",
+          "value": "\"vault_encrypted_write_intents\".\"object_type\" IN ('card', 'conflict')\n        AND (\"vault_encrypted_write_intents\".\"expected_revision\" IS NULL OR \"vault_encrypted_write_intents\".\"expected_revision\" > 0)\n        AND \"vault_encrypted_write_intents\".\"object_revision\" > 0\n        AND length(\"vault_encrypted_write_intents\".\"object_key\") = 50\n        AND \"vault_encrypted_write_intents\".\"plaintext_bytes\" >= 0\n        AND \"vault_encrypted_write_intents\".\"crypto_version\" = 'fukamu-envelope-aes-256-gcm/v1'\n        AND \"vault_encrypted_write_intents\".\"dek_version\" > 0\n        AND \"vault_encrypted_write_intents\".\"created_at\" >= 0"
+        }
+      }
+    },
+    "vault_object_delete_outbox": {
+      "name": "vault_object_delete_outbox",
+      "columns": {
+        "vault_id": {
+          "name": "vault_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempt_count": {
+          "name": "attempt_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_vault_object_delete_outbox_ready": {
+          "name": "idx_vault_object_delete_outbox_ready",
+          "columns": ["vault_id", "next_attempt_at", "object_key"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "vault_object_delete_outbox_vault_id_object_key_pk": {
+          "columns": ["vault_id", "object_key"],
+          "name": "vault_object_delete_outbox_vault_id_object_key_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vault_object_delete_outbox_attempt_check": {
+          "name": "vault_object_delete_outbox_attempt_check",
+          "value": "\"vault_object_delete_outbox\".\"attempt_count\" >= 0"
+        },
+        "vault_object_delete_outbox_next_attempt_check": {
+          "name": "vault_object_delete_outbox_next_attempt_check",
+          "value": "\"vault_object_delete_outbox\".\"next_attempt_at\" >= 0"
+        },
+        "vault_object_delete_outbox_created_at_check": {
+          "name": "vault_object_delete_outbox_created_at_check",
+          "value": "\"vault_object_delete_outbox\".\"created_at\" >= 0"
+        }
+      }
+    },
+    "vault_cards": {
+      "name": "vault_cards",
+      "columns": {
+        "vault_id": {
+          "name": "vault_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "card_id": {
+          "name": "card_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_vault_cards_updated": {
+          "name": "idx_vault_cards_updated",
+          "columns": ["vault_id", "updated_at", "card_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vault_cards_route_fk": {
+          "name": "vault_cards_route_fk",
+          "tableFrom": "vault_cards",
+          "tableTo": "vault_partition_mappings",
+          "columnsFrom": ["vault_id"],
+          "columnsTo": ["vault_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "vault_cards_vault_id_card_id_pk": {
+          "columns": ["vault_id", "card_id"],
+          "name": "vault_cards_vault_id_card_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vault_cards_revision_check": {
+          "name": "vault_cards_revision_check",
+          "value": "\"vault_cards\".\"revision\" > 0"
+        },
+        "vault_cards_updated_at_check": {
+          "name": "vault_cards_updated_at_check",
+          "value": "\"vault_cards\".\"updated_at\" >= 0"
+        }
+      }
+    },
+    "vault_conflicts": {
+      "name": "vault_conflicts",
+      "columns": {
+        "vault_id": {
+          "name": "vault_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "conflict_id": {
+          "name": "conflict_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "card_id": {
+          "name": "card_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "server_revision": {
+          "name": "server_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_vault_conflicts_card": {
+          "name": "idx_vault_conflicts_card",
+          "columns": ["vault_id", "card_id", "conflict_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vault_conflicts_card_fk": {
+          "name": "vault_conflicts_card_fk",
+          "tableFrom": "vault_conflicts",
+          "tableTo": "vault_cards",
+          "columnsFrom": ["vault_id", "card_id"],
+          "columnsTo": ["vault_id", "card_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "vault_conflicts_vault_id_conflict_id_pk": {
+          "columns": ["vault_id", "conflict_id"],
+          "name": "vault_conflicts_vault_id_conflict_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vault_conflicts_revision_check": {
+          "name": "vault_conflicts_revision_check",
+          "value": "\"vault_conflicts\".\"server_revision\" > 0"
+        },
+        "vault_conflicts_created_at_check": {
+          "name": "vault_conflicts_created_at_check",
+          "value": "\"vault_conflicts\".\"created_at\" >= 0"
+        }
+      }
+    },
+    "vault_mutation_receipts": {
+      "name": "vault_mutation_receipts",
+      "columns": {
+        "vault_id": {
+          "name": "vault_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mutation_id": {
+          "name": "mutation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "card_id": {
+          "name": "card_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "applied_revision": {
+          "name": "applied_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_vault_mutation_receipts_card": {
+          "name": "idx_vault_mutation_receipts_card",
+          "columns": ["vault_id", "card_id", "mutation_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vault_mutation_receipts_card_fk": {
+          "name": "vault_mutation_receipts_card_fk",
+          "tableFrom": "vault_mutation_receipts",
+          "tableTo": "vault_cards",
+          "columnsFrom": ["vault_id", "card_id"],
+          "columnsTo": ["vault_id", "card_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "vault_mutation_receipts_vault_id_mutation_id_pk": {
+          "columns": ["vault_id", "mutation_id"],
+          "name": "vault_mutation_receipts_vault_id_mutation_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vault_mutation_receipts_revision_check": {
+          "name": "vault_mutation_receipts_revision_check",
+          "value": "\"vault_mutation_receipts\".\"applied_revision\" > 0"
+        },
+        "vault_mutation_receipts_created_at_check": {
+          "name": "vault_mutation_receipts_created_at_check",
+          "value": "\"vault_mutation_receipts\".\"created_at\" >= 0"
+        }
+      }
+    },
+    "vault_partition_mappings": {
+      "name": "vault_partition_mappings",
+      "columns": {
+        "vault_id": {
+          "name": "vault_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "partition_id": {
+          "name": "partition_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "routing_revision": {
+          "name": "routing_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_vault_partition_mappings_owner": {
+          "name": "idx_vault_partition_mappings_owner",
+          "columns": ["account_id", "vault_id"],
+          "isUnique": true
+        },
+        "idx_vault_partition_mappings_partition_vault": {
+          "name": "idx_vault_partition_mappings_partition_vault",
+          "columns": ["partition_id", "vault_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vault_partition_mappings_partition_check": {
+          "name": "vault_partition_mappings_partition_check",
+          "value": "length(\"vault_partition_mappings\".\"partition_id\") BETWEEN 1 AND 64"
+        },
+        "vault_partition_mappings_revision_check": {
+          "name": "vault_partition_mappings_revision_check",
+          "value": "\"vault_partition_mappings\".\"routing_revision\" > 0"
+        },
+        "vault_partition_mappings_updated_at_check": {
+          "name": "vault_partition_mappings_updated_at_check",
+          "value": "\"vault_partition_mappings\".\"updated_at\" >= 0"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

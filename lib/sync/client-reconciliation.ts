@@ -6,7 +6,7 @@ import type {
   PendingMutation,
 } from '@/lib/domain/types';
 import type { ServerCard, SyncResponse } from '@/lib/sync/protocol';
-import { assertNever } from '@/lib/shared/invariant';
+import { rebasePendingMutationAfterSync } from '@/lib/sync/pending-mutation';
 
 export type SyncStorageOperation =
   | { type: 'delete-mutation'; cardId: CardId }
@@ -20,20 +20,6 @@ export type SyncApplicationPlan = {
   conflicts: ConflictRecord[];
   operations: SyncStorageOperation[];
 };
-
-function rebasePendingMutation(
-  mutation: PendingMutation,
-  serverRevision: number,
-): PendingMutation {
-  switch (mutation.kind) {
-    case 'upsert':
-      return { ...mutation, baseServerRevision: serverRevision };
-    case 'resolve':
-      return { ...mutation, baseServerRevision: serverRevision };
-    default:
-      return assertNever(mutation, 'Unsupported mutation rebase');
-  }
-}
 
 function cardFromServer(
   serverCard: ServerCard,
@@ -91,7 +77,11 @@ export function planSyncResponseApplication(input: {
       acknowledged.has(sent.mutationId);
 
     if (pending && (pendingWasNotInThisRequest || newerEditWasSaved)) {
-      const rebased = rebasePendingMutation(pending, serverCard.revision);
+      const rebased = rebasePendingMutationAfterSync({
+        mutation: pending,
+        serverRevision: serverCard.revision,
+        acknowledgedMutation: newerEditWasSaved ? sent : undefined,
+      });
       operations.push({ type: 'put-mutation', mutation: rebased });
       pendingByCard.set(serverCard.id, rebased);
     }

@@ -9,15 +9,18 @@ import {
   stringDecoder,
   transformDecoder,
   unionDecoder,
+  type Decoder,
   type InferDecoder,
-} from '@/lib/codec/core';
+} from '../codec/core';
 import {
   cardIdDecoder,
   conflictIdDecoder,
   mutationIdDecoder,
+  type CardId,
   type ConflictId,
-} from '@/lib/domain/id';
-import { invariant } from '@/lib/shared/invariant';
+  type MutationId,
+} from './id';
+import { invariant } from '../shared/invariant';
 
 export const CONTRACT_LIMITS = {
   bodySegments: 10_000,
@@ -47,21 +50,57 @@ export const displayIdDecoder = unionDecoder(
   officialDisplayIdDecoder,
 );
 
-const textSegmentDecoder = objectDecoder({
+export type TextSegment = {
+  type: 'text';
+  text: string;
+};
+
+export type CardLinkSegment = {
+  type: 'link';
+  targetCardId: CardId;
+};
+
+export type BodySegment = TextSegment | CardLinkSegment;
+
+type PendingMutationBase = {
+  mutationId: MutationId;
+  cardId: CardId;
+  title: string;
+  body: BodySegment[];
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type PendingMutation =
+  | (PendingMutationBase & {
+      kind: 'upsert';
+      baseServerRevision: number | null;
+      conflictIds: [];
+    })
+  | (PendingMutationBase & {
+      kind: 'resolve';
+      baseServerRevision: number;
+      conflictIds: [ConflictId, ...ConflictId[]];
+    });
+
+const textSegmentDecoder: Decoder<TextSegment> = objectDecoder({
   type: literalDecoder('text'),
   text: stringDecoder({ maxLength: CONTRACT_LIMITS.text }),
 });
-const cardLinkSegmentDecoder = objectDecoder({
+const cardLinkSegmentDecoder: Decoder<CardLinkSegment> = objectDecoder({
   type: literalDecoder('link'),
   targetCardId: cardIdDecoder,
 });
-export const bodySegmentDecoder = unionDecoder(
+export const bodySegmentDecoder: Decoder<BodySegment> = unionDecoder(
   textSegmentDecoder,
   cardLinkSegmentDecoder,
 );
-export const bodyDecoder = arrayDecoder(bodySegmentDecoder, {
-  maxLength: CONTRACT_LIMITS.bodySegments,
-});
+export const bodyDecoder: Decoder<BodySegment[]> = arrayDecoder(
+  bodySegmentDecoder,
+  {
+    maxLength: CONTRACT_LIMITS.bodySegments,
+  },
+);
 
 export const cardRecordDecoder = objectDecoder({
   id: cardIdDecoder,
@@ -123,19 +162,15 @@ const resolveMutationDecoder = objectDecoder({
   baseServerRevision: positiveSafeIntegerDecoder,
   conflictIds: nonEmptyConflictIdsDecoder,
 });
-export const pendingMutationDecoder = refineDecoder(
+export const pendingMutationDecoder: Decoder<PendingMutation> = refineDecoder(
   unionDecoder(upsertMutationDecoder, resolveMutationDecoder),
   (mutation) => mutation.createdAt <= mutation.updatedAt,
   'expected createdAt <= updatedAt',
 );
 
 export type DisplayId = InferDecoder<typeof displayIdDecoder>;
-export type TextSegment = InferDecoder<typeof textSegmentDecoder>;
-export type CardLinkSegment = InferDecoder<typeof cardLinkSegmentDecoder>;
-export type BodySegment = InferDecoder<typeof bodySegmentDecoder>;
 export type CardRecord = InferDecoder<typeof cardRecordDecoder>;
 export type ConflictRecord = InferDecoder<typeof conflictRecordDecoder>;
-export type PendingMutation = InferDecoder<typeof pendingMutationDecoder>;
 
 export function decodeBody(input: unknown): BodySegment[] {
   return decodeOrThrow(bodyDecoder, input, 'Body');

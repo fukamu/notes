@@ -1,8 +1,16 @@
 import { Miniflare } from 'miniflare';
 import { readFile } from 'node:fs/promises';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { handleSyncRequest } from '@/app/api/sync/handler';
-import { ensureSyncSchema, synchronize } from '@/db/d1-sync';
+import { synchronize } from '@/db/d1-sync';
 import {
   parseCardId,
   parseConflictId,
@@ -14,6 +22,10 @@ import {
 } from '@/lib/domain/id';
 import { CONTRACT_LIMITS, type PendingMutation } from '@/lib/domain/types';
 import { decodeSyncResponse, encodeSyncRequest } from '@/lib/sync/protocol';
+import {
+  containsSensitiveMarker,
+  securityCorpusMarker,
+} from '@/tests/fixtures/security-corpus';
 
 const ids = {
   device: parseDeviceId('01991f20-61d2-7000-8000-000000001000'),
@@ -31,6 +43,9 @@ const ids = {
   rollbackResolve: parseMutationId('01991f20-61d2-7000-8000-000000001018'),
   racingResolveA: parseMutationId('01991f20-61d2-7000-8000-000000001019'),
   racingResolveB: parseMutationId('01991f20-61d2-7000-8000-000000001020'),
+  advanceA: parseMutationId('01991f20-61d2-7000-8000-000000001021'),
+  secondConflictA: parseMutationId('01991f20-61d2-7000-8000-000000001022'),
+  multiResolveA: parseMutationId('01991f20-61d2-7000-8000-000000001023'),
   missingConflict: parseConflictId('01991f20-61d2-7000-8000-000000001099'),
 } as const;
 
@@ -39,6 +54,12 @@ type TestDatabase = Awaited<ReturnType<Miniflare['getD1Database']>>;
 let miniflare: Miniflare;
 let database: TestDatabase;
 let migrationDatabase: TestDatabase;
+
+// These two composite cases intentionally run several Miniflare transactions
+// and resets. CI/coverage measured 5.3-5.8s, above Vitest's incidental 5s
+// default; 15s keeps a finite hang guard without changing any assertion.
+const compositeD1TestTimeoutMs = 15_000;
+vi.setConfig({ testTimeout: compositeD1TestTimeoutMs });
 
 function upsert(
   mutationId: MutationId,
@@ -126,7 +147,11 @@ async function resetDatabase(): Promise<void> {
     DROP TABLE IF EXISTS cards;
     DROP TABLE IF EXISTS sync_state;
   `);
-  await ensureSyncSchema(database);
+  await applyMigration(database, 'drizzle/0000_sticky_gamora.sql');
+  await applyMigration(database, 'drizzle/0001_amazing_cannonball.sql');
+  await database
+    .prepare('INSERT INTO sync_state(singleton, next_display_id) VALUES (1, 1)')
+    .run();
 }
 
 async function applyMigration(
@@ -273,14 +298,66 @@ describe('sync API request and response boundaries', () => {
     expect(await snapshot()).toBe(before);
   });
 
-  it('returns configuration failures as 5xx after request validation', async () => {
-    const response = await handleSyncRequest(syncRequest([]), {});
+  it('returns database failures as redacted 5xx after request validation', async () => {
+    const failure = new Error(`message:${securityCorpusMarker}`);
+    failure.name = `name:${securityCorpusMarker}`;
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const failingDatabase = {
+      prepare() {
+        throw failure;
+      },
+      batch() {
+        throw failure;
+      },
+      exec() {
+        throw failure;
+      },
+    };
+    const response = await handleSyncRequest(syncRequest([]), {
+      DB: failingDatabase,
+    });
     expect(response.status).toBe(500);
     expect(await response.text()).not.toContain('DB');
+    expect(log).toHaveBeenCalledWith('sync failed', 'Error');
+    expect(
+      containsSensitiveMarker(log.mock.calls, [securityCorpusMarker]),
+    ).toBe(false);
   });
 });
 
 describe('resolve transaction invariants', () => {
+  it('resolves multiple same-card conflicts atomically at the latest revision', async () => {
+    await createConflict(ids.cardA, ids.createA, ids.conflictA);
+    expect(
+      (await post([upsert(ids.advanceA, ids.cardA, 'server revision two', 1)]))
+        .status,
+    ).toBe(200);
+    expect(
+      (await post([upsert(ids.secondConflictA, ids.cardA, 'second local', 1)]))
+        .status,
+    ).toBe(200);
+    const firstConflict = parseConflictId(ids.conflictA);
+    const secondConflict = parseConflictId(ids.secondConflictA);
+    const mutation = resolve(
+      ids.multiResolveA,
+      ids.cardA,
+      [firstConflict, secondConflict],
+      '現在入力を採用',
+      2,
+    );
+
+    const response = await post([mutation]);
+
+    expect(response.status).toBe(200);
+    const decoded = decodeSyncResponse(await response.json(), [mutation]);
+    expect(decoded.cards.find((card) => card.id === ids.cardA)).toMatchObject({
+      title: '現在入力を採用',
+      revision: 3,
+    });
+    expect(decoded.conflicts).toEqual([]);
+    expect(decoded.acknowledgedMutationIds).toEqual([ids.multiResolveA]);
+  });
+
   it('rejects empty, missing, foreign, mixed, and stale conflicts with all state unchanged', async () => {
     await createConflict(ids.cardA, ids.createA, ids.conflictA);
     await createConflict(ids.cardB, ids.createB, ids.conflictB);
@@ -393,6 +470,11 @@ describe('D1 row and saved JSON boundaries', () => {
       DROP TABLE IF EXISTS sync_state;
     `);
     await applyMigration(migrationDatabase, 'drizzle/0000_sticky_gamora.sql');
+    await migrationDatabase
+      .prepare(
+        'INSERT INTO sync_state(singleton, next_display_id) VALUES (1, 1)',
+      )
+      .run();
     const mutation = upsert(ids.createA, ids.cardA, 'migration fixture', null);
     const before = await synchronize(migrationDatabase, [mutation]);
     await applyMigration(

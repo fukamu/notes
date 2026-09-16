@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "issue": 201,
+  "branchPoint": "03d57c9dcd71e3bea51151e542dd71805e3d262d",
+  "generatedAt": "2026-09-14T07:42:40.165Z",
+  "environment": {
+    "node": "v26.8.1",
+    "platform": "linux",
+    "release": "7.0.0-31-generic",
+    "cpu": "11th Gen Intel(R) Core(TM) i7-1195G7 @ 2.90GHz",
+    "cpuCount": 8
+  },
+  "fixture": {
+    "cards": 10000,
+    "source": "tests/fixtures/client-performance.ts"
+  },
+  "mechanismBudget": {
+    "card": {
+      "cardEditor": "materialized",
+      "conflicts": "materialized for the current card",
+      "history": "null",
+      "connections": "null"
+    },
+    "history": {
+      "cardEditor": "null",
+      "conflicts": "empty",
+      "history": "materialized",
+      "connections": "null"
+    },
+    "connections": {
+      "cardEditor": "null",
+      "conflicts": "empty",
+      "history": "null",
+      "connections": "materialized"
+    }
+  },
+  "comparisonPolicy": "The eager proxy and active projection run on the same host and fixture. Timing is review evidence; the discriminated inactive-null contract is the required regression gate.",
+  "eagerToDemandDrivenCardMedianRatio": 2847.898,
+  "measurements": [
+    {
+      "name": "legacy-eager-card-proxy",
+      "warmupIterations": 0,
+      "measuredIterations": 1,
+      "timing": {
+        "minimumMs": 5311.33,
+        "medianMs": 5311.33,
+        "p95Ms": 5311.33,
+        "maximumMs": 5311.33,
+        "samplesMs": [5311.33]
+      }
+    },
+    {
+      "name": "demand-driven-card",
+      "warmupIterations": 1,
+      "measuredIterations": 5,
+      "timing": {
+        "minimumMs": 1.623,
+        "medianMs": 1.865,
+        "p95Ms": 3.575,
+        "maximumMs": 3.575,
+        "samplesMs": [3.575, 2.363, 1.865, 1.623, 1.778]
+      }
+    },
+    {
+      "name": "demand-driven-history",
+      "warmupIterations": 0,
+      "measuredIterations": 1,
+      "timing": {
+        "minimumMs": 5384.287,
+        "medianMs": 5384.287,
+        "p95Ms": 5384.287,
+        "maximumMs": 5384.287,
+        "samplesMs": [5384.287]
+      }
+    },
+    {
+      "name": "demand-driven-connections",
+      "warmupIterations": 1,
+      "measuredIterations": 3,
+      "timing": {
+        "minimumMs": 11.108,
+        "medianMs": 11.334,
+        "p95Ms": 11.882,
+        "maximumMs": 11.882,
+        "samplesMs": [11.108, 11.334, 11.882]
+      }
+    }
+  ]
+}

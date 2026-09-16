@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { NotesApp } from '@/components/notes-app';
+import { LegacyNotesApp } from '@/components/notes-app';
 
 export default function NotesRouteLayout({
   children,
@@ -8,7 +8,7 @@ export default function NotesRouteLayout({
 }) {
   return (
     <>
-      <NotesApp />
+      <LegacyNotesApp />
       {children}
     </>
   );

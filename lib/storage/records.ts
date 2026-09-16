@@ -22,6 +22,11 @@ import {
 } from '@/lib/domain/types';
 import { cardIdDecoder, deviceIdDecoder, type DeviceId } from '@/lib/domain/id';
 import { assertNever } from '@/lib/shared/invariant';
+import type { SyncV2Checkpoint } from '@/lib/sync/v2-page-application';
+import {
+  syncSequenceDecoder,
+  syncV2CursorDecoder,
+} from '@/lib/sync/v2-protocol';
 
 const storedCardRecordDecoder = objectDecoder({
   id: cardIdDecoder,
@@ -39,6 +44,11 @@ const storedPendingMutationDecoder = pendingMutationDecoder;
 const storedMetaRecordDecoder = objectDecoder({
   key: literalDecoder('deviceId'),
   value: deviceIdDecoder,
+});
+const storedSyncV2CheckpointDecoder = objectDecoder({
+  key: literalDecoder('checkpoint'),
+  cursor: nullableDecoder(syncV2CursorDecoder),
+  highWatermark: syncSequenceDecoder,
 });
 
 const storedCardsDecoder = arrayDecoder(storedCardRecordDecoder, {
@@ -62,6 +72,9 @@ export type StoredConflictRecord = InferDecoder<
   typeof storedConflictRecordDecoder
 >;
 export type StoredMetaRecord = InferDecoder<typeof storedMetaRecordDecoder>;
+export type StoredSyncV2Checkpoint = InferDecoder<
+  typeof storedSyncV2CheckpointDecoder
+>;
 
 export function decodeStoredCards(input: unknown): CardRecord[] {
   return decodeOrThrow(storedCardsDecoder, input, 'IndexedDB cards');
@@ -77,6 +90,16 @@ export function decodeStoredConflicts(input: unknown): ConflictRecord[] {
 
 export function decodeStoredMeta(input: unknown): StoredMetaRecord {
   return decodeOrThrow(storedMetaRecordDecoder, input, 'IndexedDB meta');
+}
+
+export function decodeStoredSyncV2Checkpoint(
+  input: unknown,
+): StoredSyncV2Checkpoint {
+  return decodeOrThrow(
+    storedSyncV2CheckpointDecoder,
+    input,
+    'IndexedDB Sync v2 checkpoint',
+  );
 }
 
 function wireString(value: string): string {
@@ -153,7 +176,18 @@ export function encodeStoredMeta(deviceId: DeviceId) {
   return { key: 'deviceId' as const, value: wireString(deviceId) };
 }
 
+export function encodeStoredSyncV2Checkpoint(checkpoint: SyncV2Checkpoint) {
+  return {
+    key: 'checkpoint' as const,
+    cursor: checkpoint.cursor === null ? null : wireString(checkpoint.cursor),
+    highWatermark: checkpoint.highWatermark,
+  };
+}
+
 export type StoredCardWire = ReturnType<typeof encodeStoredCard>;
 export type StoredMutationWire = ReturnType<typeof encodeStoredMutation>;
 export type StoredConflictWire = ReturnType<typeof encodeStoredConflict>;
 export type StoredMetaWire = ReturnType<typeof encodeStoredMeta>;
+export type StoredSyncV2CheckpointWire = ReturnType<
+  typeof encodeStoredSyncV2Checkpoint
+>;

@@ -86,6 +86,7 @@ const ConnectionsEdgeLayer = memo(
 
 export function ConnectionsView({
   model,
+  staging,
   actions,
   presentation,
 }: ConnectionsRendererProps) {
@@ -108,7 +109,7 @@ export function ConnectionsView({
     <section className="w-full min-w-0" aria-labelledby="connections-heading">
       <div className="connections-map-heading mb-4">
         <div>
-          <p className="eyebrow">ALL DIRECTED LINKS</p>
+          <p className="eyebrow">FOCUSED DIRECTED LINKS</p>
           <h1
             id="connections-heading"
             className="font-heading text-2xl font-semibold"
@@ -116,7 +117,7 @@ export function ConnectionsView({
             つながり
           </h1>
           <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-            この端末にある全カードと、本文で明示した一方向リンクを表示します。
+            現在のカードの周辺を、段階的に表示します。
             <ArrowRight aria-hidden="true" className="size-4 shrink-0" />
           </p>
         </div>
@@ -189,6 +190,16 @@ export function ConnectionsView({
         </div>
       </div>
 
+      <p
+        className="mb-4 text-xs text-muted-foreground"
+        aria-live="polite"
+        data-testid="connections-stage-summary"
+      >
+        全{staging.totalNodeCount.toLocaleString('ja-JP')}枚のうち
+        {staging.visibleNodeCount.toLocaleString('ja-JP')}枚を表示
+        {staging.focusLabel ? `・起点: ${staging.focusLabel}` : ''}
+      </p>
+
       <p id="connections-map-instructions" className="sr-only">
         ドラッグまたは一本指で移動、ピンチまたは Control
         キーを押しながらホイールで拡大縮小できます。矢印キーで移動、プラスとマイナスで拡大縮小、0で全体表示、Homeで現在のカードへ戻ります。
@@ -203,8 +214,12 @@ export function ConnectionsView({
         data-camera-render-count="0"
         data-active-pointers="0"
         data-click-suppression="false"
+        data-total-node-count={staging.totalNodeCount}
+        data-visible-node-count={staging.visibleNodeCount}
+        data-node-limit={staging.nodeLimit}
+        data-stage-focus-id={staging.focusCardId ?? ''}
         aria-busy={model.status === 'loading'}
-        aria-label="全カード間の一方向リンクマップ"
+        aria-label="現在のカード周辺の一方向リンクマップ"
         aria-describedby="connections-map-instructions"
       >
         {model.status === 'loading' && (
@@ -322,6 +337,28 @@ export function ConnectionsView({
           </div>
         )}
       </section>
+
+      {staging.canExpand && (
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            className="connections-map-control"
+            onClick={actions.expand}
+            data-testid="connections-expand"
+          >
+            <Plus aria-hidden="true" className="size-4" />
+            さらに
+            {staging.nextExpansionCount.toLocaleString('ja-JP')}
+            枚を表示
+          </button>
+        </div>
+      )}
+
+      {staging.stoppedAtMaximum && (
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          一度に表示できる上限に達しました。別のカードを開くと、そのカードの周辺を表示できます。
+        </p>
+      )}
 
       {model.status === 'ready' && model.edges.length === 0 && (
         <div className="mt-4 flex items-center gap-3 rounded-xl border border-dashed px-4 py-4 text-sm text-muted-foreground">

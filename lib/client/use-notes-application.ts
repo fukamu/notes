@@ -14,6 +14,7 @@ import {
   isNotesInitialized,
 } from '@/lib/application/initialization-lifecycle';
 import { createBrowserNotesNavigator } from '@/lib/client/browser-notes-navigator';
+import { createCardEditorIndexCache } from '@/lib/client/card-editor-index-cache';
 import type {
   NotesPresentationActions,
   NotesPresentationModel,
@@ -25,6 +26,7 @@ export function useNotesApplication(store: NotesDataStore): {
   actions: NotesPresentationActions;
 } {
   const [navigator] = useState(createBrowserNotesNavigator);
+  const [cardEditorIndexCache] = useState(createCardEditorIndexCache);
   const location = useSyncExternalStore(
     navigator.subscribe,
     navigator.getLocation,
@@ -43,6 +45,13 @@ export function useNotesApplication(store: NotesDataStore): {
     !store.hasCard(locationCardId) &&
     !initialSyncComplete;
 
+  useEffect(
+    () => () => {
+      cardEditorIndexCache.clear();
+    },
+    [cardEditorIndexCache],
+  );
+
   useEffect(() => {
     if (!initialized || awaitingInitialCardResolution) return;
     if (navigator.getLocation().kind === 'empty') {
@@ -59,9 +68,16 @@ export function useNotesApplication(store: NotesDataStore): {
     initialized,
   ]);
 
+  const cardEditorIndex = useMemo(
+    () =>
+      location.kind === 'card'
+        ? cardEditorIndexCache.select(store.cards, location.cardId)
+        : null,
+    [cardEditorIndexCache, location, store.cards],
+  );
   const model = useMemo(
-    () => createNotesPresentationModel(store, location),
-    [location, store],
+    () => createNotesPresentationModel(store, location, { cardEditorIndex }),
+    [cardEditorIndex, location, store],
   );
 
   return {

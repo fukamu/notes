@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const integrationBranch = 'refactor/type-safe-functional';
-const currentParent = '#41';
-const currentBranchPoint = '7f925fa3b51dc546b32cebbf10550dbd2807560f';
+const integrationBranch = 'integration/106-multi-user-production';
+const currentParent = '#106';
+const currentBranchPoint = '2c7e968f6b4567f73a692f384b1b2c6d569040b7';
 
 function normalizeWhitespace(source: string): string {
   return source.replace(/\s+/g, ' ');
@@ -31,7 +31,7 @@ describe('issue-based delivery contract', () => {
     expect(workflow).toContain(currentParent);
     expect(agents).toContain(currentBranchPoint);
     expect(workflow).toContain(currentBranchPoint);
-    expect(workflow).toContain('親 #29');
+    expect(workflow).toContain('完了済み親 #41');
   });
 
   it('requires direct user permission before any main update', async () => {
@@ -60,12 +60,26 @@ describe('issue-based delivery contract', () => {
 
     expect(branchFilters).toHaveLength(2);
     expect(mainBranchFilters).toHaveLength(2);
+    expect(quality).toContain("- 'work/**'");
     expect(quality).toContain('permissions:\n  contents: read');
     expect(quality).toContain('run: npm run verify');
     expect(quality).not.toContain('codex/integration-type-safety-ui');
+    expect(quality).not.toContain('refactor/type-safe-functional');
     expect(quality).not.toMatch(
       /\b(?:deploy|deployment|publish)\b|wrangler\s+deploy|d1\s+(?:execute|migrations\s+apply)/i,
     );
+  });
+
+  it('records the approved self-bootstrap without weakening its CI gate', async () => {
+    const [agents, workflow] = await Promise.all([
+      readFile('AGENTS.md', 'utf8'),
+      readFile('docs/development-workflow.md', 'utf8'),
+    ]);
+
+    expect(agents).toContain('self-bootstrap CI');
+    expect(agents).toContain('exact head commit');
+    expect(workflow).toContain('self-bootstrap方式');
+    expect(workflow).toContain('CI省略ではなく');
   });
 
   it('separates check weakening from ordinary implementation work', async () => {

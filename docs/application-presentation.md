@@ -7,22 +7,27 @@ rules.
 
 ## Layers and dependency direction
 
-1. `lib/domain`, codecs, storage, and sync define trusted card data and data
-   operations. Internal references continue to use the branded `CardId` from
-   the type-safety contract.
-2. `lib/client/notes-store.tsx` connects IndexedDB, sync, and React state. Its
-   public `NotesDataStore` contains data/init/save/sync/conflict behavior only;
-   it does not contain the current location or view selection.
-3. `lib/application` owns location transitions, application coordination, and
-   pure view-model selectors. This layer has no React, DOM, icon, theme, SVG,
-   or Tailwind dependency.
-4. `lib/client/use-notes-application.ts` observes the browser-history navigator
+1. `lib/domain`, codecs, and sync define trusted card data, validation, and
+   deterministic data operations. Internal references continue to use the
+   branded `CardId` from the type-safety contract.
+2. `lib/application/notes-runtime.ts` defines provider-neutral
+   `NotesRepository`, `SyncTransport`, `Clock`, `IdGenerator`, connectivity,
+   and offline preparation ports. Its fixed `LEGACY_NOTES_SCOPE` preserves the
+   pre-account database and endpoint without putting scope fields in cards.
+3. `lib/client/notes-store.tsx` connects those injected ports to React state.
+   Its public `NotesDataStore` contains data/init/save/sync/conflict behavior
+   only; it does not contain the current location or view selection.
+4. The rest of `lib/application` owns location transitions, application
+   coordination, and pure view-model selectors. This layer has no React, DOM,
+   icon, theme, SVG, or Tailwind dependency.
+5. `lib/client/use-notes-application.ts` observes the browser-history navigator
    and connects the data store to the application contracts. Pathname parsing
    remains a pure application codec; the `window` adapter stays in `lib/client`.
-5. `components/notes-app.tsx` is the composition root. It is the only module
-   that selects the concrete notes, editor, and connections renderers and
-   connects them to their feature adapters. A renderer receives only the
-   typed presentation model, semantic actions, and feature render callbacks.
+6. `components/notes-app.tsx` is the composition root. It creates the legacy
+   runtime adapter set and is the only module that selects the concrete notes,
+   editor, and connections renderers and connects them to feature adapters. A
+   renderer receives only the typed presentation model, semantic actions, and
+   feature render callbacks.
 
 The five supported application pages share `app/(notes)/layout.tsx`. That
 layout mounts the composition root once while its empty route children change,
@@ -33,6 +38,26 @@ Presentation code must not access IndexedDB, fetch, sync, service workers,
 database bindings, or API routes. Application code must not select icons,
 classes, colors, or DOM structure. The architecture test enforces these
 boundaries alongside the existing trust-boundary and unsafe-lint checks.
+
+## Runtime data ports and legacy compatibility
+
+The default composition uses `createLegacyNotesRuntimePorts`. It binds the
+unchanged `fukamu-notes` IndexedDB database, `/api/sync` v1 endpoint, browser
+clock and UUIDv7 generator, online/offline events, and Service Worker
+preparation to one explicit scope. `NotesProvider` imports none of those
+concrete adapters; tests and future authenticated composition roots can supply
+another complete port set.
+
+The IndexedDB adapter still opens schema version 1 with the same four stores,
+decodes all values from `unknown`, and performs the same read/write transaction
+plans. The HTTP adapter sends the same POST, content type, and JSON field order.
+No storage migration or wire migration occurs in this extraction. Account and
+Vault ownership is represented by a session-derived `VaultContext` and
+scope-bound runtime, not by adding fields to `CardRecord` or its body.
+`SessionNotesApp` refuses to construct or mount the runtime while anonymous;
+the current route names `LegacyNotesApp` explicitly as the local compatibility
+harness until authenticated vault adapters replace it. The session boundary is
+documented in [`session-boundary.md`](session-boundary.md).
 
 ## Navigation contract
 
@@ -90,17 +115,62 @@ IDs rather than raw card records. The status selector fixes priority as
 local-save failure, local save, active sync, offline, sync failure, then saved;
 it also states whether retry is available.
 
+The model is discriminated by `activeView`. It materializes editor/conflict
+data only for `card`, history items only for `history`, and connection
+nodes/edges only for `connections`; the two inactive heavy models are
+explicitly `null`. This keeps a title/body edit from rebuilding the 10,000-card
+history and connections projections while making the uncomputed state visible
+to every presentation implementation. View navigation still computes the
+selected projection synchronously from the same full local replica, so URL,
+back/forward, offline, and renderer output contracts do not change.
+
+The card projection carries a pure `CardEditorCandidateIndex` instead of a
+freshly filtered candidate array. The index preserves the existing numeric
+descending order, official/provisional tie break, created-at/card-id/source
+order, current-card exclusion, labels, and `#` link format. Numeric-prefix
+interaction is a direct lookup and does not scan or sort the replica on every
+keystroke. Reconciliation rebuilds only when card identity/order, display ID,
+title, created-at tie-break, or current-card identity changes; body, update
+time, and local/server revision changes reuse the same index.
+
+`useNotesApplication` owns the mutable reconciliation cache as an
+instance-local client adapter and clears it when the mounted application hook
+is destroyed. It is neither module-global nor persisted, and the authenticated
+session boundary unmounts the notes application during fencing/logout. This
+keeps cached labels and candidates within the mounted provider/session while
+the application index construction and query remain typed pure functions. The
+only result bound is 9,999 candidates: the product limit of 10,000 active cards
+minus the excluded current card. No smaller UI cap or interaction behavior is
+introduced by this optimization.
+
+History and conflict previews resolve card links through a
+`CardBodyTextLookup` built once per pure selector invocation. The lookup keeps
+the legacy last-card-wins behavior for duplicate `CardId` fixture data and the
+same official/provisional display labels, `Untitled` fallback, and missing-link
+text. History therefore performs one O(cards) lookup build, its existing
+O(cards log cards) sort, and O(total body segments) preview work instead of
+rebuilding an all-card `Map` for every history item. All current-card conflicts
+and their two options share one lookup within the batch selector call; an empty
+conflict batch builds none. The lookup is not cached across selector, provider,
+Vault, session, or logout boundaries.
+
 `NotesPresentationActions` exposes semantic operations only:
 `createCard`, `openCard`, `showCurrentCard`, `showHistory`, `showConnections`,
 `updateTitle`, `updateBody`, `retrySync`, and `resolveConflict`. It deliberately
 has no generic current-card or view setter.
 
 History sorting, display labels, title/body fallbacks, current-item marking,
-and previews are pure view-model work. The current item scroll behavior lives
-in a dedicated presentation hook and does not depend on a parent/button DOM
-lookup. Conflict view models contain only the two choices for the current
-card, including titles, previews, accessible action names, and the established
-missing-link fallback. The renderer does not receive all conflicts.
+and previews are pure view-model work. A second pure boundary maps item count,
+current index, fixed row geometry, and measured/unmeasured viewport state to a
+bounded render range, offset, total height, and centered scroll position. The
+React hook owns only `ResizeObserver`, validated scroll measurements, element
+refs, and focus. History renders a semantic ordered list with `aria-posinset`
+and `aria-setsize`; Arrow Up/Down and Home/End can move focus into a range that
+was not mounted. It clears every ref on unmount and holds no Vault/session data
+outside the mounted presentation. Conflict view models contain only the two
+choices for the current card, including titles, previews, accessible action
+names, and the established missing-link fallback. The renderer does not
+receive all conflicts.
 
 ## Feature adapters and composition
 
@@ -221,7 +291,8 @@ Structural styles are named separately from the default visual theme:
 or geometry. Visual classes such as `.fukamu-editor`, `.card-link-capsule`,
 `.connections-viewport`, `.connections-map-toolbar`, and `.connections-node` are
 replaceable theme choices. `.history-stack` only supplies functional scroll
-padding.
+padding; fixed history row geometry and viewport-bounded overscan are shared
+with the pure range contract and final 10,000-card browser evidence.
 
 Conflict visuals use light/dark semantic `--warning-*` tokens and the shared
 button primitive; no feature component embeds an amber or white palette.

@@ -4,11 +4,12 @@ on:
   pull_request:
     branches:
       - main
-      - refactor/type-safe-functional
+      - integration/106-multi-user-production
   push:
     branches:
       - main
-      - refactor/type-safe-functional
+      - integration/106-multi-user-production
+      - 'work/**'
 
 permissions:
   contents: read

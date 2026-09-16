@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
-import type { ComponentType } from 'react';
+import { useMemo, useState } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import {
   BodyEditor,
   defaultCardEditorPresentation,
@@ -20,6 +20,8 @@ import type {
   NotesPresentationComponent,
   NotesPresentationFeatures,
 } from '@/components/presentation-contract';
+import type { NotesRuntimePorts } from '@/lib/application/notes-runtime';
+import { createLegacyNotesRuntimePorts } from '@/lib/client/legacy-notes-runtime';
 import { NotesProvider, useNotesDataStore } from '@/lib/client/notes-store';
 import { useNotesApplication } from '@/lib/client/use-notes-application';
 import type { CardEditorPresentationAdapter } from '@/lib/editor/use-card-editor';
@@ -74,12 +76,34 @@ function NotesConnector({
 
 export function NotesApp({
   configuration = defaultNotesAppConfiguration,
+  runtimePorts,
+  runtimeFenced = false,
+  runtimeFencedFallback,
+}: {
+  configuration?: NotesAppConfiguration;
+  runtimePorts: NotesRuntimePorts;
+  runtimeFenced?: boolean;
+  runtimeFencedFallback?: ReactNode;
+}) {
+  return (
+    <NotesProvider
+      ports={runtimePorts}
+      fenced={runtimeFenced}
+      fencedFallback={runtimeFencedFallback}
+    >
+      <NotesConnector configuration={configuration} />
+    </NotesProvider>
+  );
+}
+
+/** Explicit compatibility harness until the authenticated route is composed. */
+export function LegacyNotesApp({
+  configuration = defaultNotesAppConfiguration,
 }: {
   configuration?: NotesAppConfiguration;
 }) {
+  const [legacyRuntimePorts] = useState(createLegacyNotesRuntimePorts);
   return (
-    <NotesProvider>
-      <NotesConnector configuration={configuration} />
-    </NotesProvider>
+    <NotesApp configuration={configuration} runtimePorts={legacyRuntimePorts} />
   );
 }

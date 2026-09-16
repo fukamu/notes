@@ -25,6 +25,19 @@ export type ConnectionsInputModel = {
 
 export type ConnectionsSelectionActions = {
   openCard: (cardId: CardId) => void;
+  expand: () => void;
+};
+
+export type ConnectionsStagingViewModel = {
+  focusCardId: CardId | null;
+  focusLabel: string | null;
+  totalNodeCount: number;
+  visibleNodeCount: number;
+  nodeLimit: number;
+  hiddenReachableNodeCount: number;
+  nextExpansionCount: number;
+  canExpand: boolean;
+  stoppedAtMaximum: boolean;
 };
 
 type ConnectionsStateBase = {

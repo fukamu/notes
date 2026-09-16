@@ -60,13 +60,17 @@ npm run verify
 
 `npm run test:e2e` は本番ビルド相当のローカルサーバーを自動起動し、デスクトップChromeとPixel 7相当のChromiumで検証します。対象はオフライン作成、自動保存、再読み込み、再接続、別端末同期、仮番号から正式番号への変更、重複仮番号と遅延到着、本文リンク、Undo / Redo、一覧、全カードの一方向リンク可視化、現在カードの初期表示、キーボード／タッチ操作、循環・自己リンク・相互リンク、競合保持、deep link、戻る／進むです。
 
-`npm run check` では全runtimeの型検査、静的検査、単体テスト、本番ビルドをまとめて実行します。`npm run verify` はCIと共通の入口で、format check、`check`、Desktop Chrome／Pixel 7相当のE2Eを実行します。型検査のruntime分離、trust boundary、assertion方針、段階的なunsafe lint／codec導入は [型安全の境界と検査](docs/type-safety.md)、データストア・ナビゲーション・描画の依存方向と交換契約は [Application / presentation contracts](docs/application-presentation.md)、本文editorのheadless操作・Tiptap adapter・renderer・structural DOM契約は [Card editor contracts](docs/card-editor.md)、全UI境界・raw interaction・親 #8 要件1–29の対応は [Presentation boundary audit](docs/presentation-boundary-audit.md) を参照してください。検証はlocal fixture／emulatorのみを使い、本番D1や本番データへ接続しません。
+`npm run check` では全runtimeの型検査、静的検査、単体テスト、本番ビルドをまとめて実行します。`npm run verify` はCIと共通の入口で、format check、`check`、Desktop Chrome／Pixel 7相当のE2Eを実行します。型検査のruntime分離、trust boundary、assertion方針、段階的なunsafe lint／codec導入は [型安全の境界と検査](docs/type-safety.md)、データストア・ナビゲーション・描画の依存方向と交換契約は [Application / presentation contracts](docs/application-presentation.md)、認証済みsessionからのVaultContext導出と未認証runtime停止契約は [Identity, session, and VaultContext boundary](docs/session-boundary.md)、Google認証のstate・nonce・PKCE・issuer+subject・明示linking契約は [Google OIDC boundary](docs/google-oidc-boundary.md)、Email OTPの一回限り・試行／再送／濫用制限・明示linking・NIST上の制約は [Email OTP boundary](docs/email-otp-boundary.md)、本文editorのheadless操作・Tiptap adapter・renderer・structural DOM契約は [Card editor contracts](docs/card-editor.md)、全UI境界・raw interaction・親 #8 要件1–29の対応は [Presentation boundary audit](docs/presentation-boundary-audit.md) を参照してください。検証はlocal fixture／emulatorのみを使い、本番D1や本番データへ接続しません。
 
 Issue、統合／作業ブランチ、PR、merge後検証、型付き純粋ロジックと副作用adapter、mainへの反映制限は [Issue-based type-safe development workflow](docs/development-workflow.md) を正本とします。実装PRは統合ブランチだけをbaseとし、利用者が対象を特定して明示的に許可するまでmainへ反映しません。
 
 ## オフライン条件
 
 初回だけはオンラインでアプリを開き、画面と実行資源をService Workerへ保存してください。以後は通信がなくても、カードの作成・編集・自動保存・リンク・一覧・つながりを、この端末のIndexedDBだけで利用できます。
+
+Service Workerが保存するのは非個人化された `/` のapp shell、manifest、favicon、`/_next/static/` 配下のbuild assetだけです。カードURLのonline response、query付きnavigation、API、認証/OAuth callback、課金・account経路、allowlist外resourceはCacheStorageへ保存しません。offlineのcanonical card/history/connections navigationは、個別responseではなく共通app shellから起動してIndexedDBを読みます。logout cache purgeは対象cacheの消去を再確認したackが返るまで完了扱いにしません。
+
+詳しいcache境界、migration、rollback方針は [`docs/service-worker-cache.md`](docs/service-worker-cache.md) を参照してください。
 
 開発サーバーは差し替え用の仮想モジュールを使うため、オフライン再読み込みの確認には `npm run build` と `npm start -- --port 3100`、または `npm run test:e2e` を使ってください。ブラウザのサイトデータを消すと、その端末の未同期データとオフライン用キャッシュも消えます。
 
