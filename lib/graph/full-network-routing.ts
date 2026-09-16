@@ -643,6 +643,17 @@ export function validateFullNetworkRouting(routing: FullNetworkRouting): void {
   }
   validateViewport(routing.bounds);
   const seenEdges = new Uint8Array(edgeCount);
+  for (let position = 0; position < edgeCount; position += 1) {
+    const edge = typedValue(
+      routing.edgeIndexesByMinimumX,
+      position,
+      'sorted route edge',
+    );
+    if (edge >= edgeCount || seenEdges[edge] === 1) {
+      throw new Error('Full-network routing index is not an edge permutation');
+    }
+    seenEdges[edge] = 1;
+  }
   let previousMinimumX = Number.NEGATIVE_INFINITY;
   let runningMaximumX = Number.NEGATIVE_INFINITY;
   let overallMinimumX = Number.POSITIVE_INFINITY;
@@ -655,10 +666,6 @@ export function validateFullNetworkRouting(routing: FullNetworkRouting): void {
       position,
       'sorted route edge',
     );
-    if (edge >= edgeCount || seenEdges[edge] === 1) {
-      throw new Error('Full-network routing index is not an edge permutation');
-    }
-    seenEdges[edge] = 1;
     const minX = finite(
       typedValue(routing.minimumX, edge, 'route minimum x'),
       'route minimum x',

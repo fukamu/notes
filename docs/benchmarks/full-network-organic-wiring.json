@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "issue": 301,
+  "branchPoint": "d4a915ed1f5fad86d4f0c6f0caf6bbdbc029bb4e",
+  "generatedAt": "2026-09-16T20:26:21.695Z",
+  "host": {
+    "platform": "linux",
+    "release": "7.0.0-31-generic",
+    "cpuModel": "11th Gen Intel(R) Core(TM) i7-1195G7 @ 2.90GHz",
+    "logicalCpuCount": 8,
+    "totalMemoryBytes": 16463347712,
+    "node": "v26.8.1"
+  },
+  "policy": {
+    "timing": "raw evidence only; no host-dependent pass/fail threshold",
+    "displaySampling": false,
+    "coordinateConcentration": "exact equality of Float32/Float64 node coordinates"
+  },
+  "graphs": [
+    {
+      "name": "representative-10k",
+      "nodeCount": 10000,
+      "edgeCount": 19951,
+      "baseline": {
+        "algorithm": "component-bfs-serpentine-v1",
+        "timing": {
+          "measuredIterations": 3,
+          "medianMs": 4.578,
+          "p95Ms": 5.982,
+          "samplesMs": [5.982, 4.578, 3.735]
+        },
+        "geometry": {
+          "nodeCount": 10000,
+          "edgeCount": 19951,
+          "componentCount": 1,
+          "width": 1392,
+          "height": 1380,
+          "area": 1920960,
+          "duplicatePositions": 0,
+          "nonFiniteValues": 0,
+          "totalLinkLength": 11823362.401,
+          "medianLinkLength": 555.698,
+          "p95LinkLength": 1131.852,
+          "maximumLinkLength": 1465.398,
+          "medianNormalizedLinkLength": 40.094,
+          "p95NormalizedLinkLength": 81.664,
+          "maximumNormalizedLinkLength": 105.73,
+          "crossingSample": {
+            "edgeCount": 2000,
+            "crossings": 247246
+          },
+          "nodeIntrusionSample": {
+            "edgeCount": 200,
+            "nodesChecked": 1999600,
+            "intrusions": 3667
+          },
+          "coordinateConcentration": {
+            "uniqueX": 87,
+            "uniqueY": 115,
+            "maximumNodesSharingX": 115,
+            "maximumNodesSharingY": 87
+          }
+        }
+      },
+      "production": {
+        "algorithm": "component-bfs-warped-v2",
+        "timing": {
+          "measuredIterations": 3,
+          "medianMs": 23.054,
+          "p95Ms": 25.425,
+          "samplesMs": [25.425, 23.054, 18.157]
+        },
+        "geometry": {
+          "nodeCount": 10000,
+          "edgeCount": 19951,
+          "componentCount": 1,
+          "width": 1396.316,
+          "height": 1431.099,
+          "area": 1998266.201,
+          "duplicatePositions": 0,
+          "nonFiniteValues": 0,
+          "totalLinkLength": 11823727.284,
+          "medianLinkLength": 555.823,
+          "p95LinkLength": 1131.748,
+          "maximumLinkLength": 1464.565,
+          "medianNormalizedLinkLength": 39.32,
+          "p95NormalizedLinkLength": 80.061,
+          "maximumNormalizedLinkLength": 103.605,
+          "crossingSample": {
+            "edgeCount": 2000,
+            "crossings": 248099
+          },
+          "nodeIntrusionSample": {
+            "edgeCount": 200,
+            "nodesChecked": 1999600,
+            "intrusions": 3642
+          },
+          "coordinateConcentration": {
+            "uniqueX": 9992,
+            "uniqueY": 9990,
+            "maximumNodesSharingX": 2,
+            "maximumNodesSharingY": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "dense-10000-116",
+      "nodeCount": 10000,
+      "edgeCount": 1160000,
+      "baseline": {
+        "algorithm": "component-bfs-serpentine-v1",
+        "timing": {
+          "measuredIterations": 3,
+          "medianMs": 47.799,
+          "p95Ms": 60.318,
+          "samplesMs": [46.807, 47.799, 60.318]
+        },
+        "geometry": {
+          "nodeCount": 10000,
+          "edgeCount": 1160000,
+          "componentCount": 1,
+          "width": 1392,
+          "height": 1380,
+          "area": 1920960,
+          "duplicatePositions": 0,
+          "nonFiniteValues": 0,
+          "totalLinkLength": 604325718.755,
+          "medianLinkLength": 455.807,
+          "p95LinkLength": 1095.978,
+          "maximumLinkLength": 1405.816,
+          "medianNormalizedLinkLength": 32.887,
+          "p95NormalizedLinkLength": 79.076,
+          "maximumNormalizedLinkLength": 101.431,
+          "crossingSample": {
+            "edgeCount": 2000,
+            "crossings": 137975
+          },
+          "nodeIntrusionSample": {
+            "edgeCount": 200,
+            "nodesChecked": 1999600,
+            "intrusions": 3204
+          },
+          "coordinateConcentration": {
+            "uniqueX": 87,
+            "uniqueY": 115,
+            "maximumNodesSharingX": 115,
+            "maximumNodesSharingY": 87
+          }
+        }
+      },
+      "production": {
+        "algorithm": "component-bfs-warped-v2",
+        "timing": {
+          "measuredIterations": 3,
+          "medianMs": 172.118,
+          "p95Ms": 184.236,
+          "samplesMs": [184.236, 170.876, 172.118]
+        },
+        "geometry": {
+          "nodeCount": 10000,
+          "edgeCount": 1160000,
+          "componentCount": 1,
+          "width": 1396.305,
+          "height": 1430.911,
+          "area": 1997989.29,
+          "duplicatePositions": 0,
+          "nonFiniteValues": 0,
+          "totalLinkLength": 604340590.366,
+          "medianLinkLength": 457.369,
+          "p95LinkLength": 1095.657,
+          "maximumLinkLength": 1407.325,
+          "medianNormalizedLinkLength": 32.357,
+          "p95NormalizedLinkLength": 77.514,
+          "maximumNormalizedLinkLength": 99.563,
+          "crossingSample": {
+            "edgeCount": 2000,
+            "crossings": 138616
+          },
+          "nodeIntrusionSample": {
+            "edgeCount": 200,
+            "nodesChecked": 1999600,
+            "intrusions": 3261
+          },
+          "coordinateConcentration": {
+            "uniqueX": 9989,
+            "uniqueY": 9988,
+            "maximumNodesSharingX": 2,
+            "maximumNodesSharingY": 2
+          }
+        }
+      }
+    }
+  ],
+  "retainedGeometryBytes": {
+    "representative": 399216,
+    "dense": 18640000,
+    "changedFromBaseline": false
+  }
+}

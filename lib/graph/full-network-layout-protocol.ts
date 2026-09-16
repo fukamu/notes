@@ -100,7 +100,7 @@ function float32Array(input: unknown, label: string): Float32Array {
 function decodeConfiguration(input: unknown): FullNetworkLayoutConfiguration {
   const candidate = record(input, 'configuration');
   const version = safeInteger(candidate, 'version', 'configuration');
-  if (version !== 1) throw new TypeError('configuration.version must be 1');
+  if (version !== 2) throw new TypeError('configuration.version must be 2');
   return {
     version,
     cellWidth: finiteNumber(candidate, 'cellWidth', 'configuration'),

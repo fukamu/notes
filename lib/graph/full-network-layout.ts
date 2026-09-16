@@ -9,7 +9,7 @@ export type FullNetworkTopology = Readonly<{
 }>;
 
 export type FullNetworkLayoutConfiguration = Readonly<{
-  version: 1;
+  version: 2;
   cellWidth: number;
   cellHeight: number;
   componentGap: number;
@@ -18,7 +18,7 @@ export type FullNetworkLayoutConfiguration = Readonly<{
 }>;
 
 export const defaultFullNetworkLayoutConfiguration = {
-  version: 1,
+  version: 2,
   cellWidth: 16,
   cellHeight: 12,
   componentGap: 48,
@@ -265,7 +265,7 @@ export function fullNetworkLayoutKey(
 function validateConfiguration(
   configuration: FullNetworkLayoutConfiguration,
 ): void {
-  if (configuration.version !== 1) {
+  if (configuration.version !== 2) {
     throw new RangeError('Unsupported full-network layout version');
   }
   positiveFinite(configuration.cellWidth, 'cellWidth');
@@ -408,8 +408,15 @@ function edgeIdentity(source: number, target: number): number {
 
 function createPreviousReuseIndex(
   snapshot: FullNetworkLayoutSnapshot | undefined,
+  configuration: FullNetworkLayoutConfiguration,
 ): PreviousReuseIndex | undefined {
   if (!snapshot) return undefined;
+  if (
+    snapshot.layout.layoutKey !==
+    fullNetworkLayoutKey(snapshot.topology, configuration)
+  ) {
+    return undefined;
+  }
   const nodeIndexes = new Map(
     snapshot.topology.nodeIds.map((id, index) => [id, index]),
   );
@@ -485,11 +492,11 @@ function sameComponent(
   return true;
 }
 
-function breadthFirstOrder(
+function breadthFirstLayers(
   nodes: readonly number[],
   index: GraphIndex,
   nodeCount: number,
-): number[] {
+): readonly (readonly number[])[] {
   if (nodes.length === 0) return [];
   const start = [...nodes].sort(
     (left, right) =>
@@ -497,20 +504,22 @@ function breadthFirstOrder(
         typedValue(index.degrees, left, 'degree') || left - right,
   )[0];
   if (start === undefined) throw new Error('Component omitted its start');
-  const inComponent = new Uint8Array(nodeCount);
-  const visited = new Uint8Array(nodeCount);
-  for (const node of nodes) inComponent[node] = 1;
+  const inComponent = new Set(nodes);
+  const depthByNode = new Map<number, number>();
   const queue: number[] = [start];
-  visited[start] = 1;
+  const layers: number[][] = [[start]];
+  depthByNode.set(start, 0);
   for (let position = 0; position < queue.length; position += 1) {
     const node = queue[position];
     if (node === undefined) throw new Error(`BFS omitted queue ${position}`);
+    const depth = depthByNode.get(node);
+    if (depth === undefined) throw new Error(`BFS omitted depth for ${node}`);
     const first = typedValue(index.offsets, node, 'first offset');
     const last = typedValue(index.offsets, node + 1, 'last offset');
     const candidates: number[] = [];
     for (let cursor = first; cursor < last; cursor += 1) {
       const neighbor = typedValue(index.neighbors, cursor, 'neighbor');
-      if (inComponent[neighbor] === 1 && visited[neighbor] !== 1) {
+      if (inComponent.has(neighbor) && !depthByNode.has(neighbor)) {
         candidates.push(neighbor);
       }
     }
@@ -520,15 +529,25 @@ function breadthFirstOrder(
           typedValue(index.degrees, left, 'degree') || left - right,
     );
     for (const candidate of candidates) {
-      if (visited[candidate] === 1) continue;
-      visited[candidate] = 1;
+      if (depthByNode.has(candidate)) continue;
+      const candidateDepth = depth + 1;
+      depthByNode.set(candidate, candidateDepth);
       queue.push(candidate);
+      const layer = layers[candidateDepth] ?? [];
+      layer.push(candidate);
+      layers[candidateDepth] = layer;
     }
   }
   for (const node of nodes) {
-    if (visited[node] !== 1) queue.push(node);
+    if (depthByNode.has(node)) continue;
+    const fallbackDepth = layers.length;
+    depthByNode.set(node, fallbackDepth);
+    layers.push([node]);
   }
-  return queue;
+  if (depthByNode.size !== nodes.length || nodeCount < depthByNode.size) {
+    throw new Error('BFS layer identity is incomplete');
+  }
+  return layers;
 }
 
 function reusableLocalLayout(
@@ -589,7 +608,8 @@ function createLocalLayout(
     previous,
   );
   if (reused) return reused;
-  const order = breadthFirstOrder(nodes, index, topology.nodeIds.length);
+  const layers = breadthFirstLayers(nodes, index, topology.nodeIds.length);
+  const order = layers.flat();
   const columns = Math.max(
     1,
     Math.ceil(
@@ -604,14 +624,47 @@ function createLocalLayout(
   );
   const localX = new Float32Array(nodes.length);
   const localY = new Float32Array(nodes.length);
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const componentPhase =
+    (updateStringHash(hashOffset, structuralKey) / 0x1_0000_0000) * Math.PI * 2;
+  let minimumX = Number.POSITIVE_INFINITY;
+  let minimumY = Number.POSITIVE_INFINITY;
+  let maximumX = Number.NEGATIVE_INFINITY;
+  let maximumY = Number.NEGATIVE_INFINITY;
   for (const [position, node] of order.entries()) {
     const target = positionByNode.get(node);
-    if (target === undefined) throw new Error(`Component omitted node ${node}`);
+    const id = topology.nodeIds[node];
+    if (target === undefined || id === undefined) {
+      throw new Error(`Component omitted node ${node}`);
+    }
     const row = Math.floor(position / columns);
     const offset = position % columns;
     const column = row % 2 === 0 ? offset : columns - 1 - offset;
-    localX[target] = column * configuration.cellWidth;
-    localY[target] = row * configuration.cellHeight;
+    const firstHash = updateStringHash(hashOffset, id);
+    const secondHash = updateReverseStringHash(hashOffset, id);
+    const jitterX = (firstHash / 0x1_0000_0000 - 0.5) * 0.08;
+    const jitterY = (secondHash / 0x1_0000_0000 - 0.5) * 0.08;
+    const x =
+      column * configuration.cellWidth +
+      (Math.sin(row * goldenAngle + componentPhase) * 0.1 + jitterX) *
+        configuration.cellWidth;
+    const y =
+      row * configuration.cellHeight +
+      (Math.sin(column * goldenAngle + componentPhase + goldenAngle) * 0.1 +
+        jitterY) *
+        configuration.cellHeight;
+    localX[target] = x;
+    localY[target] = y;
+    minimumX = Math.min(minimumX, x);
+    minimumY = Math.min(minimumY, y);
+    maximumX = Math.max(maximumX, x);
+    maximumY = Math.max(maximumY, y);
+  }
+  const offsetX = configuration.cellWidth / 2 - minimumX;
+  const offsetY = configuration.cellHeight / 2 - minimumY;
+  for (let position = 0; position < nodes.length; position += 1) {
+    localX[position] = typedValue(localX, position, 'warped x') + offsetX;
+    localY[position] = typedValue(localY, position, 'warped y') + offsetY;
   }
   return {
     structuralKey,
@@ -619,8 +672,14 @@ function createLocalLayout(
     edgeIndexes,
     localX,
     localY,
-    width: columns * configuration.cellWidth,
-    height: rows * configuration.cellHeight,
+    width: Math.max(
+      columns * configuration.cellWidth,
+      maximumX - minimumX + configuration.cellWidth,
+    ),
+    height: Math.max(
+      rows * configuration.cellHeight,
+      maximumY - minimumY + configuration.cellHeight,
+    ),
     reused: false,
   };
 }
@@ -632,7 +691,7 @@ export function layoutFullNetworkTopology(
 ): FullNetworkLayout {
   validateConfiguration(configuration);
   const index = createGraphIndex(topology);
-  const previousReuseIndex = createPreviousReuseIndex(previous);
+  const previousReuseIndex = createPreviousReuseIndex(previous, configuration);
   const localLayouts = index.componentNodes.map((nodes, component) =>
     createLocalLayout(
       topology,

@@ -30,6 +30,9 @@ remain separate merge decisions.
    link. Then sign out and confirm a later session does not recover the old
    camera, worker, cache, or content.
 5. Confirm there is no search field, staged-card count, or “さらに表示” action.
+6. At fit-all and Network zoom, confirm connected groups no longer align into
+   repeated exact rows and columns. At Detail zoom, confirm route corners are
+   rounded, direction arrows remain visible, and no card/link disappears.
 
 ## Rollback rehearsal
 
@@ -51,3 +54,7 @@ Real hardware GPU throughput, mobile thermal behavior, browser-specific WebGL
 loss, and extremely dense first-raster latency require deployment canary
 observation. A supported-browser failure must remain explicit and retryable; it
 must never silently reinstate graph sampling or the old 256-card limit.
+
+Issue #301 deliberately adds no persistent layout cache. A future cache must be
+designed against exact topology/layout-version keys, Vault/session isolation,
+bounded storage, invalidation, and logout purge before it can be enabled.

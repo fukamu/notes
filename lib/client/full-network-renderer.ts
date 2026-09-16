@@ -440,6 +440,62 @@ function canvasPoint(
   };
 }
 
+function pointToward(
+  origin: Readonly<{ x: number; y: number }>,
+  target: Readonly<{ x: number; y: number }>,
+  distance: number,
+): Readonly<{ x: number; y: number }> {
+  const length = Math.hypot(target.x - origin.x, target.y - origin.y);
+  if (length === 0) return origin;
+  const ratio = distance / length;
+  return {
+    x: origin.x + (target.x - origin.x) * ratio,
+    y: origin.y + (target.y - origin.y) * ratio,
+  };
+}
+
+function drawRoundedRoute(
+  context: CanvasRenderingContext2D,
+  points: readonly Readonly<{ x: number; y: number }>[],
+): Readonly<{
+  from: Readonly<{ x: number; y: number }>;
+  to: Readonly<{ x: number; y: number }>;
+}> {
+  const first = points[0];
+  const last = points.at(-1);
+  if (!first || !last || points.length < 2) {
+    throw new Error('Full-network detail route has no visible segment');
+  }
+  context.beginPath();
+  context.moveTo(first.x, first.y);
+  let finalApproach = first;
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const corner = points[index];
+    const next = points[index + 1];
+    if (!previous || !corner || !next) {
+      throw new Error('Full-network detail route is discontinuous');
+    }
+    const radius = Math.min(
+      6,
+      Math.hypot(corner.x - previous.x, corner.y - previous.y) / 2,
+      Math.hypot(next.x - corner.x, next.y - corner.y) / 2,
+    );
+    if (radius <= 0.05) {
+      context.lineTo(corner.x, corner.y);
+      finalApproach = corner;
+      continue;
+    }
+    const entry = pointToward(corner, previous, radius);
+    const exit = pointToward(corner, next, radius);
+    context.lineTo(entry.x, entry.y);
+    context.quadraticCurveTo(corner.x, corner.y, exit.x, exit.y);
+    finalApproach = exit;
+  }
+  context.lineTo(last.x, last.y);
+  return { from: finalApproach, to: last };
+}
+
 function drawCanvasOverviewChunk(
   input: Readonly<{
     backend: CanvasBackend;
@@ -567,36 +623,27 @@ function drawDetailLayer(
         : palette.detailEdge.css;
     context.strokeStyle = color;
     context.lineWidth = emphasized ? 2.5 : 1.25;
-    context.beginPath();
-    let previousX = 0;
-    let previousY = 0;
-    let arrow:
-      | Readonly<{ fromX: number; fromY: number; toX: number; toY: number }>
-      | undefined;
+    const points: Readonly<{ x: number; y: number }>[] = [];
     for (let offset = 0; offset < route.coordinates.length; offset += 2) {
-      const point = canvasPoint(
-        camera,
-        typedValue(route.coordinates, offset, 'route x'),
-        typedValue(route.coordinates, offset + 1, 'route y'),
+      points.push(
+        canvasPoint(
+          camera,
+          typedValue(route.coordinates, offset, 'route x'),
+          typedValue(route.coordinates, offset + 1, 'route y'),
+        ),
       );
-      if (offset === 0) context.moveTo(point.x, point.y);
-      else context.lineTo(point.x, point.y);
-      if (offset + 2 === route.coordinates.length) {
-        if (view.plan.directionsVisible) {
-          arrow = {
-            fromX: previousX,
-            fromY: previousY,
-            toX: point.x,
-            toY: point.y,
-          };
-        }
-      }
-      previousX = point.x;
-      previousY = point.y;
     }
+    const arrow = drawRoundedRoute(context, points);
     context.stroke();
-    if (arrow) {
-      drawArrow(context, arrow.fromX, arrow.fromY, arrow.toX, arrow.toY, color);
+    if (view.plan.directionsVisible) {
+      drawArrow(
+        context,
+        arrow.from.x,
+        arrow.from.y,
+        arrow.to.x,
+        arrow.to.y,
+        color,
+      );
     }
   }
   const nodeIndexes =
