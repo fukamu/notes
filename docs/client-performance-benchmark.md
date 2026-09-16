@@ -151,11 +151,26 @@ batch-selector call and is never cached across Vault/session/logout boundaries.
 
 ## Known boundary
 
-The baseline measures connections input construction only. Issue #266 selected
-progressive disclosure around the current card with fixed worker/DOM bounds;
-Issue #275 removes the connections-only search path without changing those
-bounds. The longer-term experience beyond the 256-card stage remains tracked
-separately.
+The original baseline measures connections input construction only. Issue #266
+selected progressive disclosure around the current card with fixed worker/DOM
+bounds, and Issue #275 removed the connections-only search path without changing
+those bounds. Parent #283 now supersedes that 256-card product decision with a
+complete-network semantic-zoom architecture.
+
+Run its separate evidence command with:
+
+```bash
+npm run benchmark:semantic-zoom
+```
+
+It writes `docs/benchmarks/full-network-semantic-zoom.json` and covers both the
+existing 10,000-card / 19,951-link fixture and a codec-derived 10,000-card /
+1,160,000-link envelope. The benchmark measures packed layout, worker-boundary
+copy, Canvas2D and WebGL2 full redraw, retained-layer camera composition, exact
+geometry bytes, and the required degenerate graph corpus. Host timings remain
+evidence; exact identity, memory formulas, deterministic geometry, and no hidden
+node/edge cap are the stable gates. ADR 005 records the resulting retained
+overview/detail-layer decision.
 
 ## Issue #204 browser windowing
 
