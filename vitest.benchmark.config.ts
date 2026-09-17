@@ -9,7 +9,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/benchmarks/connections-routing.benchmark.test.ts'],
-    testTimeout: 300_000,
+    include: ['tests/benchmarks/connections-*.benchmark.test.ts'],
+    maxWorkers: 1,
+    testTimeout: 600_000,
   },
 });

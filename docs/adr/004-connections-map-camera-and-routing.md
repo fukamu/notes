@@ -353,3 +353,22 @@ required structural gate; wall-clock timings remain observational.
   evidence. Raw timing remains informational rather than a flaky CI threshold.
 - Preserve the 64/64/256 staging policy unless a later reviewed Issue changes
   both the structural worker/DOM bounds and the user-visible navigation path.
+
+## Issue #304 phase-0 reopening
+
+Issue #305 is the first reviewed step toward replacing the 64/64/256 product
+policy. It leaves this ADR's production decision unchanged while comparing the
+current staged input (A) with the complete semantic input (B) on Node 22.13.0.
+The complete 257-node connected fixture succeeds, and a 257-node fixture with
+35 components succeeds much more slowly. The complete 1,000/3,000 and both
+10,000/~20,000 cases fail inside ELK before warm-up with `Maximum call stack
+size exceeded`; no full geometry reaches path generation, React, or paint.
+
+The full evidence and limits are in
+[`connections-full-network-phase-0.md`](../connections-full-network-phase-0.md).
+This result blocks a default all-node cutover and does not select lower
+thoroughness, culling, an AABB tree, a larger/weighted cache, Canvas/WebGL, or an
+alternate router. The reproduced controller A→B→A and Sync v2 tombstone
+visibility defects are separate correctness prerequisites. A higher-cost layout
+or renderer alternative requires its own explicit decision; staging remains the
+production fallback until complete 1k and 10k geometry is demonstrated.
