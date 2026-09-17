@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   LocateFixed,
@@ -50,11 +50,30 @@ export function ConnectionsView({
         : null,
     [edgeMaximumRadius, edgeNodeSpacing, geometry],
   );
-  const [focusedCardId, setFocusedCardId] = useState<string | null>(null);
+  const [focusedCardId, setFocusedCardId] = useState<
+    (typeof semanticInput.nodes)[number]['cardId'] | null
+  >(null);
+  const pendingMapFocusRef = useRef<
+    (typeof semanticInput.nodes)[number]['cardId'] | null
+  >(null);
+  const readyNodesById = useMemo(
+    () =>
+      new Map(
+        readyModel?.nodes.map((node, nodeIndex) => [
+          node.cardId,
+          { node, nodeIndex },
+        ]) ?? [],
+      ),
+    [readyModel?.nodes],
+  );
+  const retainedNodeIndex = focusedCardId
+    ? (readyNodesById.get(focusedCardId)?.nodeIndex ?? null)
+    : null;
   const {
     viewportRef,
     worldRef,
     edgeCanvasRef,
+    cardCanvasRef,
     zoomOutputRef,
     zoomInRef,
     zoomOutRef,
@@ -65,30 +84,49 @@ export function ConnectionsView({
     centerCurrent,
     ensureNodeVisible,
     visibility,
+    nodeRenderMode,
   } = useConnectionsViewport(
     readyModel,
     presentation.viewportPadding,
     preparedVisibility,
+    retainedNodeIndex,
+    openCard,
   );
-  const visibleNodeIndices = useMemo(
-    () => new Set(visibility?.nodeIndices ?? []),
-    [visibility?.nodeIndices],
-  );
-  const readyNodesById = useMemo(
-    () => new Map(readyModel?.nodes.map((node) => [node.cardId, node]) ?? []),
-    [readyModel?.nodes],
-  );
+  const htmlNodeIndices = useMemo(() => {
+    const indices =
+      nodeRenderMode === 'html' ? [...(visibility?.nodeIndices ?? [])] : [];
+    if (retainedNodeIndex !== null && !indices.includes(retainedNodeIndex)) {
+      indices.push(retainedNodeIndex);
+      indices.sort((left, right) => left - right);
+    }
+    return indices;
+  }, [nodeRenderMode, retainedNodeIndex, visibility?.nodeIndices]);
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    viewport.dataset.mountedHtmlNodeCount = String(htmlNodeIndices.length);
+    const requestedAt = Number(viewport.dataset.nodeRenderRequestedAt);
+    if (Number.isFinite(requestedAt)) {
+      viewport.dataset.nodeCommitDurationMs = String(
+        performance.now() - requestedAt,
+      );
+    }
+  }, [htmlNodeIndices, nodeRenderMode, viewportRef]);
+  useLayoutEffect(() => {
+    const cardId = pendingMapFocusRef.current;
+    if (!cardId || nodeRenderMode !== 'html') return;
+    const target = document.getElementById(`connections-map-card-${cardId}`);
+    if (!(target instanceof HTMLButtonElement)) return;
+    pendingMapFocusRef.current = null;
+    target.focus({ preventScroll: true });
+  }, [htmlNodeIndices, nodeRenderMode]);
   const moveToMap = useCallback(
     (cardId: (typeof semanticInput.nodes)[number]['cardId']) => {
-      const node = readyNodesById.get(cardId);
-      if (!node) return;
+      const entry = readyNodesById.get(cardId);
+      if (!entry) return;
+      pendingMapFocusRef.current = cardId;
       setFocusedCardId(cardId);
-      ensureNodeVisible(node);
-      window.requestAnimationFrame(() => {
-        document
-          .getElementById(`connections-map-card-${cardId}`)
-          ?.focus({ preventScroll: true });
-      });
+      ensureNodeVisible(entry.node);
     },
     [ensureNodeVisible, readyNodesById],
   );
@@ -216,6 +254,8 @@ export function ConnectionsView({
         data-visual-edge-count={
           readyModel ? (visibility?.edgeIndices.length ?? 0) : 0
         }
+        data-node-renderer={nodeRenderMode}
+        data-mounted-html-node-count={htmlNodeIndices.length}
         aria-busy={model.status === 'loading'}
         aria-label="すべてのカードの一方向リンクマップ"
         aria-describedby="connections-map-instructions"
@@ -236,27 +276,8 @@ export function ConnectionsView({
           <div className="min-h-64 p-2" role="alert">
             <p className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
               <TriangleAlert aria-hidden="true" className="size-5" />
-              配置を計算できませんでした。カードは一覧から開けます。
+              配置を計算できませんでした。上の「カードと参照の一覧」から全カードを検索して開けます。
             </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {model.fallbackItems.map((item) => (
-                <button
-                  key={item.cardId}
-                  type="button"
-                  onClick={() => openCard(item.cardId)}
-                  aria-current={item.current ? 'true' : undefined}
-                  aria-label={item.accessibleName}
-                  className="rounded-xl border bg-card px-4 py-3 text-left shadow-sm focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span className="font-mono text-[11px] font-semibold text-accent-foreground">
-                    {item.displayLabel}
-                  </span>
-                  <span className="mt-1 block truncate font-heading font-semibold">
-                    {item.title}
-                  </span>
-                </button>
-              ))}
-            </div>
           </div>
         )}
 
@@ -265,6 +286,15 @@ export function ConnectionsView({
             ref={edgeCanvasRef}
             className="connections-edge-canvas"
             data-testid="connections-edge-canvas"
+            aria-hidden="true"
+          />
+        )}
+
+        {model.status === 'ready' && (
+          <canvas
+            ref={cardCanvasRef}
+            className="connections-card-canvas"
+            data-testid="connections-card-canvas"
             aria-hidden="true"
           />
         )}
@@ -279,11 +309,9 @@ export function ConnectionsView({
             data-layout-width={model.width}
             data-layout-height={model.height}
           >
-            {model.nodes.map((node, nodeIndex) => {
-              const showVisualContent =
-                visibleNodeIndices.has(nodeIndex) ||
-                node.current ||
-                focusedCardId === node.cardId;
+            {htmlNodeIndices.map((nodeIndex) => {
+              const node = model.nodes[nodeIndex];
+              if (!node) return null;
               return (
                 <button
                   key={node.cardId}
@@ -292,9 +320,7 @@ export function ConnectionsView({
                   onClick={() => openCard(node.cardId)}
                   aria-current={node.current ? 'true' : undefined}
                   aria-label={node.accessibleName}
-                  className={`connections-node-structure connections-node-shell${
-                    showVisualContent ? ' connections-node' : ''
-                  }`}
+                  className="connections-node-structure connections-node-shell connections-node"
                   style={{
                     left: node.x,
                     top: node.y,
@@ -302,26 +328,22 @@ export function ConnectionsView({
                     height: node.height,
                   }}
                   data-card-id={node.cardId}
-                  data-visual-content={showVisualContent ? 'true' : 'false'}
                   onFocus={() => {
+                    pendingMapFocusRef.current = null;
                     setFocusedCardId(node.cardId);
                     ensureNodeVisible(node);
                   }}
                   onBlur={() => setFocusedCardId(null)}
                   draggable={false}
                 >
-                  {showVisualContent && (
-                    <>
-                      <span className="font-mono text-[11px] font-semibold text-accent-foreground">
-                        {node.displayLabel}
-                      </span>
-                      <span className="mt-1 block w-full truncate font-heading font-semibold">
-                        {node.title}
-                      </span>
-                      {node.current && (
-                        <span className="sr-only">現在のカード</span>
-                      )}
-                    </>
+                  <span className="font-mono text-[11px] font-semibold text-accent-foreground">
+                    {node.displayLabel}
+                  </span>
+                  <span className="mt-1 block w-full truncate font-heading font-semibold">
+                    {node.title}
+                  </span>
+                  {node.current && (
+                    <span className="sr-only">現在のカード</span>
                   )}
                 </button>
               );

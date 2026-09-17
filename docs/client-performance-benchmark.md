@@ -205,6 +205,24 @@ card shells and whole-world card content select the separately reviewed card
 window/overview Canvas step. See
 [`connections-semantic-lists.md`](connections-semantic-lists.md).
 
+Issue #325 removes the remaining always-mounted card DOM. Readable scales mount
+only camera/overscan cards plus a retained focused card; overview scales draw
+individual card shapes on a viewport Canvas and use the existing node BVH for
+card hit testing. The full searchable native lists remain the accessibility and
+keyboard path, so this does not reduce the 10,000-node / 19,999-edge semantic
+graph. Recorded complete initial readiness is about 3.48 s desktop and 2.54 s
+mobile emulation, inside the provisional five-second target. Localized graph
+DOM is seven descendants with one card button, and whole-world fit is three
+descendants with no card buttons and two canvases.
+
+Continuous 10k whole-world movement still misses the provisional 50 ms target:
+frame p95 is about 183 ms desktop and 217 ms mobile, while edge redraw p95 is
+about 91/106 ms and overview-card drawing about 4 ms. This identifies repeated
+whole-world edge repaint as the remaining measured bottleneck and selects the
+bounded viewport bitmap-reuse Issue. `layoutReadyWallMs` remains product
+navigation wall time, not an isolated Worker timing. Raw values and limits are
+in [`connections-card-windowing.md`](connections-card-windowing.md).
+
 ## Issue #204 browser windowing
 
 `docs/benchmarks/10k-browser-final.json` records three desktop Chromium and

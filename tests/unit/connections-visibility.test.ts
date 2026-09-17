@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  hitTestConnectionsNode,
   prepareConnectionsVisibility,
   queryConnectionsVisibility,
+  resolveConnectionsNodeRenderMode,
   sameConnectionsVisibility,
 } from '@/lib/graph/connections-visibility';
 
@@ -152,5 +154,37 @@ describe('connections visibility', () => {
         0,
       ).edgeIndices,
     ).toEqual([0]);
+  });
+
+  it('switches to overview from projected card height, not graph size', () => {
+    expect(resolveConnectionsNodeRenderMode(72, 0.5)).toBe('html');
+    expect(resolveConnectionsNodeRenderMode(72, 0.499)).toBe('overview-canvas');
+    expect(resolveConnectionsNodeRenderMode(72, 1)).toBe('html');
+    expect(resolveConnectionsNodeRenderMode(0, 1)).toBe('html');
+  });
+
+  it('hit-tests exact card bounds through the node BVH in viewport coordinates', () => {
+    const prepared = prepareConnectionsVisibility(
+      [
+        { x: 20, y: 30, width: 100, height: 60 },
+        { x: 200, y: 30, width: 100, height: 60 },
+      ],
+      [],
+      { x: 0, y: 0, width: 320, height: 120 },
+      pathOptions,
+    );
+    const camera = { x: -20, y: 10, scale: 0.5 };
+
+    expect(hitTestConnectionsNode(prepared, camera, { x: 20, y: 40 })).toBe(0);
+    expect(
+      hitTestConnectionsNode(prepared, camera, { x: 60, y: 40 }),
+    ).toBeNull();
+    expect(hitTestConnectionsNode(prepared, camera, { x: 105, y: 40 })).toBe(1);
+    expect(
+      hitTestConnectionsNode(prepared, camera, {
+        x: Number.NaN,
+        y: 40,
+      }),
+    ).toBeNull();
   });
 });

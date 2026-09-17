@@ -507,3 +507,24 @@ the next independent Issue may implement the explicitly approved normal-scale
 card window and overview Canvas card shapes. This section does not mark the
 overall performance objective complete. Evidence is in
 [`connections-semantic-lists.md`](../connections-semantic-lists.md).
+
+## Issue #325 card window and overview Canvas
+
+Issue #325 removes the remaining always-mounted 10,000-card DOM without
+changing graph membership. At normal readable scale, only nodes intersecting
+the camera query plus 96 px overscan and a retained focused node are HTML
+buttons. Below a 36 px screen-height threshold, visible cards are painted as
+individual rounded shapes on a second viewport-sized Canvas; a point query
+against the existing node BVH opens the original card. The searchable paged
+native lists remain the complete keyboard and accessibility representation.
+
+The recorded 10k product samples reach complete initial readiness in about
+2.54–3.48 s. Localized graph DOM falls to seven descendants and one card button;
+whole-world fit uses three descendants, no card buttons, and the edge/card
+canvases. This meets the provisional five-second readiness target. It does not
+meet the continuous whole-world 50 ms frame target: desktop/mobile p95 is about
+183/217 ms, with edge redraw at about 91/106 ms and card Canvas around 4 ms.
+The measured result selects the separately reviewed bounded viewport bitmap
+reuse step; it does not select graph aggregation, WebGL, or reduced semantics.
+Detailed evidence and limitations are in
+[`connections-card-windowing.md`](../connections-card-windowing.md).

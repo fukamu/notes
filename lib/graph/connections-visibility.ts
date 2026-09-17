@@ -42,6 +42,8 @@ export type ConnectionsVisibilitySelection = Readonly<{
   edgeIndices: readonly number[];
 }>;
 
+export type ConnectionsNodeRenderMode = 'html' | 'overview-canvas';
+
 type VisibilityNode = ConnectionsNodeGeometry;
 
 type VisibilityEdge = Readonly<{
@@ -70,12 +72,14 @@ type BoundsIndex =
 export type PreparedConnectionsVisibility = Readonly<{
   worldBounds: ConnectionsNodeGeometry;
   nodeBounds: readonly ConnectionsBounds[];
+  nodeHitBounds: readonly ConnectionsBounds[];
   edges: readonly PreparedConnectionsEdge[];
   nodeIndex: BoundsIndex | null;
   segmentIndex: BoundsIndex | null;
 }>;
 
 export const CONNECTIONS_VISIBILITY_OVERSCAN_PX = 96;
+export const CONNECTIONS_OVERVIEW_CARD_HEIGHT_PX = 36;
 const nodeVisualMargin = 8;
 // The 8px halo has a 4px half-width. The SVG marker is 7 stroke-width units
 // at a 2px stroke, so 14 world units conservatively covers its full extent.
@@ -235,8 +239,9 @@ export function prepareConnectionsVisibility(
   pathOptions: ConnectionsPathOptions,
 ): PreparedConnectionsVisibility {
   const worldLayoutBounds = rectBounds(world);
-  const nodeBounds = nodes.map((node) =>
-    expandBounds(rectBounds(node), nodeVisualMargin),
+  const nodeHitBounds = nodes.map(rectBounds);
+  const nodeBounds = nodeHitBounds.map((bounds) =>
+    expandBounds(bounds, nodeVisualMargin),
   );
   const segmentEntries: IndexedBounds[] = [];
   const preparedEdges = edges.map(
@@ -299,12 +304,66 @@ export function prepareConnectionsVisibility(
   return {
     worldBounds,
     nodeBounds,
+    nodeHitBounds,
     edges: preparedEdges,
     nodeIndex: createBoundsIndex(
       nodeBounds.map((bounds, itemIndex) => ({ itemIndex, bounds })),
     ),
     segmentIndex: createBoundsIndex(segmentEntries),
   };
+}
+
+export function resolveConnectionsNodeRenderMode(
+  nodeHeight: number,
+  cameraScale: number,
+): ConnectionsNodeRenderMode {
+  if (
+    !Number.isFinite(nodeHeight) ||
+    nodeHeight <= 0 ||
+    !Number.isFinite(cameraScale) ||
+    cameraScale <= 0
+  ) {
+    return 'html';
+  }
+  return nodeHeight * cameraScale < CONNECTIONS_OVERVIEW_CARD_HEIGHT_PX
+    ? 'overview-canvas'
+    : 'html';
+}
+
+export function hitTestConnectionsNode(
+  prepared: PreparedConnectionsVisibility,
+  camera: ConnectionsCamera,
+  viewportPoint: LayoutPoint,
+): number | null {
+  if (
+    !Number.isFinite(camera.x) ||
+    !Number.isFinite(camera.y) ||
+    !Number.isFinite(camera.scale) ||
+    camera.scale <= 0 ||
+    !Number.isFinite(viewportPoint.x) ||
+    !Number.isFinite(viewportPoint.y)
+  ) {
+    return null;
+  }
+  const worldPoint = {
+    x: (viewportPoint.x - camera.x) / camera.scale,
+    y: (viewportPoint.y - camera.y) / camera.scale,
+  };
+  const pointQuery = {
+    left: worldPoint.x,
+    top: worldPoint.y,
+    right: worldPoint.x,
+    bottom: worldPoint.y,
+  };
+  const candidates = [...queryBoundsIndex(prepared.nodeIndex, pointQuery)].sort(
+    (left, right) => right - left,
+  );
+  return (
+    candidates.find((index) => {
+      const bounds = prepared.nodeHitBounds[index];
+      return bounds ? intersects(bounds, pointQuery) : false;
+    }) ?? null
+  );
 }
 
 export function queryConnectionsVisibility(

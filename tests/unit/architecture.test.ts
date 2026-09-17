@@ -1783,6 +1783,10 @@ describe('swappable presentation architecture', () => {
       'lib/client/connections-canvas-renderer.ts',
       'utf8',
     );
+    const cardRenderer = await readFile(
+      'lib/client/connections-card-canvas-renderer.ts',
+      'utf8',
+    );
     const view = await readFile('components/connections-view.tsx', 'utf8');
     const semanticLists = await readFile(
       'components/connections-semantic-lists.tsx',
@@ -1803,7 +1807,13 @@ describe('swappable presentation architecture', () => {
     expect(renderer).toContain('new Path2D(section.d)');
     expect(renderer).toContain('context.stroke(section.path)');
     expect(renderer).toContain('context.fill(section.arrow)');
+    expect(cardRenderer).toContain('createConnectionsCanvasCardRenderer');
+    expect(cardRenderer).toContain('context.roundRect(');
+    expect(cardRenderer).not.toMatch(/(?:react|document\.|PointerEvent)/);
     expect(view).toContain('data-testid="connections-edge-canvas"');
+    expect(view).toContain('data-testid="connections-card-canvas"');
+    expect(view).toContain('htmlNodeIndices.map');
+    expect(view).not.toContain('model.nodes.map');
     expect(view).not.toContain('<svg');
     expect(view).not.toContain('カード間の一方向リンク一覧');
     expect(semanticLists).toContain('aria-label="検索された参照一覧"');
