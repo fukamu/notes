@@ -205,6 +205,14 @@ card shells and whole-world card content select the separately reviewed card
 window/overview Canvas step. See
 [`connections-semantic-lists.md`](connections-semantic-lists.md).
 
+Issue #329 subsequently removes those product lists under the replacement
+requirement recorded in ADR 004; the preceding paragraph remains historical
+performance evidence rather than a description of the current interface. Issue
+#331 also removes the map toolbar and visible count summary and gives the Canvas
+the header/navigation residual height. Current product measurements therefore
+record actual viewport, CSS, and backing-store dimensions instead of comparing
+against former toolbar-height constants.
+
 Issue #325 removes the remaining always-mounted card DOM. Readable scales mount
 only camera/overscan cards plus a retained focused card; overview scales draw
 individual card shapes on a viewport Canvas and use the existing node BVH for

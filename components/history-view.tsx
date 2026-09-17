@@ -46,24 +46,12 @@ export function HistoryView({ model, onOpenCard }: Props) {
 
   return (
     <section
-      className="mx-auto w-full max-w-3xl"
-      aria-labelledby="history-heading"
+      className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col"
+      aria-label="過去のカード"
     >
-      <div className="mb-5">
-        <p className="eyebrow">CARD STACK</p>
-        <h1
-          id="history-heading"
-          className="font-heading text-2xl font-semibold"
-        >
-          過去のカード
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          新しい番号から、前後のカードをめくれます。
-        </p>
-      </div>
       <div
         ref={registerScrollContainer}
-        className="history-stack max-h-[calc(100dvh-18.25rem)] overflow-y-auto rounded-2xl border bg-card/45 lg:max-h-[calc(100dvh-14rem)]"
+        className="history-stack min-h-0 flex-1 overflow-y-auto rounded-2xl border bg-card/45"
         data-testid="history-list"
         data-history-total-count={model.items.length}
         data-history-window-start={window.start}

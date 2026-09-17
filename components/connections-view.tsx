@@ -1,17 +1,7 @@
 'use client';
 
 import { useLayoutEffect, useMemo, useState } from 'react';
-import {
-  ArrowRight,
-  LocateFixed,
-  LoaderCircle,
-  Maximize2,
-  Minus,
-  Move,
-  Network,
-  Plus,
-  TriangleAlert,
-} from 'lucide-react';
+import { LoaderCircle, Network, TriangleAlert } from 'lucide-react';
 import type { ConnectionsRendererProps } from '@/components/presentation-contract';
 import { useConnectionsViewport } from '@/hooks/use-connections-viewport';
 import type { CardId } from '@/lib/domain/id';
@@ -66,14 +56,6 @@ export function ConnectionsView({
     worldRef,
     edgeCanvasRef,
     cardCanvasRef,
-    zoomOutputRef,
-    zoomInRef,
-    zoomOutRef,
-    keyboardRef,
-    zoomIn,
-    zoomOut,
-    fit,
-    centerCurrent,
     ensureNodeVisible,
     visibility,
     nodeRenderMode,
@@ -105,99 +87,10 @@ export function ConnectionsView({
     }
   }, [htmlNodeIndices, nodeRenderMode, viewportRef]);
   return (
-    <section className="w-full min-w-0" aria-labelledby="connections-heading">
-      <div className="connections-map-heading mb-4">
-        <div>
-          <p className="eyebrow">FULL DIRECTED NETWORK</p>
-          <h1
-            id="connections-heading"
-            className="font-heading text-2xl font-semibold"
-          >
-            つながり
-          </h1>
-          <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-            すべてのカードと、その参照関係を表示します。
-            <ArrowRight aria-hidden="true" className="size-4 shrink-0" />
-          </p>
-        </div>
-
-        <div
-          className="connections-map-toolbar"
-          role="toolbar"
-          aria-label="つながりマップの表示操作"
-        >
-          <button
-            type="button"
-            className="connections-map-control"
-            onClick={fit}
-            disabled={!readyModel}
-            aria-label="全体表示"
-          >
-            <Maximize2 aria-hidden="true" className="size-4" />
-            <span>全体</span>
-          </button>
-          <button
-            type="button"
-            className="connections-map-control"
-            onClick={centerCurrent}
-            disabled={!readyModel?.currentNode}
-            aria-label="現在のカードへ戻る"
-          >
-            <LocateFixed aria-hidden="true" className="size-4" />
-            <span>現在地</span>
-          </button>
-          <button
-            ref={keyboardRef}
-            type="button"
-            className="connections-map-control"
-            disabled={!readyModel}
-            aria-label="キーボードでマップを操作"
-            aria-describedby="connections-map-instructions"
-            aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown + - 0 Home"
-          >
-            <Move aria-hidden="true" className="size-4" />
-            <span>操作</span>
-          </button>
-          <button
-            ref={zoomOutRef}
-            type="button"
-            className="connections-map-control connections-map-control-square"
-            onClick={zoomOut}
-            disabled={!readyModel}
-            aria-label="縮小"
-          >
-            <Minus aria-hidden="true" className="size-4" />
-          </button>
-          <output
-            ref={zoomOutputRef}
-            className="min-w-12 text-center font-mono text-xs text-muted-foreground"
-            aria-label="現在のズーム"
-            aria-live="polite"
-          >
-            --
-          </output>
-          <button
-            ref={zoomInRef}
-            type="button"
-            className="connections-map-control connections-map-control-square"
-            onClick={zoomIn}
-            disabled={!readyModel}
-            aria-label="拡大"
-          >
-            <Plus aria-hidden="true" className="size-4" />
-          </button>
-        </div>
-      </div>
-
-      <p
-        className="mb-4 text-xs text-muted-foreground"
-        aria-live="polite"
-        data-testid="connections-network-summary"
-      >
-        全{totalNodeCount.toLocaleString('ja-JP')}枚・
-        {totalEdgeCount.toLocaleString('ja-JP')}参照
-      </p>
-
+    <section
+      className="flex h-full min-h-0 w-full min-w-0 flex-col"
+      aria-label="つながり"
+    >
       <p id="connections-map-instructions" className="sr-only">
         ドラッグまたは一本指で移動、ピンチまたは Control
         キーを押しながらホイールで拡大縮小できます。矢印キーで移動、プラスとマイナスで拡大縮小、0で全体表示、Homeで現在のカードへ戻ります。
@@ -206,6 +99,8 @@ export function ConnectionsView({
       <section
         ref={viewportRef}
         className="connections-viewport-structure connections-viewport"
+        role="tabpanel"
+        tabIndex={0}
         data-testid="connections-graph"
         data-layout-status={model.status}
         data-dragging="false"
@@ -225,9 +120,10 @@ export function ConnectionsView({
         aria-busy={model.status === 'loading'}
         aria-label="すべてのカードの一方向リンクマップ"
         aria-describedby="connections-map-instructions"
+        aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown + - 0 Home"
       >
         {model.status === 'loading' && (
-          <output className="grid h-full min-h-64 place-items-center text-sm text-muted-foreground">
+          <output className="grid h-full min-h-0 place-items-center text-sm text-muted-foreground">
             <span className="inline-flex items-center gap-2">
               <LoaderCircle
                 aria-hidden="true"
@@ -239,7 +135,7 @@ export function ConnectionsView({
         )}
 
         {model.status === 'error' && (
-          <div className="min-h-64 p-2" role="alert">
+          <div className="h-full min-h-0 p-2" role="alert">
             <p className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
               <TriangleAlert aria-hidden="true" className="size-5" />
               配置を計算できませんでした。カードまたは過去のカードから別のカードへ移動できます。
@@ -315,14 +211,14 @@ export function ConnectionsView({
             })}
           </div>
         )}
-      </section>
 
-      {model.status === 'ready' && model.edges.length === 0 && (
-        <div className="mt-4 flex items-center gap-3 rounded-xl border border-dashed px-4 py-4 text-sm text-muted-foreground">
-          <Network aria-hidden="true" className="size-5" />
-          本文でカードをリンクすると、カード間の一方向リンクが現れます。
-        </div>
-      )}
+        {model.status === 'ready' && model.edges.length === 0 && (
+          <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex items-center gap-3 rounded-xl border border-dashed bg-card/90 px-4 py-3 text-sm text-muted-foreground backdrop-blur">
+            <Network aria-hidden="true" className="size-5 shrink-0" />
+            本文でカードをリンクすると、カード間の一方向リンクが現れます。
+          </div>
+        )}
+      </section>
     </section>
   );
 }

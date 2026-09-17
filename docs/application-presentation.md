@@ -289,10 +289,14 @@ Structural styles are named separately from the default visual theme:
 `.connections-viewport-structure`, `.connections-canvas-structure`,
 `.connections-world`, and `.connections-node-structure` define browser behavior
 or geometry. Visual classes such as `.fukamu-editor`, `.card-link-capsule`,
-`.connections-viewport`, `.connections-map-toolbar`, and `.connections-node` are
-replaceable theme choices. `.history-stack` only supplies functional scroll
-padding; fixed history row geometry and viewport-bounded overscan are shared
-with the pure range contract and final 10,000-card browser evidence.
+`.connections-viewport`, and `.connections-node` are replaceable theme choices.
+The history and connections views share a residual-height workspace shell while
+the card view retains its document-scroll layout. `.history-stack` supplies
+functional scroll padding and owns the remaining-height scroll area; fixed
+history row geometry and viewport-bounded overscan are shared with the pure
+range contract and final 10,000-card browser evidence. The connections viewport
+itself is the named, focusable keyboard and gesture boundary; there is no
+separate map toolbar or zoom output.
 
 Conflict visuals use light/dark semantic `--warning-*` tokens and the shared
 button primitive; no feature component embeds an amber or white palette.

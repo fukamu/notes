@@ -28,6 +28,12 @@ or theme-logic diff, so `after-desktop-dark.png` and `after-mobile-dark.png` are
 reused for the dark-style axis; fixed-corpus geometry and endpoints are protected
 independently by the routing tests and benchmark artifact.
 
+These captures are historical evidence for the former toolbar layout. Issue
+#331 removes that toolbar and the description/count blocks; current E2E captures
+`connections-expanded-workspace.png` and `history-expanded-workspace.png` at
+the actual desktop and mobile project sizes and verifies that the residual
+viewport/list does not overlap the responsive navigation.
+
 Visual review checks:
 
 - the three directed links visibly use real rounded corners and retain arrowheads;
