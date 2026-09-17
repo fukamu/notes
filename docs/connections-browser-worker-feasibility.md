@@ -73,6 +73,21 @@ cases. SVG culling, dynamic zoom, cache weighting, and lower thoroughness also
 cannot recover geometry that ELK failed to produce, so Issue #310 does not
 select those optimizations.
 
+## Selected follow-up architecture
+
+Issue #316 subsequently selects and implements the pure core for the approved
+alternative: keep the current ELK route for small complete graphs, and use a
+deterministic weak-component grid plus individual corridor routing above the
+reviewed calculation boundary. Both engines receive the complete input and
+produce the same `ConnectionsLayout` contract; the boundary is not a display
+cap. See
+[`connections-corridor-layout.md`](connections-corridor-layout.md).
+
+This follow-up does not reinterpret the failures above as successes. Issue #316
+establishes pure-core geometry only. Browser Worker lifecycle, the hybrid ELK
+deadline/fallback path, full-network UI cutover, paint performance, and visual
+review remain later gates before Issue #311 can remove staging.
+
 ## Reproduction
 
 ```bash
