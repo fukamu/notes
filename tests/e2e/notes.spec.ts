@@ -940,6 +940,28 @@ test('global directed graph is safe and operable for the reported and cyclic fix
   await expect(graph).toHaveAttribute('data-camera-scale', /\d/, {
     timeout: 5_000,
   });
+  await expect(graph).toHaveAttribute('data-edge-renderer', 'canvas-2d');
+  await expect(graph).toHaveAttribute('data-edge-render-status', 'painted');
+  const edgeCanvas = graph.getByTestId('connections-edge-canvas');
+  await expect(edgeCanvas).toHaveCount(1);
+  await expect(edgeCanvas).toHaveAttribute('aria-hidden', 'true');
+  await expect(graph.locator('svg')).toHaveCount(0);
+  const canvasHasPaint = await edgeCanvas.evaluate((element) => {
+    if (!(element instanceof HTMLCanvasElement)) return false;
+    const context = element.getContext('2d');
+    if (!context) return false;
+    const pixels = context.getImageData(
+      0,
+      0,
+      element.width,
+      element.height,
+    ).data;
+    for (let index = 3; index < pixels.length; index += 4) {
+      if (pixels[index] !== 0) return true;
+    }
+    return false;
+  });
+  expect(canvasHasPaint).toBe(true);
   await expect(graph.getByRole('button')).toHaveCount(7);
   for (const title of Object.values(titles)) {
     await expect(
@@ -1684,9 +1706,10 @@ test('connections zoom persists across app views and reloads', async ({
   const fitted = await connectionsCamera(graph);
   await page.getByRole('button', { name: '拡大' }).click();
   await page.getByRole('button', { name: '拡大' }).click();
+  const expectedPreferredScale = fitted.scale * 1.25 * 1.25;
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
-    .toBeGreaterThan(fitted.scale);
+    .toBeCloseTo(expectedPreferredScale, 7);
   const preferredScale = (await connectionsCamera(graph)).scale;
   await expect
     .poll(() =>
@@ -2237,7 +2260,7 @@ test('10k history remains viewport-bounded and operable in the browser', async (
   });
 });
 
-test('10k connections lays out the complete graph and culls visual detail', async ({
+test('10k connections lays out the complete graph and paints edges on Canvas', async ({
   page,
 }, testInfo) => {
   test.setTimeout(180_000);
@@ -2263,11 +2286,49 @@ test('10k connections lays out the complete graph and culls visual detail', asyn
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 60_000,
   });
-  const initialReadyMs = performance.now() - navigationStarted;
   await expect(graph.locator('button[data-card-id]')).toHaveCount(10_000);
   await expect(
     graph.locator('ul[aria-label="カード間の一方向リンク一覧"] li'),
   ).toHaveCount(completeInput.edges.length);
+  await expect(graph).toHaveAttribute('data-edge-renderer', 'canvas-2d');
+  await expect(graph).toHaveAttribute('data-edge-render-status', 'painted');
+  await expect(graph).toHaveAttribute(
+    'data-edge-draw-edge-count',
+    String(completeInput.edges.length),
+  );
+  const initialReadyMs = performance.now() - navigationStarted;
+  const initialCanvasDrawMs = Number(
+    await graph.getAttribute('data-edge-draw-duration-ms'),
+  );
+  const initialCanvasPrepareMs = Number(
+    await graph.getAttribute('data-edge-prepare-duration-ms'),
+  );
+  const edgeCanvas = graph.getByTestId('connections-edge-canvas');
+  await expect(edgeCanvas).toHaveCount(1);
+  await expect(edgeCanvas).toHaveAttribute('aria-hidden', 'true');
+  await expect(graph.locator('svg')).toHaveCount(0);
+  const canvasBackingStore = await edgeCanvas.evaluate((element) => {
+    if (!(element instanceof HTMLCanvasElement)) {
+      throw new Error('Connections edge renderer is not a canvas');
+    }
+    return {
+      width: element.width,
+      height: element.height,
+      cssWidth: element.clientWidth,
+      cssHeight: element.clientHeight,
+      devicePixelRatio: window.devicePixelRatio,
+    };
+  });
+  expect(canvasBackingStore.width).toBe(
+    Math.round(
+      canvasBackingStore.cssWidth * canvasBackingStore.devicePixelRatio,
+    ),
+  );
+  expect(canvasBackingStore.height).toBe(
+    Math.round(
+      canvasBackingStore.cssHeight * canvasBackingStore.devicePixelRatio,
+    ),
+  );
   await expect(page.getByTestId('connections-search')).toHaveCount(0);
   await expect(page.getByTestId('connections-expand')).toHaveCount(0);
 
@@ -2289,7 +2350,15 @@ test('10k connections lays out the complete graph and culls visual detail', asyn
       Number(await graph.getAttribute('data-visual-edge-count')),
     )
     .toBeLessThan(completeInput.edges.length);
+  await expect
+    .poll(async () =>
+      Number(await graph.getAttribute('data-edge-draw-edge-count')),
+    )
+    .toBeLessThan(completeInput.edges.length);
   const focusReadyMs = performance.now() - focusStarted;
+  const localizedCanvasDrawMs = Number(
+    await graph.getAttribute('data-edge-draw-duration-ms'),
+  );
   const localizedDom = await graph.evaluate((element) => ({
     descendants: element.querySelectorAll('*').length,
     cardButtons: element.querySelectorAll('button[data-card-id]').length,
@@ -2300,7 +2369,41 @@ test('10k connections lays out the complete graph and culls visual detail', asyn
     semanticEdgeItems: element.querySelectorAll(
       'ul[aria-label="カード間の一方向リンク一覧"] li',
     ).length,
+    canvasCount: element.querySelectorAll('canvas').length,
   }));
+  expect(localizedDom.svgPaths).toBe(0);
+  expect(localizedDom.canvasCount).toBe(1);
+  await testInfo.attach('connections-10k-canvas-localized.png', {
+    body: await graph.screenshot(),
+    contentType: 'image/png',
+  });
+
+  const beforeFitDrawCount = Number(
+    await graph.getAttribute('data-edge-draw-count'),
+  );
+  const fitStarted = performance.now();
+  await page.getByRole('button', { name: '全体表示' }).click();
+  await expect
+    .poll(async () => Number(await graph.getAttribute('data-edge-draw-count')))
+    .toBeGreaterThan(beforeFitDrawCount);
+  await expect(graph).toHaveAttribute(
+    'data-edge-draw-edge-count',
+    String(completeInput.edges.length),
+  );
+  await expect(graph).toHaveAttribute('data-visual-node-count', '10000');
+  const fitReadyMs = performance.now() - fitStarted;
+  const fullFitCanvasDrawMs = Number(
+    await graph.getAttribute('data-edge-draw-duration-ms'),
+  );
+  await testInfo.attach('connections-10k-canvas-full-fit.png', {
+    body: await graph.screenshot(),
+    contentType: 'image/png',
+  });
+
+  await page.getByRole('button', { name: '現在のカードへ戻る' }).click();
+  await expect
+    .poll(async () => Number(await graph.getAttribute('data-camera-scale')))
+    .toBeGreaterThanOrEqual(0.5);
 
   const nextCard = graph.locator('button[data-card-id][aria-current="true"]');
   const nextCardId = await nextCard.getAttribute('data-card-id');
@@ -2312,6 +2415,7 @@ test('10k connections lays out the complete graph and culls visual detail', asyn
   await expectPathname(page, `/cards/${nextCardId}/connections`);
   await expect(graph).toHaveAttribute('data-total-node-count', '10000');
   await expect(graph.locator('button[data-card-id]')).toHaveCount(10_000);
+  await expect(graph).toHaveAttribute('data-edge-render-status', 'painted');
   const reentryReadyMs = performance.now() - reentryStarted;
   const dom = await graph.evaluate((element) => ({
     descendants: element.querySelectorAll('*').length,
@@ -2320,10 +2424,13 @@ test('10k connections lays out the complete graph and culls visual detail', asyn
     semanticEdgeItems: element.querySelectorAll(
       'ul[aria-label="カード間の一方向リンク一覧"] li',
     ).length,
+    canvasCount: element.querySelectorAll('canvas').length,
   }));
+  expect(dom.svgPaths).toBe(0);
+  expect(dom.canvasCount).toBe(1);
   const artifact = {
     schemaVersion: 1,
-    issue: 311,
+    issue: 321,
     project: testInfo.project.name,
     environment: {
       browser: page.context().browser()?.version() ?? 'unknown',
@@ -2332,10 +2439,18 @@ test('10k connections lays out the complete graph and culls visual detail', asyn
     },
     fixture: { nodes: cards.length, source: 'client-performance' },
     comparison:
-      'Complete product graph through the hybrid Worker, semantic shells, and viewport visual culling',
+      'Complete product graph through the hybrid Worker, semantic shells, and Canvas 2D edge layer',
     initialReadyMs,
     focusReadyMs,
+    fitReadyMs,
     reentryReadyMs,
+    canvas: {
+      initialPrepareMs: initialCanvasPrepareMs,
+      initialDrawMs: initialCanvasDrawMs,
+      localizedDrawMs: localizedCanvasDrawMs,
+      fullFitDrawMs: fullFitCanvasDrawMs,
+      backingStore: canvasBackingStore,
+    },
     completeGraph: {
       nodes: completeInput.nodes.length,
       edges: completeInput.edges.length,

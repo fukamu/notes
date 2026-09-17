@@ -180,6 +180,18 @@ target. The values and attribution limits are in
 That measured SVG/full-fit bottleneck activates only the approved Canvas 2D edge
 evaluation; it does not justify reducing graph membership or accessibility.
 
+Issue #321 performs that bounded evaluation without changing graph membership,
+card HTML, camera, or the full semantic relationship list. Whole-world SVG edge
+paths fall from 39,999 to zero and graph descendants from about 130,002 to
+50,003, with one viewport×DPR canvas. Localized Canvas drawing is 0.3 ms in the
+recorded desktop and mobile samples. Whole-world Canvas drawing is 73.6 ms and
+115.1 ms, however, and complete readiness remains 11.2 s and 21.0 s. The edge
+renderer therefore does not satisfy the provisional 5 s / 50 ms product
+targets. Details and attribution limits are in
+[`connections-canvas-edge-layer.md`](connections-canvas-edge-layer.md). The
+result triggers the specified stop boundary rather than a silent semantic cap
+or an unreviewed card/semantic virtualization change.
+
 ## Issue #204 browser windowing
 
 `docs/benchmarks/10k-browser-final.json` records three desktop Chromium and

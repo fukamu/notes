@@ -74,4 +74,10 @@ list, camera, toolbar, layout output, curve segments, halo/stroke/arrow order,
 and accessibility contracts remain unchanged. WebGL and card Canvas rendering
 are not authorized by this result.
 
+Issue #321 subsequently implemented that bounded Canvas 2D evaluation. It
+reduces whole-world graph DOM substantially, but the complete product budgets
+remain unmet; see
+[`connections-canvas-edge-layer.md`](connections-canvas-edge-layer.md). That
+result is not retroactively counted as Issue #311 success.
+
 `main`, deployment, Sites, and production data are unchanged.
