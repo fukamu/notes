@@ -15,6 +15,7 @@ import type {
   NotesViewName,
 } from '@/lib/application/presentation';
 import {
+  projectConnectionsViewModel,
   selectCardEditorInputModel,
   selectConflictViewModels,
   selectConnectionsViewModel,
@@ -31,6 +32,24 @@ import type {
   SyncState,
 } from '@/lib/domain/types';
 import type { CardEditorCandidateIndex } from '@/lib/application/card-editor-index';
+import type { ConnectionsGraph } from '@/lib/domain/graph';
+
+type ConnectionsGraphSource =
+  | { readonly kind: 'derive' }
+  | {
+      readonly kind: 'precomputed';
+      readonly graph: ConnectionsGraph | null;
+    };
+
+type NotesPresentationOptions = Readonly<{
+  cardEditorIndex: CardEditorCandidateIndex | null;
+  connectionsGraph: ConnectionsGraphSource;
+}>;
+
+const DEFAULT_PRESENTATION_OPTIONS: NotesPresentationOptions = {
+  cardEditorIndex: null,
+  connectionsGraph: { kind: 'derive' },
+};
 
 export type NotesStorePort = {
   cards: CardRecord[];
@@ -125,9 +144,7 @@ export function createNotesApplicationController(
 export function createNotesPresentationModel(
   store: NotesStorePort,
   location: NotesLocation,
-  options: Readonly<{
-    cardEditorIndex: CardEditorCandidateIndex | null;
-  }> = { cardEditorIndex: null },
+  options: NotesPresentationOptions = DEFAULT_PRESENTATION_OPTIONS,
 ): NotesPresentationModel {
   const currentCardId = notesLocationCardId(location);
   const currentCard =
@@ -195,7 +212,14 @@ export function createNotesPresentationModel(
         history: null,
         conflicts: [],
         connections: currentCard
-          ? selectConnectionsViewModel(store.cards, currentCard.id)
+          ? options.connectionsGraph.kind === 'precomputed'
+            ? options.connectionsGraph.graph === null
+              ? null
+              : projectConnectionsViewModel(
+                  options.connectionsGraph.graph,
+                  currentCard.id,
+                )
+            : selectConnectionsViewModel(store.cards, currentCard.id)
           : null,
       };
   }

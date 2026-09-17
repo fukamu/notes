@@ -1,5 +1,8 @@
 import { formatDisplayId } from '@/lib/domain/display-id';
-import { buildConnectionsGraph } from '@/lib/domain/graph';
+import {
+  buildConnectionsGraph,
+  type ConnectionsGraph,
+} from '@/lib/domain/graph';
 import type { CardId } from '@/lib/domain/id';
 import {
   visibleTitle,
@@ -173,11 +176,10 @@ export function selectConflictViewModels(
   }));
 }
 
-export function selectConnectionsViewModel(
-  cards: CardRecord[],
+export function projectConnectionsViewModel(
+  graph: ConnectionsGraph,
   currentCardId: CardId,
 ): ConnectionsViewModel {
-  const graph = buildConnectionsGraph(cards);
   const nodes = graph.nodes.map(({ card }) => {
     const displayLabel = formatDisplayId(card.displayId);
     const title = visibleTitle(card.title);
@@ -201,4 +203,14 @@ export function selectConnectionsViewModel(
       accessibleName: `${nodesById.get(edge.sourceCardId)?.title ?? edge.sourceCardId} から ${nodesById.get(edge.targetCardId)?.title ?? edge.targetCardId} へのリンク`,
     })),
   };
+}
+
+export function selectConnectionsViewModel(
+  cards: CardRecord[],
+  currentCardId: CardId,
+): ConnectionsViewModel {
+  return projectConnectionsViewModel(
+    buildConnectionsGraph(cards),
+    currentCardId,
+  );
 }
