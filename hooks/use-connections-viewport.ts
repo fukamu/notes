@@ -114,6 +114,7 @@ export function useConnectionsViewport(
   const preferenceTimerRef = useRef<number | null>(null);
   const layoutKeyRef = useRef<string | null>(null);
   const frameAdapterRef = useRef<ConnectionsCameraFrameAdapter | null>(null);
+  const rasterSettleTimerRef = useRef<number | null>(null);
   const [edgeRenderer] = useState(createConnectionsCanvasEdgeRenderer);
   const [cardRenderer] = useState(createConnectionsCanvasCardRenderer);
   const edgeColorsRef = useRef<Readonly<{
@@ -244,11 +245,13 @@ export function useConnectionsViewport(
     (
       camera: ConnectionsCamera,
       selection: ConnectionsVisibilitySelection | null,
+      nodeRenderMode: ConnectionsNodeRenderMode,
+      forceRasterRefresh = false,
     ) => {
       const viewport = viewportRef.current;
       const canvas = edgeCanvasRef.current;
       const prepared = preparedVisibilityRef.current;
-      if (!viewport || !canvas || !prepared || !selection) return;
+      if (!viewport || !canvas || !prepared || !selection) return false;
       let colors = edgeColorsRef.current;
       if (!colors) {
         const styles = window.getComputedStyle(viewport);
@@ -270,6 +273,8 @@ export function useConnectionsViewport(
         },
         devicePixelRatio: window.devicePixelRatio,
         colors,
+        mode: nodeRenderMode === 'overview-canvas' ? 'bounded-cache' : 'direct',
+        forceRasterRefresh,
       });
       viewport.dataset.edgeRenderer = 'canvas-2d';
       viewport.dataset.edgeRenderStatus = result.status;
@@ -279,6 +284,26 @@ export function useConnectionsViewport(
           Number(viewport.dataset.edgeDrawCount ?? '0') + 1,
         );
         viewport.dataset.edgeDrawDurationMs = String(result.durationMs);
+        viewport.dataset.edgeDrawStrategy = result.strategy;
+        viewport.dataset.edgeRasterRenderDurationMs = String(
+          result.rasterRenderDurationMs,
+        );
+        viewport.dataset.edgeRasterCachePixelWidth = String(
+          result.cachePixelWidth,
+        );
+        viewport.dataset.edgeRasterCachePixelHeight = String(
+          result.cachePixelHeight,
+        );
+        if (result.strategy === 'raster-refresh') {
+          viewport.dataset.edgeRasterRefreshCount = String(
+            Number(viewport.dataset.edgeRasterRefreshCount ?? '0') + 1,
+          );
+        }
+        if (result.strategy === 'raster-reuse') {
+          viewport.dataset.edgeRasterReuseCount = String(
+            Number(viewport.dataset.edgeRasterReuseCount ?? '0') + 1,
+          );
+        }
         viewport.dataset.edgePrepareDurationMs = String(
           result.prepareDurationMs,
         );
@@ -286,6 +311,7 @@ export function useConnectionsViewport(
       } else {
         viewport.dataset.edgeRenderReason = result.reason;
       }
+      return result.status === 'painted' && result.scaledRaster;
     },
     [edgeRenderer],
   );
@@ -294,11 +320,12 @@ export function useConnectionsViewport(
     (
       camera: ConnectionsCamera,
       renderSelection: ConnectionsViewportRenderSelection | null,
+      forceRasterRefresh = false,
     ) => {
       const viewport = viewportRef.current;
       const canvas = cardCanvasRef.current;
       const ready = modelRef.current;
-      if (!viewport || !canvas || !ready || !renderSelection) return;
+      if (!viewport || !canvas || !ready || !renderSelection) return false;
       const viewportGeometry = {
         width: viewport.clientWidth,
         height: viewport.clientHeight,
@@ -329,6 +356,8 @@ export function useConnectionsViewport(
                 viewport: viewportGeometry,
                 devicePixelRatio: window.devicePixelRatio,
                 colors,
+                mode: 'bounded-cache',
+                forceRasterRefresh,
               });
             })()
           : cardRenderer.clear({
@@ -351,8 +380,54 @@ export function useConnectionsViewport(
       );
       viewport.dataset.cardDrawNodeCount = String(result.nodeCount);
       viewport.dataset.cardDrawDurationMs = String(result.durationMs);
+      if (result.status === 'painted') {
+        viewport.dataset.cardDrawStrategy = result.strategy;
+        viewport.dataset.cardRasterRenderDurationMs = String(
+          result.rasterRenderDurationMs,
+        );
+        viewport.dataset.cardRasterCachePixelWidth = String(
+          result.cachePixelWidth,
+        );
+        viewport.dataset.cardRasterCachePixelHeight = String(
+          result.cachePixelHeight,
+        );
+        if (result.strategy === 'raster-refresh') {
+          viewport.dataset.cardRasterRefreshCount = String(
+            Number(viewport.dataset.cardRasterRefreshCount ?? '0') + 1,
+          );
+        }
+        if (result.strategy === 'raster-reuse') {
+          viewport.dataset.cardRasterReuseCount = String(
+            Number(viewport.dataset.cardRasterReuseCount ?? '0') + 1,
+          );
+        }
+      }
+      return result.status === 'painted' && result.scaledRaster;
     },
     [cardRenderer],
+  );
+
+  const settleScaledRaster = useCallback(
+    (required: boolean) => {
+      if (rasterSettleTimerRef.current !== null) {
+        window.clearTimeout(rasterSettleTimerRef.current);
+        rasterSettleTimerRef.current = null;
+      }
+      if (!required) return;
+      rasterSettleTimerRef.current = window.setTimeout(() => {
+        rasterSettleTimerRef.current = null;
+        const camera = cameraRef.current;
+        const selection = visibilityRef.current;
+        if (!camera || !selection) return;
+        const renderSelection = {
+          selection,
+          nodeRenderMode: nodeRenderModeRef.current,
+        };
+        paintEdges(camera, selection, renderSelection.nodeRenderMode, true);
+        paintCards(camera, renderSelection, true);
+      }, 120);
+    },
+    [paintCards, paintEdges],
   );
 
   const commitCamera = useCallback(
@@ -449,8 +524,13 @@ export function useConnectionsViewport(
           zoomOutRef.current.disabled = zoomState.zoomOutDisabled;
         }
         const renderSelection = updateVisibility(camera);
-        paintEdges(camera, renderSelection?.selection ?? null);
-        paintCards(camera, renderSelection);
+        const scaledEdges = paintEdges(
+          camera,
+          renderSelection?.selection ?? null,
+          renderSelection?.nodeRenderMode ?? 'html',
+        );
+        const scaledCards = paintCards(camera, renderSelection);
+        settleScaledRaster(Boolean(scaledEdges || scaledCards));
       },
     });
     frameAdapterRef.current = adapter;
@@ -459,7 +539,13 @@ export function useConnectionsViewport(
       adapter.destroy();
       if (frameAdapterRef.current === adapter) frameAdapterRef.current = null;
     };
-  }, [model?.layoutKey, paintCards, paintEdges, updateVisibility]);
+  }, [
+    model?.layoutKey,
+    paintCards,
+    paintEdges,
+    settleScaledRaster,
+    updateVisibility,
+  ]);
 
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -474,7 +560,12 @@ export function useConnectionsViewport(
               nodeRenderMode: nodeRenderModeRef.current,
             }
           : null;
-        paintEdges(camera, renderSelection?.selection ?? null);
+        paintEdges(
+          camera,
+          renderSelection?.selection ?? null,
+          renderSelection?.nodeRenderMode ?? 'html',
+          true,
+        );
         paintCards(camera, renderSelection);
       }
     };
@@ -489,8 +580,13 @@ export function useConnectionsViewport(
   useLayoutEffect(
     () => () => {
       edgeRenderer.reset();
+      cardRenderer.reset();
+      if (rasterSettleTimerRef.current !== null) {
+        window.clearTimeout(rasterSettleTimerRef.current);
+        rasterSettleTimerRef.current = null;
+      }
     },
-    [edgeRenderer],
+    [cardRenderer, edgeRenderer],
   );
 
   useLayoutEffect(() => {
@@ -575,9 +671,9 @@ export function useConnectionsViewport(
       const geometry = geometryRef.current ?? readGeometry();
       const camera = cameraRef.current;
       if (!geometry || !camera) return;
-      commitCameraWithVisibility(panConnectionsCamera(camera, delta, geometry));
+      commitCamera(panConnectionsCamera(camera, delta, geometry));
     },
-    [commitCameraWithVisibility, readGeometry],
+    [commitCamera, readGeometry],
   );
 
   const ensureNodeVisible = useCallback(

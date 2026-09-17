@@ -528,3 +528,30 @@ The measured result selects the separately reviewed bounded viewport bitmap
 reuse step; it does not select graph aggregation, WebGL, or reduced semantics.
 Detailed evidence and limitations are in
 [`connections-card-windowing.md`](../connections-card-windowing.md).
+
+## Issue #327 bounded overview bitmap reuse
+
+Issue #327 keeps the complete geometry and the edge/card Canvas renderers, but
+stores the overview result in a browser-owned bitmap surface sized to the graph
+viewport plus the existing 96 px overscan. A compatible pan draws that bounded
+surface at the camera delta instead of replaying all 19,999 edge paths and
+10,000 card shapes. Zoom may scale the capture temporarily and performs an
+exact current-scale refresh after 120 ms. Cache miss and refresh failure retain
+the direct Canvas path, so no uncovered region is accepted.
+
+The pure core computes capture placement and coverage; the browser adapter owns
+at most front/back canvases. Layout, theme, DPR, viewport, mode and selection
+revision invalidate reuse. Switching to readable HTML mode, reset, unmount and
+scope/logout release the surfaces. No whole-world bitmap, tile cache or graph
+aggregation is introduced.
+
+Two recorded product runs per project keep initial complete readiness at about
+2.30–2.42 s. The 30-frame whole-world pan records desktop p95 33.3–33.4 ms and
+mobile-emulation p95 33.4 ms, with every edge/card frame reusing the capture,
+no refresh and no long task. The representative normal-scale gesture remains
+16.7 ms p95. This meets the provisional 5 s, 33 ms normal-operation and 50 ms
+continuous-whole-world targets in the stated shared-host environment, so the
+conditional OffscreenCanvas Worker is not selected. Cold full-graph raster
+cost remains recorded separately and is not represented as a cache-hit time.
+Detailed evidence is in
+[`connections-bounded-raster-cache.md`](../connections-bounded-raster-cache.md).
