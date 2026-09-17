@@ -100,21 +100,41 @@ async function browserHeapUsed(page: Page): Promise<number | null> {
   });
 }
 
-async function forceConnectionsLayoutFailure(page: Page) {
+async function forceConnectionsLayoutFault(page: Page, failCorridor: boolean) {
   await page.route('**/_next/static/chunks/notes-app-*.js', async (route) => {
     const response = await route.fetch();
     const source = await response.text();
     const layoutInvocation =
       /let ([\w$]+)=([\w$]+)\(([\w$]+)\),([\w$]+)=await ([\w$]+)\.layout\(([\w$]+)\(\3,\1,([\w$]+),([\w$]+)\)\)/;
-    const transformed = source.replace(
+    let transformed = source.replace(
       layoutInvocation,
       'throw Error("forced connections layout failure");let $1=[],$4={}',
     );
     if (transformed === source) {
       throw new Error('Unable to install the connections layout fault');
     }
+    if (failCorridor) {
+      const corridorWorkerConstruction =
+        /new Worker\(([\w$]+),\{type:[`'"]module[`'"]\}\)/;
+      const withCorridorFault = transformed.replace(
+        corridorWorkerConstruction,
+        '(()=>{throw Error("forced corridor layout failure")})()',
+      );
+      if (withCorridorFault === transformed) {
+        throw new Error('Unable to install the corridor layout fault');
+      }
+      transformed = withCorridorFault;
+    }
     await route.fulfill({ response, body: transformed });
   });
+}
+
+async function forceConnectionsElkLayoutFailure(page: Page) {
+  await forceConnectionsLayoutFault(page, false);
+}
+
+async function forceConnectionsLayoutFailure(page: Page) {
+  await forceConnectionsLayoutFault(page, true);
 }
 
 async function openFromHistory(page: Page, title: string) {
@@ -2306,7 +2326,51 @@ test('10k connections bounds layout and DOM around the current card', async ({
   });
 });
 
-test('layout failure fallback opens a card through URL navigation', async ({
+test('ELK failure retries the same complete graph through corridor', async ({
+  page,
+}, testInfo) => {
+  const cardA = '01991f20-61d2-7000-8000-000000000613';
+  const cardB = '01991f20-61d2-7000-8000-000000000614';
+  const suffix = unique('elk-corridor-fallback', testInfo.project.name);
+  const cardATitle = `代替配置A ${suffix}`;
+  const cardBTitle = `代替配置B ${suffix}`;
+  await forceConnectionsElkLayoutFailure(page);
+  await serveSyncCards(page, [
+    {
+      id: cardA,
+      displayId: { kind: 'official', value: 13 },
+      title: cardATitle,
+      body: [{ type: 'link', targetCardId: cardB }],
+      createdAt: 13,
+      updatedAt: 13,
+      localRevision: 1,
+      serverRevision: 1,
+    },
+    {
+      id: cardB,
+      displayId: { kind: 'official', value: 14 },
+      title: cardBTitle,
+      body: [],
+      createdAt: 14,
+      updatedAt: 14,
+      localRevision: 1,
+      serverRevision: 1,
+    },
+  ]);
+
+  const response = await page.goto(`/cards/${cardA}/connections`);
+  expect(response?.status()).toBe(200);
+  const graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 15_000,
+  });
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(2);
+  await expect(
+    graph.getByRole('button', { name: new RegExp(cardBTitle) }),
+  ).toBeVisible();
+});
+
+test('all layout engine failure fallback opens a card through URL navigation', async ({
   page,
 }, testInfo) => {
   const cardA = '01991f20-61d2-7000-8000-000000000611';

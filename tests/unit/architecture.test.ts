@@ -1793,7 +1793,7 @@ describe('swappable presentation architecture', () => {
     expect(renderer).toContain('aria-label="カード間の一方向リンク一覧"');
   });
 
-  it('isolates the ELK Web Worker and keeps the main-thread engine out of production', async () => {
+  it('isolates both layout Web Workers and keeps layout engines off the main thread', async () => {
     const layout = await readFile('lib/graph/elk-layout.ts', 'utf8');
     const controller = await readFile(
       'lib/graph/connections-controller.ts',
@@ -1814,9 +1814,12 @@ describe('swappable presentation architecture', () => {
     expect(controller).not.toMatch(/connections-layout-worker|elk\.bundled/);
     expect(hook).toContain('layoutConnectionsGraphInWorker');
     expect(worker).toContain('new Worker(connectionsLayoutWorkerUrl)');
+    expect(worker).toContain('new Worker(connectionsCorridorWorkerUrl');
     expect(worker).toContain('createBoundedConnectionsLayoutRunner');
+    expect(worker).toContain('createConnectionsLayoutScheduler');
     expect(mainThread).toContain('elkjs/lib/elk.bundled.js');
     expect(offline).toContain('connectionsLayoutWorkerUrl');
+    expect(offline).toContain('connectionsCorridorWorkerUrl');
 
     const productionFiles = [
       ...(await sourceFiles('app')),
