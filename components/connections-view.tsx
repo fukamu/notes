@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ArrowRight,
   LocateFixed,
@@ -14,64 +14,7 @@ import {
 } from 'lucide-react';
 import type { ConnectionsRendererProps } from '@/components/presentation-contract';
 import { useConnectionsViewport } from '@/hooks/use-connections-viewport';
-import {
-  prepareConnectionsVisibility,
-  type PreparedConnectionsEdge,
-} from '@/lib/graph/connections-visibility';
-
-type ConnectionsEdgeLayerProps = {
-  layoutKey: string;
-  edges: readonly PreparedConnectionsEdge[];
-  visibleEdgeIndices: readonly number[];
-};
-
-const ConnectionsEdgeLayer = memo(
-  function ConnectionsEdgeLayer({
-    edges,
-    visibleEdgeIndices,
-  }: ConnectionsEdgeLayerProps) {
-    return visibleEdgeIndices.map((edgeIndex) => {
-      const edge = edges[edgeIndex];
-      if (!edge) return null;
-      return (
-        <g key={edge.id}>
-          {edge.sections.map((section) => {
-            return (
-              <g key={section.sectionId}>
-                <path
-                  d={section.d}
-                  fill="none"
-                  stroke="var(--card)"
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                />
-                <path
-                  d={section.d}
-                  fill="none"
-                  stroke="var(--primary)"
-                  strokeOpacity="0.72"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  markerEnd={
-                    section.hasEndArrow
-                      ? 'url(#connection-edge-arrow)'
-                      : undefined
-                  }
-                />
-              </g>
-            );
-          })}
-        </g>
-      );
-    });
-  },
-  (previous, next) =>
-    previous.layoutKey === next.layoutKey &&
-    previous.visibleEdgeIndices === next.visibleEdgeIndices,
-);
+import { prepareConnectionsVisibility } from '@/lib/graph/connections-visibility';
 
 export function ConnectionsView({
   model,
@@ -108,6 +51,7 @@ export function ConnectionsView({
   const {
     viewportRef,
     worldRef,
+    edgeCanvasRef,
     zoomOutputRef,
     zoomInRef,
     zoomOutRef,
@@ -126,10 +70,6 @@ export function ConnectionsView({
   const visibleNodeIndices = useMemo(
     () => new Set(visibility?.nodeIndices ?? []),
     [visibility?.nodeIndices],
-  );
-  const visibleEdgeIndices = useMemo(
-    () => visibility?.edgeIndices ?? [],
-    [visibility?.edgeIndices],
   );
 
   return (
@@ -293,6 +233,15 @@ export function ConnectionsView({
         )}
 
         {model.status === 'ready' && (
+          <canvas
+            ref={edgeCanvasRef}
+            className="connections-edge-canvas"
+            data-testid="connections-edge-canvas"
+            aria-hidden="true"
+          />
+        )}
+
+        {model.status === 'ready' && (
           <div
             ref={worldRef}
             className="connections-canvas-structure connections-world"
@@ -302,37 +251,6 @@ export function ConnectionsView({
             data-layout-width={model.width}
             data-layout-height={model.height}
           >
-            <svg
-              className="pointer-events-none absolute inset-0 overflow-visible"
-              width={model.width}
-              height={model.height}
-              viewBox={`0 0 ${model.width} ${model.height}`}
-              aria-hidden="true"
-            >
-              <defs>
-                <marker
-                  id="connection-edge-arrow"
-                  viewBox="0 0 10 10"
-                  refX="9"
-                  refY="5"
-                  markerWidth="7"
-                  markerHeight="7"
-                  orient="auto-start-reverse"
-                  markerUnits="strokeWidth"
-                >
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--primary)" />
-                </marker>
-              </defs>
-
-              {preparedVisibility && (
-                <ConnectionsEdgeLayer
-                  layoutKey={model.layoutKey}
-                  edges={preparedVisibility.edges}
-                  visibleEdgeIndices={visibleEdgeIndices}
-                />
-              )}
-            </svg>
-
             <ul className="sr-only" aria-label="カード間の一方向リンク一覧">
               {model.edges.map((edge) => (
                 <li key={`accessible-${edge.id}`}>{edge.accessibleName}</li>

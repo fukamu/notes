@@ -218,6 +218,10 @@
   @apply absolute left-0 top-0;
 }
 
+.connections-edge-canvas {
+  @apply pointer-events-none absolute inset-0 size-full;
+}
+
 .connections-world {
   contain: layout style paint;
   transform-origin: 0 0;

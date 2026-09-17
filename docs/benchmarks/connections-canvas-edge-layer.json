@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "issue": 321,
+  "branchPoint": "80832372fc04eba3429ffa9bc5b3ae9d25e86521",
+  "browser": "Chromium 153.0.8010.12",
+  "fixture": {
+    "nodes": 10000,
+    "directedEdges": 19999,
+    "source": "client-performance with browser-adapter missing-target rebinding"
+  },
+  "runs": [
+    {
+      "project": "chromium",
+      "viewport": { "width": 1280, "height": 720 },
+      "canvasCssSize": { "width": 1010, "height": 482 },
+      "canvasBackingStore": { "width": 1010, "height": 482 },
+      "devicePixelRatio": 1,
+      "initialReadyMs": 11194.35583,
+      "localizedFocusMs": 1135.346758,
+      "wholeWorldFitMs": 3332.811724,
+      "reentryReadyMs": 20201.724897,
+      "canvas": {
+        "initialPathPreparationMs": 41.2,
+        "initialDrawMs": 77.7,
+        "localizedDrawMs": 0.3,
+        "wholeWorldDrawMs": 73.6
+      },
+      "localizedDom": {
+        "descendants": 30005,
+        "cardButtons": 10000,
+        "visualCardContents": 1,
+        "svgPaths": 0,
+        "canvasElements": 1,
+        "semanticEdgeItems": 19999
+      },
+      "wholeWorldDom": {
+        "descendants": 50003,
+        "cardButtons": 10000,
+        "svgPaths": 0,
+        "canvasElements": 1,
+        "semanticEdgeItems": 19999
+      },
+      "heapUsedBytes": 239000000
+    },
+    {
+      "project": "mobile-chromium",
+      "viewport": { "width": 412, "height": 839 },
+      "canvasCssSize": { "width": 378, "height": 485 },
+      "canvasBackingStore": { "width": 992, "height": 1273 },
+      "devicePixelRatio": 2.625,
+      "initialReadyMs": 20965.104157,
+      "localizedFocusMs": 1304.335504,
+      "wholeWorldFitMs": 3950.12566,
+      "reentryReadyMs": 10553.132666,
+      "canvas": {
+        "initialPathPreparationMs": 52.6,
+        "initialDrawMs": 153.1,
+        "localizedDrawMs": 0.3,
+        "wholeWorldDrawMs": 115.1
+      },
+      "localizedDom": {
+        "descendants": 30005,
+        "cardButtons": 10000,
+        "visualCardContents": 1,
+        "svgPaths": 0,
+        "canvasElements": 1,
+        "semanticEdgeItems": 19999
+      },
+      "wholeWorldDom": {
+        "descendants": 50003,
+        "cardButtons": 10000,
+        "svgPaths": 0,
+        "canvasElements": 1,
+        "semanticEdgeItems": 19999
+      },
+      "heapUsedBytes": 254000000
+    }
+  ],
+  "comparison": {
+    "issue311WholeWorldDescendants": 130002,
+    "issue311WholeWorldSvgPaths": 39999,
+    "issue311HeapUsedBytes": {
+      "chromium": 322000000,
+      "mobileChromium": 286000000
+    }
+  },
+  "interpretation": {
+    "membership": "complete",
+    "canvasDomReduction": "effective",
+    "localizedCanvasDraw": "below one millisecond in both samples",
+    "provisionalFiveSecondReadyTarget": "not met",
+    "provisionalFiftyMillisecondWholeWorldDrawTarget": "not met",
+    "nextDecision": "stop before broadening beyond the approved edge-Canvas scope"
+  },
+  "limits": [
+    "one diagnostic run per project on a shared host",
+    "performance.memory is coarse and browser-specific",
+    "initialReady waits for complete buttons, semantic relationships, Path2D preparation, and Canvas paint",
+    "screenshots were reviewed at localized and whole-world fit scales",
+    "no production backend or data was contacted"
+  ]
+}

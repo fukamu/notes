@@ -459,3 +459,24 @@ independent Issue; it does not authorize WebGL, card Canvas rendering, semantic
 truncation, or a return to staged membership. Detailed evidence and limits are
 in
 [`connections-full-network-cutover.md`](../connections-full-network-cutover.md).
+
+## Issue #321 conditional Canvas edge result
+
+Issue #321 applies the approved conditional Canvas 2D edge renderer while
+retaining the complete layout, HTML card shells, semantic relation list, and
+camera. One viewport×DPR canvas replaces the whole-world SVG edge DOM. Existing
+rounded paths are prepared as `Path2D`; the renderer preserves input order and
+draws the 8-unit halo, 2-unit 0.72-opacity stroke, and opaque terminal arrow.
+The former SVG marker dimensions and terminal tangent are reproduced by a typed
+pure arrow core. The canvas is pointer-inert and hidden from accessibility APIs.
+
+In the saved 10k product samples, whole-world descendants fall from about
+130,002 to 50,003 and 39,999 SVG paths become one canvas. Local drawing is below
+one millisecond, but whole-world Canvas drawing is 73.6–115.1 ms and complete
+readiness remains 11.2–21.0 seconds. The provisional five-second and 50 ms
+targets are not met. This demonstrates that the approved edge-layer change is
+insufficient once the complete card and semantic DOM must also commit. The
+decision does not extend to card Canvas rendering, WebGL, relationship removal,
+or graph aggregation; broader work requires a new review boundary. Evidence is
+in
+[`connections-canvas-edge-layer.md`](../connections-canvas-edge-layer.md).

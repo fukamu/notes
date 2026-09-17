@@ -2,6 +2,10 @@ import {
   createConnectionsSvgPath,
   type ConnectionsPathOptions,
 } from '@/lib/graph/connections-path';
+import {
+  createConnectionsCanvasArrow,
+  type ConnectionsCanvasArrow,
+} from '@/lib/graph/connections-canvas';
 import type {
   ConnectionsLayoutSection,
   LayoutPoint,
@@ -23,7 +27,7 @@ export type PreparedConnectionsSection = Readonly<{
   sectionId: string;
   d: string;
   bounds: ConnectionsBounds;
-  hasEndArrow: boolean;
+  arrow: ConnectionsCanvasArrow | null;
 }>;
 
 export type PreparedConnectionsEdge = Readonly<{
@@ -239,6 +243,11 @@ export function prepareConnectionsVisibility(
     (edge, edgeIndex): PreparedConnectionsEdge => {
       const sections = edge.sections.map((section, sectionIndex) => {
         const path = createConnectionsSvgPath(section, pathOptions);
+        const endsEdge = sectionIndex === edge.sections.length - 1;
+        const terminalSegment = path.segments.at(-1);
+        if (!terminalSegment) {
+          throw new Error(`Connections edge ${edge.id} has an empty path`);
+        }
         let sectionBounds: ConnectionsBounds | null = null;
         for (const segment of path.segments) {
           const raw =
@@ -258,7 +267,9 @@ export function prepareConnectionsVisibility(
           sectionId: section.id,
           d: path.d,
           bounds: sectionBounds,
-          hasEndArrow: sectionIndex === edge.sections.length - 1,
+          arrow: endsEdge
+            ? createConnectionsCanvasArrow(terminalSegment)
+            : null,
         };
       });
       const first = sections[0];

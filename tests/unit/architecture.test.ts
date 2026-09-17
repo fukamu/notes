@@ -1705,10 +1705,11 @@ describe('swappable presentation architecture', () => {
       'lib/graph/connections-contract.ts',
       'lib/graph/connections-controller.ts',
       'lib/graph/elk-layout.ts',
+      'lib/graph/connections-canvas.ts',
       'lib/graph/connections-viewport.ts',
     ];
     const forbidden =
-      /(?:@\/components|lucide|tailwind|className|document\.|window\.|HTMLElement|SVG(?:Path|Element)|marker|halo|--primary)/;
+      /(?:@\/components|lucide|tailwind|className|document\.|window\.|HTMLElement|SVG(?:Path|Element)|CanvasRenderingContext2D|HTMLCanvasElement|Path2D|marker|halo|--primary)/;
     for (const file of files) {
       const source = await readFile(file, 'utf8');
       expect(source, file).not.toMatch(forbidden);
@@ -1775,9 +1776,14 @@ describe('swappable presentation architecture', () => {
     expect(preference).toContain('storage.setItem');
   });
 
-  it('keeps curve math pure and recomputes SVG paths only with layout geometry', async () => {
+  it('keeps curve and arrow math pure and prepares Canvas paths only from layout geometry', async () => {
     const path = await readFile('lib/graph/connections-path.ts', 'utf8');
-    const renderer = await readFile('components/connections-view.tsx', 'utf8');
+    const canvas = await readFile('lib/graph/connections-canvas.ts', 'utf8');
+    const renderer = await readFile(
+      'lib/client/connections-canvas-renderer.ts',
+      'utf8',
+    );
+    const view = await readFile('components/connections-view.tsx', 'utf8');
 
     expect(path).toContain('normalizeConnectionsOrthogonalPoints');
     expect(path).toContain('createConnectionsSvgPath');
@@ -1785,11 +1791,17 @@ describe('swappable presentation architecture', () => {
     expect(path).not.toMatch(
       /(?:react|window\.|document\.|PointerEvent|HTMLElement|SVGPathElement|--primary|--card)/,
     );
-    expect(renderer).toContain('const ConnectionsEdgeLayer = memo(');
-    expect(renderer).toContain('previous.layoutKey === next.layoutKey');
-    expect(renderer).toContain('strokeWidth="8"');
-    expect(renderer).toContain("'url(#connection-edge-arrow)'");
-    expect(renderer).toContain('aria-label="カード間の一方向リンク一覧"');
+    expect(canvas).toContain('createConnectionsCanvasArrow');
+    expect(canvas).not.toMatch(
+      /(?:react|window\.|document\.|Path2D|CanvasRenderingContext2D|HTMLCanvasElement)/,
+    );
+    expect(renderer).toContain('createConnectionsCanvasEdgeRenderer');
+    expect(renderer).toContain('new Path2D(section.d)');
+    expect(renderer).toContain('context.stroke(section.path)');
+    expect(renderer).toContain('context.fill(section.arrow)');
+    expect(view).toContain('data-testid="connections-edge-canvas"');
+    expect(view).not.toContain('<svg');
+    expect(view).toContain('aria-label="カード間の一方向リンク一覧"');
   });
 
   it('isolates both layout Web Workers and keeps layout engines off the main thread', async () => {
