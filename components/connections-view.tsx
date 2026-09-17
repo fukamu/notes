@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ArrowRight,
   LocateFixed,
@@ -13,16 +13,19 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import type { ConnectionsRendererProps } from '@/components/presentation-contract';
+import { ConnectionsSemanticLists } from '@/components/connections-semantic-lists';
 import { useConnectionsViewport } from '@/hooks/use-connections-viewport';
 import { prepareConnectionsVisibility } from '@/lib/graph/connections-visibility';
 
 export function ConnectionsView({
   model,
+  semanticInput,
   totalNodeCount,
   totalEdgeCount,
   actions,
   presentation,
 }: ConnectionsRendererProps) {
+  const openCard = actions.openCard;
   const readyModel = model.status === 'ready' ? model : null;
   const geometry = readyModel?.geometry ?? null;
   const edgeMaximumRadius = presentation.edgeMaximumRadius;
@@ -70,6 +73,24 @@ export function ConnectionsView({
   const visibleNodeIndices = useMemo(
     () => new Set(visibility?.nodeIndices ?? []),
     [visibility?.nodeIndices],
+  );
+  const readyNodesById = useMemo(
+    () => new Map(readyModel?.nodes.map((node) => [node.cardId, node]) ?? []),
+    [readyModel?.nodes],
+  );
+  const moveToMap = useCallback(
+    (cardId: (typeof semanticInput.nodes)[number]['cardId']) => {
+      const node = readyNodesById.get(cardId);
+      if (!node) return;
+      setFocusedCardId(cardId);
+      ensureNodeVisible(node);
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById(`connections-map-card-${cardId}`)
+          ?.focus({ preventScroll: true });
+      });
+    },
+    [ensureNodeVisible, readyNodesById],
   );
 
   return (
@@ -166,6 +187,13 @@ export function ConnectionsView({
         {totalEdgeCount.toLocaleString('ja-JP')}参照
       </p>
 
+      <ConnectionsSemanticLists
+        input={semanticInput}
+        canMoveToMap={readyModel !== null}
+        openCard={openCard}
+        moveToMap={moveToMap}
+      />
+
       <p id="connections-map-instructions" className="sr-only">
         ドラッグまたは一本指で移動、ピンチまたは Control
         キーを押しながらホイールで拡大縮小できます。矢印キーで移動、プラスとマイナスで拡大縮小、0で全体表示、Homeで現在のカードへ戻ります。
@@ -215,7 +243,7 @@ export function ConnectionsView({
                 <button
                   key={item.cardId}
                   type="button"
-                  onClick={() => actions.openCard(item.cardId)}
+                  onClick={() => openCard(item.cardId)}
                   aria-current={item.current ? 'true' : undefined}
                   aria-label={item.accessibleName}
                   className="rounded-xl border bg-card px-4 py-3 text-left shadow-sm focus-visible:ring-2 focus-visible:ring-ring"
@@ -251,12 +279,6 @@ export function ConnectionsView({
             data-layout-width={model.width}
             data-layout-height={model.height}
           >
-            <ul className="sr-only" aria-label="カード間の一方向リンク一覧">
-              {model.edges.map((edge) => (
-                <li key={`accessible-${edge.id}`}>{edge.accessibleName}</li>
-              ))}
-            </ul>
-
             {model.nodes.map((node, nodeIndex) => {
               const showVisualContent =
                 visibleNodeIndices.has(nodeIndex) ||
@@ -265,8 +287,9 @@ export function ConnectionsView({
               return (
                 <button
                   key={node.cardId}
+                  id={`connections-map-card-${node.cardId}`}
                   type="button"
-                  onClick={() => actions.openCard(node.cardId)}
+                  onClick={() => openCard(node.cardId)}
                   aria-current={node.current ? 'true' : undefined}
                   aria-label={node.accessibleName}
                   className={`connections-node-structure connections-node-shell${

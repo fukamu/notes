@@ -192,6 +192,19 @@ targets. Details and attribution limits are in
 result triggers the specified stop boundary rather than a silent semantic cap
 or an unreviewed card/semantic virtualization change.
 
+Issue #323 applies the subsequently authorized accessibility-preserving semantic
+DOM change. The complete 19,999 directed relations and 10,000 cards remain
+searchable through two native lists, but closed list content is unmounted and
+each open list renders at most 50 items. In its single desktop/mobile product
+samples, closed semantic list items are zero, localized graph descendants fall
+from about 30,005 to 10,005, and whole-world descendants from about 50,003 to
+30,003. Initial ready was about 6.49–8.66 s desktop and 6.65–8.37 s mobile
+across the focused and full-verify samples. This is a
+material reduction but still not the five-second result; the remaining complete
+card shells and whole-world card content select the separately reviewed card
+window/overview Canvas step. See
+[`connections-semantic-lists.md`](connections-semantic-lists.md).
+
 ## Issue #204 browser windowing
 
 `docs/benchmarks/10k-browser-final.json` records three desktop Chromium and

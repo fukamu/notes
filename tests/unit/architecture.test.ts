@@ -1784,6 +1784,10 @@ describe('swappable presentation architecture', () => {
       'utf8',
     );
     const view = await readFile('components/connections-view.tsx', 'utf8');
+    const semanticLists = await readFile(
+      'components/connections-semantic-lists.tsx',
+      'utf8',
+    );
 
     expect(path).toContain('normalizeConnectionsOrthogonalPoints');
     expect(path).toContain('createConnectionsSvgPath');
@@ -1801,7 +1805,8 @@ describe('swappable presentation architecture', () => {
     expect(renderer).toContain('context.fill(section.arrow)');
     expect(view).toContain('data-testid="connections-edge-canvas"');
     expect(view).not.toContain('<svg');
-    expect(view).toContain('aria-label="カード間の一方向リンク一覧"');
+    expect(view).not.toContain('カード間の一方向リンク一覧');
+    expect(semanticLists).toContain('aria-label="検索された参照一覧"');
   });
 
   it('isolates both layout Web Workers and keeps layout engines off the main thread', async () => {
@@ -1895,7 +1900,7 @@ describe('swappable presentation architecture', () => {
 
   it('uses one typed card-selection action for ready and fallback connections', async () => {
     const renderer = await readFile('components/connections-view.tsx', 'utf8');
-    expect(renderer.match(/actions\.openCard/g)).toHaveLength(2);
+    expect(renderer.match(/actions\.openCard/g)).toHaveLength(1);
     expect(renderer).not.toMatch(/CardRecord|formatDisplayId|visibleTitle/);
   });
 
@@ -1904,7 +1909,7 @@ describe('swappable presentation architecture', () => {
     expect(e2e).not.toMatch(
       /marker-end|getTotalLength|connection-edge-section|SVGPathElement|data-source-port|data-target-port/,
     );
-    expect(e2e).toContain('カード間の一方向リンク一覧');
+    expect(e2e).toContain('検索された参照一覧');
     expect(e2e).toContain("toHaveAttribute('aria-current', 'true')");
   });
 

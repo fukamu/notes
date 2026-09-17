@@ -369,8 +369,23 @@ describe('alternate presentation contract', () => {
   it('consumes loading, error and ready connections with one open action', () => {
     const openCard = vi.fn();
     for (const status of ['loading', 'error', 'ready'] as const) {
+      const connectionsState = controllerState(status);
       const props: ConnectionsRendererProps = {
-        model: controllerState(status),
+        model: connectionsState,
+        semanticInput: {
+          currentCardId: firstId,
+          nodes: connectionsState.fallbackItems,
+          edges:
+            connectionsState.status === 'ready'
+              ? connectionsState.edges.map(
+                  ({ sourceCardId, targetCardId, accessibleName }) => ({
+                    sourceCardId,
+                    targetCardId,
+                    accessibleName,
+                  }),
+                )
+              : [],
+        },
         totalNodeCount: 1,
         totalEdgeCount: status === 'ready' ? 1 : 0,
         actions: {
