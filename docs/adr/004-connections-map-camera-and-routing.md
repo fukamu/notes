@@ -593,3 +593,26 @@ E2E records intermediate camera positions and separates a 64 px cache-reuse
 round trip from a 512 px one-way movement that crosses overscan. Results and
 environment limits are recorded in
 [`connections-free-pan.md`](../connections-free-pan.md).
+
+## Issue #331 residual-height history and connections workspace
+
+Issue #331 removes the history and connections description blocks and the
+connections map toolbar, zoom output, and visible node/edge summary. The app
+header and responsive view navigation remain. The removal is intentional and
+does not move the deleted controls into a floating menu, hidden duplicate, or
+screen-reader-only replacement.
+
+History and connections now use a view-scoped `100dvh` flex/grid shell. The
+header keeps its intrinsic height, mobile navigation occupies a final grid row,
+desktop navigation keeps the existing 180 px right column, and the content row
+uses `minmax(0, 1fr)`. History scrolls inside that row and the connections
+viewport consumes it directly; neither view estimates the remaining height by
+subtracting description or toolbar constants.
+
+The named connections viewport is the keyboard input boundary. It is reachable
+with Tab and handles arrows, `+`/`-`, `0`, and `Home` only when the viewport
+itself is the event target, so card buttons and other descendants keep their own
+keys. Pointer, pinch, and modifier-wheel listeners no longer depend on a toolbar
+button being mounted. Fit and current-card camera commands remain internal
+operations used by these shortcuts. Complete graph counts remain diagnostic
+data attributes but are no longer rendered as interface text.

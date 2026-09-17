@@ -17,9 +17,7 @@ import {
   centerConnectionsCameraOnRect,
   connectionsCameraContainsRect,
   connectionsCameraTransform,
-  connectionsCameraZoomState,
   createConnectionsCameraFrameAdapter,
-  DEFAULT_CONNECTIONS_CAMERA_LIMITS,
   ensureConnectionsRectVisible,
   fitConnectionsCamera,
   initialConnectionsCamera,
@@ -55,15 +53,6 @@ export type ConnectionsViewportController = {
   worldRef: React.RefObject<HTMLDivElement | null>;
   edgeCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   cardCanvasRef: React.RefObject<HTMLCanvasElement | null>;
-  zoomOutputRef: React.RefObject<HTMLOutputElement | null>;
-  zoomInRef: React.RefObject<HTMLButtonElement | null>;
-  zoomOutRef: React.RefObject<HTMLButtonElement | null>;
-  keyboardRef: React.RefObject<HTMLButtonElement | null>;
-  zoomIn: () => void;
-  zoomOut: () => void;
-  fit: () => void;
-  centerCurrent: () => void;
-  panBy: (delta: ConnectionsPoint) => void;
   ensureNodeVisible: (node: ConnectionsReadyNode) => void;
   visibility: ConnectionsVisibilitySelection | null;
   nodeRenderMode: ConnectionsNodeRenderMode;
@@ -94,10 +83,6 @@ export function useConnectionsViewport(
   const worldRef = useRef<HTMLDivElement>(null);
   const edgeCanvasRef = useRef<HTMLCanvasElement>(null);
   const cardCanvasRef = useRef<HTMLCanvasElement>(null);
-  const zoomOutputRef = useRef<HTMLOutputElement>(null);
-  const zoomInRef = useRef<HTMLButtonElement>(null);
-  const zoomOutRef = useRef<HTMLButtonElement>(null);
-  const keyboardRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef(model);
   const geometryModelRef = useRef<ConnectionsReadyState | null>(null);
   const paddingRef = useRef(padding);
@@ -510,19 +495,6 @@ export function useConnectionsViewport(
         viewport.dataset.cameraRenderCount = String(
           Number(viewport.dataset.cameraRenderCount ?? '0') + 1,
         );
-        const zoomState = connectionsCameraZoomState(
-          camera,
-          geometryRef.current?.limits ?? DEFAULT_CONNECTIONS_CAMERA_LIMITS,
-        );
-        if (zoomState && zoomOutputRef.current) {
-          zoomOutputRef.current.textContent = `${zoomState.percentLabel}%`;
-        }
-        if (zoomState && zoomInRef.current) {
-          zoomInRef.current.disabled = zoomState.zoomInDisabled;
-        }
-        if (zoomState && zoomOutRef.current) {
-          zoomOutRef.current.disabled = zoomState.zoomOutDisabled;
-        }
         const renderSelection = updateVisibility(camera);
         const scaledEdges = paintEdges(
           camera,
@@ -701,8 +673,7 @@ export function useConnectionsViewport(
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
-    const keyboard = keyboardRef.current;
-    if (!viewport || !keyboard) return;
+    if (!viewport) return;
     const pointers = new Map<number, ConnectionsPoint>();
     let dragStartPoint: ConnectionsPoint | null = null;
     let dragStartCamera: ConnectionsCamera | null = null;
@@ -885,6 +856,7 @@ export function useConnectionsViewport(
       event.preventDefault();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.target !== viewport) return;
       if (event.altKey || event.ctrlKey || event.metaKey) return;
       let handled = true;
       switch (event.key) {
@@ -926,7 +898,7 @@ export function useConnectionsViewport(
     viewport.addEventListener('lostpointercapture', handleLostPointerCapture);
     viewport.addEventListener('click', handleClick, true);
     viewport.addEventListener('wheel', handleWheel, { passive: false });
-    keyboard.addEventListener('keydown', handleKeyDown);
+    viewport.addEventListener('keydown', handleKeyDown);
     return () => {
       viewport.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointermove', handlePointerMove);
@@ -938,7 +910,7 @@ export function useConnectionsViewport(
       );
       viewport.removeEventListener('click', handleClick, true);
       viewport.removeEventListener('wheel', handleWheel);
-      keyboard.removeEventListener('keydown', handleKeyDown);
+      viewport.removeEventListener('keydown', handleKeyDown);
       if (suppressionTimer !== null) window.clearTimeout(suppressionTimer);
       releasePointerCaptures();
       pointers.clear();
@@ -968,15 +940,6 @@ export function useConnectionsViewport(
     worldRef,
     edgeCanvasRef,
     cardCanvasRef,
-    zoomOutputRef,
-    zoomInRef,
-    zoomOutRef,
-    keyboardRef,
-    zoomIn: () => zoomAtViewportCenter(1.25),
-    zoomOut: () => zoomAtViewportCenter(0.8),
-    fit,
-    centerCurrent,
-    panBy,
     ensureNodeVisible,
     visibility: visibleSelection,
     nodeRenderMode,
