@@ -248,6 +248,10 @@
   @apply absolute z-10 flex flex-col justify-center px-4 text-left;
 }
 
+.connections-node-shell {
+  @apply rounded-xl focus-visible:ring-2 focus-visible:ring-ring;
+}
+
 .connections-node {
   @apply rounded-xl border bg-card shadow-sm transition hover:border-primary/40 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring aria-[current=true]:border-primary aria-[current=true]:shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary),transparent_72%)];
 }

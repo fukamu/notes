@@ -206,6 +206,30 @@ function controllerState(
   return {
     ...base,
     status,
+    geometry: {
+      width: 200,
+      height: 120,
+      nodes: [
+        {
+          id: firstId,
+          x: 10,
+          y: 20,
+          width: 148,
+          height: 56,
+          ports: [],
+        },
+      ],
+      edges: [
+        {
+          sourceCardId: firstId,
+          targetCardId: firstId,
+          id: 'edge-0',
+          sourcePortId: 'source-0',
+          targetPortId: 'target-0',
+          sections: [],
+        },
+      ],
+    },
     width: 200,
     height: 120,
     nodes: [node],
@@ -347,20 +371,10 @@ describe('alternate presentation contract', () => {
     for (const status of ['loading', 'error', 'ready'] as const) {
       const props: ConnectionsRendererProps = {
         model: controllerState(status),
-        staging: {
-          focusCardId: firstId,
-          focusLabel: '#1 First、現在のカード',
-          totalNodeCount: 1,
-          visibleNodeCount: 1,
-          nodeLimit: 64,
-          hiddenReachableNodeCount: 0,
-          nextExpansionCount: 0,
-          canExpand: false,
-          stoppedAtMaximum: false,
-        },
+        totalNodeCount: 1,
+        totalEdgeCount: status === 'ready' ? 1 : 0,
         actions: {
           openCard,
-          expand: vi.fn(),
         },
         presentation: alternateNotesAppConfiguration.connectionsPresentation,
       };

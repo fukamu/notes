@@ -142,6 +142,8 @@ describe('connections controller', () => {
     const controller = createConnectionsController(input(), metrics, runner);
     controller.update(input(), metrics);
     await vi.waitFor(() => expect(controller.getState().status).toBe('ready'));
+    const initialState = controller.getState();
+    if (initialState.status !== 'ready') return;
 
     controller.update(input(secondId), metrics);
     const state = controller.getState();
@@ -151,6 +153,7 @@ describe('connections controller', () => {
     expect(state.nodes.find((node) => node.cardId === secondId)?.current).toBe(
       true,
     );
+    expect(state.geometry).toBe(initialState.geometry);
     expect(runner).toHaveBeenCalledTimes(1);
   });
 

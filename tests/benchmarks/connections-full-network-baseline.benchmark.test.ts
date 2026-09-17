@@ -14,7 +14,6 @@ import {
   createConnectionsController,
   type ConnectionsLayoutRunner,
 } from '@/lib/graph/connections-controller';
-import { selectConnectionsStage } from '@/lib/graph/connections-staging';
 import type {
   ConnectionsLayout,
   ConnectionsLayoutGraph,
@@ -33,6 +32,7 @@ import {
   createFullNetworkBaselineFixture,
   fullNetworkBaselineFixtureDefinitions,
 } from '@/tests/fixtures/connections-full-network';
+import { selectLegacyInitialConnectionsStage } from '@/tests/benchmarks/legacy-connections-staging';
 
 const warmupIterations = 1;
 const measuredIterations = 5;
@@ -271,12 +271,12 @@ describe('connections full-network phase 0 baseline artifact', () => {
           return fullInput.nodes.length + fullInput.edges.length;
         },
       );
-      let staged = selectConnectionsStage(fullInput, { expansionPage: 0 });
+      let staged = selectLegacyInitialConnectionsStage(fullInput);
       const staging = measureOperation(
         warmupIterations,
         measuredIterations,
         () => {
-          staged = selectConnectionsStage(fullInput, { expansionPage: 0 });
+          staged = selectLegacyInitialConnectionsStage(fullInput);
           return staged.input.nodes.length + staged.input.edges.length;
         },
       );

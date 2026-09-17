@@ -1704,7 +1704,6 @@ describe('swappable presentation architecture', () => {
     const files = [
       'lib/graph/connections-contract.ts',
       'lib/graph/connections-controller.ts',
-      'lib/graph/connections-staging.ts',
       'lib/graph/elk-layout.ts',
       'lib/graph/connections-viewport.ts',
     ];
@@ -1714,10 +1713,16 @@ describe('swappable presentation architecture', () => {
       const source = await readFile(file, 'utf8');
       expect(source, file).not.toMatch(forbidden);
     }
+    const visibility = await readFile(
+      'lib/graph/connections-visibility.ts',
+      'utf8',
+    );
+    expect(visibility).not.toMatch(
+      /(?:react|window\.|document\.|Worker|HTMLElement|performance\.)/,
+    );
   });
 
-  it('bounds connections before the worker-facing controller boundary', async () => {
-    const staging = await readFile('lib/graph/connections-staging.ts', 'utf8');
+  it('passes the complete connections graph to the worker-facing controller boundary', async () => {
     const contract = await readFile(
       'lib/graph/connections-contract.ts',
       'utf8',
@@ -1728,21 +1733,14 @@ describe('swappable presentation architecture', () => {
     );
     const view = await readFile('components/connections-view.tsx', 'utf8');
 
-    expect(staging).toContain('maximumNodeLimit: 256');
-    expect(staging).toContain('selectConnectionsStage');
-    expect(staging).not.toContain('queryConnectionsStageNodes');
     expect(contract).not.toContain('setSearchQuery');
     expect(contract).not.toContain('searchResults');
-    expect(adapter).toContain(
-      'selectConnectionsStage(input, { expansionPage })',
-    );
+    expect(adapter).not.toContain('selectConnectionsStage');
+    expect(adapter).not.toContain('key={props.input.currentCardId}');
     expect(view).not.toContain('connections-search');
-    expect(staging).not.toMatch(
-      /(?:react|window\.|document\.|Worker|HTMLElement|performance\.)/,
-    );
-    expect(adapter).toContain(
-      'useConnectionsController(selection.input, presentation)',
-    );
+    expect(adapter).toContain('useConnectionsController(input, presentation)');
+    expect(adapter).toContain('totalNodeCount={input.nodes.length}');
+    expect(adapter).toContain('totalEdgeCount={input.edges.length}');
   });
 
   it('keeps camera geometry pure and browser gesture effects in the hook adapter', async () => {
@@ -1768,7 +1766,8 @@ describe('swappable presentation architecture', () => {
     ]) {
       expect(hook).toContain(boundary);
     }
-    expect(hook).not.toMatch(/useState|setCamera/);
+    expect(hook).not.toMatch(/setCamera/);
+    expect(hook).toContain('setVisibilityState');
     expect(hook).toContain('readConnectionsZoomPreference');
     expect(hook).toContain('writeConnectionsZoomPreference');
     expect(preference).toContain('decodeConnectionsCameraScale');

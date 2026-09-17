@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useLayoutEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
   readConnectionsZoomPreference,
   writeConnectionsZoomPreference,
@@ -22,6 +22,8 @@ import {
   initialConnectionsCamera,
   panConnectionsCamera,
   pinchConnectionsCamera,
+  preserveConnectionsRectAnchor,
+  resolveConnectionsCameraLimits,
   resizeConnectionsCamera,
   zoomConnectionsCamera,
   type ConnectionsCamera,
@@ -30,6 +32,12 @@ import {
   type ConnectionsPoint,
   type ConnectionsViewportPadding,
 } from '@/lib/graph/connections-viewport';
+import {
+  queryConnectionsVisibility,
+  sameConnectionsVisibility,
+  type ConnectionsVisibilitySelection,
+  type PreparedConnectionsVisibility,
+} from '@/lib/graph/connections-visibility';
 
 type PinchStart = {
   camera: ConnectionsCamera;
@@ -49,6 +57,7 @@ export type ConnectionsViewportController = {
   centerCurrent: () => void;
   panBy: (delta: ConnectionsPoint) => void;
   ensureNodeVisible: (node: ConnectionsReadyNode) => void;
+  visibility: ConnectionsVisibilitySelection | null;
 };
 
 function pointerPair(
@@ -63,6 +72,7 @@ function pointerPair(
 export function useConnectionsViewport(
   model: ConnectionsReadyState | null,
   padding: ConnectionsViewportPadding,
+  preparedVisibility: PreparedConnectionsVisibility | null,
 ): ConnectionsViewportController {
   const viewportRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
@@ -71,7 +81,9 @@ export function useConnectionsViewport(
   const zoomOutRef = useRef<HTMLButtonElement>(null);
   const keyboardRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef(model);
+  const geometryModelRef = useRef<ConnectionsReadyState | null>(null);
   const paddingRef = useRef(padding);
+  const preparedVisibilityRef = useRef(preparedVisibility);
   const geometryRef = useRef<ConnectionsCameraGeometry | null>(null);
   const cameraRef = useRef<ConnectionsCamera | null>(null);
   const preferredScaleRef = useRef<number | null>(null);
@@ -82,6 +94,12 @@ export function useConnectionsViewport(
   const preferenceTimerRef = useRef<number | null>(null);
   const layoutKeyRef = useRef<string | null>(null);
   const frameAdapterRef = useRef<ConnectionsCameraFrameAdapter | null>(null);
+  const visibilityRef = useRef<ConnectionsVisibilitySelection | null>(null);
+  const visibilityLayoutKeyRef = useRef<string | null>(null);
+  const [visibilityState, setVisibilityState] = useState<{
+    layoutKey: string;
+    selection: ConnectionsVisibilitySelection;
+  } | null>(null);
 
   const flushPreferredScale = useCallback(() => {
     const scale = pendingPreferredScaleRef.current;
@@ -125,21 +143,51 @@ export function useConnectionsViewport(
   useLayoutEffect(() => {
     modelRef.current = model;
     paddingRef.current = padding;
-  }, [model, padding]);
+    preparedVisibilityRef.current = preparedVisibility;
+  }, [model, padding, preparedVisibility]);
 
   const readGeometry = useCallback((): ConnectionsCameraGeometry | null => {
     const viewport = viewportRef.current;
     const ready = modelRef.current;
-    if (!viewport || !ready) return null;
-    return {
-      viewport: {
-        width: viewport.clientWidth,
-        height: viewport.clientHeight,
-      },
-      world: { x: 0, y: 0, width: ready.width, height: ready.height },
-      padding: paddingRef.current,
-      limits: DEFAULT_CONNECTIONS_CAMERA_LIMITS,
+    const prepared = preparedVisibilityRef.current;
+    if (!viewport || !ready || !prepared) return null;
+    const viewportGeometry = {
+      width: viewport.clientWidth,
+      height: viewport.clientHeight,
     };
+    const limits = resolveConnectionsCameraLimits(
+      viewportGeometry,
+      prepared.worldBounds,
+      paddingRef.current,
+    );
+    if (!limits) return null;
+    return {
+      viewport: viewportGeometry,
+      world: prepared.worldBounds,
+      padding: paddingRef.current,
+      limits,
+    };
+  }, []);
+
+  const updateVisibility = useCallback((camera: ConnectionsCamera) => {
+    const viewport = viewportRef.current;
+    const prepared = preparedVisibilityRef.current;
+    const ready = modelRef.current;
+    if (!viewport || !prepared || !ready) return;
+    const next = queryConnectionsVisibility(prepared, camera, {
+      width: viewport.clientWidth,
+      height: viewport.clientHeight,
+    });
+    if (
+      visibilityLayoutKeyRef.current === ready.layoutKey &&
+      visibilityRef.current &&
+      sameConnectionsVisibility(visibilityRef.current, next)
+    ) {
+      return;
+    }
+    visibilityLayoutKeyRef.current = ready.layoutKey;
+    visibilityRef.current = next;
+    setVisibilityState({ layoutKey: ready.layoutKey, selection: next });
   }, []);
 
   const commitCamera = useCallback(
@@ -152,17 +200,27 @@ export function useConnectionsViewport(
     [queuePreferredScale],
   );
 
+  const commitCameraWithVisibility = useCallback(
+    (camera: ConnectionsCamera | null, persistScale = false) => {
+      if (camera) updateVisibility(camera);
+      commitCamera(camera, persistScale);
+    },
+    [commitCamera, updateVisibility],
+  );
+
   const synchronizeGeometry = useCallback(() => {
     const geometry = readGeometry();
     const ready = modelRef.current;
     if (!geometry || !ready) return;
     const previousGeometry = geometryRef.current;
     const previousCamera = cameraRef.current;
+    const previousModel = geometryModelRef.current;
     const layoutChanged = layoutKeyRef.current !== ready.layoutKey;
     geometryRef.current = geometry;
     layoutKeyRef.current = ready.layoutKey;
-    if (!previousCamera || !previousGeometry || layoutChanged) {
-      commitCamera(
+    geometryModelRef.current = ready;
+    if (!previousCamera || !previousGeometry) {
+      commitCameraWithVisibility(
         initialConnectionsCamera(
           geometry,
           ready.currentNode,
@@ -171,10 +229,29 @@ export function useConnectionsViewport(
       );
       return;
     }
-    commitCamera(
+    if (layoutChanged) {
+      const previousAnchor = previousModel?.nodes.find(
+        (node) => node.cardId === ready.currentCardId,
+      );
+      const nextAnchor = ready.nodes.find(
+        (node) => node.cardId === ready.currentCardId,
+      );
+      commitCameraWithVisibility(
+        previousAnchor && nextAnchor
+          ? preserveConnectionsRectAnchor(
+              previousCamera,
+              previousAnchor,
+              nextAnchor,
+              geometry,
+            )
+          : resizeConnectionsCamera(previousCamera, previousGeometry, geometry),
+      );
+      return;
+    }
+    commitCameraWithVisibility(
       resizeConnectionsCamera(previousCamera, previousGeometry, geometry),
     );
-  }, [commitCamera, readGeometry]);
+  }, [commitCameraWithVisibility, readGeometry]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -198,7 +275,7 @@ export function useConnectionsViewport(
           geometryRef.current?.limits ?? DEFAULT_CONNECTIONS_CAMERA_LIMITS,
         );
         if (zoomState && zoomOutputRef.current) {
-          zoomOutputRef.current.textContent = `${zoomState.percent}%`;
+          zoomOutputRef.current.textContent = `${zoomState.percentLabel}%`;
         }
         if (zoomState && zoomInRef.current) {
           zoomInRef.current.disabled = zoomState.zoomInDisabled;
@@ -206,6 +283,7 @@ export function useConnectionsViewport(
         if (zoomState && zoomOutRef.current) {
           zoomOutRef.current.disabled = zoomState.zoomOutDisabled;
         }
+        updateVisibility(camera);
       },
     });
     frameAdapterRef.current = adapter;
@@ -214,7 +292,7 @@ export function useConnectionsViewport(
       adapter.destroy();
       if (frameAdapterRef.current === adapter) frameAdapterRef.current = null;
     };
-  }, [model?.layoutKey]);
+  }, [model?.layoutKey, updateVisibility]);
 
   useLayoutEffect(() => {
     synchronizeGeometry();
@@ -222,6 +300,10 @@ export function useConnectionsViewport(
     model?.height,
     model?.layoutKey,
     model?.width,
+    preparedVisibility?.worldBounds.height,
+    preparedVisibility?.worldBounds.width,
+    preparedVisibility?.worldBounds.x,
+    preparedVisibility?.worldBounds.y,
     padding.bottom,
     padding.left,
     padding.right,
@@ -243,7 +325,7 @@ export function useConnectionsViewport(
       const geometry = geometryRef.current ?? readGeometry();
       const camera = cameraRef.current;
       if (!viewport || !geometry || !camera) return;
-      commitCamera(
+      commitCameraWithVisibility(
         zoomConnectionsCamera(
           camera,
           factor,
@@ -253,39 +335,45 @@ export function useConnectionsViewport(
         true,
       );
     },
-    [commitCamera, readGeometry],
+    [commitCameraWithVisibility, readGeometry],
   );
 
   const fit = useCallback(() => {
     const geometry = geometryRef.current ?? readGeometry();
-    if (geometry) commitCamera(fitConnectionsCamera(geometry), true);
-  }, [commitCamera, readGeometry]);
+    if (geometry) {
+      commitCameraWithVisibility(fitConnectionsCamera(geometry), true);
+    }
+  }, [commitCameraWithVisibility, readGeometry]);
 
   const centerCurrent = useCallback(() => {
     const geometry = geometryRef.current ?? readGeometry();
     const camera = cameraRef.current;
     const currentNode = modelRef.current?.currentNode;
     if (!geometry || !camera || !currentNode) return;
+    const operableCamera = {
+      ...camera,
+      scale: Math.max(camera.scale, Math.min(1, geometry.limits.maximumScale)),
+    };
     const centered = centerConnectionsCameraOnRect(
-      camera,
+      operableCamera,
       currentNode,
       geometry,
     );
-    commitCamera(
+    commitCameraWithVisibility(
       centered
         ? ensureConnectionsRectVisible(centered, currentNode, geometry, 12)
         : null,
     );
-  }, [commitCamera, readGeometry]);
+  }, [commitCameraWithVisibility, readGeometry]);
 
   const panBy = useCallback(
     (delta: ConnectionsPoint) => {
       const geometry = geometryRef.current ?? readGeometry();
       const camera = cameraRef.current;
       if (!geometry || !camera) return;
-      commitCamera(panConnectionsCamera(camera, delta, geometry));
+      commitCameraWithVisibility(panConnectionsCamera(camera, delta, geometry));
     },
-    [commitCamera, readGeometry],
+    [commitCameraWithVisibility, readGeometry],
   );
 
   const ensureNodeVisible = useCallback(
@@ -293,10 +381,22 @@ export function useConnectionsViewport(
       const geometry = geometryRef.current ?? readGeometry();
       const camera = cameraRef.current;
       if (!geometry || !camera) return;
-      if (connectionsCameraContainsRect(camera, node, geometry, 12)) return;
-      commitCamera(ensureConnectionsRectVisible(camera, node, geometry, 12));
+      const operableScale = Math.max(
+        camera.scale,
+        Math.min(0.5, geometry.limits.maximumScale),
+      );
+      const operableCamera = { ...camera, scale: operableScale };
+      if (
+        operableScale === camera.scale &&
+        connectionsCameraContainsRect(camera, node, geometry, 12)
+      ) {
+        return;
+      }
+      commitCameraWithVisibility(
+        ensureConnectionsRectVisible(operableCamera, node, geometry, 12),
+      );
     },
-    [commitCamera, readGeometry],
+    [commitCameraWithVisibility, readGeometry],
   );
 
   useLayoutEffect(() => {
@@ -532,6 +632,10 @@ export function useConnectionsViewport(
     zoomAtViewportCenter,
   ]);
 
+  const visibleSelection =
+    model && visibilityState?.layoutKey === model.layoutKey
+      ? visibilityState.selection
+      : null;
   return {
     viewportRef,
     worldRef,
@@ -545,5 +649,6 @@ export function useConnectionsViewport(
     centerCurrent,
     panBy,
     ensureNodeVisible,
+    visibility: visibleSelection,
   };
 }

@@ -78,7 +78,9 @@ equivalence between large corridor and small ELK layouts. Memory values exposed
 by headless Chromium were flat observational readings and are not a Worker
 memory budget.
 
-Issue #311 may now cut the UI over to complete input, implement whole-world
-camera limits and safe visibility selection, and measure product rendering.
-Canvas remains conditional on SVG/paint being the demonstrated remaining
-bottleneck. `main`, deployment, and Sites are outside this decision.
+Issue #311 subsequently cut the UI over to complete input, implemented
+whole-world camera limits and safe visibility selection, and demonstrated that
+whole-world SVG/paint misses the provisional product target. See
+[`connections-full-network-cutover.md`](connections-full-network-cutover.md).
+That evidence activates the separately reviewed Canvas 2D edge evaluation.
+`main`, deployment, and Sites remain outside this decision.

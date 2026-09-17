@@ -3,8 +3,10 @@
 > Follow-up: Issue #310 reproduced the full-graph stack overflow in the actual
 > Chromium Worker for the 1k/3k and both 10k inputs. See
 > [`connections-browser-worker-feasibility.md`](connections-browser-worker-feasibility.md).
-> The phase-2 staging removal is blocked pending an explicit layout architecture
-> decision.
+> Issue #318 later supplied complete product-Worker geometry and Issue #311
+> removed staging. This file remains the immutable failed-ELK baseline; current
+> UI evidence is in
+> [`connections-full-network-cutover.md`](connections-full-network-cutover.md).
 
 Issue #305 records the feasibility baseline for parent #304. It does not change
 the product path: the shipped adapter still stages 64 nodes initially and 256

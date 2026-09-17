@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { selectConnectionsViewModel } from '@/lib/application/view-models';
 import { createMainThreadConnectionsLayoutRunner } from '@/lib/client/connections-layout-main-thread';
 import { defaultConnectionsPresentation } from '@/components/connections-presentation';
-import { selectConnectionsStage } from '@/lib/graph/connections-staging';
 import type { ConnectionsLayout } from '@/lib/graph/elk-layout';
 import {
   connectionsLayoutGraph,
@@ -13,6 +12,7 @@ import {
   type IsolatedFullNetworkLayoutResult,
 } from '@/tests/benchmarks/connections-full-network-baseline-support';
 import { createFullNetworkBaselineFixture } from '@/tests/fixtures/connections-full-network';
+import { selectLegacyInitialConnectionsStage } from '@/tests/benchmarks/legacy-connections-staging';
 
 const fixtureName = process.env.CONNECTIONS_BASELINE_FIXTURE;
 const requestedMode = process.env.CONNECTIONS_BASELINE_MODE;
@@ -53,9 +53,7 @@ describe('isolated full-network ELK baseline process', () => {
       fixture.cards,
       fixture.currentCardId,
     );
-    const stagedInput = selectConnectionsStage(fullInput, {
-      expansionPage: 0,
-    }).input;
+    const stagedInput = selectLegacyInitialConnectionsStage(fullInput).input;
     const graph = connectionsLayoutGraph(
       selectedMode === 'staged' ? stagedInput : fullInput,
     );
