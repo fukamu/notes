@@ -233,4 +233,34 @@ describe('notes application controller', () => {
     expect(model.history).toBeNull();
     expect(model.connections).toBeNull();
   });
+
+  it('projects a precomputed connections graph without reading card bodies again', () => {
+    const currentBase = card('precomputed-current', 1);
+    const current: CardRecord = {
+      ...currentBase,
+      get body(): CardRecord['body'] {
+        throw new Error('precomputed projection re-read a card body');
+      },
+    };
+    const store = fakeStore([current]);
+
+    const model = createNotesPresentationModel(
+      store,
+      { kind: 'connections', cardId: current.id },
+      {
+        cardEditorIndex: null,
+        connectionsGraph: {
+          kind: 'precomputed',
+          graph: { nodes: [{ card: current }], edges: [] },
+        },
+      },
+    );
+
+    expect(model.activeView).toBe('connections');
+    expect(model.connections).toMatchObject({
+      currentCardId: current.id,
+      nodes: [{ cardId: current.id, current: true }],
+      edges: [],
+    });
+  });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  projectConnectionsViewModel,
   selectCardEditorInputModel,
   selectConflictViewModel,
   selectConflictViewModels,
@@ -7,6 +8,7 @@ import {
   selectHistoryViewModel,
   selectNotesStatus,
 } from '@/lib/application/view-models';
+import { buildConnectionsGraph } from '@/lib/domain/graph';
 import type {
   CardRecord,
   ConflictRecord,
@@ -389,5 +391,28 @@ describe('connections input view model', () => {
         },
       ],
     });
+  });
+
+  it('projects a new current card from one prebuilt graph', () => {
+    const first = card('projection-first', {
+      displayId: { kind: 'official', value: 1 },
+    });
+    const second = card('projection-second', {
+      displayId: { kind: 'official', value: 2 },
+    });
+    const graph = buildConnectionsGraph([first, second]);
+
+    const firstProjection = projectConnectionsViewModel(graph, first.id);
+    const secondProjection = projectConnectionsViewModel(graph, second.id);
+
+    expect(firstProjection.nodes.map((node) => node.current)).toEqual([
+      true,
+      false,
+    ]);
+    expect(secondProjection.nodes.map((node) => node.current)).toEqual([
+      false,
+      true,
+    ]);
+    expect(secondProjection.edges).toEqual(firstProjection.edges);
   });
 });

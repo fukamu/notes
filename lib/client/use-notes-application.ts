@@ -15,6 +15,10 @@ import {
 } from '@/lib/application/initialization-lifecycle';
 import { createBrowserNotesNavigator } from '@/lib/client/browser-notes-navigator';
 import { createCardEditorIndexCache } from '@/lib/client/card-editor-index-cache';
+import {
+  createConnectionsGraphCache,
+  selectConnectionsGraphForLocation,
+} from '@/lib/client/connections-graph-cache';
 import type {
   NotesPresentationActions,
   NotesPresentationModel,
@@ -27,6 +31,7 @@ export function useNotesApplication(store: NotesDataStore): {
 } {
   const [navigator] = useState(createBrowserNotesNavigator);
   const [cardEditorIndexCache] = useState(createCardEditorIndexCache);
+  const [connectionsGraphCache] = useState(createConnectionsGraphCache);
   const location = useSyncExternalStore(
     navigator.subscribe,
     navigator.getLocation,
@@ -48,8 +53,9 @@ export function useNotesApplication(store: NotesDataStore): {
   useEffect(
     () => () => {
       cardEditorIndexCache.clear();
+      connectionsGraphCache.clear();
     },
-    [cardEditorIndexCache],
+    [cardEditorIndexCache, connectionsGraphCache],
   );
 
   useEffect(() => {
@@ -75,9 +81,22 @@ export function useNotesApplication(store: NotesDataStore): {
         : null,
     [cardEditorIndexCache, location, store.cards],
   );
+  const connectionsGraph = useMemo(
+    () =>
+      selectConnectionsGraphForLocation(
+        connectionsGraphCache,
+        store.cards,
+        location,
+      ),
+    [connectionsGraphCache, location, store.cards],
+  );
   const model = useMemo(
-    () => createNotesPresentationModel(store, location, { cardEditorIndex }),
-    [cardEditorIndex, location, store],
+    () =>
+      createNotesPresentationModel(store, location, {
+        cardEditorIndex,
+        connectionsGraph: { kind: 'precomputed', graph: connectionsGraph },
+      }),
+    [cardEditorIndex, connectionsGraph, location, store],
   );
 
   return {
