@@ -6,7 +6,9 @@ import {
   writeConnectionsZoomPreference,
   type ConnectionsZoomPreferenceStorage,
 } from '@/lib/client/connections-zoom-preference';
+import { createConnectionsCanvasCardRenderer } from '@/lib/client/connections-card-canvas-renderer';
 import { createConnectionsCanvasEdgeRenderer } from '@/lib/client/connections-canvas-renderer';
+import type { CardId } from '@/lib/domain/id';
 import type {
   ConnectionsReadyNode,
   ConnectionsReadyState,
@@ -34,8 +36,11 @@ import {
   type ConnectionsViewportPadding,
 } from '@/lib/graph/connections-viewport';
 import {
+  hitTestConnectionsNode,
   queryConnectionsVisibility,
+  resolveConnectionsNodeRenderMode,
   sameConnectionsVisibility,
+  type ConnectionsNodeRenderMode,
   type ConnectionsVisibilitySelection,
   type PreparedConnectionsVisibility,
 } from '@/lib/graph/connections-visibility';
@@ -49,6 +54,7 @@ export type ConnectionsViewportController = {
   viewportRef: React.RefObject<HTMLDivElement | null>;
   worldRef: React.RefObject<HTMLDivElement | null>;
   edgeCanvasRef: React.RefObject<HTMLCanvasElement | null>;
+  cardCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   zoomOutputRef: React.RefObject<HTMLOutputElement | null>;
   zoomInRef: React.RefObject<HTMLButtonElement | null>;
   zoomOutRef: React.RefObject<HTMLButtonElement | null>;
@@ -60,7 +66,13 @@ export type ConnectionsViewportController = {
   panBy: (delta: ConnectionsPoint) => void;
   ensureNodeVisible: (node: ConnectionsReadyNode) => void;
   visibility: ConnectionsVisibilitySelection | null;
+  nodeRenderMode: ConnectionsNodeRenderMode;
 };
+
+type ConnectionsViewportRenderSelection = Readonly<{
+  selection: ConnectionsVisibilitySelection;
+  nodeRenderMode: ConnectionsNodeRenderMode;
+}>;
 
 function pointerPair(
   pointers: ReadonlyMap<number, ConnectionsPoint>,
@@ -75,10 +87,13 @@ export function useConnectionsViewport(
   model: ConnectionsReadyState | null,
   padding: ConnectionsViewportPadding,
   preparedVisibility: PreparedConnectionsVisibility | null,
+  retainedNodeIndex: number | null,
+  openOverviewCard: (cardId: CardId) => void,
 ): ConnectionsViewportController {
   const viewportRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
   const edgeCanvasRef = useRef<HTMLCanvasElement>(null);
+  const cardCanvasRef = useRef<HTMLCanvasElement>(null);
   const zoomOutputRef = useRef<HTMLOutputElement>(null);
   const zoomInRef = useRef<HTMLButtonElement>(null);
   const zoomOutRef = useRef<HTMLButtonElement>(null);
@@ -87,6 +102,8 @@ export function useConnectionsViewport(
   const geometryModelRef = useRef<ConnectionsReadyState | null>(null);
   const paddingRef = useRef(padding);
   const preparedVisibilityRef = useRef(preparedVisibility);
+  const retainedNodeIndexRef = useRef(retainedNodeIndex);
+  const openOverviewCardRef = useRef(openOverviewCard);
   const geometryRef = useRef<ConnectionsCameraGeometry | null>(null);
   const cameraRef = useRef<ConnectionsCamera | null>(null);
   const preferredScaleRef = useRef<number | null>(null);
@@ -98,15 +115,22 @@ export function useConnectionsViewport(
   const layoutKeyRef = useRef<string | null>(null);
   const frameAdapterRef = useRef<ConnectionsCameraFrameAdapter | null>(null);
   const [edgeRenderer] = useState(createConnectionsCanvasEdgeRenderer);
+  const [cardRenderer] = useState(createConnectionsCanvasCardRenderer);
   const edgeColorsRef = useRef<Readonly<{
     halo: string;
     stroke: string;
   }> | null>(null);
+  const cardColorsRef = useRef<Readonly<{
+    fill: string;
+    border: string;
+    current: string;
+  }> | null>(null);
   const visibilityRef = useRef<ConnectionsVisibilitySelection | null>(null);
+  const nodeRenderModeRef = useRef<ConnectionsNodeRenderMode>('html');
   const visibilityLayoutKeyRef = useRef<string | null>(null);
   const [visibilityState, setVisibilityState] = useState<{
     layoutKey: string;
-    selection: ConnectionsVisibilitySelection;
+    renderSelection: ConnectionsViewportRenderSelection;
   } | null>(null);
 
   const flushPreferredScale = useCallback(() => {
@@ -152,7 +176,9 @@ export function useConnectionsViewport(
     modelRef.current = model;
     paddingRef.current = padding;
     preparedVisibilityRef.current = preparedVisibility;
-  }, [model, padding, preparedVisibility]);
+    retainedNodeIndexRef.current = retainedNodeIndex;
+    openOverviewCardRef.current = openOverviewCard;
+  }, [model, openOverviewCard, padding, preparedVisibility, retainedNodeIndex]);
 
   const readGeometry = useCallback((): ConnectionsCameraGeometry | null => {
     const viewport = viewportRef.current;
@@ -182,21 +208,36 @@ export function useConnectionsViewport(
     const prepared = preparedVisibilityRef.current;
     const ready = modelRef.current;
     if (!viewport || !prepared || !ready) return null;
+    const started = performance.now();
     const next = queryConnectionsVisibility(prepared, camera, {
       width: viewport.clientWidth,
       height: viewport.clientHeight,
     });
+    const nodeRenderMode = resolveConnectionsNodeRenderMode(
+      ready.nodes[0]?.height ?? 0,
+      camera.scale,
+    );
+    viewport.dataset.visibilityQueryDurationMs = String(
+      performance.now() - started,
+    );
     if (
       visibilityLayoutKeyRef.current === ready.layoutKey &&
       visibilityRef.current &&
-      sameConnectionsVisibility(visibilityRef.current, next)
+      sameConnectionsVisibility(visibilityRef.current, next) &&
+      nodeRenderModeRef.current === nodeRenderMode
     ) {
-      return visibilityRef.current;
+      return {
+        selection: visibilityRef.current,
+        nodeRenderMode,
+      };
     }
     visibilityLayoutKeyRef.current = ready.layoutKey;
     visibilityRef.current = next;
-    setVisibilityState({ layoutKey: ready.layoutKey, selection: next });
-    return next;
+    nodeRenderModeRef.current = nodeRenderMode;
+    viewport.dataset.nodeRenderRequestedAt = String(performance.now());
+    const renderSelection = { selection: next, nodeRenderMode };
+    setVisibilityState({ layoutKey: ready.layoutKey, renderSelection });
+    return renderSelection;
   }, []);
 
   const paintEdges = useCallback(
@@ -247,6 +288,71 @@ export function useConnectionsViewport(
       }
     },
     [edgeRenderer],
+  );
+
+  const paintCards = useCallback(
+    (
+      camera: ConnectionsCamera,
+      renderSelection: ConnectionsViewportRenderSelection | null,
+    ) => {
+      const viewport = viewportRef.current;
+      const canvas = cardCanvasRef.current;
+      const ready = modelRef.current;
+      if (!viewport || !canvas || !ready || !renderSelection) return;
+      const viewportGeometry = {
+        width: viewport.clientWidth,
+        height: viewport.clientHeight,
+      };
+      const result =
+        renderSelection.nodeRenderMode === 'overview-canvas'
+          ? (() => {
+              let colors = cardColorsRef.current;
+              if (!colors) {
+                const styles = window.getComputedStyle(viewport);
+                colors = {
+                  fill:
+                    styles.getPropertyValue('--card').trim() ||
+                    styles.backgroundColor,
+                  border:
+                    styles.getPropertyValue('--border').trim() || styles.color,
+                  current:
+                    styles.getPropertyValue('--primary').trim() || styles.color,
+                };
+                cardColorsRef.current = colors;
+              }
+              return cardRenderer.paint({
+                canvas,
+                nodes: ready.nodes,
+                visibleNodeIndices: renderSelection.selection.nodeIndices,
+                excludedNodeIndex: retainedNodeIndexRef.current,
+                camera,
+                viewport: viewportGeometry,
+                devicePixelRatio: window.devicePixelRatio,
+                colors,
+              });
+            })()
+          : cardRenderer.clear({
+              canvas,
+              viewport: viewportGeometry,
+              devicePixelRatio: window.devicePixelRatio,
+            });
+      viewport.dataset.cardRenderer =
+        renderSelection.nodeRenderMode === 'overview-canvas'
+          ? 'canvas-2d-overview'
+          : 'html-windowed';
+      viewport.dataset.cardRenderStatus = result.status;
+      if (result.status === 'unavailable') {
+        viewport.dataset.cardRenderReason = result.reason;
+        return;
+      }
+      delete viewport.dataset.cardRenderReason;
+      viewport.dataset.cardDrawCount = String(
+        Number(viewport.dataset.cardDrawCount ?? '0') + 1,
+      );
+      viewport.dataset.cardDrawNodeCount = String(result.nodeCount);
+      viewport.dataset.cardDrawDurationMs = String(result.durationMs);
+    },
+    [cardRenderer],
   );
 
   const commitCamera = useCallback(
@@ -342,8 +448,9 @@ export function useConnectionsViewport(
         if (zoomState && zoomOutRef.current) {
           zoomOutRef.current.disabled = zoomState.zoomOutDisabled;
         }
-        const selection = updateVisibility(camera);
-        paintEdges(camera, selection);
+        const renderSelection = updateVisibility(camera);
+        paintEdges(camera, renderSelection?.selection ?? null);
+        paintCards(camera, renderSelection);
       },
     });
     frameAdapterRef.current = adapter;
@@ -352,14 +459,24 @@ export function useConnectionsViewport(
       adapter.destroy();
       if (frameAdapterRef.current === adapter) frameAdapterRef.current = null;
     };
-  }, [model?.layoutKey, paintEdges, updateVisibility]);
+  }, [model?.layoutKey, paintCards, paintEdges, updateVisibility]);
 
   useLayoutEffect(() => {
     const root = document.documentElement;
     const redraw = () => {
       edgeColorsRef.current = null;
+      cardColorsRef.current = null;
       const camera = cameraRef.current;
-      if (camera) paintEdges(camera, visibilityRef.current);
+      if (camera) {
+        const renderSelection = visibilityRef.current
+          ? {
+              selection: visibilityRef.current,
+              nodeRenderMode: nodeRenderModeRef.current,
+            }
+          : null;
+        paintEdges(camera, renderSelection?.selection ?? null);
+        paintCards(camera, renderSelection);
+      }
     };
     const observer = new MutationObserver(redraw);
     observer.observe(root, {
@@ -367,7 +484,7 @@ export function useConnectionsViewport(
       attributeFilter: ['class', 'style'],
     });
     return () => observer.disconnect();
-  }, [paintEdges]);
+  }, [paintCards, paintEdges]);
 
   useLayoutEffect(
     () => () => {
@@ -375,6 +492,11 @@ export function useConnectionsViewport(
     },
     [edgeRenderer],
   );
+
+  useLayoutEffect(() => {
+    const camera = cameraRef.current;
+    if (camera) frameAdapterRef.current?.queue(camera);
+  }, [retainedNodeIndex]);
 
   useLayoutEffect(() => {
     synchronizeGeometry();
@@ -618,13 +740,36 @@ export function useConnectionsViewport(
       if (pointers.has(event.pointerId)) finishPointer(event);
     };
     const handleClick = (event: MouseEvent) => {
-      if (!suppressNextClick) return;
-      suppressNextClick = false;
-      viewport.dataset.clickSuppression = 'false';
-      if (suppressionTimer !== null) window.clearTimeout(suppressionTimer);
-      suppressionTimer = null;
+      if (suppressNextClick) {
+        suppressNextClick = false;
+        viewport.dataset.clickSuppression = 'false';
+        if (suppressionTimer !== null) window.clearTimeout(suppressionTimer);
+        suppressionTimer = null;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (nodeRenderModeRef.current !== 'overview-canvas') return;
+      if (event.target instanceof Element && event.target.closest('button')) {
+        return;
+      }
+      const camera = cameraRef.current;
+      const prepared = preparedVisibilityRef.current;
+      const ready = modelRef.current;
+      if (!camera || !prepared || !ready) return;
+      const bounds = viewport.getBoundingClientRect();
+      const nodeIndex = hitTestConnectionsNode(prepared, camera, {
+        x: event.clientX - bounds.left,
+        y: event.clientY - bounds.top,
+      });
+      const node = nodeIndex === null ? null : ready.nodes[nodeIndex];
+      viewport.dataset.overviewHitTestCount = String(
+        Number(viewport.dataset.overviewHitTestCount ?? '0') + 1,
+      );
+      viewport.dataset.overviewHitCardId = node?.cardId ?? '';
+      if (!node) return;
+      openOverviewCardRef.current(node.cardId);
       event.preventDefault();
-      event.stopImmediatePropagation();
     };
     const handleWheel = (event: WheelEvent) => {
       if (!event.ctrlKey && !event.metaKey) return;
@@ -716,12 +861,17 @@ export function useConnectionsViewport(
 
   const visibleSelection =
     model && visibilityState?.layoutKey === model.layoutKey
-      ? visibilityState.selection
+      ? visibilityState.renderSelection.selection
       : null;
+  const nodeRenderMode =
+    model && visibilityState?.layoutKey === model.layoutKey
+      ? visibilityState.renderSelection.nodeRenderMode
+      : 'html';
   return {
     viewportRef,
     worldRef,
     edgeCanvasRef,
+    cardCanvasRef,
     zoomOutputRef,
     zoomInRef,
     zoomOutRef,
@@ -733,5 +883,6 @@ export function useConnectionsViewport(
     panBy,
     ensureNodeVisible,
     visibility: visibleSelection,
+    nodeRenderMode,
   };
 }

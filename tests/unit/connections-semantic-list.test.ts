@@ -4,6 +4,7 @@ import type { ConnectionsInputModel } from '@/lib/graph/connections-contract';
 import {
   CONNECTIONS_SEMANTIC_PAGE_SIZE,
   prepareConnectionsSemanticIndex,
+  resolveConnectionsDeletedCardFocusTarget,
   selectConnectionsSemanticPage,
 } from '@/lib/graph/connections-semantic-list';
 
@@ -94,5 +95,32 @@ describe('connections semantic list', () => {
       rangeStart: 0,
       rangeEnd: 0,
     });
+  });
+
+  it('moves focus predictably when a focused card is deleted', () => {
+    const before = prepareConnectionsSemanticIndex(input(3));
+    const after = prepareConnectionsSemanticIndex(input(2));
+    const removed = before.cards[2];
+    const retained = before.cards[1];
+    if (!removed || !retained) throw new Error('Focus fixture is incomplete');
+    expect(
+      resolveConnectionsDeletedCardFocusTarget(
+        removed.node.cardId,
+        2,
+        after.cards,
+        after.cards,
+      ),
+    ).toEqual({ kind: 'item', pageIndex: 1 });
+    expect(
+      resolveConnectionsDeletedCardFocusTarget(removed.node.cardId, 0, [], []),
+    ).toEqual({ kind: 'search' });
+    expect(
+      resolveConnectionsDeletedCardFocusTarget(
+        retained.node.cardId,
+        1,
+        before.cards,
+        before.cards,
+      ),
+    ).toEqual({ kind: 'unchanged' });
   });
 });

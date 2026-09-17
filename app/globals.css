@@ -219,7 +219,11 @@
 }
 
 .connections-edge-canvas {
-  @apply pointer-events-none absolute inset-0 size-full;
+  @apply pointer-events-none absolute inset-0 z-0 size-full;
+}
+
+.connections-card-canvas {
+  @apply pointer-events-none absolute inset-0 z-[5] size-full;
 }
 
 .connections-world {

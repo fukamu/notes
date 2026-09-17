@@ -3,6 +3,7 @@ import type {
   ConnectionsSemanticEdge,
   ConnectionsSemanticNode,
 } from '@/lib/graph/connections-contract';
+import type { CardId } from '@/lib/domain/id';
 import { invariant } from '@/lib/shared/invariant';
 
 export const CONNECTIONS_SEMANTIC_PAGE_SIZE = 50;
@@ -33,6 +34,11 @@ export type ConnectionsSemanticPage<T> = Readonly<{
   rangeStart: number;
   rangeEnd: number;
 }>;
+
+export type ConnectionsDeletedCardFocusTarget =
+  | Readonly<{ kind: 'unchanged' }>
+  | Readonly<{ kind: 'item'; pageIndex: number }>
+  | Readonly<{ kind: 'search' }>;
 
 function normalizeSearchText(value: string): string {
   return value.normalize('NFKC').toLocaleLowerCase('ja-JP');
@@ -98,5 +104,24 @@ export function selectConnectionsSemanticPage<
     pageCount,
     rangeStart: items.length === 0 ? 0 : startIndex + 1,
     rangeEnd: startIndex + items.length,
+  };
+}
+
+export function resolveConnectionsDeletedCardFocusTarget(
+  focusedCardId: CardId,
+  previousPageIndex: number,
+  allCards: readonly ConnectionsSemanticCardRecord[],
+  pageItems: readonly ConnectionsSemanticCardRecord[],
+): ConnectionsDeletedCardFocusTarget {
+  if (allCards.some(({ node }) => node.cardId === focusedCardId)) {
+    return { kind: 'unchanged' };
+  }
+  if (pageItems.length === 0) return { kind: 'search' };
+  const safeIndex = Number.isSafeInteger(previousPageIndex)
+    ? previousPageIndex
+    : 0;
+  return {
+    kind: 'item',
+    pageIndex: Math.min(pageItems.length - 1, Math.max(0, safeIndex)),
   };
 }

@@ -1,11 +1,12 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, ListTree, Search, X } from 'lucide-react';
 import type { CardId } from '@/lib/domain/id';
 import type { ConnectionsInputModel } from '@/lib/graph/connections-contract';
 import {
   prepareConnectionsSemanticIndex,
+  resolveConnectionsDeletedCardFocusTarget,
   selectConnectionsSemanticPage,
   type ConnectionsSemanticPage,
 } from '@/lib/graph/connections-semantic-list';
@@ -94,6 +95,12 @@ export function ConnectionsSemanticLists({
 }: Props) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const summaryRef = useRef<HTMLElement>(null);
+  const cardSearchRef = useRef<HTMLInputElement>(null);
+  const cardListRef = useRef<HTMLOListElement>(null);
+  const focusedCardRowRef = useRef<Readonly<{
+    cardId: CardId;
+    pageIndex: number;
+  }> | null>(null);
   const [open, setOpen] = useState(false);
   const prepared = useMemo(
     () =>
@@ -114,6 +121,31 @@ export function ConnectionsSemanticLists({
       selectConnectionsSemanticPage(prepared.edges, edgeQuery, edgePageNumber),
     [edgePageNumber, edgeQuery, prepared.edges],
   );
+
+  useLayoutEffect(() => {
+    const focused = focusedCardRowRef.current;
+    if (!open || !focused) return;
+    const target = resolveConnectionsDeletedCardFocusTarget(
+      focused.cardId,
+      focused.pageIndex,
+      prepared.cards,
+      cardPage.items,
+    );
+    if (target.kind === 'unchanged') return;
+    if (document.activeElement !== document.body) {
+      focusedCardRowRef.current = null;
+      return;
+    }
+    const rows = cardListRef.current?.querySelectorAll<HTMLElement>(
+      '[data-semantic-card-row]',
+    );
+    const nextRow =
+      target.kind === 'item' ? rows?.item(target.pageIndex) : null;
+    const nextButton = nextRow?.querySelector<HTMLButtonElement>('button');
+    if (nextButton) nextButton.focus();
+    else cardSearchRef.current?.focus();
+    focusedCardRowRef.current = null;
+  }, [cardPage.items, open, prepared.cards]);
 
   const close = () => {
     if (detailsRef.current) detailsRef.current.open = false;
@@ -150,6 +182,7 @@ export function ConnectionsSemanticLists({
               <span className="mt-1 flex items-center gap-2 rounded-lg border bg-background px-3">
                 <Search aria-hidden="true" className="size-4 shrink-0" />
                 <input
+                  ref={cardSearchRef}
                   type="search"
                   className="min-h-11 min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none"
                   value={cardQuery}
@@ -169,14 +202,22 @@ export function ConnectionsSemanticLists({
               />
             </div>
             <ol
+              ref={cardListRef}
               className="mt-3 grid gap-2"
               aria-label="検索されたカード一覧"
               start={cardPage.rangeStart || 1}
             >
-              {cardPage.items.map(({ node }) => (
+              {cardPage.items.map(({ node }, pageIndex) => (
                 <li
                   key={node.cardId}
                   className="rounded-lg border bg-background p-3"
+                  data-semantic-card-row="true"
+                  onFocusCapture={() => {
+                    focusedCardRowRef.current = {
+                      cardId: node.cardId,
+                      pageIndex,
+                    };
+                  }}
                 >
                   <p className="min-w-0 text-sm">
                     <span className="font-mono text-xs font-semibold text-accent-foreground">

@@ -559,11 +559,21 @@ test('inline card links, Backspace, Undo/Redo, shortcuts and plain hashtag input
 
   await page.getByRole('button', { name: 'つながり' }).click();
   const graph = page.getByTestId('connections-graph');
-  await expect(graph.getByText(sourceTitle, { exact: true })).toBeVisible();
-  await expect(graph.getByText(targetTitle, { exact: true })).toBeVisible();
-  await expect(graph.getByText(unrelatedTitle, { exact: true })).toBeVisible();
+  await expect(graph).toHaveAttribute('data-total-node-count', /\d+/);
+  const semanticLists = page.getByTestId('connections-semantic-lists');
+  await semanticLists.getByText('カードと参照の一覧').click();
+  const semanticCards = semanticLists.getByRole('list', {
+    name: '検索されたカード一覧',
+  });
+  await expect(semanticCards).toContainText(sourceTitle);
+  await expect(semanticCards).toContainText(targetTitle);
+  await expect(semanticCards).toContainText(unrelatedTitle);
 
-  await graph.getByText(targetTitle, { exact: true }).click();
+  await semanticCards
+    .getByRole('listitem')
+    .filter({ hasText: targetTitle })
+    .getByRole('button', { name: /を開く$/ })
+    .click();
   await expect(page.getByTestId('card-title')).toHaveValue(targetTitle);
 
   await page.getByRole('button', { name: '過去のカード' }).click();
@@ -943,8 +953,11 @@ test('global directed graph is safe and operable for the reported and cyclic fix
   await expect(graph).toHaveAttribute('data-edge-renderer', 'canvas-2d');
   await expect(graph).toHaveAttribute('data-edge-render-status', 'painted');
   const edgeCanvas = graph.getByTestId('connections-edge-canvas');
+  const cardCanvas = graph.getByTestId('connections-card-canvas');
   await expect(edgeCanvas).toHaveCount(1);
   await expect(edgeCanvas).toHaveAttribute('aria-hidden', 'true');
+  await expect(cardCanvas).toHaveCount(1);
+  await expect(cardCanvas).toHaveAttribute('aria-hidden', 'true');
   await expect(graph.locator('svg')).toHaveCount(0);
   const canvasHasPaint = await edgeCanvas.evaluate((element) => {
     if (!(element instanceof HTMLCanvasElement)) return false;
@@ -962,12 +975,10 @@ test('global directed graph is safe and operable for the reported and cyclic fix
     return false;
   });
   expect(canvasHasPaint).toBe(true);
-  await expect(graph.getByRole('button')).toHaveCount(7);
-  for (const title of Object.values(titles)) {
-    await expect(
-      graph.getByRole('button').filter({ hasText: title }),
-    ).toBeVisible();
-  }
+  await expect(graph).toHaveAttribute(
+    'data-card-renderer',
+    /^(html-windowed|canvas-2d-overview)$/,
+  );
 
   const semanticLists = page.getByTestId('connections-semantic-lists');
   await expect(
@@ -1025,6 +1036,12 @@ test('global directed graph is safe and operable for the reported and cyclic fix
   await semanticLists.getByRole('button', { name: '一覧を閉じる' }).click();
   await expect(semanticEdges).toHaveCount(0);
   await expect(semanticLists.locator('summary')).toBeFocused();
+
+  await page.getByRole('button', { name: '現在のカードへ戻る' }).click();
+  await expect(graph).toHaveAttribute('data-node-renderer', 'html');
+  await expect
+    .poll(() => graph.locator('button[data-card-id]').count())
+    .toBeGreaterThan(0);
 
   const currentNode = graph
     .getByRole('button')
@@ -1137,8 +1154,6 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   await expect(zoomOutput).toHaveText(connectionsScaleLabel(fitted.scale));
   expect(fitted.scale).toBeGreaterThan(0);
   expect(fitted.scale).toBeLessThanOrEqual(2);
-  await expect(currentNode).toBeInViewport();
-  await expectMapNodeFullyVisible(currentNode, graph);
   await zoomInButton.click();
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
@@ -1250,7 +1265,12 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   const minimumScale = (await connectionsCamera(graph)).scale;
   expect(minimumScale).toBeGreaterThan(0);
   await expect(zoomOutButton).toBeDisabled();
-  await expect(zoomOutput).toHaveText(connectionsScaleLabel(minimumScale));
+  await expect
+    .poll(async () => {
+      const scale = (await connectionsCamera(graph)).scale;
+      return (await zoomOutput.textContent()) === connectionsScaleLabel(scale);
+    })
+    .toBe(true);
   await expect
     .poll(async () =>
       Number(
@@ -1544,8 +1564,9 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
     width: canvasBeforeGesture.width,
     height: canvasBeforeGesture.height,
     layoutKey: canvasBeforeGesture.layoutKey,
-    nodeCount: canvasBeforeGesture.nodeCount,
   });
+  expect(canvasBeforeGesture.nodeCount).toBeLessThan(cards.length);
+  expect(canvasAfterGesture.nodeCount).toBeLessThan(cards.length);
   expect(canvasAfterGesture.pathCount).toBeGreaterThanOrEqual(0);
 
   if (testInfo.project.name === 'chromium') {
@@ -1637,6 +1658,7 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
 
   const gesturePerformance = await graph.evaluate(async (element) => {
     const durations: number[] = [];
+    const frameIntervals: number[] = [];
     const longTasks: number[] = [];
     const observer =
       typeof PerformanceObserver === 'undefined'
@@ -1649,10 +1671,13 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
       element.dataset.cameraRenderCount ?? '0',
     );
     const started = performance.now();
+    let previousFrame = started;
     for (let frame = 0; frame < 120; frame += 1) {
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => resolve()),
+      const frameTime = await new Promise<number>((resolve) =>
+        requestAnimationFrame((time) => resolve(time)),
       );
+      frameIntervals.push(frameTime - previousFrame);
+      previousFrame = frameTime;
       for (let eventIndex = 0; eventIndex < 4; eventIndex += 1) {
         const event = new WheelEvent('wheel', {
           bubbles: true,
@@ -1675,10 +1700,13 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
     );
     observer?.disconnect();
     durations.sort((left, right) => left - right);
+    frameIntervals.sort((left, right) => left - right);
     const p95Index = Math.floor((durations.length - 1) * 0.95);
+    const frameP95Index = Math.floor((frameIntervals.length - 1) * 0.95);
     return {
       durationMs: performance.now() - started,
       handlerP95Ms: durations[p95Index] ?? Number.NaN,
+      frameP95Ms: frameIntervals[frameP95Index] ?? Number.NaN,
       longTaskCount: longTasks.length,
       longestTaskMs: Math.max(0, ...longTasks),
       transformWrites:
@@ -1687,6 +1715,7 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   });
   expect(gesturePerformance.durationMs).toBeGreaterThan(1_500);
   expect(Number.isFinite(gesturePerformance.handlerP95Ms)).toBe(true);
+  expect(Number.isFinite(gesturePerformance.frameP95Ms)).toBe(true);
   expect(gesturePerformance.transformWrites).toBeLessThanOrEqual(122);
   console.info(
     `connections-gesture-benchmark ${JSON.stringify({ project: testInfo.project.name, ...gesturePerformance })}`,
@@ -1697,18 +1726,60 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   });
 
   await page.waitForTimeout(400);
+  const semanticLists = page.getByTestId('connections-semantic-lists');
+  await semanticLists.getByText('カードと参照の一覧').click();
+  const targetSearch = semanticLists.getByRole('searchbox', {
+    name: 'カード番号・タイトルを検索',
+    exact: true,
+  });
+  await targetSearch.fill(target.title);
+  await semanticLists
+    .getByRole('button', {
+      name: new RegExp('へマップ移動$'),
+    })
+    .click();
   const targetNode = graph.getByRole('button', {
     name: new RegExp(target.title),
   });
-  await targetNode.focus();
-  await page.waitForTimeout(100);
+  await expect(targetNode).toBeFocused();
+  await graph.scrollIntoViewIfNeeded();
   await expect(targetNode).toBeInViewport();
   await expectMapNodeFullyVisible(targetNode, graph);
+  const targetBox = await targetNode.boundingBox();
+  if (!targetBox) throw new Error('Target map node has no geometry');
   await expect(graph).toHaveAttribute('data-active-pointers', '0');
   await expect(graph).toHaveAttribute('data-click-suppression', 'false');
   await expect(graph).toHaveAttribute('data-dragging', 'false');
-  if (testInfo.project.name === 'mobile-chromium') await targetNode.tap();
-  else await targetNode.click();
+  await targetNode.evaluate((element) => {
+    if (element instanceof HTMLElement) element.blur();
+  });
+  const beforeOverviewScale = (await connectionsCamera(graph)).scale;
+  const overviewWheelDelta = -Math.log(0.49 / beforeOverviewScale) / 0.002;
+  await graph.evaluate(
+    (element, input) => {
+      element.dispatchEvent(
+        new WheelEvent('wheel', {
+          bubbles: true,
+          cancelable: true,
+          clientX: input.x,
+          clientY: input.y,
+          deltaY: input.deltaY,
+          ctrlKey: true,
+        }),
+      );
+    },
+    {
+      x: targetBox.x + targetBox.width / 2,
+      y: targetBox.y + targetBox.height / 2,
+      deltaY: overviewWheelDelta,
+    },
+  );
+  await expect(graph).toHaveAttribute('data-node-renderer', 'overview-canvas');
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(0);
+  await page.mouse.click(
+    targetBox.x + targetBox.width / 2,
+    targetBox.y + targetBox.height / 2,
+  );
   await touch.detach();
   await expectPathname(page, `/cards/${target.id}`);
   await expect(page.getByTestId('card-title')).toHaveValue(target.title);
@@ -2323,7 +2394,11 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 60_000,
   });
-  await expect(graph.locator('button[data-card-id]')).toHaveCount(10_000);
+  const layoutReadyMs = performance.now() - navigationStarted;
+  await expect(graph).toHaveAttribute('data-card-render-status', 'painted');
+  await expect(graph).toHaveAttribute('data-card-draw-node-count', '10000');
+  await expect(graph).toHaveAttribute('data-node-renderer', 'overview-canvas');
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(0);
   const semanticLists = page.getByTestId('connections-semantic-lists');
   await expect(semanticLists.getByRole('list')).toHaveCount(0);
   await expect(graph).toHaveAttribute('data-edge-renderer', 'canvas-2d');
@@ -2339,9 +2414,21 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   const initialCanvasPrepareMs = Number(
     await graph.getAttribute('data-edge-prepare-duration-ms'),
   );
+  const initialCardCanvasDrawMs = Number(
+    await graph.getAttribute('data-card-draw-duration-ms'),
+  );
+  const initialVisibilityQueryMs = Number(
+    await graph.getAttribute('data-visibility-query-duration-ms'),
+  );
+  const initialNodeCommitMs = Number(
+    await graph.getAttribute('data-node-commit-duration-ms'),
+  );
   const edgeCanvas = graph.getByTestId('connections-edge-canvas');
+  const cardCanvas = graph.getByTestId('connections-card-canvas');
   await expect(edgeCanvas).toHaveCount(1);
   await expect(edgeCanvas).toHaveAttribute('aria-hidden', 'true');
+  await expect(cardCanvas).toHaveCount(1);
+  await expect(cardCanvas).toHaveAttribute('aria-hidden', 'true');
   await expect(graph.locator('svg')).toHaveCount(0);
   const canvasBackingStore = await edgeCanvas.evaluate((element) => {
     if (!(element instanceof HTMLCanvasElement)) {
@@ -2443,6 +2530,8 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   await expect
     .poll(async () => Number(await graph.getAttribute('data-camera-scale')))
     .toBeGreaterThanOrEqual(0.5);
+  await expect(graph).toHaveAttribute('data-node-renderer', 'html');
+  await expect(graph).toHaveAttribute('data-card-renderer', 'html-windowed');
   const semanticMoveMs = performance.now() - semanticMoveStarted;
   await semanticLists.getByRole('button', { name: '一覧を閉じる' }).click();
   await expect(semanticLists.getByRole('list')).toHaveCount(0);
@@ -2474,14 +2563,13 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   const localizedDom = await graph.evaluate((element) => ({
     descendants: element.querySelectorAll('*').length,
     cardButtons: element.querySelectorAll('button[data-card-id]').length,
-    visualCardContents: element.querySelectorAll(
-      'button[data-card-id][data-visual-content="true"]',
-    ).length,
     svgPaths: element.querySelectorAll('svg path').length,
     canvasCount: element.querySelectorAll('canvas').length,
   }));
+  expect(localizedDom.cardButtons).toBeGreaterThan(0);
+  expect(localizedDom.cardButtons).toBeLessThan(10_000);
   expect(localizedDom.svgPaths).toBe(0);
-  expect(localizedDom.canvasCount).toBe(1);
+  expect(localizedDom.canvasCount).toBe(2);
   await testInfo.attach('connections-10k-canvas-localized.png', {
     body: await graph.screenshot(),
     contentType: 'image/png',
@@ -2489,6 +2577,9 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
 
   const beforeFitDrawCount = Number(
     await graph.getAttribute('data-edge-draw-count'),
+  );
+  const beforeFitCardDrawCount = Number(
+    await graph.getAttribute('data-card-draw-count'),
   );
   const fitStarted = performance.now();
   await page.getByRole('button', { name: '全体表示' }).click();
@@ -2500,14 +2591,89 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
     String(completeInput.edges.length),
   );
   await expect(graph).toHaveAttribute('data-visual-node-count', '10000');
+  await expect
+    .poll(async () => Number(await graph.getAttribute('data-card-draw-count')))
+    .toBeGreaterThan(beforeFitCardDrawCount);
+  await expect(graph).toHaveAttribute('data-node-renderer', 'overview-canvas');
+  await expect(graph).toHaveAttribute('data-card-draw-node-count', '10000');
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(0);
   const fitReadyMs = performance.now() - fitStarted;
   const fullFitCanvasDrawMs = Number(
     await graph.getAttribute('data-edge-draw-duration-ms'),
+  );
+  const fullFitCardCanvasDrawMs = Number(
+    await graph.getAttribute('data-card-draw-duration-ms'),
   );
   await testInfo.attach('connections-10k-canvas-full-fit.png', {
     body: await graph.screenshot(),
     contentType: 'image/png',
   });
+
+  const fullFitContinuous = await graph.evaluate(async (element) => {
+    const keyboard = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="キーボードでマップを操作"]',
+    );
+    if (!keyboard) throw new Error('Connections keyboard control is missing');
+    const frameIntervals: number[] = [];
+    const edgeDrawDurations: number[] = [];
+    const cardDrawDurations: number[] = [];
+    const longTasks: number[] = [];
+    const observer =
+      typeof PerformanceObserver === 'undefined'
+        ? null
+        : new PerformanceObserver((list) => {
+            longTasks.push(...list.getEntries().map((entry) => entry.duration));
+          });
+    observer?.observe({ entryTypes: ['longtask'] });
+    let previousFrame = performance.now();
+    for (let frame = 0; frame < 30; frame += 1) {
+      const frameTime = await new Promise<number>((resolve) =>
+        requestAnimationFrame((time) => resolve(time)),
+      );
+      frameIntervals.push(frameTime - previousFrame);
+      previousFrame = frameTime;
+      edgeDrawDurations.push(
+        Number(element.dataset.edgeDrawDurationMs ?? Number.NaN),
+      );
+      cardDrawDurations.push(
+        Number(element.dataset.cardDrawDurationMs ?? Number.NaN),
+      );
+      keyboard.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: frame % 2 === 0 ? 'ArrowRight' : 'ArrowLeft',
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    longTasks.push(
+      ...(observer?.takeRecords() ?? []).map((entry) => entry.duration),
+    );
+    observer?.disconnect();
+    const p95 = (values: readonly number[]) => {
+      const finite = values
+        .filter(Number.isFinite)
+        .sort((left, right) => left - right);
+      return finite[Math.floor((finite.length - 1) * 0.95)] ?? Number.NaN;
+    };
+    return {
+      frameP95Ms: p95(frameIntervals),
+      maximumFrameMs: Math.max(0, ...frameIntervals),
+      edgeDrawP95Ms: p95(edgeDrawDurations),
+      cardDrawP95Ms: p95(cardDrawDurations),
+      longTaskCount: longTasks.length,
+      longestTaskMs: Math.max(0, ...longTasks),
+      samples: frameIntervals.length,
+    };
+  });
+  expect(fullFitContinuous.samples).toBe(30);
+  expect(Number.isFinite(fullFitContinuous.frameP95Ms)).toBe(true);
+  console.info(
+    `connections-10k-full-fit-continuous ${JSON.stringify({ project: testInfo.project.name, ...fullFitContinuous })}`,
+  );
 
   await page.getByRole('button', { name: '現在のカードへ戻る' }).click();
   await expect
@@ -2523,8 +2689,9 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   await page.getByRole('button', { name: 'つながり', exact: true }).click();
   await expectPathname(page, `/cards/${nextCardId}/connections`);
   await expect(graph).toHaveAttribute('data-total-node-count', '10000');
-  await expect(graph.locator('button[data-card-id]')).toHaveCount(10_000);
   await expect(graph).toHaveAttribute('data-edge-render-status', 'painted');
+  await expect(graph).toHaveAttribute('data-card-render-status', 'painted');
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(0);
   const reentryReadyMs = performance.now() - reentryStarted;
   const dom = await graph.evaluate((element) => ({
     descendants: element.querySelectorAll('*').length,
@@ -2533,10 +2700,10 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
     canvasCount: element.querySelectorAll('canvas').length,
   }));
   expect(dom.svgPaths).toBe(0);
-  expect(dom.canvasCount).toBe(1);
+  expect(dom.canvasCount).toBe(2);
   const artifact = {
     schemaVersion: 1,
-    issue: 323,
+    issue: 325,
     project: testInfo.project.name,
     environment: {
       browser: page.context().browser()?.version() ?? 'unknown',
@@ -2545,8 +2712,9 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
     },
     fixture: { nodes: cards.length, source: 'client-performance' },
     comparison:
-      'Complete product graph with closed-by-default paged semantic lists and the Canvas 2D edge layer',
+      'Complete product graph with windowed HTML cards, overview Canvas cards, paged semantic lists, and Canvas 2D edges',
     initialReadyMs,
+    layoutReadyMs,
     semanticListOpenMs,
     semanticMoveMs,
     focusReadyMs,
@@ -2559,6 +2727,15 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
       fullFitDrawMs: fullFitCanvasDrawMs,
       backingStore: canvasBackingStore,
     },
+    cardCanvas: {
+      initialDrawMs: initialCardCanvasDrawMs,
+      fullFitDrawMs: fullFitCardCanvasDrawMs,
+    },
+    browserPipeline: {
+      visibilityQueryMs: initialVisibilityQueryMs,
+      nodeCommitMs: initialNodeCommitMs,
+    },
+    fullFitContinuous,
     completeGraph: {
       nodes: completeInput.nodes.length,
       edges: completeInput.edges.length,
@@ -2623,10 +2800,17 @@ test('ELK failure retries the same complete graph through corridor', async ({
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 15_000,
   });
-  await expect(graph.locator('button[data-card-id]')).toHaveCount(2);
-  await expect(
-    graph.getByRole('button', { name: new RegExp(cardBTitle) }),
-  ).toBeVisible();
+  await expect(graph).toHaveAttribute('data-total-node-count', '2');
+  await expect(graph).toHaveAttribute('data-total-edge-count', '1');
+  await expect(graph).toHaveAttribute('data-visual-node-count', '2');
+  await expect(graph).toHaveAttribute('data-edge-draw-edge-count', '1');
+  const semanticLists = page.getByTestId('connections-semantic-lists');
+  await semanticLists.getByText('カードと参照の一覧').click();
+  const semanticCards = semanticLists.getByRole('list', {
+    name: '検索されたカード一覧',
+  });
+  await expect(semanticCards).toContainText(cardATitle);
+  await expect(semanticCards).toContainText(cardBTitle);
 });
 
 test('all layout engine failure fallback opens a card through URL navigation', async ({
@@ -2671,8 +2855,17 @@ test('all layout engine failure fallback opens a card through URL navigation', a
   await expect(graph.getByRole('alert')).toContainText(
     '配置を計算できませんでした',
   );
-  const fallbackCard = graph.getByRole('button', {
-    name: new RegExp(cardBTitle),
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(0);
+  const semanticLists = page.getByTestId('connections-semantic-lists');
+  await semanticLists.getByText('カードと参照の一覧').click();
+  const cardSearch = semanticLists.getByRole('searchbox', {
+    name: 'カード番号・タイトルを検索',
+    exact: true,
+  });
+  await cardSearch.fill(cardBTitle);
+  const fallbackCard = semanticLists.getByRole('button', {
+    name: '#12を開く',
+    exact: true,
   });
   if (testInfo.project.name === 'mobile-chromium') {
     await fallbackCard.tap();
@@ -2733,6 +2926,17 @@ test('canonical URLs restore cards and views through direct, back, forward and o
     },
   ];
   await serveSyncCards(page, cards);
+  const openSemanticCards = async () => {
+    const semanticLists = page.getByTestId('connections-semantic-lists');
+    const cardList = semanticLists.getByRole('list', {
+      name: '検索されたカード一覧',
+    });
+    if ((await cardList.count()) === 0) {
+      await semanticLists.getByText('カードと参照の一覧').click();
+    }
+    await expect(cardList).toBeVisible();
+    return cardList;
+  };
 
   const response = await page.goto(`/cards/${ids.cardA}`);
   expect(response?.status()).toBe(200);
@@ -2766,18 +2970,15 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 15_000,
   });
+  const semanticCards = await openSemanticCards();
   await expect(
-    graph.getByRole('button', {
-      name: new RegExp(`${titles.cardB}、現在のカード`),
-    }),
-  ).toHaveAttribute('aria-current', 'true');
-  const cardCNode = graph.getByRole('button').filter({ hasText: titles.cardC });
-  if (testInfo.project.name === 'mobile-chromium') {
-    await cardCNode.tap();
-  } else {
-    await cardCNode.focus();
-    await cardCNode.press('Enter');
-  }
+    semanticCards.getByRole('listitem').filter({ hasText: titles.cardB }),
+  ).toContainText('現在のカード');
+  await semanticCards
+    .getByRole('listitem')
+    .filter({ hasText: titles.cardC })
+    .getByRole('button', { name: /を開く$/ })
+    .click();
   await expectPathname(page, `/cards/${ids.cardC}`);
   await expect(page.getByTestId('card-title')).toHaveValue(titles.cardC);
 
@@ -2785,11 +2986,12 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await page.goBack();
   await expectPathname(page, `/cards/${ids.cardB}/connections`);
   await expect(page.getByRole('heading', { name: 'つながり' })).toBeVisible();
+  const restoredSemanticCards = await openSemanticCards();
   await expect(
-    page.getByTestId('connections-graph').getByRole('button', {
-      name: new RegExp(`${titles.cardB}、現在のカード`),
-    }),
-  ).toHaveAttribute('aria-current', 'true');
+    restoredSemanticCards
+      .getByRole('listitem')
+      .filter({ hasText: titles.cardB }),
+  ).toContainText('現在のカード');
   await page.goBack();
   await expectPathname(page, `/cards/${ids.cardB}`);
   await expect(page.getByTestId('card-title')).toHaveValue(titles.cardB);
@@ -2854,11 +3056,12 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await expect(page.getByRole('heading', { name: 'つながり' })).toBeVisible();
   await page.reload();
   await expectPathname(page, `/cards/${ids.cardB}/connections`);
+  const offlineSemanticCards = await openSemanticCards();
   await expect(
-    page.getByTestId('connections-graph').getByRole('button', {
-      name: new RegExp(`${titles.cardB}、現在のカード`),
-    }),
-  ).toHaveAttribute('aria-current', 'true', { timeout: 15_000 });
+    offlineSemanticCards
+      .getByRole('listitem')
+      .filter({ hasText: titles.cardB }),
+  ).toContainText('現在のカード', { timeout: 15_000 });
 
   await page.goto(`/cards/${ids.missing}`);
   await expectPathname(page, newCardPathname);
