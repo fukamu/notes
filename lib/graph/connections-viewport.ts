@@ -218,52 +218,19 @@ export function resolveConnectionsCameraLimits(
   };
 }
 
-function clampTranslation(
-  translation: number,
-  worldStart: number,
-  worldSize: number,
-  scale: number,
-  viewportStart: number,
-  viewportEnd: number,
-): number {
-  const scaledSize = worldSize * scale;
-  const viewportSize = viewportEnd - viewportStart;
-  if (scaledSize <= viewportSize) {
-    return viewportStart + (viewportSize - scaledSize) / 2 - worldStart * scale;
-  }
-  const minimum = viewportEnd - (worldStart + worldSize) * scale;
-  const maximum = viewportStart - worldStart * scale;
-  return clamp(translation, minimum, maximum);
-}
-
 export function clampConnectionsCamera(
   camera: ConnectionsCamera,
   geometry: ConnectionsCameraGeometry,
 ): ConnectionsCamera | null {
-  const viewport = usableViewport(geometry);
-  if (!viewport || !finiteCamera(camera)) return null;
+  if (!usableViewport(geometry) || !finiteCamera(camera)) return null;
   const scale = clamp(
     camera.scale,
     geometry.limits.minimumScale,
     geometry.limits.maximumScale,
   );
   return {
-    x: clampTranslation(
-      camera.x,
-      geometry.world.x,
-      geometry.world.width,
-      scale,
-      viewport.left,
-      viewport.right,
-    ),
-    y: clampTranslation(
-      camera.y,
-      geometry.world.y,
-      geometry.world.height,
-      scale,
-      viewport.top,
-      viewport.bottom,
-    ),
+    x: camera.x,
+    y: camera.y,
     scale,
   };
 }
