@@ -387,3 +387,23 @@ rescan bodies or reorder the graph. A cards identity change rebuilds the graph,
 and the existing layout key still decides whether ELK geometry can be reused.
 Card and history views remain demand-driven, and unmount clears the runtime-local
 cache. No module-global graph cache or per-card incremental index is introduced.
+
+## Issue #316 large-graph corridor decision
+
+After the Issue #310 browser failures, Issue #316 selects the approved hybrid
+direction without changing the production UI yet. Complete graphs with at most
+256 nodes and 1,024 directed edges retain the current ELK engine. Above either
+calculation boundary, a typed pure corridor core uses iterative weak-component
+BFS, deterministic graph-informed serpentine grids, independent north/south
+ports, interval-coloured routing lanes, and stable shelf packing. The boundary
+chooses an engine; it is not a card or edge display limit.
+
+The corridor result retains every input node and directed edge in original
+order and preserves the existing `ConnectionsLayout` and curve contracts.
+Required 257 mixed, 1,000/3,000, product 10,000/~19,951, and connected
+10,000/20,000 fixtures now complete in the pure-core correctness suite, including
+finite geometry, endpoint identity, curve generation, and conservative
+card-intrusion checks. This is not yet product Worker, DOM/paint, memory, or
+visual-equivalence evidence. The algorithm, fixed values, limitations, and
+evidence boundary are recorded in
+[`connections-corridor-layout.md`](../connections-corridor-layout.md).
