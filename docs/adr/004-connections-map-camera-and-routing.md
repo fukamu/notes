@@ -379,3 +379,11 @@ active different-key B before publishing A's latest semantic input. A later B
 success or failure is ignored, while same-key semantic updates still share the
 active request and A→B→C continues to accept only C. The phase-0 evidence did not
 show request accumulation, so a latest-only scheduler remains unselected.
+
+Issue #309 separates the cards-dependent graph build from current-card semantic
+projection. A cache owned by one mounted Notes runtime reuses the graph while the
+cards array identity is unchanged; selection and status updates therefore do not
+rescan bodies or reorder the graph. A cards identity change rebuilds the graph,
+and the existing layout key still decides whether ELK geometry can be reused.
+Card and history views remain demand-driven, and unmount clears the runtime-local
+cache. No module-global graph cache or per-card incremental index is introduced.
