@@ -372,3 +372,10 @@ alternate router. The reproduced controller A→B→A and Sync v2 tombstone
 visibility defects are separate correctness prerequisites. A higher-cost layout
 or renderer alternative requires its own explicit decision; staging remains the
 production fallback until complete 1k and 10k geometry is demonstrated.
+
+Issue #306 fixes the reproduced A→B→A acceptance defect without adding request
+coalescing or Worker cancellation. Returning to a settled A now invalidates an
+active different-key B before publishing A's latest semantic input. A later B
+success or failure is ignored, while same-key semantic updates still share the
+active request and A→B→C continues to accept only C. The phase-0 evidence did not
+show request accumulation, so a latest-only scheduler remains unselected.
