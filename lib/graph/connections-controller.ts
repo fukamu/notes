@@ -101,6 +101,7 @@ function readyState(
     layoutKey,
     currentCardId: input.currentCardId,
     fallbackItems: input.nodes,
+    geometry: layout,
     width: layout.width,
     height: layout.height,
     nodes,

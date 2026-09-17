@@ -433,3 +433,29 @@ Raw results, environment, phase attribution, and limitations are in
 [`connections-hybrid-worker.md`](../connections-hybrid-worker.md). Staging
 removal, dynamic whole-world zoom, culling, and conditional Canvas remain the
 next reviewed UI step.
+
+## Issue #311 complete-network UI cutover
+
+Issue #311 removes the 64/64/256 staging selector and expansion UI. The adapter
+passes every semantic node and directed edge to the hybrid manager and no longer
+uses the selected card as a React session key. The older staging sections above
+remain decision history, not the current product contract. The 256-node value
+now appears only in the hybrid engine policy and is not a display limit.
+
+The camera derives a geometry-specific minimum scale of
+`min(0.1, rawFitScale / 2)`, and zoom persistence separates positive finite
+decoding from geometry clamping. A pure segment BVH conservatively indexes the
+existing rounded paths, halo, marker, and node decoration bounds. Visual SVG
+and card contents follow the camera query while all card button shells and the
+complete semantic relation list remain available. Edge order, paths, ports,
+arrows, and the rAF camera transform are retained.
+
+The 10k product run proves complete membership and localized culling but misses
+the provisional five-second target: initial ready was about 12.8 s desktop and
+7.9 s mobile. Whole-world fit contains roughly 40k SVG paths and 130k graph DOM
+descendants, whereas localized desktop rendering falls to 195 paths. This
+selects the already-approved conditional Canvas 2D edge evaluation for the next
+independent Issue; it does not authorize WebGL, card Canvas rendering, semantic
+truncation, or a return to staged membership. Detailed evidence and limits are
+in
+[`connections-full-network-cutover.md`](../connections-full-network-cutover.md).

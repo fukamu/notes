@@ -13,7 +13,6 @@ import type {
 import type {
   ConnectionsControllerState,
   ConnectionsSelectionActions,
-  ConnectionsStagingViewModel,
 } from '@/lib/graph/connections-contract';
 
 export type CardEditorRendererProps = {
@@ -23,7 +22,8 @@ export type CardEditorRendererProps = {
 
 export type ConnectionsRendererProps = {
   model: ConnectionsControllerState;
-  staging: ConnectionsStagingViewModel;
+  totalNodeCount: number;
+  totalEdgeCount: number;
   actions: ConnectionsSelectionActions;
   presentation: ConnectionsPresentationAdapter;
 };

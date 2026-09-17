@@ -50,7 +50,7 @@ export const DEFAULT_CONNECTIONS_CAMERA_LIMITS: ConnectionsCameraLimits = {
 const epsilon = 1e-7;
 
 export type ConnectionsCameraZoomState = Readonly<{
-  percent: number;
+  percentLabel: string;
   zoomInDisabled: boolean;
   zoomOutDisabled: boolean;
 }>;
@@ -97,16 +97,30 @@ export function connectionsCameraZoomState(
     return null;
   }
   const scale = clamp(camera.scale, limits.minimumScale, limits.maximumScale);
+  const percent = scale * 100;
+  const percentLabel =
+    percent >= 1
+      ? String(Math.round(percent))
+      : percent >= 0.01
+        ? String(Number(percent.toPrecision(2)))
+        : '<0.01';
+  const minimumTolerance = Math.max(
+    Number.EPSILON * 32,
+    Math.abs(limits.minimumScale) * 1e-6,
+  );
+  const maximumTolerance = Math.max(
+    Number.EPSILON * 32,
+    Math.abs(limits.maximumScale) * 1e-6,
+  );
   return {
-    percent: Math.round(scale * 100),
-    zoomInDisabled: scale >= limits.maximumScale - epsilon,
-    zoomOutDisabled: scale <= limits.minimumScale + epsilon,
+    percentLabel,
+    zoomInDisabled: scale >= limits.maximumScale - maximumTolerance,
+    zoomOutDisabled: scale <= limits.minimumScale + minimumTolerance,
   };
 }
 
-export function decodeConnectionsCameraScale(
+export function decodeConnectionsCameraScaleValue(
   value: unknown,
-  limits: ConnectionsCameraLimits,
 ): number | null {
   const candidate =
     typeof value === 'number'
@@ -114,8 +128,16 @@ export function decodeConnectionsCameraScale(
       : typeof value === 'string' && value.trim().length > 0
         ? Number(value)
         : Number.NaN;
+  return finite(candidate) && candidate > 0 ? candidate : null;
+}
+
+export function decodeConnectionsCameraScale(
+  value: unknown,
+  limits: ConnectionsCameraLimits,
+): number | null {
+  const candidate = decodeConnectionsCameraScaleValue(value);
   if (
-    !finite(candidate) ||
+    candidate === null ||
     !finite(limits.minimumScale) ||
     !finite(limits.maximumScale) ||
     limits.minimumScale <= 0 ||
@@ -161,6 +183,39 @@ function usableViewport(geometry: ConnectionsCameraGeometry) {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+export function resolveConnectionsCameraLimits(
+  viewport: ConnectionsViewportGeometry,
+  world: ConnectionsNodeGeometry,
+  padding: ConnectionsViewportPadding,
+): ConnectionsCameraLimits | null {
+  if (
+    !finite(viewport.width) ||
+    !finite(viewport.height) ||
+    viewport.width <= 0 ||
+    viewport.height <= 0 ||
+    !finiteRect(world) ||
+    ![padding.top, padding.right, padding.bottom, padding.left].every(
+      (value) => finite(value) && value >= 0,
+    )
+  ) {
+    return null;
+  }
+  const usableWidth = viewport.width - padding.left - padding.right;
+  const usableHeight = viewport.height - padding.top - padding.bottom;
+  if (usableWidth <= 0 || usableHeight <= 0) return null;
+  const fitScale = Math.min(
+    usableWidth / world.width,
+    usableHeight / world.height,
+    1,
+  );
+  if (!finite(fitScale) || fitScale <= 0) return null;
+  return {
+    minimumScale: Math.min(0.1, fitScale / 2),
+    maximumScale: 2,
+    maximumFitScale: 1,
+  };
 }
 
 function clampTranslation(
@@ -531,6 +586,33 @@ export function resizeConnectionsCamera(
     {
       x: nextCenter.x - worldCenter.x * camera.scale,
       y: nextCenter.y - worldCenter.y * camera.scale,
+      scale: camera.scale,
+    },
+    nextGeometry,
+  );
+}
+
+export function preserveConnectionsRectAnchor(
+  camera: ConnectionsCamera,
+  previousTarget: ConnectionsNodeGeometry,
+  nextTarget: ConnectionsNodeGeometry,
+  nextGeometry: ConnectionsCameraGeometry,
+): ConnectionsCamera | null {
+  if (
+    !finiteCamera(camera) ||
+    !finiteRect(previousTarget) ||
+    !finiteRect(nextTarget)
+  ) {
+    return null;
+  }
+  const screenCenter = {
+    x: camera.x + (previousTarget.x + previousTarget.width / 2) * camera.scale,
+    y: camera.y + (previousTarget.y + previousTarget.height / 2) * camera.scale,
+  };
+  return clampConnectionsCamera(
+    {
+      x: screenCenter.x - (nextTarget.x + nextTarget.width / 2) * camera.scale,
+      y: screenCenter.y - (nextTarget.y + nextTarget.height / 2) * camera.scale,
       scale: camera.scale,
     },
     nextGeometry,

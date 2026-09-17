@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { CONNECTIONS_ZOOM_PREFERENCE_KEY } from '@/lib/client/connections-zoom-preference';
+import { selectConnectionsViewModel } from '@/lib/application/view-models';
 import type { CardRecord } from '@/lib/domain/types';
 import { decodeSyncRequest } from '@/lib/sync/protocol';
 import { connectionsBenchmarkFixtures } from '@/tests/fixtures/connections-layout';
@@ -59,18 +60,22 @@ async function serveInitialPerformanceCards(
 ) {
   const cardIds = new Set(cards.map((card) => card.id));
   const fallbackTargetId = cards[0]?.id;
+  const servedCards = cards.map((card) => ({
+    ...card,
+    body: card.body.map((segment) =>
+      segment.type === 'link' &&
+      !cardIds.has(segment.targetCardId) &&
+      fallbackTargetId
+        ? { ...segment, targetCardId: fallbackTargetId }
+        : segment,
+    ),
+  }));
   const responseBody = JSON.stringify({
-    cards: cards.map((card) => ({
+    cards: servedCards.map((card) => ({
       id: card.id,
       officialDisplayId: card.displayId.value,
       title: card.title,
-      body: card.body.map((segment) =>
-        segment.type === 'link' &&
-        !cardIds.has(segment.targetCardId) &&
-        fallbackTargetId
-          ? { ...segment, targetCardId: fallbackTargetId }
-          : segment,
-      ),
+      body: card.body,
       createdAt: card.createdAt,
       updatedAt: card.updatedAt,
       revision: card.serverRevision ?? 1,
@@ -89,6 +94,7 @@ async function serveInitialPerformanceCards(
     initialResponsePending = false;
     await route.fulfill({ status: 200, contentType: 'application/json', body });
   });
+  return servedCards;
 }
 
 async function browserHeapUsed(page: Page): Promise<number | null> {
@@ -239,6 +245,13 @@ async function connectionsCamera(
     scale: Number(element.dataset.cameraScale),
     renderCount: Number(element.dataset.cameraRenderCount),
   }));
+}
+
+function connectionsScaleLabel(scale: number): string {
+  const percent = scale * 100;
+  if (percent >= 1) return `${Math.round(percent)}%`;
+  if (percent >= 0.01) return `${Number(percent.toPrecision(2))}%`;
+  return '<0.01%';
 }
 
 async function expectMapNodeFullyVisible(node: Locator, graph: Locator) {
@@ -1054,8 +1067,7 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
     await expect(control).toBeEnabled();
   }
   await expect(zoomOutButton).toBeVisible();
-  if (fitted.scale <= 0.100_000_1) await expect(zoomOutButton).toBeDisabled();
-  else await expect(zoomOutButton).toBeEnabled();
+  await expect(zoomOutButton).toBeEnabled();
   for (const value of Object.values(fitted)) {
     expect(Number.isFinite(value)).toBe(true);
   }
@@ -1063,8 +1075,8 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
     .getByRole('button')
     .filter({ hasText: current.title });
   const zoomOutput = page.getByRole('status', { name: '現在のズーム' });
-  await expect(zoomOutput).toHaveText(`${Math.round(fitted.scale * 100)}%`);
-  expect(fitted.scale).toBeGreaterThanOrEqual(0.1);
+  await expect(zoomOutput).toHaveText(connectionsScaleLabel(fitted.scale));
+  expect(fitted.scale).toBeGreaterThan(0);
   expect(fitted.scale).toBeLessThanOrEqual(2);
   await expect(currentNode).toBeInViewport();
   await expectMapNodeFullyVisible(currentNode, graph);
@@ -1175,9 +1187,11 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   });
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
-    .toBeCloseTo(0.1, 7);
+    .toBeLessThanOrEqual(0.1);
+  const minimumScale = (await connectionsCamera(graph)).scale;
+  expect(minimumScale).toBeGreaterThan(0);
   await expect(zoomOutButton).toBeDisabled();
-  await expect(zoomOutput).toHaveText('10%');
+  await expect(zoomOutput).toHaveText(connectionsScaleLabel(minimumScale));
   await expect
     .poll(async () =>
       Number(
@@ -1221,9 +1235,8 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeCloseTo(fitted.scale, 5);
-  if (fitted.scale <= 0.100_000_1) await expect(zoomOutButton).toBeDisabled();
-  else await expect(zoomOutButton).toBeEnabled();
-  await expect(zoomOutput).toHaveText(`${Math.round(fitted.scale * 100)}%`);
+  await expect(zoomOutButton).toBeEnabled();
+  await expect(zoomOutput).toHaveText(connectionsScaleLabel(fitted.scale));
 
   await zoomInButton.click();
   await zoomInButton.click();
@@ -1274,10 +1287,9 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
     return {
       width: canvas?.getAttribute('data-layout-width'),
       height: canvas?.getAttribute('data-layout-height'),
+      layoutKey: canvas?.getAttribute('data-layout-key'),
       nodeCount: canvas?.querySelectorAll('[data-card-id]').length ?? -1,
-      pathData: [...(canvas?.querySelectorAll('path[d]') ?? [])].map((path) =>
-        path.getAttribute('d'),
-      ),
+      pathCount: canvas?.querySelectorAll('path[d]').length ?? -1,
     };
   });
   const beforeTouchPan = await connectionsCamera(graph);
@@ -1464,13 +1476,18 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
     return {
       width: canvas?.getAttribute('data-layout-width'),
       height: canvas?.getAttribute('data-layout-height'),
+      layoutKey: canvas?.getAttribute('data-layout-key'),
       nodeCount: canvas?.querySelectorAll('[data-card-id]').length ?? -1,
-      pathData: [...(canvas?.querySelectorAll('path[d]') ?? [])].map((path) =>
-        path.getAttribute('d'),
-      ),
+      pathCount: canvas?.querySelectorAll('path[d]').length ?? -1,
     };
   });
-  expect(canvasAfterGesture).toEqual(canvasBeforeGesture);
+  expect(canvasAfterGesture).toMatchObject({
+    width: canvasBeforeGesture.width,
+    height: canvasBeforeGesture.height,
+    layoutKey: canvasBeforeGesture.layoutKey,
+    nodeCount: canvasBeforeGesture.nodeCount,
+  });
+  expect(canvasAfterGesture.pathCount).toBeGreaterThanOrEqual(0);
 
   if (testInfo.project.name === 'chromium') {
     const beforePenPan = await connectionsCamera(graph);
@@ -1621,9 +1638,9 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   });
 
   await page.waitForTimeout(400);
-  const targetNode = graph
-    .getByRole('button')
-    .filter({ hasText: target.title });
+  const targetNode = graph.getByRole('button', {
+    name: new RegExp(target.title),
+  });
   await targetNode.focus();
   await page.waitForTimeout(100);
   await expect(targetNode).toBeInViewport();
@@ -1734,7 +1751,7 @@ test('connections zoom persists across app views and reloads', async ({
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeCloseTo(0.1, 7);
-  await expect(page.getByRole('button', { name: '縮小' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '縮小' })).toBeEnabled();
   await expect(page.getByRole('status', { name: '現在のズーム' })).toHaveText(
     '10%',
   );
@@ -2220,7 +2237,7 @@ test('10k history remains viewport-bounded and operable in the browser', async (
   });
 });
 
-test('10k connections bounds layout and DOM around the current card', async ({
+test('10k connections lays out the complete graph and culls visual detail', async ({
   page,
 }, testInfo) => {
   test.setTimeout(180_000);
@@ -2229,7 +2246,8 @@ test('10k connections bounds layout and DOM around the current card', async ({
   if (!current) {
     throw new Error('10k connections fixture omitted its current card');
   }
-  await serveInitialPerformanceCards(page, cards);
+  const servedCards = await serveInitialPerformanceCards(page, cards);
+  const completeInput = selectConnectionsViewModel(servedCards, current.id);
 
   const navigationStarted = performance.now();
   const response = await page.goto(`/cards/${current.id}/connections`);
@@ -2238,55 +2256,62 @@ test('10k connections bounds layout and DOM around the current card', async ({
   await expect(graph).toHaveAttribute('data-total-node-count', '10000', {
     timeout: 30_000,
   });
-  await expect(graph).toHaveAttribute('data-visible-node-count', '64');
-  await expect(graph).toHaveAttribute('data-node-limit', '64');
+  await expect(graph).toHaveAttribute(
+    'data-total-edge-count',
+    String(completeInput.edges.length),
+  );
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
-    timeout: 30_000,
+    timeout: 60_000,
   });
   const initialReadyMs = performance.now() - navigationStarted;
-  await expect(graph.locator('button[data-card-id]')).toHaveCount(64);
-  await expect(page.getByTestId('connections-search')).toHaveCount(0);
-
-  const expansionReadyMs: number[] = [];
-  for (const visibleCount of [128, 192, 256]) {
-    const expansionStarted = performance.now();
-    await page.getByTestId('connections-expand').click();
-    await expect(graph).toHaveAttribute(
-      'data-visible-node-count',
-      String(visibleCount),
-    );
-    await expect(graph).toHaveAttribute(
-      'data-node-limit',
-      String(visibleCount),
-    );
-    await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
-      timeout: 30_000,
-    });
-    await expect(graph.locator('button[data-card-id]')).toHaveCount(
-      visibleCount,
-    );
-    expansionReadyMs.push(performance.now() - expansionStarted);
-  }
-  await expect(page.getByTestId('connections-expand')).toHaveCount(0);
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(10_000);
   await expect(
-    page.getByText(
-      '一度に表示できる上限に達しました。別のカードを開くと、そのカードの周辺を表示できます。',
-    ),
-  ).toBeVisible();
+    graph.locator('ul[aria-label="カード間の一方向リンク一覧"] li'),
+  ).toHaveCount(completeInput.edges.length);
+  await expect(page.getByTestId('connections-search')).toHaveCount(0);
+  await expect(page.getByTestId('connections-expand')).toHaveCount(0);
 
-  const nextCard = graph
-    .locator('button[data-card-id]:not([aria-current="true"])')
-    .first();
+  const fitScale = Number(await graph.getAttribute('data-camera-scale'));
+  expect(fitScale).toBeGreaterThan(0);
+  expect(fitScale).toBeLessThan(0.1);
+  const focusStarted = performance.now();
+  await page.getByRole('button', { name: '現在のカードへ戻る' }).click();
+  await expect
+    .poll(async () => Number(await graph.getAttribute('data-camera-scale')))
+    .toBeGreaterThanOrEqual(0.5);
+  await expect
+    .poll(async () =>
+      Number(await graph.getAttribute('data-visual-node-count')),
+    )
+    .toBeLessThan(10_000);
+  await expect
+    .poll(async () =>
+      Number(await graph.getAttribute('data-visual-edge-count')),
+    )
+    .toBeLessThan(completeInput.edges.length);
+  const focusReadyMs = performance.now() - focusStarted;
+  const localizedDom = await graph.evaluate((element) => ({
+    descendants: element.querySelectorAll('*').length,
+    cardButtons: element.querySelectorAll('button[data-card-id]').length,
+    visualCardContents: element.querySelectorAll(
+      'button[data-card-id][data-visual-content="true"]',
+    ).length,
+    svgPaths: element.querySelectorAll('svg path').length,
+    semanticEdgeItems: element.querySelectorAll(
+      'ul[aria-label="カード間の一方向リンク一覧"] li',
+    ).length,
+  }));
+
+  const nextCard = graph.locator('button[data-card-id][aria-current="true"]');
   const nextCardId = await nextCard.getAttribute('data-card-id');
-  if (!nextCardId) throw new Error('Bounded graph omitted a linked card');
+  if (!nextCardId) throw new Error('Complete graph omitted its current card');
   await nextCard.click();
   await expectPathname(page, `/cards/${nextCardId}`);
   const reentryStarted = performance.now();
   await page.getByRole('button', { name: 'つながり', exact: true }).click();
   await expectPathname(page, `/cards/${nextCardId}/connections`);
-  await expect(graph).toHaveAttribute('data-stage-focus-id', nextCardId);
-  await expect(graph).toHaveAttribute('data-visible-node-count', '64');
-  await expect(graph.locator('button[data-card-id]')).toHaveCount(64);
+  await expect(graph).toHaveAttribute('data-total-node-count', '10000');
+  await expect(graph.locator('button[data-card-id]')).toHaveCount(10_000);
   const reentryReadyMs = performance.now() - reentryStarted;
   const dom = await graph.evaluate((element) => ({
     descendants: element.querySelectorAll('*').length,
@@ -2298,7 +2323,7 @@ test('10k connections bounds layout and DOM around the current card', async ({
   }));
   const artifact = {
     schemaVersion: 1,
-    issue: 305,
+    issue: 311,
     project: testInfo.project.name,
     environment: {
       browser: page.context().browser()?.version() ?? 'unknown',
@@ -2307,20 +2332,25 @@ test('10k connections bounds layout and DOM around the current card', async ({
     },
     fixture: { nodes: cards.length, source: 'client-performance' },
     comparison:
-      'A: current product staging only; B is measured by the isolated Node ELK artifact',
+      'Complete product graph through the hybrid Worker, semantic shells, and viewport visual culling',
     initialReadyMs,
-    expansionReadyMs,
+    focusReadyMs,
     reentryReadyMs,
-    finalStage: { visibleNodes: 64, nodeLimit: 64 },
+    completeGraph: {
+      nodes: completeInput.nodes.length,
+      edges: completeInput.edges.length,
+      fitScale,
+    },
+    localizedDom,
     dom,
     heapUsedBytes: await browserHeapUsed(page),
     policy:
-      'Observational browser evidence. No timing sample is removed and no absolute CI wall-clock gate is added in phase 0.',
+      'Observational browser evidence for the complete product graph. No timing sample is removed and no absolute CI wall-clock gate is inferred from this single run.',
   };
   console.info(
-    `connections-10k-staged-browser-baseline ${JSON.stringify(artifact)}`,
+    `connections-10k-full-network-browser ${JSON.stringify(artifact)}`,
   );
-  await testInfo.attach('connections-10k-staged-browser-baseline.json', {
+  await testInfo.attach('connections-10k-full-network-browser.json', {
     body: Buffer.from(`${JSON.stringify(artifact, null, 2)}\n`),
     contentType: 'application/json',
   });

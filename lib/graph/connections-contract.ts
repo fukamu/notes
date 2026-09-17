@@ -1,6 +1,7 @@
 import type { DirectedEdge } from '@/lib/domain/graph';
 import type { CardId } from '@/lib/domain/id';
 import type {
+  ConnectionsLayout,
   ConnectionsLayoutEdge,
   ConnectionsLayoutNode,
 } from '@/lib/graph/elk-layout';
@@ -25,19 +26,6 @@ export type ConnectionsInputModel = {
 
 export type ConnectionsSelectionActions = {
   openCard: (cardId: CardId) => void;
-  expand: () => void;
-};
-
-export type ConnectionsStagingViewModel = {
-  focusCardId: CardId | null;
-  focusLabel: string | null;
-  totalNodeCount: number;
-  visibleNodeCount: number;
-  nodeLimit: number;
-  hiddenReachableNodeCount: number;
-  nextExpansionCount: number;
-  canExpand: boolean;
-  stoppedAtMaximum: boolean;
 };
 
 type ConnectionsStateBase = {
@@ -62,6 +50,7 @@ export type ConnectionsReadyEdge = ConnectionsSemanticEdge &
 
 export type ConnectionsReadyState = ConnectionsStateBase & {
   status: 'ready';
+  geometry: ConnectionsLayout;
   width: number;
   height: number;
   nodes: ConnectionsReadyNode[];

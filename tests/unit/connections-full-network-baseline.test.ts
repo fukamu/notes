@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { selectConnectionsViewModel } from '@/lib/application/view-models';
-import { selectConnectionsStage } from '@/lib/graph/connections-staging';
 import {
   connectionsLayoutGraph,
   fullNetworkGraphShape,
@@ -10,30 +9,28 @@ import { createFullNetworkBaselineFixture } from '@/tests/fixtures/connections-f
 function inputs(name: string) {
   const fixture = createFullNetworkBaselineFixture(name);
   const full = selectConnectionsViewModel(fixture.cards, fixture.currentCardId);
-  const staged = selectConnectionsStage(full, { expansionPage: 0 });
-  return { fixture, full, staged };
+  return { fixture, full };
 }
 
 describe('full-network phase 0 fixtures', () => {
   it.each([
-    ['boundary-64-connected', 64, 64],
-    ['boundary-65-connected', 65, 64],
-    ['boundary-256-connected', 256, 64],
-    ['boundary-257-connected', 257, 64],
+    ['boundary-64-connected', 64],
+    ['boundary-65-connected', 65],
+    ['boundary-256-connected', 256],
+    ['boundary-257-connected', 257],
   ] as const)(
-    'separates complete membership from current staging for %s',
-    (name, fullNodes, stagedNodes) => {
+    'keeps complete membership at the layout boundary for %s',
+    (name, fullNodes) => {
       const result = inputs(name);
 
       expect(result.full.nodes).toHaveLength(fullNodes);
-      expect(result.staged.input.nodes).toHaveLength(stagedNodes);
       expect(new Set(result.full.nodes.map(({ cardId }) => cardId)).size).toBe(
         fullNodes,
       );
     },
   );
 
-  it('retains every disconnected component and isolated node before staging', () => {
+  it('retains every disconnected component and isolated node', () => {
     const first = inputs('boundary-257-mixed');
     const second = inputs('boundary-257-mixed');
     const shape = fullNetworkGraphShape(connectionsLayoutGraph(first.full));
@@ -46,8 +43,7 @@ describe('full-network phase 0 fixtures', () => {
       isolatedNodes: 33,
       maximumComponentNodes: 160,
     });
-    expect(first.staged.input.nodes).toHaveLength(64);
-    expect(first.staged.input.nodes).not.toEqual(first.full.nodes);
+    expect(first.full.nodes).toHaveLength(257);
   });
 
   it('provides fixed 1k/3k and product 10k graph inputs without a display cap', () => {
@@ -60,6 +56,5 @@ describe('full-network phase 0 fixtures', () => {
     });
     expect(product.full.nodes).toHaveLength(10_000);
     expect(product.full.edges.length).toBeGreaterThan(10_000);
-    expect(product.staged.input.nodes).toHaveLength(64);
   });
 });

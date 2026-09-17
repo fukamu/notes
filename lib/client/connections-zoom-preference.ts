@@ -1,7 +1,4 @@
-import {
-  decodeConnectionsCameraScale,
-  DEFAULT_CONNECTIONS_CAMERA_LIMITS,
-} from '@/lib/graph/connections-viewport';
+import { decodeConnectionsCameraScaleValue } from '@/lib/graph/connections-viewport';
 
 export const CONNECTIONS_ZOOM_PREFERENCE_KEY =
   'fukamu.connections.zoom-scale.v1';
@@ -16,9 +13,8 @@ export function readConnectionsZoomPreference(
 ): number | null {
   if (!storage) return null;
   try {
-    return decodeConnectionsCameraScale(
+    return decodeConnectionsCameraScaleValue(
       storage.getItem(CONNECTIONS_ZOOM_PREFERENCE_KEY),
-      DEFAULT_CONNECTIONS_CAMERA_LIMITS,
     );
   } catch {
     return null;
@@ -30,10 +26,7 @@ export function writeConnectionsZoomPreference(
   scale: unknown,
 ): boolean {
   if (!storage) return false;
-  const decoded = decodeConnectionsCameraScale(
-    scale,
-    DEFAULT_CONNECTIONS_CAMERA_LIMITS,
-  );
+  const decoded = decodeConnectionsCameraScaleValue(scale);
   if (decoded === null) return false;
   try {
     storage.setItem(CONNECTIONS_ZOOM_PREFERENCE_KEY, String(decoded));

@@ -151,11 +151,12 @@ batch-selector call and is never cached across Vault/session/logout boundaries.
 
 ## Known boundary
 
-The baseline measures connections input construction only. Issue #266 selected
-progressive disclosure around the current card with fixed worker/DOM bounds;
-Issue #275 removes the connections-only search path without changing those
-bounds. The longer-term experience beyond the 256-card stage remains tracked
-separately.
+The original baseline measures connections input construction only. Issue #266
+selected progressive disclosure around the current card with fixed worker/DOM
+bounds, and Issue #275 removed the connections-only search path. Issue #311 has
+now superseded those product display bounds: the complete active-scope graph is
+sent to the hybrid layout manager, while 256 remains only an engine-selection
+boundary.
 
 Issue #305 reopens that product decision under parent #304 without changing the
 current renderer. Its exact Node 22.13.0 A/B evidence is documented in
@@ -164,9 +165,20 @@ The pre-staging 10k semantic input remains roughly 14.6 ms median, but the
 existing production ELK configuration fails before warm-up at 1,000 nodes /
 3,000 edges and at both 10k cases with a recursive stack overflow. Consequently
 the 10k staged browser values remain an A baseline, not evidence that the full
-network can be laid out or painted. Culling, spatial indexing, cache weighting,
-and lower ELK thoroughness are not selected until a successful full geometry
-exists and their own bottleneck is measured.
+network can be laid out or painted. That finding did not select culling,
+spatial indexing, cache weighting, or lower ELK thoroughness by itself. Issues
+#316 and #318 subsequently produced complete 10k corridor geometry through the
+product Worker manager.
+
+Issue #311 adds whole-world camera limits and conservative segment-BVH culling.
+The complete 10k browser run retained 10,000 button shells and 19,999 semantic
+links. Localized rendering fell to 195 desktop / 97 mobile SVG paths, but full
+fit required 39,999 SVG paths and about 130,002 graph descendants. Initial ready
+was about 12.8 s desktop and 7.9 s mobile, outside the provisional five-second
+target. The values and attribution limits are in
+[`connections-full-network-cutover.md`](connections-full-network-cutover.md).
+That measured SVG/full-fit bottleneck activates only the approved Canvas 2D edge
+evaluation; it does not justify reducing graph membership or accessibility.
 
 ## Issue #204 browser windowing
 
@@ -196,9 +208,7 @@ unmount, so no history content cache crosses a provider, Vault, session, or
 logout boundary. Existing desktop/mobile URL, Back, card-open, current marker,
 list semantics, and keyboard behavior are covered in the same E2E.
 
-The final browser run intentionally does not activate a 10,000-node connections
-graph. Demand-driven presentation proves that card/history views do not build
-it, while the existing typed input-boundary measurement remains 15.272 ms
-median and 16.709 ms p95. This remains evidence for demand-driven,
-current-neighborhood staged disclosure rather than a reason to activate the full
-10,000-node graph.
+That historical Issue #204 browser run intentionally did not activate a
+10,000-node connections graph. Demand-driven presentation still proves that
+card/history views do not build it. The complete connections view is now covered
+separately by the Issue #311 cutover evidence above.
