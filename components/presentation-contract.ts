@@ -12,6 +12,7 @@ import type {
 } from '@/lib/editor/use-card-editor';
 import type {
   ConnectionsControllerState,
+  ConnectionsInputModel,
   ConnectionsSelectionActions,
 } from '@/lib/graph/connections-contract';
 
@@ -22,6 +23,7 @@ export type CardEditorRendererProps = {
 
 export type ConnectionsRendererProps = {
   model: ConnectionsControllerState;
+  semanticInput: ConnectionsInputModel;
   totalNodeCount: number;
   totalEdgeCount: number;
   actions: ConnectionsSelectionActions;

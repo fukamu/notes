@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "issue": 323,
+  "branchPoint": "c79336840701af700d301bfd39487161c27fd86a",
+  "fixture": {
+    "nodes": 10000,
+    "edges": 19999,
+    "source": "client-performance"
+  },
+  "environment": {
+    "browser": "Chromium 153.0.8010.12",
+    "runsPerProject": 2,
+    "note": "Exploratory product-path samples; they are not statistical guarantees or absolute CI thresholds."
+  },
+  "baseline": {
+    "issue": 321,
+    "localizedDescendants": 30005,
+    "wholeWorldDescendants": 50003,
+    "cardButtons": 10000,
+    "semanticEdgeItems": 19999
+  },
+  "measurements": [
+    {
+      "project": "chromium",
+      "run": "focused",
+      "viewport": { "width": 1280, "height": 720, "devicePixelRatio": 1 },
+      "initialReadyMs": 6494.874192,
+      "semanticListOpenMs": 550.1382379999995,
+      "semanticMoveMs": 895.7900609999997,
+      "focusReadyMs": 406.44377600000007,
+      "fitReadyMs": 3283.0959610000027,
+      "reentryReadyMs": 11354.348400999996,
+      "localizedDescendants": 10005,
+      "wholeWorldDescendants": 30003,
+      "closedSemanticListItems": 0,
+      "maximumCardListItems": 50,
+      "maximumEdgeListItems": 50,
+      "canvasFullFitDrawMs": 82,
+      "heapUsedBytes": 188000000
+    },
+    {
+      "project": "mobile-chromium",
+      "run": "focused",
+      "viewport": {
+        "width": 412,
+        "height": 839,
+        "devicePixelRatio": 2.625
+      },
+      "initialReadyMs": 6654.027341,
+      "semanticListOpenMs": 969.5231530000019,
+      "semanticMoveMs": 893.5817809999971,
+      "focusReadyMs": 353.4878719999979,
+      "fitReadyMs": 3406.6782989999992,
+      "reentryReadyMs": 19778.707535,
+      "localizedDescendants": 10005,
+      "wholeWorldDescendants": 30003,
+      "closedSemanticListItems": 0,
+      "maximumCardListItems": 50,
+      "maximumEdgeListItems": 50,
+      "canvasFullFitDrawMs": 111.79999999701977,
+      "heapUsedBytes": 199000000
+    },
+    {
+      "project": "chromium",
+      "run": "full-verify",
+      "viewport": { "width": 1280, "height": 720, "devicePixelRatio": 1 },
+      "initialReadyMs": 8658.373508000004,
+      "semanticListOpenMs": 540.8952040000004,
+      "semanticMoveMs": 890.5223070000065,
+      "focusReadyMs": 401.5391859999945,
+      "fitReadyMs": 3311.5042600000015,
+      "reentryReadyMs": 4910.983940999999,
+      "localizedDescendants": 10005,
+      "wholeWorldDescendants": 30003,
+      "closedSemanticListItems": 0,
+      "maximumCardListItems": 50,
+      "maximumEdgeListItems": 50,
+      "canvasFullFitDrawMs": 76.20000000298023,
+      "heapUsedBytes": 225000000
+    },
+    {
+      "project": "mobile-chromium",
+      "run": "full-verify",
+      "viewport": {
+        "width": 412,
+        "height": 839,
+        "devicePixelRatio": 2.625
+      },
+      "initialReadyMs": 8368.119358000004,
+      "semanticListOpenMs": 613.3196529999914,
+      "semanticMoveMs": 882.6549709999963,
+      "focusReadyMs": 339.87373300000036,
+      "fitReadyMs": 3321.8901639999967,
+      "reentryReadyMs": 10301.944715999998,
+      "localizedDescendants": 10005,
+      "wholeWorldDescendants": 30003,
+      "closedSemanticListItems": 0,
+      "maximumCardListItems": 50,
+      "maximumEdgeListItems": 50,
+      "canvasFullFitDrawMs": 108.20000000298023,
+      "heapUsedBytes": 588000000
+    }
+  ],
+  "decision": {
+    "semanticDom": "accepted: closed content is unmounted and each open list is bounded to 50 native list items",
+    "completeGraph": "accepted: 10000 nodes and 19999 directed edges remain in the semantic model and layout geometry",
+    "overallPerformance": "not complete: initial readiness and whole-world card DOM remain over the provisional targets; continue with card windowing and overview Canvas shapes"
+  }
+}

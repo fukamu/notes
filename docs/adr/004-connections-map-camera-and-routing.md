@@ -480,3 +480,30 @@ decision does not extend to card Canvas rendering, WebGL, relationship removal,
 or graph aggregation; broader work requires a new review boundary. Evidence is
 in
 [`connections-canvas-edge-layer.md`](../connections-canvas-edge-layer.md).
+
+## Issue #323 bounded native semantic lists
+
+Issue #323 replaces the always-mounted 19,999-item screen-reader-only relation
+list with a visible native `details` operation. Its closed content is not
+mounted. When opened, independent card and directed-relation lists support full
+text search, previous/next and direct page navigation, and render at most 50
+items each. Cards can be opened or moved to on the complete map; relation rows
+identify and can open both directed endpoints.
+
+The searchable projection is a typed pure function of the semantic input and
+does not depend on the camera. Search, page and open state do not change graph
+membership, layout keys, Worker requests or camera state. Native lists,
+buttons, labels and inputs preserve keyboard and accessibility-tree reachability
+without `role=application` or a custom grid/listbox. Closing returns focus to
+the summary; moving to the map uses the existing readable-scale camera path and
+focuses the target card.
+
+The saved 10k product samples retain 10,000 nodes and 19,999 directed edges,
+while closed list items fall to zero and localized graph descendants fall from
+about 30,005 to 10,005. Initial ready is about 6.49–8.66 s desktop and
+6.65–8.37 s mobile in the two exploratory runs, but still misses the five-second
+target. Ten thousand HTML card shells and whole-world card contents remain, so
+the next independent Issue may implement the explicitly approved normal-scale
+card window and overview Canvas card shapes. This section does not mark the
+overall performance objective complete. Evidence is in
+[`connections-semantic-lists.md`](../connections-semantic-lists.md).

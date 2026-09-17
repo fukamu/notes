@@ -26,6 +26,7 @@ export function ConnectionsAdapter({
   return (
     <Renderer
       model={model}
+      semanticInput={input}
       totalNodeCount={input.nodes.length}
       totalEdgeCount={input.edges.length}
       actions={actions}

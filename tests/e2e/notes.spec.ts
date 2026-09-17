@@ -969,9 +969,21 @@ test('global directed graph is safe and operable for the reported and cyclic fix
     ).toBeVisible();
   }
 
-  const semanticEdges = graph.getByRole('list', {
-    name: 'カード間の一方向リンク一覧',
+  const semanticLists = page.getByTestId('connections-semantic-lists');
+  await expect(
+    semanticLists.getByRole('list', { name: '検索されたカード一覧' }),
+  ).toHaveCount(0);
+  await expect(
+    semanticLists.getByRole('list', { name: '検索された参照一覧' }),
+  ).toHaveCount(0);
+  await semanticLists.getByText('カードと参照の一覧').click();
+  const semanticCards = semanticLists.getByRole('list', {
+    name: '検索されたカード一覧',
   });
+  const semanticEdges = semanticLists.getByRole('list', {
+    name: '検索された参照一覧',
+  });
+  await expect(semanticCards.getByRole('listitem')).toHaveCount(7);
   await expect(semanticEdges.getByRole('listitem')).toHaveCount(8);
   const expectedEdges = [
     `${titles.reportC} から ${titles.reportA} へのリンク`,
@@ -985,9 +997,34 @@ test('global directed graph is safe and operable for the reported and cyclic fix
   ];
   for (const label of expectedEdges) {
     await expect(
-      semanticEdges.getByRole('listitem').filter({ hasText: label }),
+      semanticEdges.getByRole('listitem', { name: label, exact: true }),
     ).toHaveCount(1);
   }
+  const cardSearch = semanticLists.getByRole('searchbox', {
+    name: 'カード番号・タイトルを検索',
+    exact: true,
+  });
+  await cardSearch.fill(titles.isolated);
+  await expect(cardSearch).toBeFocused();
+  await expect(semanticCards.getByRole('listitem')).toHaveCount(1);
+  await expect(semanticCards.getByRole('listitem')).toContainText(
+    titles.isolated,
+  );
+  await cardSearch.fill('');
+  const edgeSearch = semanticLists.getByRole('searchbox', {
+    name: '始点・終点のカード番号・タイトルを検索',
+    exact: true,
+  });
+  await edgeSearch.fill('#4 #5');
+  await expect(edgeSearch).toBeFocused();
+  await expect(semanticEdges.getByRole('listitem')).toHaveCount(2);
+  await expect(
+    semanticEdges.getByRole('listitem').first().getByRole('button'),
+  ).toHaveCount(2);
+  await edgeSearch.fill('');
+  await semanticLists.getByRole('button', { name: '一覧を閉じる' }).click();
+  await expect(semanticEdges).toHaveCount(0);
+  await expect(semanticLists.locator('summary')).toBeFocused();
 
   const currentNode = graph
     .getByRole('button')
@@ -2287,9 +2324,8 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
     timeout: 60_000,
   });
   await expect(graph.locator('button[data-card-id]')).toHaveCount(10_000);
-  await expect(
-    graph.locator('ul[aria-label="カード間の一方向リンク一覧"] li'),
-  ).toHaveCount(completeInput.edges.length);
+  const semanticLists = page.getByTestId('connections-semantic-lists');
+  await expect(semanticLists.getByRole('list')).toHaveCount(0);
   await expect(graph).toHaveAttribute('data-edge-renderer', 'canvas-2d');
   await expect(graph).toHaveAttribute('data-edge-render-status', 'painted');
   await expect(graph).toHaveAttribute(
@@ -2331,10 +2367,86 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   );
   await expect(page.getByTestId('connections-search')).toHaveCount(0);
   await expect(page.getByTestId('connections-expand')).toHaveCount(0);
-
   const fitScale = Number(await graph.getAttribute('data-camera-scale'));
   expect(fitScale).toBeGreaterThan(0);
   expect(fitScale).toBeLessThan(0.1);
+
+  const semanticListStarted = performance.now();
+  await semanticLists.getByText('カードと参照の一覧').click();
+  const cardList = semanticLists.getByRole('list', {
+    name: '検索されたカード一覧',
+  });
+  const edgeList = semanticLists.getByRole('list', {
+    name: '検索された参照一覧',
+  });
+  await expect(cardList.getByRole('listitem')).toHaveCount(50);
+  await expect(edgeList.getByRole('listitem')).toHaveCount(50);
+  const semanticListOpenMs = performance.now() - semanticListStarted;
+  const lastNode = completeInput.nodes[completeInput.nodes.length - 1];
+  const lastEdge = completeInput.edges[completeInput.edges.length - 1];
+  if (!lastNode || !lastEdge) {
+    throw new Error('Complete connections input omitted its final records');
+  }
+  const nodeById = new Map(
+    completeInput.nodes.map((node) => [node.cardId, node]),
+  );
+  const lastSource = nodeById.get(lastEdge.sourceCardId);
+  const lastTarget = nodeById.get(lastEdge.targetCardId);
+  if (!lastSource || !lastTarget) {
+    throw new Error('Complete connections edge omitted an endpoint');
+  }
+  const cardPageCount = Math.ceil(completeInput.nodes.length / 50);
+  const edgePageCount = Math.ceil(completeInput.edges.length / 50);
+  const cardPageInput = semanticLists.getByRole('spinbutton', {
+    name: 'カード一覧のページ番号',
+  });
+  await cardPageInput.fill(String(cardPageCount));
+  await expect(cardPageInput).toBeFocused();
+  await expect(
+    cardList.getByRole('listitem').filter({ hasText: lastNode.title }),
+  ).toHaveCount(1);
+  const edgePageInput = semanticLists.getByRole('spinbutton', {
+    name: '参照一覧のページ番号',
+  });
+  await edgePageInput.fill(String(edgePageCount));
+  await expect(edgePageInput).toBeFocused();
+  await expect(edgeList.getByRole('listitem')).toHaveCount(
+    completeInput.edges.length % 50,
+  );
+  await expect(
+    edgeList
+      .getByRole('listitem')
+      .filter({ hasText: lastSource.title })
+      .filter({ hasText: lastTarget.title }),
+  ).toHaveCount(1);
+  const arbitraryNode = completeInput.nodes[9_875];
+  if (!arbitraryNode) {
+    throw new Error('Complete connections input omitted the arbitrary node');
+  }
+  const cardSearch = semanticLists.getByRole('searchbox', {
+    name: 'カード番号・タイトルを検索',
+    exact: true,
+  });
+  await cardSearch.fill(arbitraryNode.displayLabel);
+  await expect(cardSearch).toBeFocused();
+  await expect(cardList.getByRole('listitem')).toHaveCount(1);
+  const semanticMoveStarted = performance.now();
+  await semanticLists
+    .getByRole('button', {
+      name: `${arbitraryNode.displayLabel}へマップ移動`,
+    })
+    .click();
+  const arbitraryMapNode = graph.locator(
+    `button[data-card-id="${arbitraryNode.cardId}"]`,
+  );
+  await expect(arbitraryMapNode).toBeFocused();
+  await expect
+    .poll(async () => Number(await graph.getAttribute('data-camera-scale')))
+    .toBeGreaterThanOrEqual(0.5);
+  const semanticMoveMs = performance.now() - semanticMoveStarted;
+  await semanticLists.getByRole('button', { name: '一覧を閉じる' }).click();
+  await expect(semanticLists.getByRole('list')).toHaveCount(0);
+
   const focusStarted = performance.now();
   await page.getByRole('button', { name: '現在のカードへ戻る' }).click();
   await expect
@@ -2366,9 +2478,6 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
       'button[data-card-id][data-visual-content="true"]',
     ).length,
     svgPaths: element.querySelectorAll('svg path').length,
-    semanticEdgeItems: element.querySelectorAll(
-      'ul[aria-label="カード間の一方向リンク一覧"] li',
-    ).length,
     canvasCount: element.querySelectorAll('canvas').length,
   }));
   expect(localizedDom.svgPaths).toBe(0);
@@ -2421,16 +2530,13 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
     descendants: element.querySelectorAll('*').length,
     cardButtons: element.querySelectorAll('button[data-card-id]').length,
     svgPaths: element.querySelectorAll('svg path').length,
-    semanticEdgeItems: element.querySelectorAll(
-      'ul[aria-label="カード間の一方向リンク一覧"] li',
-    ).length,
     canvasCount: element.querySelectorAll('canvas').length,
   }));
   expect(dom.svgPaths).toBe(0);
   expect(dom.canvasCount).toBe(1);
   const artifact = {
     schemaVersion: 1,
-    issue: 321,
+    issue: 323,
     project: testInfo.project.name,
     environment: {
       browser: page.context().browser()?.version() ?? 'unknown',
@@ -2439,8 +2545,10 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
     },
     fixture: { nodes: cards.length, source: 'client-performance' },
     comparison:
-      'Complete product graph through the hybrid Worker, semantic shells, and Canvas 2D edge layer',
+      'Complete product graph with closed-by-default paged semantic lists and the Canvas 2D edge layer',
     initialReadyMs,
+    semanticListOpenMs,
+    semanticMoveMs,
     focusReadyMs,
     fitReadyMs,
     reentryReadyMs,
@@ -2455,6 +2563,12 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
       nodes: completeInput.nodes.length,
       edges: completeInput.edges.length,
       fitScale,
+    },
+    semanticLists: {
+      pageSize: 50,
+      cardPageCount,
+      edgePageCount,
+      closedListItems: await semanticLists.locator('li').count(),
     },
     localizedDom,
     dom,
