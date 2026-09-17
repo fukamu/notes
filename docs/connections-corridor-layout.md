@@ -16,9 +16,9 @@ when ELK fails or exceeds its reviewed deadline. The policy revision includes
 the selection boundary and geometry-affecting corridor settings so a later
 cache cannot reuse incompatible coordinates.
 
-This Issue adds the typed pure geometry core and policy only. It does not yet
-remove the production 64/64/256 staging UI, change the browser Worker, or
-establish product rendering performance. Those changes remain separate review
+Issue #316 added the typed pure geometry core and policy only. Issue #318 now
+connects it to the product hybrid Worker manager, while the production
+64/64/256 staging UI and product rendering performance remain separate review
 steps under parent Issue #304.
 
 ## Geometry algorithm
@@ -82,8 +82,10 @@ visually equivalent to the small ELK view.
 
 The saved ELK failures in
 [`connections-browser-worker-feasibility.md`](connections-browser-worker-feasibility.md)
-remain historical evidence and are not overwritten. The next implementation
-Issue must exercise this core through the product Worker manager, validate the
-unknown Worker response at the boundary, implement one active plus one latest
-pending request, and preserve reset/logout generation safety. Product SVG/DOM
-performance and any conditional Canvas decision remain later measurements.
+remain historical evidence and are not overwritten. Issue #318 exercises this
+core through the product Worker manager, validates unknown Worker responses,
+implements one active plus one latest pending request, and preserves
+reset/logout generation safety. Its evidence and limits are recorded in
+[`connections-hybrid-worker.md`](connections-hybrid-worker.md). Product
+SVG/DOM performance and any conditional Canvas decision remain later
+measurements.

@@ -407,3 +407,29 @@ card-intrusion checks. This is not yet product Worker, DOM/paint, memory, or
 visual-equivalence evidence. The algorithm, fixed values, limitations, and
 evidence boundary are recorded in
 [`connections-corridor-layout.md`](../connections-corridor-layout.md).
+
+## Issue #318 hybrid Worker adoption
+
+Issue #318 connects the corridor core to the production layout Worker manager.
+Complete graphs at or below 256 nodes and 1,024 directed edges continue to use
+the existing ELK Worker; exceeding either calculation boundary selects the
+application-owned corridor Worker. A small ELK request that fails or exceeds
+the 2,000 ms preparation-plus-layout deadline terminates that ELK Worker and
+retries the same complete input through corridor once. The selection values do
+not limit displayed membership.
+
+The adapter now keeps one active and one latest pending request, notifies the
+scheduler before cache lookup, and includes the policy revision in the shared
+controller/cache key. Worker responses are decoded from unknown and checked for
+input order, direction, finite bounds, and port ownership. Scope reset rejects
+active and pending consumers, terminates both engines, and prevents a late ELK
+catch from creating a new corridor Worker.
+
+The required 257, 1,000/3,000, and both 10,000/~20,000 fixtures return complete
+geometry through the production manager/executor path in Chromium. The two 10k
+manager layout wall times in that recorded run were about 406 ms and 339 ms;
+these are geometry-only observations, not React/SVG or camera performance.
+Raw results, environment, phase attribution, and limitations are in
+[`connections-hybrid-worker.md`](../connections-hybrid-worker.md). Staging
+removal, dynamic whole-world zoom, culling, and conditional Canvas remain the
+next reviewed UI step.

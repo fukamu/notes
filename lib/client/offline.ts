@@ -1,4 +1,5 @@
 import type { OfflineAppPort } from '@/lib/application/notes-runtime';
+import { connectionsCorridorWorkerUrl } from '@/lib/client/connections-corridor-worker-url';
 import { prepareConnectionsLayoutWorker } from '@/lib/client/connections-layout-worker';
 import { connectionsLayoutWorkerUrl } from '@/lib/client/connections-layout-worker-url';
 
@@ -21,6 +22,7 @@ export async function prepareOfflineApp(): Promise<void> {
     '/',
     '/manifest.webmanifest',
     '/favicon.svg',
+    connectionsCorridorWorkerUrl,
     connectionsLayoutWorkerUrl,
   );
 

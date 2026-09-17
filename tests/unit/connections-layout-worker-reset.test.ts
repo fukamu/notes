@@ -58,9 +58,11 @@ describe('connections layout worker logout reset', () => {
     const terminateFirst = vi.fn();
     const secondRun = vi.fn<ConnectionsLayoutRunner>(async () => layout);
     let created = 0;
+    const generations: number[] = [];
     const manager: ConnectionsLayoutWorkerManager =
-      createConnectionsLayoutWorkerManager(() => {
+      createConnectionsLayoutWorkerManager((generation) => {
         created += 1;
+        generations.push(generation);
         if (created === 1) {
           return {
             ready: firstReady.promise,
@@ -89,6 +91,7 @@ describe('connections layout worker logout reset', () => {
 
     await expect(manager.layout(graph, metrics)).resolves.toEqual(layout);
     expect(created).toBe(2);
+    expect(generations).toEqual([0, 1]);
     expect(secondRun).toHaveBeenCalledOnce();
     expect(manager.isReset()).toBe(false);
   });

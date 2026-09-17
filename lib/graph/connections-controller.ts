@@ -9,6 +9,7 @@ import {
   type ConnectionsLayoutGraph,
   type ConnectionsLayoutMetrics,
 } from '@/lib/graph/elk-layout';
+import { connectionsSemanticLayoutKey } from '@/lib/graph/connections-layout-key';
 import { invariant } from '@/lib/shared/invariant';
 
 export type ConnectionsLayoutRunner = (
@@ -44,14 +45,7 @@ export function connectionsLayoutKey(
   input: ConnectionsInputModel,
   metrics: ConnectionsLayoutMetrics,
 ): string {
-  return JSON.stringify({
-    nodes: input.nodes.map((node) => node.cardId),
-    edges: input.edges.map(({ sourceCardId, targetCardId }) => [
-      sourceCardId,
-      targetCardId,
-    ]),
-    metrics,
-  });
+  return connectionsSemanticLayoutKey(input, metrics);
 }
 
 function loadingState(

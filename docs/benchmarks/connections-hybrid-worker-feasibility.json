@@ -1,0 +1,261 @@
+{
+  "schemaVersion": 1,
+  "issue": 318,
+  "parentIssue": 304,
+  "branchPoint": "957e596d4a63af46d0017d13478e347101088061",
+  "generatedAt": "2026-09-17T11:23:23.467Z",
+  "environment": {
+    "browser": "153.0.8010.12",
+    "project": "chromium",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.8010.12 Safari/537.36",
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "devicePixelRatio": 1,
+    "node": "v26.8.1",
+    "platform": "linux",
+    "release": "7.0.0-31-generic",
+    "cpu": "11th Gen Intel(R) Core(TM) i7-1195G7 @ 2.90GHz",
+    "cpuCount": 8,
+    "totalMemoryBytes": 16463347712,
+    "layoutPolicy": "ELK through 256/1024; corridor otherwise; lane spacing 8"
+  },
+  "methodology": {
+    "timeoutMs": 30000,
+    "timeoutMeaning": "Per-case research guard; timeout is incomplete geometry and never a pass.",
+    "productPath": "Every graph is passed to createConnectionsLayoutWorkerManager with the production browser hybrid executor and production corridor Worker URL.",
+    "timing": "workerLayoutMs is measured inside the corridor Worker; responseDecodeMs validates returned geometry; transferAndSchedulingMs is the non-negative round-trip remainder; curvePreparationMs runs the production curve generator after layout.",
+    "scope": "This proves product Worker geometry only. It does not include React commit, SVG/HTML paint, camera interaction, or full-network UI cutover."
+  },
+  "results": [
+    {
+      "schemaVersion": 1,
+      "fixture": "boundary-257-mixed",
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "failure": null,
+      "phasesMs": {
+        "fixtureGeneration": 1.2,
+        "semanticInput": 0.6,
+        "workerPreparation": 0.1,
+        "layoutWall": 15.7,
+        "validation": 2.2
+      },
+      "input": {
+        "nodes": 257,
+        "edges": 256,
+        "weaklyConnectedComponents": 35,
+        "isolatedNodes": 33,
+        "maximumComponentNodes": 160,
+        "maximumComponentEdges": 176
+      },
+      "geometry": {
+        "width": 5732,
+        "height": 5856,
+        "nodes": 257,
+        "ports": 512,
+        "edges": 256,
+        "sections": 256,
+        "points": 1070,
+        "pathCharacters": 35226,
+        "geometryWeight": 1583
+      },
+      "identity": {
+        "nodeIdsMatched": true,
+        "directedEdgesMatched": true
+      },
+      "memory": {
+        "beforeLayoutBytes": 31200000,
+        "afterLayoutBytes": 31200000,
+        "afterResetBytes": 31200000
+      },
+      "worker": {
+        "beforeResetKind": "already-reset",
+        "afterResetKind": "reset",
+        "afterResetRejectedOperations": 0,
+        "isResetAfter": true
+      },
+      "corridorTiming": {
+        "requestId": 1,
+        "generation": 0,
+        "roundTripMs": 10.400000005960464,
+        "workerLayoutMs": 5.700000002980232,
+        "responseDecodeMs": 1.800000011920929,
+        "transferAndSchedulingMs": 2.8999999910593033
+      },
+      "curvePreparationMs": 2.2
+    },
+    {
+      "schemaVersion": 1,
+      "fixture": "representative-1000-e3000-mixed",
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "failure": null,
+      "phasesMs": {
+        "fixtureGeneration": 4.9,
+        "semanticInput": 1.7,
+        "workerPreparation": 0,
+        "layoutWall": 67.4,
+        "validation": 8.9
+      },
+      "input": {
+        "nodes": 1000,
+        "edges": 3000,
+        "weaklyConnectedComponents": 53,
+        "isolatedNodes": 50,
+        "maximumComponentNodes": 600,
+        "maximumComponentEdges": 1253
+      },
+      "geometry": {
+        "width": 22000,
+        "height": 21360,
+        "nodes": 1000,
+        "ports": 6000,
+        "edges": 3000,
+        "sections": 3000,
+        "points": 16854,
+        "pathCharacters": 627597,
+        "geometryWeight": 20854
+      },
+      "identity": {
+        "nodeIdsMatched": true,
+        "directedEdgesMatched": true
+      },
+      "memory": {
+        "beforeLayoutBytes": 31200000,
+        "afterLayoutBytes": 31200000,
+        "afterResetBytes": 31200000
+      },
+      "worker": {
+        "beforeResetKind": "already-reset",
+        "afterResetKind": "reset",
+        "afterResetRejectedOperations": 0,
+        "isResetAfter": true
+      },
+      "corridorTiming": {
+        "requestId": 1,
+        "generation": 0,
+        "roundTripMs": 62,
+        "workerLayoutMs": 29.700000002980232,
+        "responseDecodeMs": 10.599999994039536,
+        "transferAndSchedulingMs": 21.700000002980232
+      },
+      "curvePreparationMs": 8.9
+    },
+    {
+      "schemaVersion": 1,
+      "fixture": "product-10000-existing",
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "failure": null,
+      "phasesMs": {
+        "fixtureGeneration": 18.3,
+        "semanticInput": 26.6,
+        "workerPreparation": 0.1,
+        "layoutWall": 405.7,
+        "validation": 44.3
+      },
+      "input": {
+        "nodes": 10000,
+        "edges": 19951,
+        "weaklyConnectedComponents": 1,
+        "isolatedNodes": 0,
+        "maximumComponentNodes": 10000,
+        "maximumComponentEdges": 19951
+      },
+      "geometry": {
+        "width": 79832,
+        "height": 122704,
+        "nodes": 10000,
+        "ports": 39902,
+        "edges": 19951,
+        "sections": 19951,
+        "points": 118078,
+        "pathCharacters": 4442773,
+        "geometryWeight": 148029
+      },
+      "identity": {
+        "nodeIdsMatched": true,
+        "directedEdgesMatched": true
+      },
+      "memory": {
+        "beforeLayoutBytes": 31200000,
+        "afterLayoutBytes": 31200000,
+        "afterResetBytes": 31200000
+      },
+      "worker": {
+        "beforeResetKind": "already-reset",
+        "afterResetKind": "reset",
+        "afterResetRejectedOperations": 0,
+        "isResetAfter": true
+      },
+      "corridorTiming": {
+        "requestId": 1,
+        "generation": 0,
+        "roundTripMs": 382.6000000089407,
+        "workerLayoutMs": 173.70000000298023,
+        "responseDecodeMs": 70.90000000596046,
+        "transferAndSchedulingMs": 138
+      },
+      "curvePreparationMs": 44.3
+    },
+    {
+      "schemaVersion": 1,
+      "fixture": "connected-10000-e20000",
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "failure": null,
+      "phasesMs": {
+        "fixtureGeneration": 28.7,
+        "semanticInput": 9,
+        "workerPreparation": 0.1,
+        "layoutWall": 339.4,
+        "validation": 44
+      },
+      "input": {
+        "nodes": 10000,
+        "edges": 20000,
+        "weaklyConnectedComponents": 1,
+        "isolatedNodes": 0,
+        "maximumComponentNodes": 10000,
+        "maximumComponentEdges": 20000
+      },
+      "geometry": {
+        "width": 80624,
+        "height": 118184,
+        "nodes": 10000,
+        "ports": 40000,
+        "edges": 20000,
+        "sections": 20000,
+        "points": 118420,
+        "pathCharacters": 4495723,
+        "geometryWeight": 148420
+      },
+      "identity": {
+        "nodeIdsMatched": true,
+        "directedEdgesMatched": true
+      },
+      "memory": {
+        "beforeLayoutBytes": 31200000,
+        "afterLayoutBytes": 31200000,
+        "afterResetBytes": 31200000
+      },
+      "worker": {
+        "beforeResetKind": "already-reset",
+        "afterResetKind": "reset",
+        "afterResetRejectedOperations": 0,
+        "isResetAfter": true
+      },
+      "corridorTiming": {
+        "requestId": 1,
+        "generation": 0,
+        "roundTripMs": 326.29999999701977,
+        "workerLayoutMs": 132.69999998807907,
+        "responseDecodeMs": 50.70000000298023,
+        "transferAndSchedulingMs": 142.90000000596046
+      },
+      "curvePreparationMs": 44
+    }
+  ]
+}

@@ -1,22 +1,5 @@
 import type { ConnectionsLayoutRunner } from '@/lib/graph/connections-controller';
-import type {
-  ConnectionsLayoutGraph,
-  ConnectionsLayoutMetrics,
-} from '@/lib/graph/elk-layout';
-
-function connectionsLayoutCacheKey(
-  graph: ConnectionsLayoutGraph,
-  metrics: ConnectionsLayoutMetrics,
-): string {
-  return JSON.stringify({
-    nodes: graph.nodes.map((node) => node.id),
-    edges: graph.edges.map(({ sourceCardId, targetCardId }) => [
-      sourceCardId,
-      targetCardId,
-    ]),
-    metrics,
-  });
-}
+import { connectionsLayoutGraphKey } from '@/lib/graph/connections-layout-key';
 
 /**
  * Shares in-flight and settled immutable layouts across view re-entry. Rejected
@@ -32,7 +15,7 @@ export function createBoundedConnectionsLayoutRunner(
   const entries = new Map<string, ReturnType<ConnectionsLayoutRunner>>();
 
   return (graph, metrics) => {
-    const key = connectionsLayoutCacheKey(graph, metrics);
+    const key = connectionsLayoutGraphKey(graph, metrics);
     const cached = entries.get(key);
     if (cached) {
       entries.delete(key);
