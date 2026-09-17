@@ -44,7 +44,11 @@ test('records full-network ELK feasibility in the Chromium Worker', async ({
         if (typeof run !== 'function') {
           throw new Error('connections Worker feasibility runner is missing');
         }
-        return Reflect.apply(run, harness, [name, caseTimeoutMs]);
+        const result: unknown = Reflect.apply(run, harness, [
+          name,
+          caseTimeoutMs,
+        ]);
+        return result;
       },
       { name: fixtureName, caseTimeoutMs: timeoutMs },
     );
