@@ -1233,6 +1233,52 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeCloseTo(fitted.scale, 5);
   await keyboardControl.focus();
+  const dispatchMapKey = async (key: string, count = 1) => {
+    await keyboardControl.evaluate(
+      (element, input) => {
+        for (let index = 0; index < input.count; index += 1) {
+          element.dispatchEvent(
+            new KeyboardEvent('keydown', {
+              key: input.key,
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+        }
+      },
+      { key, count },
+    );
+  };
+  const fittedBeforeFreePan = await connectionsCamera(graph);
+  await dispatchMapKey('ArrowRight', 20);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(fittedBeforeFreePan.x - 1_280, 5);
+  await dispatchMapKey('ArrowLeft', 40);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(fittedBeforeFreePan.x + 1_280, 5);
+  await dispatchMapKey('0');
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(fittedBeforeFreePan.x, 5);
+  await dispatchMapKey('ArrowUp', 20);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(fittedBeforeFreePan.y + 1_280, 5);
+  await dispatchMapKey('ArrowDown', 40);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(fittedBeforeFreePan.y - 1_280, 5);
+  await dispatchMapKey('Home');
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeGreaterThanOrEqual(0.5);
+  await expect(currentNode).toBeInViewport();
+  await dispatchMapKey('0');
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(fitted.scale, 5);
   await keyboardControl.press('+');
   await keyboardControl.press('+');
   await expect
@@ -1248,7 +1294,7 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
     afterKeyboardPan = await connectionsCamera(graph);
   }
   expect(afterKeyboardPan.x).not.toBe(beforeKeyboardPan.x);
-  await keyboardControl.press('0');
+  await dispatchMapKey('0');
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeCloseTo(fitted.scale, 5);
@@ -2518,7 +2564,10 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
       edgeReuse: Number(element.dataset.edgeRasterReuseCount ?? '0'),
       cardRefresh: Number(element.dataset.cardRasterRefreshCount ?? '0'),
       cardReuse: Number(element.dataset.cardRasterReuseCount ?? '0'),
+      cameraX: Number(element.dataset.cameraX),
+      cameraY: Number(element.dataset.cameraY),
     };
+    const cameraPositions: { x: number; y: number }[] = [];
     let previousFrame = performance.now();
     for (let frame = 0; frame < 30; frame += 1) {
       const frameTime = await new Promise<number>((resolve) =>
@@ -2532,6 +2581,10 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
       cardDrawDurations.push(
         Number(element.dataset.cardDrawDurationMs ?? Number.NaN),
       );
+      cameraPositions.push({
+        x: Number(element.dataset.cameraX),
+        y: Number(element.dataset.cameraY),
+      });
       keyboard.dispatchEvent(
         new KeyboardEvent('keydown', {
           key: frame % 2 === 0 ? 'ArrowRight' : 'ArrowLeft',
@@ -2543,6 +2596,10 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
+    cameraPositions.push({
+      x: Number(element.dataset.cameraX),
+      y: Number(element.dataset.cameraY),
+    });
     longTasks.push(
       ...(observer?.takeRecords() ?? []).map((entry) => entry.duration),
     );
@@ -2558,7 +2615,12 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
       edgeReuse: Number(element.dataset.edgeRasterReuseCount ?? '0'),
       cardRefresh: Number(element.dataset.cardRasterRefreshCount ?? '0'),
       cardReuse: Number(element.dataset.cardRasterReuseCount ?? '0'),
+      cameraX: Number(element.dataset.cameraX),
+      cameraY: Number(element.dataset.cameraY),
     };
+    const cameraDisplacements = cameraPositions.map((camera) =>
+      Math.hypot(camera.x - before.cameraX, camera.y - before.cameraY),
+    );
     return {
       frameP95Ms: p95(frameIntervals),
       maximumFrameMs: Math.max(0, ...frameIntervals),
@@ -2573,6 +2635,14 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
       cardReuseCount: after.cardReuse - before.cardReuse,
       finalEdgeStrategy: element.dataset.edgeDrawStrategy ?? null,
       finalCardStrategy: element.dataset.cardDrawStrategy ?? null,
+      maximumCameraDisplacementPx: Math.max(0, ...cameraDisplacements),
+      uniqueCameraPositions: new Set(
+        cameraPositions.map((camera) => `${camera.x}:${camera.y}`),
+      ).size,
+      returnedToOriginPx: Math.hypot(
+        after.cameraX - before.cameraX,
+        after.cameraY - before.cameraY,
+      ),
     };
   });
   console.info(
@@ -2585,6 +2655,96 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   expect(fullFitContinuous.cardRefreshCount).toBeLessThanOrEqual(1);
   expect(fullFitContinuous.edgeReuseCount).toBeGreaterThanOrEqual(28);
   expect(fullFitContinuous.cardReuseCount).toBeGreaterThanOrEqual(28);
+  expect(fullFitContinuous.maximumCameraDisplacementPx).toBeGreaterThanOrEqual(
+    63,
+  );
+  expect(fullFitContinuous.uniqueCameraPositions).toBeGreaterThanOrEqual(2);
+  expect(fullFitContinuous.returnedToOriginPx).toBeLessThanOrEqual(1);
+
+  const fullFitBeyondCache = await graph.evaluate(async (element) => {
+    const keyboard = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="キーボードでマップを操作"]',
+    );
+    if (!keyboard) throw new Error('Connections keyboard control is missing');
+    const frameIntervals: number[] = [];
+    const edgeRasterDurations: number[] = [];
+    const cardRasterDurations: number[] = [];
+    const before = {
+      x: Number(element.dataset.cameraX),
+      y: Number(element.dataset.cameraY),
+      edgeRefresh: Number(element.dataset.edgeRasterRefreshCount ?? '0'),
+      cardRefresh: Number(element.dataset.cardRasterRefreshCount ?? '0'),
+      edgeWidth: Number(element.dataset.edgeRasterCachePixelWidth),
+      edgeHeight: Number(element.dataset.edgeRasterCachePixelHeight),
+      cardWidth: Number(element.dataset.cardRasterCachePixelWidth),
+      cardHeight: Number(element.dataset.cardRasterCachePixelHeight),
+    };
+    let previousFrame = performance.now();
+    for (let frame = 0; frame < 8; frame += 1) {
+      keyboard.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'ArrowRight',
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      const frameTime = await new Promise<number>((resolve) =>
+        requestAnimationFrame((time) => resolve(time)),
+      );
+      frameIntervals.push(frameTime - previousFrame);
+      previousFrame = frameTime;
+      edgeRasterDurations.push(
+        Number(element.dataset.edgeRasterRenderDurationMs ?? Number.NaN),
+      );
+      cardRasterDurations.push(
+        Number(element.dataset.cardRasterRenderDurationMs ?? Number.NaN),
+      );
+    }
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    const p95 = (values: readonly number[]) => {
+      const finite = values
+        .filter(Number.isFinite)
+        .sort((left, right) => left - right);
+      return finite[Math.floor((finite.length - 1) * 0.95)] ?? Number.NaN;
+    };
+    const after = {
+      x: Number(element.dataset.cameraX),
+      y: Number(element.dataset.cameraY),
+      edgeRefresh: Number(element.dataset.edgeRasterRefreshCount ?? '0'),
+      cardRefresh: Number(element.dataset.cardRasterRefreshCount ?? '0'),
+      edgeWidth: Number(element.dataset.edgeRasterCachePixelWidth),
+      edgeHeight: Number(element.dataset.edgeRasterCachePixelHeight),
+      cardWidth: Number(element.dataset.cardRasterCachePixelWidth),
+      cardHeight: Number(element.dataset.cardRasterCachePixelHeight),
+    };
+    return {
+      frameP95Ms: p95(frameIntervals),
+      maximumFrameMs: Math.max(0, ...frameIntervals),
+      edgeRasterP95Ms: p95(edgeRasterDurations),
+      cardRasterP95Ms: p95(cardRasterDurations),
+      cameraDelta: { x: after.x - before.x, y: after.y - before.y },
+      edgeRefreshCount: after.edgeRefresh - before.edgeRefresh,
+      cardRefreshCount: after.cardRefresh - before.cardRefresh,
+      rasterDimensionsStable:
+        before.edgeWidth === after.edgeWidth &&
+        before.edgeHeight === after.edgeHeight &&
+        before.cardWidth === after.cardWidth &&
+        before.cardHeight === after.cardHeight,
+    };
+  });
+  console.info(
+    `connections-10k-beyond-cache-pan ${JSON.stringify({ project: testInfo.project.name, ...fullFitBeyondCache })}`,
+  );
+  expect(fullFitBeyondCache.cameraDelta.x).toBeCloseTo(-512, 5);
+  expect(fullFitBeyondCache.cameraDelta.y).toBeCloseTo(0, 5);
+  expect(fullFitBeyondCache.edgeRefreshCount).toBeGreaterThan(0);
+  expect(fullFitBeyondCache.cardRefreshCount).toBeGreaterThan(0);
+  expect(fullFitBeyondCache.rasterDimensionsStable).toBe(true);
+  expect(Number.isFinite(fullFitBeyondCache.frameP95Ms)).toBe(true);
+  expect(Number.isFinite(fullFitBeyondCache.edgeRasterP95Ms)).toBe(true);
+  expect(Number.isFinite(fullFitBeyondCache.cardRasterP95Ms)).toBe(true);
 
   await page.getByRole('button', { name: '現在のカードへ戻る' }).click();
   await expect
@@ -2613,8 +2773,8 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   expect(dom.svgPaths).toBe(0);
   expect(dom.canvasCount).toBe(2);
   const artifact = {
-    schemaVersion: 3,
-    issues: [325, 327, 329],
+    schemaVersion: 4,
+    issues: [325, 327, 329, 330],
     project: testInfo.project.name,
     environment: {
       browser: page.context().browser()?.version() ?? 'unknown',
@@ -2623,7 +2783,7 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
     },
     fixture: { nodes: cards.length, source: 'client-performance' },
     comparison:
-      'Complete product graph with windowed HTML cards, no semantic list UI, and bounded overview Canvas bitmap reuse for cards and edges',
+      'Complete product graph with free camera translation, windowed HTML cards, no semantic list UI, and bounded overview Canvas bitmap reuse for cards and edges',
     initialReadyMs,
     layoutReadyMs,
     focusReadyMs,
@@ -2648,6 +2808,7 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
       nodeCommitMs: initialNodeCommitMs,
     },
     fullFitContinuous,
+    fullFitBeyondCache,
     completeGraph: {
       nodes: completeInput.nodes.length,
       edges: completeInput.edges.length,

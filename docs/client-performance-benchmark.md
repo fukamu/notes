@@ -241,6 +241,18 @@ targets are met, the conditional OffscreenCanvas Worker is not implemented.
 Environment, raw samples and limitations are in
 [`connections-bounded-raster-cache.md`](connections-bounded-raster-cache.md).
 
+Issue #330 corrects the interpretation of that keyboard-pan evidence while
+removing camera translation bounds. Under the old camera core, whole-world fit
+could clamp each attempted movement back to the centered position, so the saved
+Issue #327 value is not used as proof of moving free-pan performance. The new
+product E2E checks intermediate camera coordinates. A real 64 px alternating
+movement records 33.4 ms p95 with 30 reuse / 0 refresh for both edge and card
+surfaces. A separate 512 px one-way movement crosses the 96 px overscan and
+records the expected four bounded refreshes: about 133 ms frame p95, with edge
+raster p95 about 73 ms desktop and 87 ms mobile emulation. Bitmap dimensions do
+not grow. Exact conditions and the cold-refresh limitation are in
+[`connections-free-pan.md`](connections-free-pan.md).
+
 ## Issue #204 browser windowing
 
 `docs/benchmarks/10k-browser-final.json` records three desktop Chromium and

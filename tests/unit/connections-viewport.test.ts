@@ -170,19 +170,120 @@ describe('connections map camera geometry', () => {
     ).toBe(true);
   });
 
-  it('pans in screen coordinates and clamps scale and translation', () => {
+  it('pans in screen coordinates, preserves translation, and clamps only scale', () => {
     expectCameraClose(
       panConnectionsCamera(
         { x: 0, y: 0, scale: 1 },
         { x: 100, y: -300 },
         geometry,
       ),
-      { x: 40, y: -240, scale: 1 },
+      { x: 100, y: -300, scale: 1 },
     );
     expectCameraClose(
       clampConnectionsCamera({ x: 999, y: -999, scale: 4 }, geometry),
-      { x: 40, y: -999, scale: 3 },
+      { x: 999, y: -999, scale: 3 },
     );
+  });
+
+  it('crosses every former world boundary without snapping for large and small worlds', () => {
+    const fitted = fitConnectionsCamera(geometry);
+    expect(fitted).not.toBeNull();
+    if (!fitted) return;
+    const beyondBottomRight = panConnectionsCamera(
+      fitted,
+      { x: 2_000, y: 2_000 },
+      geometry,
+    );
+    expectCameraClose(beyondBottomRight, {
+      x: fitted.x + 2_000,
+      y: fitted.y + 2_000,
+      scale: fitted.scale,
+    });
+    expectCameraClose(
+      beyondBottomRight &&
+        panConnectionsCamera(
+          beyondBottomRight,
+          { x: -4_000, y: -4_000 },
+          geometry,
+        ),
+      {
+        x: fitted.x - 2_000,
+        y: fitted.y - 2_000,
+        scale: fitted.scale,
+      },
+    );
+
+    const smallGeometry = {
+      ...geometry,
+      world: { x: 0, y: 0, width: 100, height: 80 },
+    };
+    const smallFitted = fitConnectionsCamera(smallGeometry);
+    expectCameraClose(smallFitted, { x: 350, y: 260, scale: 1 });
+    expectCameraClose(
+      smallFitted &&
+        panConnectionsCamera(
+          smallFitted,
+          { x: 1_200, y: -1_100 },
+          smallGeometry,
+        ),
+      { x: 1_550, y: -840, scale: 1 },
+    );
+  });
+
+  it('keeps an off-world camera anchored through zoom, pinch, and resize', () => {
+    const camera = { x: 5_000, y: -4_000, scale: 1 };
+    const zoomAnchor = { x: 200, y: 150 };
+    const worldBeforeZoom = connectionsCameraWorldPoint(camera, zoomAnchor);
+    const zoomed = zoomConnectionsCamera(camera, 2, zoomAnchor, geometry);
+    expectCameraClose(zoomed, { x: 9_800, y: -8_150, scale: 2 });
+    expect(zoomed && connectionsCameraWorldPoint(zoomed, zoomAnchor)).toEqual(
+      worldBeforeZoom,
+    );
+
+    const pinchStart = [
+      { x: 100, y: 100 },
+      { x: 300, y: 100 },
+    ] as const;
+    const pinchCurrent = [
+      { x: 50, y: 150 },
+      { x: 350, y: 150 },
+    ] as const;
+    const pinched = pinchConnectionsCamera(
+      camera,
+      pinchStart,
+      pinchCurrent,
+      geometry,
+    );
+    expectCameraClose(pinched, { x: 7_400, y: -6_000, scale: 1.5 });
+    expect(
+      pinched && connectionsCameraWorldPoint(pinched, { x: 200, y: 150 }),
+    ).toEqual(connectionsCameraWorldPoint(camera, { x: 200, y: 100 }));
+
+    expectCameraClose(
+      resizeConnectionsCamera(camera, geometry, {
+        ...geometry,
+        viewport: { width: 1_000, height: 700 },
+      }),
+      { x: 5_100, y: -3_950, scale: 1 },
+    );
+  });
+
+  it('returns from empty space through explicit fit and current-card commands', () => {
+    const fitted = fitConnectionsCamera(geometry);
+    expect(
+      fitted && connectionsCameraContainsRect(fitted, geometry.world, geometry),
+    ).toBe(true);
+
+    const current = { x: 450, y: 350, width: 100, height: 100 };
+    const centered = centerConnectionsCameraOnRect(
+      { x: 20_000, y: -20_000, scale: 1 },
+      current,
+      geometry,
+    );
+    expect(
+      centered &&
+        connectionsCameraContainsRect(centered, current, geometry, 12),
+    ).toBe(true);
   });
 
   it('zooms without moving the anchor world coordinate', () => {
@@ -233,7 +334,7 @@ describe('connections map camera geometry', () => {
       geometry,
       12,
     );
-    expectCameraClose(revealed, { x: -240, y: -240, scale: 1 });
+    expectCameraClose(revealed, { x: -252, y: -252, scale: 1 });
     expect(
       revealed && connectionsCameraContainsRect(revealed, target, geometry),
     ).toBe(true);
@@ -375,6 +476,12 @@ describe('connections map camera geometry', () => {
         { x: 0, y: 0, scale: 1 },
         Number.NaN,
         { x: 1, y: 1 },
+        geometry,
+      ),
+    ).toBeNull();
+    expect(
+      clampConnectionsCamera(
+        { x: Number.POSITIVE_INFINITY, y: 0, scale: 1 },
         geometry,
       ),
     ).toBeNull();

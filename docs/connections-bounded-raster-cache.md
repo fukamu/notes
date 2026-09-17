@@ -74,3 +74,12 @@ cache miss時のcold rasterはdesktop約100ms、mobile約155msのedge drawを要
 これはfit切替の待ち時間として記録し、連続reuse値に混ぜていない。今回の完了条件は満たすため、
 Worker、world bitmap、tile cache、WebGL、graph集約は追加しない。`main`、Sites、deployment、
 production dataは変更していない。
+
+## Issue #330による後続の解釈
+
+Issue #327時点の全体fit keyboard panは、translation clampによってfit位置からcameraが
+動かなかった可能性がある。その値は導入時の歴史記録として残すが、自由パンの証拠には
+使わない。Issue #330はcameraの途中位置を検査し、実際の64px往復で同じ33.4ms p95と
+各30 reuse / 0 refreshを確認した。さらに512px一方向移動ではbounded面を拡大せず、
+edge/card各4回の正常なrefreshを記録した。後続の条件と値は
+[`connections-free-pan.md`](connections-free-pan.md)を参照する。

@@ -570,3 +570,26 @@ overview Canvas, route Canvas, map-card focus retention, or the app-wide search
 and editor link candidate features. Historical Issue #323 measurements remain
 in the repository as decision evidence rather than a description of the
 current UI.
+
+## Issue #330 free camera translation
+
+Issue #330 separates whole-world framing from camera-position validation.
+Finite world bounds and the existing 24 px padding remain the source for fit,
+visibility and raster preparation, but they are no longer translation limits.
+`clampConnectionsCamera` validates geometry and finite camera values and clamps
+only scale. Pan, zoom, pinch, resize and surviving-card anchoring therefore keep
+an intentional off-world position until the user explicitly requests fit or
+the current card.
+
+The existing viewport-sized Canvas and 96 px bounded raster overscan remain
+unchanged. Empty space does not create a larger world, bitmap, DOM collection or
+cache chain. Crossing raster coverage performs the existing bounded refresh;
+returning to fit/current restores visible geometry without rebuilding the graph
+or layout.
+
+The former Issue #327 whole-fit keyboard sample did not prove camera movement:
+the then-current translation clamp could keep a fitted world centered. Current
+E2E records intermediate camera positions and separates a 64 px cache-reuse
+round trip from a 512 px one-way movement that crosses overscan. Results and
+environment limits are recorded in
+[`connections-free-pan.md`](../connections-free-pan.md).
