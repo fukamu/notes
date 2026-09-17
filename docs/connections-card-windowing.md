@@ -2,22 +2,25 @@
 
 ## 結論
 
-Issue #325は、全件グラフ・全方向付き参照・検索可能なnative一覧を維持したまま、
+Issue #325は、当時の全件グラフ・全方向付き参照・検索可能なnative一覧を維持したまま、
 10,000枚のカードbuttonを常時mountする方式を撤廃した。通常倍率ではcameraの可視範囲と
 96px overscanに交差するカード、およびfocusを保持する1枚だけをHTML buttonとして描画する。
 画面上のカード高さが36px未満になる俯瞰倍率では、可視カードを個別の角丸矩形として
 viewportサイズのCanvasへ描画し、HTML cardはfocus保持中の1枚を除いてmountしない。
 
 これは表示件数上限ではない。全10,000 node・19,999 directed edgeはsemantic model、
-layout geometry、BVH、nativeの「カードと参照の一覧」に残る。Canvasは`aria-hidden`であり、
-全件へのkeyboard・支援技術上の入口は検索・page付きnative一覧が担う。
+layout geometry、BVHと、Issue #325時点のnative一覧に残る。Canvasは`aria-hidden`であり、
+全件へのkeyboard・支援技術上の入口は検索・page付きnative一覧が担っていた。
+
+Issue #329の後続仕様では、この一覧と専用操作を削除した。通常倍率HTML card windowing、
+overview Canvas、全件graph/layoutは継続するが、一覧と同等の全件列挙経路は提供しない。
 
 ## 実装境界
 
 - `connections-visibility.ts`は既存node BVHへ正確なhit boundsを保持し、HTML/overviewの
   閾値判定と反復的なpoint hit testを純粋関数として提供する。
 - 通常倍率は可視node indexだけを元の入力順でHTML化する。focus中のcardはoverscan外でも
-  保持し、一覧の「マップ移動」は既存cameraを可読倍率へ移してからbuttonをmount・focusする。
+  保持する。Issue #325時点では一覧の「マップ移動」も既存cameraを可読倍率へ移していた。
 - 俯瞰Canvasは可視nodeをまとめて一つのクラスタへ置換せず、各カードを別のsubpathとして描く。
   現在カードはprimary色で区別する。Canvas clickは同じBVHを逆camera変換して元cardを開く。
 - edge Canvasとcard Canvasは同じrAF camera snapshotを使う。pan・zoomでlayout、曲線化、

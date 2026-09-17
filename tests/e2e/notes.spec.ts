@@ -560,19 +560,12 @@ test('inline card links, Backspace, Undo/Redo, shortcuts and plain hashtag input
   await page.getByRole('button', { name: 'つながり' }).click();
   const graph = page.getByTestId('connections-graph');
   await expect(graph).toHaveAttribute('data-total-node-count', /\d+/);
-  const semanticLists = page.getByTestId('connections-semantic-lists');
-  await semanticLists.getByText('カードと参照の一覧').click();
-  const semanticCards = semanticLists.getByRole('list', {
-    name: '検索されたカード一覧',
-  });
-  await expect(semanticCards).toContainText(sourceTitle);
-  await expect(semanticCards).toContainText(targetTitle);
-  await expect(semanticCards).toContainText(unrelatedTitle);
-
-  await semanticCards
-    .getByRole('listitem')
+  await expect(page.getByTestId('connections-semantic-lists')).toHaveCount(0);
+  await page.getByRole('button', { name: '過去のカード' }).click();
+  await page
+    .getByTestId('history-list')
+    .locator('button[data-current="false"]')
     .filter({ hasText: targetTitle })
-    .getByRole('button', { name: /を開く$/ })
     .click();
   await expect(page.getByTestId('card-title')).toHaveValue(targetTitle);
 
@@ -980,62 +973,9 @@ test('global directed graph is safe and operable for the reported and cyclic fix
     /^(html-windowed|canvas-2d-overview)$/,
   );
 
-  const semanticLists = page.getByTestId('connections-semantic-lists');
-  await expect(
-    semanticLists.getByRole('list', { name: '検索されたカード一覧' }),
-  ).toHaveCount(0);
-  await expect(
-    semanticLists.getByRole('list', { name: '検索された参照一覧' }),
-  ).toHaveCount(0);
-  await semanticLists.getByText('カードと参照の一覧').click();
-  const semanticCards = semanticLists.getByRole('list', {
-    name: '検索されたカード一覧',
-  });
-  const semanticEdges = semanticLists.getByRole('list', {
-    name: '検索された参照一覧',
-  });
-  await expect(semanticCards.getByRole('listitem')).toHaveCount(7);
-  await expect(semanticEdges.getByRole('listitem')).toHaveCount(8);
-  const expectedEdges = [
-    `${titles.reportC} から ${titles.reportA} へのリンク`,
-    `${titles.reportC} から ${titles.reportB} へのリンク`,
-    `${titles.reportA} から ${titles.reportB} へのリンク`,
-    `${titles.cycleA} から ${titles.cycleA} へのリンク`,
-    `${titles.cycleA} から ${titles.cycleB} へのリンク`,
-    `${titles.cycleB} から ${titles.cycleA} へのリンク`,
-    `${titles.cycleB} から ${titles.cycleC} へのリンク`,
-    `${titles.cycleC} から ${titles.cycleA} へのリンク`,
-  ];
-  for (const label of expectedEdges) {
-    await expect(
-      semanticEdges.getByRole('listitem', { name: label, exact: true }),
-    ).toHaveCount(1);
-  }
-  const cardSearch = semanticLists.getByRole('searchbox', {
-    name: 'カード番号・タイトルを検索',
-    exact: true,
-  });
-  await cardSearch.fill(titles.isolated);
-  await expect(cardSearch).toBeFocused();
-  await expect(semanticCards.getByRole('listitem')).toHaveCount(1);
-  await expect(semanticCards.getByRole('listitem')).toContainText(
-    titles.isolated,
-  );
-  await cardSearch.fill('');
-  const edgeSearch = semanticLists.getByRole('searchbox', {
-    name: '始点・終点のカード番号・タイトルを検索',
-    exact: true,
-  });
-  await edgeSearch.fill('#4 #5');
-  await expect(edgeSearch).toBeFocused();
-  await expect(semanticEdges.getByRole('listitem')).toHaveCount(2);
-  await expect(
-    semanticEdges.getByRole('listitem').first().getByRole('button'),
-  ).toHaveCount(2);
-  await edgeSearch.fill('');
-  await semanticLists.getByRole('button', { name: '一覧を閉じる' }).click();
-  await expect(semanticEdges).toHaveCount(0);
-  await expect(semanticLists.locator('summary')).toBeFocused();
+  await expect(page.getByTestId('connections-semantic-lists')).toHaveCount(0);
+  await expect(graph).toHaveAttribute('data-total-node-count', '7');
+  await expect(graph).toHaveAttribute('data-total-edge-count', '8');
 
   await page.getByRole('button', { name: '現在のカードへ戻る' }).click();
   await expect(graph).toHaveAttribute('data-node-renderer', 'html');
@@ -1102,9 +1042,7 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
 }, testInfo) => {
   const cards = largeConnectionsBenchmarkCards();
   const current = cards[0];
-  const target = cards[1];
-  if (!current || !target)
-    throw new Error('Large camera fixture is incomplete');
+  if (!current) throw new Error('Large camera fixture is incomplete');
   await ready(page);
   await page.locator('html[data-offline-ready=true]').waitFor({
     state: 'attached',
@@ -1726,31 +1664,18 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
   });
 
   await page.waitForTimeout(400);
-  const semanticLists = page.getByTestId('connections-semantic-lists');
-  await semanticLists.getByText('カードと参照の一覧').click();
-  const targetSearch = semanticLists.getByRole('searchbox', {
-    name: 'カード番号・タイトルを検索',
-    exact: true,
-  });
-  await targetSearch.fill(target.title);
-  await semanticLists
-    .getByRole('button', {
-      name: new RegExp('へマップ移動$'),
-    })
-    .click();
-  const targetNode = graph.getByRole('button', {
-    name: new RegExp(target.title),
-  });
-  await expect(targetNode).toBeFocused();
+  await currentButton.click();
+  await currentNode.focus();
+  await expect(currentNode).toBeFocused();
   await graph.scrollIntoViewIfNeeded();
-  await expect(targetNode).toBeInViewport();
-  await expectMapNodeFullyVisible(targetNode, graph);
-  const targetBox = await targetNode.boundingBox();
-  if (!targetBox) throw new Error('Target map node has no geometry');
+  await expect(currentNode).toBeInViewport();
+  await expectMapNodeFullyVisible(currentNode, graph);
+  const focusedCurrentBox = await currentNode.boundingBox();
+  if (!focusedCurrentBox) throw new Error('Current map node has no geometry');
   await expect(graph).toHaveAttribute('data-active-pointers', '0');
   await expect(graph).toHaveAttribute('data-click-suppression', 'false');
   await expect(graph).toHaveAttribute('data-dragging', 'false');
-  await targetNode.evaluate((element) => {
+  await currentNode.evaluate((element) => {
     if (element instanceof HTMLElement) element.blur();
   });
   const beforeOverviewScale = (await connectionsCamera(graph)).scale;
@@ -1769,20 +1694,20 @@ test('connections map supports controls, keyboard, touch gestures and drag-safe 
       );
     },
     {
-      x: targetBox.x + targetBox.width / 2,
-      y: targetBox.y + targetBox.height / 2,
+      x: focusedCurrentBox.x + focusedCurrentBox.width / 2,
+      y: focusedCurrentBox.y + focusedCurrentBox.height / 2,
       deltaY: overviewWheelDelta,
     },
   );
   await expect(graph).toHaveAttribute('data-node-renderer', 'overview-canvas');
   await expect(graph.locator('button[data-card-id]')).toHaveCount(0);
   await page.mouse.click(
-    targetBox.x + targetBox.width / 2,
-    targetBox.y + targetBox.height / 2,
+    focusedCurrentBox.x + focusedCurrentBox.width / 2,
+    focusedCurrentBox.y + focusedCurrentBox.height / 2,
   );
   await touch.detach();
-  await expectPathname(page, `/cards/${target.id}`);
-  await expect(page.getByTestId('card-title')).toHaveValue(target.title);
+  await expectPathname(page, `/cards/${current.id}`);
+  await expect(page.getByTestId('card-title')).toHaveValue(current.title);
 });
 
 test('connections zoom persists across app views and reloads', async ({
@@ -2404,8 +2329,7 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   await expect(graph).toHaveAttribute('data-card-draw-node-count', '10000');
   await expect(graph).toHaveAttribute('data-node-renderer', 'overview-canvas');
   await expect(graph.locator('button[data-card-id]')).toHaveCount(0);
-  const semanticLists = page.getByTestId('connections-semantic-lists');
-  await expect(semanticLists.getByRole('list')).toHaveCount(0);
+  await expect(page.getByTestId('connections-semantic-lists')).toHaveCount(0);
   await expect(graph).toHaveAttribute('data-edge-renderer', 'canvas-2d');
   await expect(graph).toHaveAttribute('data-edge-render-status', 'painted');
   await expect
@@ -2499,84 +2423,6 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   const fitScale = Number(await graph.getAttribute('data-camera-scale'));
   expect(fitScale).toBeGreaterThan(0);
   expect(fitScale).toBeLessThan(0.1);
-
-  const semanticListStarted = performance.now();
-  await semanticLists.getByText('カードと参照の一覧').click();
-  const cardList = semanticLists.getByRole('list', {
-    name: '検索されたカード一覧',
-  });
-  const edgeList = semanticLists.getByRole('list', {
-    name: '検索された参照一覧',
-  });
-  await expect(cardList.getByRole('listitem')).toHaveCount(50);
-  await expect(edgeList.getByRole('listitem')).toHaveCount(50);
-  const semanticListOpenMs = performance.now() - semanticListStarted;
-  const lastNode = completeInput.nodes[completeInput.nodes.length - 1];
-  const lastEdge = completeInput.edges[completeInput.edges.length - 1];
-  if (!lastNode || !lastEdge) {
-    throw new Error('Complete connections input omitted its final records');
-  }
-  const nodeById = new Map(
-    completeInput.nodes.map((node) => [node.cardId, node]),
-  );
-  const lastSource = nodeById.get(lastEdge.sourceCardId);
-  const lastTarget = nodeById.get(lastEdge.targetCardId);
-  if (!lastSource || !lastTarget) {
-    throw new Error('Complete connections edge omitted an endpoint');
-  }
-  const cardPageCount = Math.ceil(completeInput.nodes.length / 50);
-  const edgePageCount = Math.ceil(completeInput.edges.length / 50);
-  const cardPageInput = semanticLists.getByRole('spinbutton', {
-    name: 'カード一覧のページ番号',
-  });
-  await cardPageInput.fill(String(cardPageCount));
-  await expect(cardPageInput).toBeFocused();
-  await expect(
-    cardList.getByRole('listitem').filter({ hasText: lastNode.title }),
-  ).toHaveCount(1);
-  const edgePageInput = semanticLists.getByRole('spinbutton', {
-    name: '参照一覧のページ番号',
-  });
-  await edgePageInput.fill(String(edgePageCount));
-  await expect(edgePageInput).toBeFocused();
-  await expect(edgeList.getByRole('listitem')).toHaveCount(
-    completeInput.edges.length % 50,
-  );
-  await expect(
-    edgeList
-      .getByRole('listitem')
-      .filter({ hasText: lastSource.title })
-      .filter({ hasText: lastTarget.title }),
-  ).toHaveCount(1);
-  const arbitraryNode = completeInput.nodes[9_875];
-  if (!arbitraryNode) {
-    throw new Error('Complete connections input omitted the arbitrary node');
-  }
-  const cardSearch = semanticLists.getByRole('searchbox', {
-    name: 'カード番号・タイトルを検索',
-    exact: true,
-  });
-  await cardSearch.fill(arbitraryNode.displayLabel);
-  await expect(cardSearch).toBeFocused();
-  await expect(cardList.getByRole('listitem')).toHaveCount(1);
-  const semanticMoveStarted = performance.now();
-  await semanticLists
-    .getByRole('button', {
-      name: `${arbitraryNode.displayLabel}へマップ移動`,
-    })
-    .click();
-  const arbitraryMapNode = graph.locator(
-    `button[data-card-id="${arbitraryNode.cardId}"]`,
-  );
-  await expect(arbitraryMapNode).toBeFocused();
-  await expect
-    .poll(async () => Number(await graph.getAttribute('data-camera-scale')))
-    .toBeGreaterThanOrEqual(0.5);
-  await expect(graph).toHaveAttribute('data-node-renderer', 'html');
-  await expect(graph).toHaveAttribute('data-card-renderer', 'html-windowed');
-  const semanticMoveMs = performance.now() - semanticMoveStarted;
-  await semanticLists.getByRole('button', { name: '一覧を閉じる' }).click();
-  await expect(semanticLists.getByRole('list')).toHaveCount(0);
 
   const focusStarted = performance.now();
   await page.getByRole('button', { name: '現在のカードへ戻る' }).click();
@@ -2767,8 +2613,8 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   expect(dom.svgPaths).toBe(0);
   expect(dom.canvasCount).toBe(2);
   const artifact = {
-    schemaVersion: 2,
-    issues: [325, 327],
+    schemaVersion: 3,
+    issues: [325, 327, 329],
     project: testInfo.project.name,
     environment: {
       browser: page.context().browser()?.version() ?? 'unknown',
@@ -2777,11 +2623,9 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
     },
     fixture: { nodes: cards.length, source: 'client-performance' },
     comparison:
-      'Complete product graph with windowed HTML cards, paged semantic lists, and bounded overview Canvas bitmap reuse for cards and edges',
+      'Complete product graph with windowed HTML cards, no semantic list UI, and bounded overview Canvas bitmap reuse for cards and edges',
     initialReadyMs,
     layoutReadyMs,
-    semanticListOpenMs,
-    semanticMoveMs,
     focusReadyMs,
     fitReadyMs,
     reentryReadyMs,
@@ -2809,12 +2653,8 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
       edges: completeInput.edges.length,
       fitScale,
     },
-    semanticLists: {
-      pageSize: 50,
-      cardPageCount,
-      edgePageCount,
-      closedListItems: await semanticLists.locator('li').count(),
-    },
+    semanticListUiPresent:
+      (await page.getByTestId('connections-semantic-lists').count()) > 0,
     localizedDom,
     dom,
     heapUsedBytes: await browserHeapUsed(page),
@@ -2872,16 +2712,10 @@ test('ELK failure retries the same complete graph through corridor', async ({
   await expect(graph).toHaveAttribute('data-total-edge-count', '1');
   await expect(graph).toHaveAttribute('data-visual-node-count', '2');
   await expect(graph).toHaveAttribute('data-edge-draw-edge-count', '1');
-  const semanticLists = page.getByTestId('connections-semantic-lists');
-  await semanticLists.getByText('カードと参照の一覧').click();
-  const semanticCards = semanticLists.getByRole('list', {
-    name: '検索されたカード一覧',
-  });
-  await expect(semanticCards).toContainText(cardATitle);
-  await expect(semanticCards).toContainText(cardBTitle);
+  await expect(page.getByTestId('connections-semantic-lists')).toHaveCount(0);
 });
 
-test('all layout engine failure fallback opens a card through URL navigation', async ({
+test('all layout engine failure leaves app navigation available', async ({
   page,
 }, testInfo) => {
   const cardA = '01991f20-61d2-7000-8000-000000000611';
@@ -2924,23 +2758,12 @@ test('all layout engine failure fallback opens a card through URL navigation', a
     '配置を計算できませんでした',
   );
   await expect(graph.locator('button[data-card-id]')).toHaveCount(0);
-  const semanticLists = page.getByTestId('connections-semantic-lists');
-  await semanticLists.getByText('カードと参照の一覧').click();
-  const cardSearch = semanticLists.getByRole('searchbox', {
-    name: 'カード番号・タイトルを検索',
-    exact: true,
-  });
-  await cardSearch.fill(cardBTitle);
-  const fallbackCard = semanticLists.getByRole('button', {
-    name: '#12を開く',
-    exact: true,
-  });
-  if (testInfo.project.name === 'mobile-chromium') {
-    await fallbackCard.tap();
-  } else {
-    await fallbackCard.focus();
-    await fallbackCard.press('Enter');
-  }
+  await expect(page.getByTestId('connections-semantic-lists')).toHaveCount(0);
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  const fallbackCard = page
+    .getByTestId('history-list')
+    .locator(`[data-card-id="${cardB}"]`);
+  await fallbackCard.click();
   await expectPathname(page, `/cards/${cardB}`);
   await expect(page.getByTestId('card-title')).toHaveValue(cardBTitle);
 });
@@ -2994,18 +2817,6 @@ test('canonical URLs restore cards and views through direct, back, forward and o
     },
   ];
   await serveSyncCards(page, cards);
-  const openSemanticCards = async () => {
-    const semanticLists = page.getByTestId('connections-semantic-lists');
-    const cardList = semanticLists.getByRole('list', {
-      name: '検索されたカード一覧',
-    });
-    if ((await cardList.count()) === 0) {
-      await semanticLists.getByText('カードと参照の一覧').click();
-    }
-    await expect(cardList).toBeVisible();
-    return cardList;
-  };
-
   const response = await page.goto(`/cards/${ids.cardA}`);
   expect(response?.status()).toBe(200);
   await expect(page.getByTestId('card-title')).toHaveValue(titles.cardA, {
@@ -3038,15 +2849,16 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 15_000,
   });
-  const semanticCards = await openSemanticCards();
+  await expect(page.getByTestId('connections-semantic-lists')).toHaveCount(0);
+  await page.getByRole('button', { name: '現在のカードへ戻る' }).click();
+  await expect(graph).toHaveAttribute('data-node-renderer', 'html');
   await expect(
-    semanticCards.getByRole('listitem').filter({ hasText: titles.cardB }),
-  ).toContainText('現在のカード');
-  await semanticCards
-    .getByRole('listitem')
-    .filter({ hasText: titles.cardC })
-    .getByRole('button', { name: /を開く$/ })
-    .click();
+    graph.locator(`button[data-card-id="${ids.cardB}"]`),
+  ).toHaveAttribute('aria-current', 'true');
+  const linkedMapCard = graph.locator(`button[data-card-id="${ids.cardC}"]`);
+  await linkedMapCard.focus();
+  await expectMapNodeFullyVisible(linkedMapCard, graph);
+  await linkedMapCard.press('Enter');
   await expectPathname(page, `/cards/${ids.cardC}`);
   await expect(page.getByTestId('card-title')).toHaveValue(titles.cardC);
 
@@ -3054,12 +2866,10 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await page.goBack();
   await expectPathname(page, `/cards/${ids.cardB}/connections`);
   await expect(page.getByRole('heading', { name: 'つながり' })).toBeVisible();
-  const restoredSemanticCards = await openSemanticCards();
+  await page.getByRole('button', { name: '現在のカードへ戻る' }).click();
   await expect(
-    restoredSemanticCards
-      .getByRole('listitem')
-      .filter({ hasText: titles.cardB }),
-  ).toContainText('現在のカード');
+    graph.locator(`button[data-card-id="${ids.cardB}"]`),
+  ).toHaveAttribute('aria-current', 'true');
   await page.goBack();
   await expectPathname(page, `/cards/${ids.cardB}`);
   await expect(page.getByTestId('card-title')).toHaveValue(titles.cardB);
@@ -3124,12 +2934,13 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await expect(page.getByRole('heading', { name: 'つながり' })).toBeVisible();
   await page.reload();
   await expectPathname(page, `/cards/${ids.cardB}/connections`);
-  const offlineSemanticCards = await openSemanticCards();
+  await expect(page.getByTestId('connections-semantic-lists')).toHaveCount(0);
+  await page.getByRole('button', { name: '現在のカードへ戻る' }).click();
   await expect(
-    offlineSemanticCards
-      .getByRole('listitem')
-      .filter({ hasText: titles.cardB }),
-  ).toContainText('現在のカード', { timeout: 15_000 });
+    page
+      .getByTestId('connections-graph')
+      .locator(`button[data-card-id="${ids.cardB}"]`),
+  ).toHaveAttribute('aria-current', 'true', { timeout: 15_000 });
 
   await page.goto(`/cards/${ids.missing}`);
   await expectPathname(page, newCardPathname);

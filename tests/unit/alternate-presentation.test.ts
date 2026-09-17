@@ -372,20 +372,6 @@ describe('alternate presentation contract', () => {
       const connectionsState = controllerState(status);
       const props: ConnectionsRendererProps = {
         model: connectionsState,
-        semanticInput: {
-          currentCardId: firstId,
-          nodes: connectionsState.fallbackItems,
-          edges:
-            connectionsState.status === 'ready'
-              ? connectionsState.edges.map(
-                  ({ sourceCardId, targetCardId, accessibleName }) => ({
-                    sourceCardId,
-                    targetCardId,
-                    accessibleName,
-                  }),
-                )
-              : [],
-        },
         totalNodeCount: 1,
         totalEdgeCount: status === 'ready' ? 1 : 0,
         actions: {
