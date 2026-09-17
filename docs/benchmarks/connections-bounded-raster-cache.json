@@ -1,0 +1,165 @@
+{
+  "schemaVersion": 1,
+  "issue": 327,
+  "branchPoint": "63beff4422e66745f6554bd8bbd0febaa4776214",
+  "browser": "Chromium 153.0.8010.12",
+  "fixture": {
+    "nodes": 10000,
+    "directedEdges": 19999,
+    "source": "client-performance with browser-adapter missing-target rebinding"
+  },
+  "policy": {
+    "overscanCssPixels": 96,
+    "maximumRasterSurfacesPerLayer": 2,
+    "wholeWorldBitmap": false,
+    "tileCache": false,
+    "offscreenCanvasWorker": false,
+    "workerDecision": "not selected because bounded bitmap reuse met the recorded product targets"
+  },
+  "baseline": {
+    "artifact": "connections-card-windowing.json",
+    "desktopContinuousWholeWorldFrameP95Ms": 183.39999999999964,
+    "mobileContinuousWholeWorldFrameP95Ms": 216.69999999999982
+  },
+  "runs": [
+    {
+      "project": "chromium",
+      "viewport": { "width": 1280, "height": 720 },
+      "graphViewport": { "width": 1010, "height": 482 },
+      "devicePixelRatio": 1,
+      "samples": [
+        {
+          "initialReadyMs": 2299.749398,
+          "layoutReadyWallMs": 2256.103568,
+          "wholeWorldFitMs": 254.65382200000022,
+          "reentryReadyMs": 927.8062970000001,
+          "coldEdgeRasterRenderMs": 76.59999999403954,
+          "wholeWorldEdgeDrawMs": 93.5,
+          "coldCardRasterRenderMs": 4.199999988079071,
+          "wholeWorldCardDrawMs": 16,
+          "visibilityQueryMs": 22.100000008940697,
+          "continuousWholeWorld": {
+            "samples": 30,
+            "frameP95Ms": 33.30000000000018,
+            "maximumFrameMs": 33.40000000000009,
+            "edgeDrawP95Ms": 0.10000000894069672,
+            "cardDrawP95Ms": 0,
+            "edgeRefreshCount": 0,
+            "edgeReuseCount": 30,
+            "cardRefreshCount": 0,
+            "cardReuseCount": 30,
+            "longTaskCount": 0
+          }
+        },
+        {
+          "initialReadyMs": 2317.446083,
+          "layoutReadyWallMs": 2268.001964,
+          "wholeWorldFitMs": 256.4499969999997,
+          "reentryReadyMs": 930.1119440000002,
+          "coldEdgeRasterRenderMs": 79.40000000596046,
+          "wholeWorldEdgeDrawMs": 96,
+          "coldCardRasterRenderMs": 4.700000002980232,
+          "wholeWorldCardDrawMs": 17,
+          "visibilityQueryMs": 21.799999997019768,
+          "continuousWholeWorld": {
+            "samples": 30,
+            "frameP95Ms": 33.40000000000009,
+            "maximumFrameMs": 33.400000000000546,
+            "edgeDrawP95Ms": 0.10000000894069672,
+            "cardDrawP95Ms": 0.09999999403953552,
+            "edgeRefreshCount": 0,
+            "edgeReuseCount": 30,
+            "cardRefreshCount": 0,
+            "cardReuseCount": 30,
+            "longTaskCount": 0
+          }
+        }
+      ],
+      "boundedRasterPixels": {
+        "edge": { "width": 1202, "height": 674 },
+        "card": { "width": 1202, "height": 674 }
+      }
+    },
+    {
+      "project": "mobile-chromium",
+      "viewport": { "width": 412, "height": 839 },
+      "graphViewport": { "width": 378, "height": 485 },
+      "devicePixelRatio": 2.625,
+      "samples": [
+        {
+          "initialReadyMs": 2416.258672,
+          "layoutReadyWallMs": 2371.5210049999996,
+          "wholeWorldFitMs": 280.4414919999999,
+          "reentryReadyMs": 960.3672800000004,
+          "coldEdgeRasterRenderMs": 100.70000000298023,
+          "wholeWorldEdgeDrawMs": 134.3999999910593,
+          "coldCardRasterRenderMs": 4.9000000059604645,
+          "wholeWorldCardDrawMs": 21.899999991059303,
+          "visibilityQueryMs": 22.600000008940697,
+          "continuousWholeWorld": {
+            "samples": 30,
+            "frameP95Ms": 33.399999999999636,
+            "maximumFrameMs": 33.40000000000009,
+            "edgeDrawP95Ms": 0.10000000894069672,
+            "cardDrawP95Ms": 0.09999999403953552,
+            "edgeRefreshCount": 0,
+            "edgeReuseCount": 30,
+            "cardRefreshCount": 0,
+            "cardReuseCount": 30,
+            "longTaskCount": 0
+          }
+        },
+        {
+          "initialReadyMs": 2388.402629,
+          "layoutReadyWallMs": 2327.6366709999998,
+          "wholeWorldFitMs": 286.1321240000002,
+          "reentryReadyMs": 974.8661090000005,
+          "coldEdgeRasterRenderMs": 111.20000000298023,
+          "wholeWorldEdgeDrawMs": 138.6000000089407,
+          "coldCardRasterRenderMs": 5.5,
+          "wholeWorldCardDrawMs": 22.900000005960464,
+          "visibilityQueryMs": 21.399999991059303,
+          "continuousWholeWorld": {
+            "samples": 30,
+            "frameP95Ms": 33.399999999999636,
+            "maximumFrameMs": 33.400000000000546,
+            "edgeDrawP95Ms": 0.10000000894069672,
+            "cardDrawP95Ms": 0.10000000894069672,
+            "edgeRefreshCount": 0,
+            "edgeReuseCount": 30,
+            "cardRefreshCount": 0,
+            "cardReuseCount": 30,
+            "longTaskCount": 0
+          }
+        }
+      ],
+      "boundedRasterPixels": {
+        "edge": { "width": 1496, "height": 1777 },
+        "card": { "width": 1496, "height": 1777 }
+      }
+    }
+  ],
+  "representativeNormalGesture": {
+    "scope": "existing bounded map wheel gesture scenario, not the 10k whole-world fit",
+    "desktopFrameP95Ms": 16.700000000000728,
+    "mobileFrameP95Ms": 16.700000000000728,
+    "desktopHandlerP95Ms": 0.10000000894069672,
+    "mobileHandlerP95Ms": 0.10000000894069672,
+    "longTaskCount": 0
+  },
+  "interpretation": {
+    "membership": "complete",
+    "provisionalFiveSecondReadyTarget": "met in every recorded 10k sample",
+    "provisionalThirtyThreeMillisecondNormalGestureTarget": "met in the representative gesture scenario",
+    "provisionalFiftyMillisecondContinuousWholeWorldTarget": "met in every recorded 10k sample",
+    "conditionalWorker": "not implemented because the bounded cache met the target"
+  },
+  "limits": [
+    "two recorded product runs per project on a shared host, not statistical SLO evidence",
+    "mobile is Chromium emulation without CPU throttling and is not a physical-device CPU guarantee",
+    "cold edge raster remains approximately 77-111 ms and is recorded separately from continuous cache reuse",
+    "layoutReadyWallMs includes the product navigation pipeline and is not pure Worker layout time",
+    "no dedicated screen-reader hardware or physical mobile device was available",
+    "no main change, Sites deployment, production backend, or production data was involved"
+  ]
+}

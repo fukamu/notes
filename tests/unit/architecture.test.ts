@@ -1787,6 +1787,14 @@ describe('swappable presentation architecture', () => {
       'lib/client/connections-card-canvas-renderer.ts',
       'utf8',
     );
+    const rasterPlacement = await readFile(
+      'lib/graph/connections-raster-cache.ts',
+      'utf8',
+    );
+    const rasterCache = await readFile(
+      'lib/client/connections-canvas-raster-cache.ts',
+      'utf8',
+    );
     const view = await readFile('components/connections-view.tsx', 'utf8');
     const semanticLists = await readFile(
       'components/connections-semantic-lists.tsx',
@@ -1810,6 +1818,15 @@ describe('swappable presentation architecture', () => {
     expect(cardRenderer).toContain('createConnectionsCanvasCardRenderer');
     expect(cardRenderer).toContain('context.roundRect(');
     expect(cardRenderer).not.toMatch(/(?:react|document\.|PointerEvent)/);
+    expect(rasterPlacement).toContain('resolveConnectionsRasterPlacement');
+    expect(rasterPlacement).not.toMatch(
+      /(?:react|window\.|document\.|HTMLCanvasElement|CanvasRenderingContext2D|performance\.)/,
+    );
+    expect(rasterCache).toContain("document.createElement('canvas')");
+    expect(rasterCache).toContain('destinationContext.drawImage(');
+    expect(rasterCache).toContain('back ?? createCanvas()');
+    expect(renderer).toContain("mode?: 'direct' | 'bounded-cache'");
+    expect(cardRenderer).toContain("mode?: 'direct' | 'bounded-cache'");
     expect(view).toContain('data-testid="connections-edge-canvas"');
     expect(view).toContain('data-testid="connections-card-canvas"');
     expect(view).toContain('htmlNodeIndices.map');

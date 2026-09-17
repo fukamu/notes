@@ -3,11 +3,13 @@ import {
   CONNECTIONS_EDGE_STROKE_OPACITY,
   CONNECTIONS_EDGE_STROKE_WIDTH,
 } from '@/lib/graph/connections-canvas';
+import { createConnectionsCanvasRasterCache } from '@/lib/client/connections-canvas-raster-cache';
 import type { ConnectionsCamera } from '@/lib/graph/connections-viewport';
 import type {
   PreparedConnectionsEdge,
   PreparedConnectionsVisibility,
 } from '@/lib/graph/connections-visibility';
+import { CONNECTIONS_VISIBILITY_OVERSCAN_PX } from '@/lib/graph/connections-visibility';
 
 type ConnectionsCanvasColors = Readonly<{
   halo: string;
@@ -31,9 +33,18 @@ type PreparedCanvasGeometry = Readonly<{
 export type ConnectionsCanvasPaintResult =
   | Readonly<{
       status: 'painted';
+      strategy:
+        | 'direct'
+        | 'direct-fallback'
+        | 'raster-refresh'
+        | 'raster-reuse';
+      scaledRaster: boolean;
       edgeCount: number;
       prepareDurationMs: number;
       durationMs: number;
+      rasterRenderDurationMs: number;
+      cachePixelWidth: number;
+      cachePixelHeight: number;
     }>
   | Readonly<{
       status: 'unavailable';
@@ -49,6 +60,8 @@ export type ConnectionsCanvasEdgeRenderer = Readonly<{
     viewport: Readonly<{ width: number; height: number }>;
     devicePixelRatio: number;
     colors: ConnectionsCanvasColors;
+    mode?: 'direct' | 'bounded-cache';
+    forceRasterRefresh?: boolean;
   }) => ConnectionsCanvasPaintResult;
   reset: () => void;
 }>;
@@ -82,8 +95,56 @@ function finitePositive(value: number): boolean {
   return Number.isFinite(value) && value > 0;
 }
 
+function paintPreparedEdges(
+  context: CanvasRenderingContext2D,
+  geometry: PreparedCanvasGeometry,
+  edgeIndices: readonly number[],
+  camera: ConnectionsCamera,
+  devicePixelRatio: number,
+  colors: ConnectionsCanvasColors,
+): number {
+  const scale = camera.scale * devicePixelRatio;
+  context.setTransform(
+    scale,
+    0,
+    0,
+    scale,
+    camera.x * devicePixelRatio,
+    camera.y * devicePixelRatio,
+  );
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  let edgeCount = 0;
+  for (const edgeIndex of edgeIndices) {
+    const edge = geometry.edges[edgeIndex];
+    if (!edge) continue;
+    edgeCount += 1;
+    for (const section of edge.sections) {
+      context.globalAlpha = 1;
+      context.strokeStyle = colors.halo;
+      context.lineWidth = CONNECTIONS_EDGE_HALO_WIDTH;
+      context.stroke(section.path);
+
+      context.globalAlpha = CONNECTIONS_EDGE_STROKE_OPACITY;
+      context.strokeStyle = colors.stroke;
+      context.lineWidth = CONNECTIONS_EDGE_STROKE_WIDTH;
+      context.stroke(section.path);
+
+      if (section.arrow) {
+        context.globalAlpha = 1;
+        context.fillStyle = colors.stroke;
+        context.fill(section.arrow);
+      }
+    }
+  }
+  context.globalAlpha = 1;
+  return edgeCount;
+}
+
 export function createConnectionsCanvasEdgeRenderer(): ConnectionsCanvasEdgeRenderer {
   let geometry: PreparedCanvasGeometry | null = null;
+  const rasterCache = createConnectionsCanvasRasterCache();
+  let rasterActive = false;
 
   return {
     paint(input) {
@@ -129,52 +190,77 @@ export function createConnectionsCanvasEdgeRenderer(): ConnectionsCanvasEdgeRend
         canvas.width = pixelWidth;
         canvas.height = pixelHeight;
       }
+      const useRaster = input.mode === 'bounded-cache';
+      if (useRaster) {
+        rasterActive = true;
+        const preparedGeometry = geometry;
+        const rasterResult = rasterCache.paint({
+          destination: canvas,
+          camera,
+          viewport,
+          devicePixelRatio: input.devicePixelRatio,
+          overscanPx: CONNECTIONS_VISIBILITY_OVERSCAN_PX,
+          revision: [input.prepared, input.colors.halo, input.colors.stroke],
+          ...(input.forceRasterRefresh === undefined
+            ? {}
+            : { forceRefresh: input.forceRasterRefresh }),
+          render: ({ context, camera: renderCamera }) =>
+            paintPreparedEdges(
+              context,
+              preparedGeometry,
+              input.visibleEdgeIndices,
+              renderCamera,
+              input.devicePixelRatio,
+              input.colors,
+            ),
+        });
+        if (rasterResult.status === 'painted') {
+          return {
+            status: 'painted',
+            strategy:
+              rasterResult.strategy === 'refresh'
+                ? 'raster-refresh'
+                : 'raster-reuse',
+            scaledRaster: rasterResult.scaled,
+            edgeCount: rasterResult.itemCount,
+            prepareDurationMs,
+            durationMs: rasterResult.durationMs,
+            rasterRenderDurationMs: rasterResult.renderDurationMs,
+            cachePixelWidth: rasterResult.cachePixelWidth,
+            cachePixelHeight: rasterResult.cachePixelHeight,
+          };
+        }
+      } else if (rasterActive) {
+        rasterCache.reset();
+        rasterActive = false;
+      }
       const started = performance.now();
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.clearRect(0, 0, pixelWidth, pixelHeight);
-      const scale = camera.scale * input.devicePixelRatio;
-      context.setTransform(
-        scale,
-        0,
-        0,
-        scale,
-        camera.x * input.devicePixelRatio,
-        camera.y * input.devicePixelRatio,
+      const edgeCount = paintPreparedEdges(
+        context,
+        geometry,
+        input.visibleEdgeIndices,
+        camera,
+        input.devicePixelRatio,
+        input.colors,
       );
-      context.lineCap = 'round';
-      context.lineJoin = 'round';
-
-      for (const edgeIndex of input.visibleEdgeIndices) {
-        const edge = geometry.edges[edgeIndex];
-        if (!edge) continue;
-        for (const section of edge.sections) {
-          context.globalAlpha = 1;
-          context.strokeStyle = input.colors.halo;
-          context.lineWidth = CONNECTIONS_EDGE_HALO_WIDTH;
-          context.stroke(section.path);
-
-          context.globalAlpha = CONNECTIONS_EDGE_STROKE_OPACITY;
-          context.strokeStyle = input.colors.stroke;
-          context.lineWidth = CONNECTIONS_EDGE_STROKE_WIDTH;
-          context.stroke(section.path);
-
-          if (section.arrow) {
-            context.globalAlpha = 1;
-            context.fillStyle = input.colors.stroke;
-            context.fill(section.arrow);
-          }
-        }
-      }
-      context.globalAlpha = 1;
       return {
         status: 'painted',
-        edgeCount: input.visibleEdgeIndices.length,
+        strategy: useRaster ? 'direct-fallback' : 'direct',
+        scaledRaster: false,
+        edgeCount,
         prepareDurationMs,
         durationMs: performance.now() - started,
+        rasterRenderDurationMs: 0,
+        cachePixelWidth: 0,
+        cachePixelHeight: 0,
       };
     },
     reset() {
       geometry = null;
+      rasterCache.reset();
+      rasterActive = false;
     },
   };
 }

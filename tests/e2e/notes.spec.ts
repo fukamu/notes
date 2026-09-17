@@ -2396,6 +2396,11 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   });
   const layoutReadyMs = performance.now() - navigationStarted;
   await expect(graph).toHaveAttribute('data-card-render-status', 'painted');
+  await expect
+    .poll(async () =>
+      Number(await graph.getAttribute('data-card-raster-refresh-count')),
+    )
+    .toBeGreaterThan(0);
   await expect(graph).toHaveAttribute('data-card-draw-node-count', '10000');
   await expect(graph).toHaveAttribute('data-node-renderer', 'overview-canvas');
   await expect(graph.locator('button[data-card-id]')).toHaveCount(0);
@@ -2403,6 +2408,11 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   await expect(semanticLists.getByRole('list')).toHaveCount(0);
   await expect(graph).toHaveAttribute('data-edge-renderer', 'canvas-2d');
   await expect(graph).toHaveAttribute('data-edge-render-status', 'painted');
+  await expect
+    .poll(async () =>
+      Number(await graph.getAttribute('data-edge-raster-refresh-count')),
+    )
+    .toBeGreaterThan(0);
   await expect(graph).toHaveAttribute(
     'data-edge-draw-edge-count',
     String(completeInput.edges.length),
@@ -2416,6 +2426,12 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   );
   const initialCardCanvasDrawMs = Number(
     await graph.getAttribute('data-card-draw-duration-ms'),
+  );
+  const initialEdgeRasterRenderMs = Number(
+    await graph.getAttribute('data-edge-raster-render-duration-ms'),
+  );
+  const initialCardRasterRenderMs = Number(
+    await graph.getAttribute('data-card-raster-render-duration-ms'),
   );
   const initialVisibilityQueryMs = Number(
     await graph.getAttribute('data-visibility-query-duration-ms'),
@@ -2452,6 +2468,32 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
       canvasBackingStore.cssHeight * canvasBackingStore.devicePixelRatio,
     ),
   );
+  const boundedRasterStore = {
+    edgeWidth: Number(
+      await graph.getAttribute('data-edge-raster-cache-pixel-width'),
+    ),
+    edgeHeight: Number(
+      await graph.getAttribute('data-edge-raster-cache-pixel-height'),
+    ),
+    cardWidth: Number(
+      await graph.getAttribute('data-card-raster-cache-pixel-width'),
+    ),
+    cardHeight: Number(
+      await graph.getAttribute('data-card-raster-cache-pixel-height'),
+    ),
+  };
+  const expectedRasterWidth = Math.round(
+    (canvasBackingStore.cssWidth + 192) * canvasBackingStore.devicePixelRatio,
+  );
+  const expectedRasterHeight = Math.round(
+    (canvasBackingStore.cssHeight + 192) * canvasBackingStore.devicePixelRatio,
+  );
+  expect(boundedRasterStore).toEqual({
+    edgeWidth: expectedRasterWidth,
+    edgeHeight: expectedRasterHeight,
+    cardWidth: expectedRasterWidth,
+    cardHeight: expectedRasterHeight,
+  });
   await expect(page.getByTestId('connections-search')).toHaveCount(0);
   await expect(page.getByTestId('connections-expand')).toHaveCount(0);
   const fitScale = Number(await graph.getAttribute('data-camera-scale'));
@@ -2625,6 +2667,12 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
             longTasks.push(...list.getEntries().map((entry) => entry.duration));
           });
     observer?.observe({ entryTypes: ['longtask'] });
+    const before = {
+      edgeRefresh: Number(element.dataset.edgeRasterRefreshCount ?? '0'),
+      edgeReuse: Number(element.dataset.edgeRasterReuseCount ?? '0'),
+      cardRefresh: Number(element.dataset.cardRasterRefreshCount ?? '0'),
+      cardReuse: Number(element.dataset.cardRasterReuseCount ?? '0'),
+    };
     let previousFrame = performance.now();
     for (let frame = 0; frame < 30; frame += 1) {
       const frameTime = await new Promise<number>((resolve) =>
@@ -2659,6 +2707,12 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
         .sort((left, right) => left - right);
       return finite[Math.floor((finite.length - 1) * 0.95)] ?? Number.NaN;
     };
+    const after = {
+      edgeRefresh: Number(element.dataset.edgeRasterRefreshCount ?? '0'),
+      edgeReuse: Number(element.dataset.edgeRasterReuseCount ?? '0'),
+      cardRefresh: Number(element.dataset.cardRasterRefreshCount ?? '0'),
+      cardReuse: Number(element.dataset.cardRasterReuseCount ?? '0'),
+    };
     return {
       frameP95Ms: p95(frameIntervals),
       maximumFrameMs: Math.max(0, ...frameIntervals),
@@ -2667,13 +2721,24 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
       longTaskCount: longTasks.length,
       longestTaskMs: Math.max(0, ...longTasks),
       samples: frameIntervals.length,
+      edgeRefreshCount: after.edgeRefresh - before.edgeRefresh,
+      edgeReuseCount: after.edgeReuse - before.edgeReuse,
+      cardRefreshCount: after.cardRefresh - before.cardRefresh,
+      cardReuseCount: after.cardReuse - before.cardReuse,
+      finalEdgeStrategy: element.dataset.edgeDrawStrategy ?? null,
+      finalCardStrategy: element.dataset.cardDrawStrategy ?? null,
     };
   });
-  expect(fullFitContinuous.samples).toBe(30);
-  expect(Number.isFinite(fullFitContinuous.frameP95Ms)).toBe(true);
   console.info(
     `connections-10k-full-fit-continuous ${JSON.stringify({ project: testInfo.project.name, ...fullFitContinuous })}`,
   );
+  expect(fullFitContinuous.samples).toBe(30);
+  expect(Number.isFinite(fullFitContinuous.frameP95Ms)).toBe(true);
+  expect(fullFitContinuous.frameP95Ms).toBeLessThanOrEqual(50);
+  expect(fullFitContinuous.edgeRefreshCount).toBeLessThanOrEqual(1);
+  expect(fullFitContinuous.cardRefreshCount).toBeLessThanOrEqual(1);
+  expect(fullFitContinuous.edgeReuseCount).toBeGreaterThanOrEqual(28);
+  expect(fullFitContinuous.cardReuseCount).toBeGreaterThanOrEqual(28);
 
   await page.getByRole('button', { name: '現在のカードへ戻る' }).click();
   await expect
@@ -2702,8 +2767,8 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   expect(dom.svgPaths).toBe(0);
   expect(dom.canvasCount).toBe(2);
   const artifact = {
-    schemaVersion: 1,
-    issue: 325,
+    schemaVersion: 2,
+    issues: [325, 327],
     project: testInfo.project.name,
     environment: {
       browser: page.context().browser()?.version() ?? 'unknown',
@@ -2712,7 +2777,7 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
     },
     fixture: { nodes: cards.length, source: 'client-performance' },
     comparison:
-      'Complete product graph with windowed HTML cards, overview Canvas cards, paged semantic lists, and Canvas 2D edges',
+      'Complete product graph with windowed HTML cards, paged semantic lists, and bounded overview Canvas bitmap reuse for cards and edges',
     initialReadyMs,
     layoutReadyMs,
     semanticListOpenMs,
@@ -2723,12 +2788,15 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
     canvas: {
       initialPrepareMs: initialCanvasPrepareMs,
       initialDrawMs: initialCanvasDrawMs,
+      initialRasterRenderMs: initialEdgeRasterRenderMs,
       localizedDrawMs: localizedCanvasDrawMs,
       fullFitDrawMs: fullFitCanvasDrawMs,
       backingStore: canvasBackingStore,
+      boundedRasterStore,
     },
     cardCanvas: {
       initialDrawMs: initialCardCanvasDrawMs,
+      initialRasterRenderMs: initialCardRasterRenderMs,
       fullFitDrawMs: fullFitCardCanvasDrawMs,
     },
     browserPipeline: {

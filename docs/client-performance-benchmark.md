@@ -223,6 +223,24 @@ bounded viewport bitmap-reuse Issue. `layoutReadyWallMs` remains product
 navigation wall time, not an isolated Worker timing. Raw values and limits are
 in [`connections-card-windowing.md`](connections-card-windowing.md).
 
+Issue #327 implements the selected bounded bitmap reuse without creating a
+world-sized Canvas or tile cache. The overview edge and card layers retain at
+most front/back surfaces sized to the graph viewport plus 96 px overscan at the
+current DPR. Compatible pan frames copy the capture at the camera delta; zoom
+settles to an exact current-scale raster. Direct Canvas drawing remains the
+normal-scale path and the synchronous fallback for a failed refresh.
+
+In two product runs per desktop/mobile project, complete 10k readiness remained
+about 2.30–2.42 s. Thirty-frame whole-world pan p95 was 33.3–33.4 ms desktop and
+33.4 ms mobile emulation; every measured edge/card frame was a reuse, with no
+refresh or long task. The representative normal-scale gesture remained 16.7 ms
+p95. Cold complete-edge raster remained approximately 77–111 ms and whole-fit
+switch wall time approximately 255–286 ms, and both are reported separately.
+Because the recorded 5 s, 33 ms normal-operation and 50 ms continuous-fit
+targets are met, the conditional OffscreenCanvas Worker is not implemented.
+Environment, raw samples and limitations are in
+[`connections-bounded-raster-cache.md`](connections-bounded-raster-cache.md).
+
 ## Issue #204 browser windowing
 
 `docs/benchmarks/10k-browser-final.json` records three desktop Chromium and
