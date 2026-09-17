@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "issue": 305,
+  "branchPoint": "4a2780153bcdef82cd650d19f3c8c58b94f7944f",
+  "generatedAt": "2026-09-17T08:14:00+09:00",
+  "command": "npm run test:e2e -- --grep '10k connections bounds layout'",
+  "comparison": "A only: current product staging. Full-graph B fails before browser rendering in the isolated ELK baseline.",
+  "samples": [
+    {
+      "schemaVersion": 1,
+      "issue": 305,
+      "project": "chromium",
+      "environment": {
+        "browser": "153.0.8010.12",
+        "viewport": { "width": 1280, "height": 720 },
+        "devicePixelRatio": 1
+      },
+      "fixture": { "nodes": 10000, "source": "client-performance" },
+      "initialReadyMs": 1160.848315,
+      "expansionReadyMs": [281.45219, 389.1284360000002, 885.9656949999999],
+      "reentryReadyMs": 163.38594200000034,
+      "finalStage": { "visibleNodes": 64, "nodeLimit": 64 },
+      "dom": {
+        "descendants": 519,
+        "cardButtons": 64,
+        "svgPaths": 129,
+        "semanticEdgeItems": 64
+      },
+      "heapUsedBytes": 50400000
+    },
+    {
+      "schemaVersion": 1,
+      "issue": 305,
+      "project": "mobile-chromium",
+      "environment": {
+        "browser": "153.0.8010.12",
+        "viewport": { "width": 412, "height": 839 },
+        "devicePixelRatio": 2.625
+      },
+      "fixture": { "nodes": 10000, "source": "client-performance" },
+      "initialReadyMs": 1123.698175,
+      "expansionReadyMs": [
+        351.74434099999985, 383.9637959999998, 883.7294019999999
+      ],
+      "reentryReadyMs": 119.85751299999993,
+      "finalStage": { "visibleNodes": 64, "nodeLimit": 64 },
+      "dom": {
+        "descendants": 519,
+        "cardButtons": 64,
+        "svgPaths": 129,
+        "semanticEdgeItems": 64
+      },
+      "heapUsedBytes": 53500000
+    }
+  ],
+  "policy": {
+    "timing": "Observational only; no sample was removed and no absolute CI wall-clock gate was added in phase 0.",
+    "memory": "Observational only; performance.memory availability and garbage collection are browser-specific.",
+    "scope": "This is the current staged product path, not evidence that 10,000 cards were laid out or rendered."
+  }
+}

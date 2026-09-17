@@ -157,6 +157,17 @@ Issue #275 removes the connections-only search path without changing those
 bounds. The longer-term experience beyond the 256-card stage remains tracked
 separately.
 
+Issue #305 reopens that product decision under parent #304 without changing the
+current renderer. Its exact Node 22.13.0 A/B evidence is documented in
+[`connections-full-network-phase-0.md`](connections-full-network-phase-0.md).
+The pre-staging 10k semantic input remains roughly 14.6 ms median, but the
+existing production ELK configuration fails before warm-up at 1,000 nodes /
+3,000 edges and at both 10k cases with a recursive stack overflow. Consequently
+the 10k staged browser values remain an A baseline, not evidence that the full
+network can be laid out or painted. Culling, spatial indexing, cache weighting,
+and lower ELK thoroughness are not selected until a successful full geometry
+exists and their own bottleneck is measured.
+
 ## Issue #204 browser windowing
 
 `docs/benchmarks/10k-browser-final.json` records three desktop Chromium and

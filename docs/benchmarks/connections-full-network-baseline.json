@@ -1,0 +1,1595 @@
+{
+  "schemaVersion": 1,
+  "issue": 305,
+  "parentIssue": 304,
+  "branchPoint": "4a2780153bcdef82cd650d19f3c8c58b94f7944f",
+  "analysisSha": "4a2780153bcdef82cd650d19f3c8c58b94f7944f",
+  "latestIntegrationSha": "4a2780153bcdef82cd650d19f3c8c58b94f7944f",
+  "latestIntegrationDiff": {
+    "commits": 0,
+    "files": 0
+  },
+  "generatedAt": "2026-09-16T23:15:46.117Z",
+  "environment": {
+    "node": "v22.13.0",
+    "requiredCiNode": "22.13.0",
+    "platform": "linux",
+    "release": "7.0.0-31-generic",
+    "cpu": "11th Gen Intel(R) Core(TM) i7-1195G7 @ 2.90GHz",
+    "cpuCount": 8,
+    "totalMemoryBytes": 16463347712,
+    "elkjs": "0.12.0",
+    "layoutConfiguration": "production FREE + ORTHOGONAL + thoroughness 7",
+    "layoutMetrics": {
+      "nodeWidth": 196,
+      "nodeHeight": 72,
+      "portSize": 2,
+      "componentSpacing": 96,
+      "nodeSpacing": 72,
+      "edgeNodeSpacing": 32,
+      "layerSpacing": 112,
+      "edgeLayerSpacing": 40,
+      "padding": {
+        "top": 24,
+        "right": 24,
+        "bottom": 24,
+        "left": 24
+      }
+    }
+  },
+  "methodology": {
+    "comparison": "A is the current expansionPage=0 staged graph. B is the complete semantic graph before staging. Their different memberships are never treated as equivalent output.",
+    "timing": "Synchronous boundaries use one warmup and five measured samples. ELK runs in a child Vitest process with the production main-thread runner and persists partial progress before each possibly blocking layout.",
+    "outliers": "No sample is removed. Partial samples and timeout outcomes remain in the artifact.",
+    "isolationTimeoutMs": 30000,
+    "timeoutMeaning": "A research guard, not a user-facing SLO. A timeout is an incomplete result and never a pass.",
+    "nodeBrowserSeparation": "This artifact measures graph/staging/layout/path work. Existing Playwright connections readiness/gesture tests and the augmented 10k staged test record browser commit, long-task, frame-gap, DOM and camera evidence separately.",
+    "qualityWorkExcluded": "Pairwise edge-quality analysis and sampled curve serialization are excluded from large-case layout wall-clock timing."
+  },
+  "runtimeScope": {
+    "currentRoute": "LegacyNotesApp",
+    "authorizedCollection": "The active provider replica for one permitted scope; accounts, Vaults and databases are never unioned.",
+    "onlineCompleteness": "Requires Sync v2 terminal-page success. initial-sync-completed alone is not proof because it also occurs after failure.",
+    "offlineCompleteness": "Only the locally retained replica is available; unseen remote records are not claimed."
+  },
+  "fixtures": [
+    {
+      "definition": {
+        "name": "boundary-64-connected",
+        "source": "generated",
+        "nodeCount": 64,
+        "edgeCount": 63,
+        "seed": 16484,
+        "textCharacters": 64,
+        "componentSizes": [64]
+      },
+      "actualEdges": 63,
+      "stagedSelection": {
+        "nodes": 64,
+        "edges": 63,
+        "hiddenReachableNodes": 0,
+        "stoppedAtMaximum": false
+      },
+      "shapes": {
+        "staged": {
+          "nodes": 64,
+          "edges": 63,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 63
+        },
+        "full": {
+          "nodes": 64,
+          "edges": 63,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 63
+        }
+      },
+      "timings": {
+        "fixtureGeneration": {
+          "minimumMs": 0.198,
+          "medianMs": 0.267,
+          "p95Ms": 0.42,
+          "maximumMs": 0.42,
+          "samplesMs": [0.267, 0.42, 0.268, 0.239, 0.198]
+        },
+        "semanticInput": {
+          "minimumMs": 0.088,
+          "medianMs": 0.089,
+          "p95Ms": 0.093,
+          "maximumMs": 0.093,
+          "samplesMs": [0.088, 0.089, 0.092, 0.088, 0.093]
+        },
+        "staging": {
+          "minimumMs": 0.022,
+          "medianMs": 0.024,
+          "p95Ms": 0.063,
+          "maximumMs": 0.063,
+          "samplesMs": [0.063, 0.025, 0.024, 0.024, 0.022]
+        },
+        "stagedLayoutInputTransform": {
+          "minimumMs": 0.006,
+          "medianMs": 0.006,
+          "p95Ms": 0.007,
+          "maximumMs": 0.007,
+          "samplesMs": [0.007, 0.006, 0.006, 0.006, 0.006]
+        },
+        "fullLayoutInputTransform": {
+          "minimumMs": 0.005,
+          "medianMs": 0.006,
+          "p95Ms": 0.008,
+          "maximumMs": 0.008,
+          "samplesMs": [0.008, 0.006, 0.006, 0.005, 0.006]
+        }
+      },
+      "memoryObservation": {
+        "heapDeltaBytes": 2578344,
+        "rssDeltaBytes": 2097152
+      }
+    },
+    {
+      "definition": {
+        "name": "boundary-65-connected",
+        "source": "generated",
+        "nodeCount": 65,
+        "edgeCount": 64,
+        "seed": 16485,
+        "textCharacters": 64,
+        "componentSizes": [65]
+      },
+      "actualEdges": 64,
+      "stagedSelection": {
+        "nodes": 64,
+        "edges": 63,
+        "hiddenReachableNodes": 1,
+        "stoppedAtMaximum": false
+      },
+      "shapes": {
+        "staged": {
+          "nodes": 64,
+          "edges": 63,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 63
+        },
+        "full": {
+          "nodes": 65,
+          "edges": 64,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 65,
+          "maximumComponentEdges": 64
+        }
+      },
+      "timings": {
+        "fixtureGeneration": {
+          "minimumMs": 0.145,
+          "medianMs": 0.165,
+          "p95Ms": 0.201,
+          "maximumMs": 0.201,
+          "samplesMs": [0.165, 0.201, 0.16, 0.166, 0.145]
+        },
+        "semanticInput": {
+          "minimumMs": 0.053,
+          "medianMs": 0.054,
+          "p95Ms": 0.057,
+          "maximumMs": 0.057,
+          "samplesMs": [0.057, 0.055, 0.054, 0.053, 0.053]
+        },
+        "staging": {
+          "minimumMs": 0.069,
+          "medianMs": 0.097,
+          "p95Ms": 0.136,
+          "maximumMs": 0.136,
+          "samplesMs": [0.069, 0.076, 0.136, 0.105, 0.097]
+        },
+        "stagedLayoutInputTransform": {
+          "minimumMs": 0.004,
+          "medianMs": 0.005,
+          "p95Ms": 0.006,
+          "maximumMs": 0.006,
+          "samplesMs": [0.004, 0.005, 0.006, 0.005, 0.004]
+        },
+        "fullLayoutInputTransform": {
+          "minimumMs": 0.005,
+          "medianMs": 0.005,
+          "p95Ms": 0.006,
+          "maximumMs": 0.006,
+          "samplesMs": [0.005, 0.005, 0.006, 0.005, 0.005]
+        }
+      },
+      "memoryObservation": {
+        "heapDeltaBytes": 3552968,
+        "rssDeltaBytes": 655360
+      }
+    },
+    {
+      "definition": {
+        "name": "boundary-256-connected",
+        "source": "generated",
+        "nodeCount": 256,
+        "edgeCount": 255,
+        "seed": 16982,
+        "textCharacters": 64,
+        "componentSizes": [256]
+      },
+      "actualEdges": 255,
+      "stagedSelection": {
+        "nodes": 64,
+        "edges": 63,
+        "hiddenReachableNodes": 192,
+        "stoppedAtMaximum": false
+      },
+      "shapes": {
+        "staged": {
+          "nodes": 64,
+          "edges": 63,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 63
+        },
+        "full": {
+          "nodes": 256,
+          "edges": 255,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 256,
+          "maximumComponentEdges": 255
+        }
+      },
+      "timings": {
+        "fixtureGeneration": {
+          "minimumMs": 0.515,
+          "medianMs": 0.535,
+          "p95Ms": 0.616,
+          "maximumMs": 0.616,
+          "samplesMs": [0.535, 0.558, 0.534, 0.515, 0.616]
+        },
+        "semanticInput": {
+          "minimumMs": 0.205,
+          "medianMs": 0.314,
+          "p95Ms": 0.584,
+          "maximumMs": 0.584,
+          "samplesMs": [0.345, 0.314, 0.306, 0.584, 0.205]
+        },
+        "staging": {
+          "minimumMs": 0.262,
+          "medianMs": 0.337,
+          "p95Ms": 0.519,
+          "maximumMs": 0.519,
+          "samplesMs": [0.395, 0.337, 0.264, 0.262, 0.519]
+        },
+        "stagedLayoutInputTransform": {
+          "minimumMs": 0.006,
+          "medianMs": 0.006,
+          "p95Ms": 0.007,
+          "maximumMs": 0.007,
+          "samplesMs": [0.006, 0.006, 0.006, 0.007, 0.006]
+        },
+        "fullLayoutInputTransform": {
+          "minimumMs": 0.025,
+          "medianMs": 0.032,
+          "p95Ms": 0.147,
+          "maximumMs": 0.147,
+          "samplesMs": [0.058, 0.147, 0.025, 0.026, 0.032]
+        }
+      },
+      "memoryObservation": {
+        "heapDeltaBytes": 4726608,
+        "rssDeltaBytes": 5406720
+      }
+    },
+    {
+      "definition": {
+        "name": "boundary-257-connected",
+        "source": "generated",
+        "nodeCount": 257,
+        "edgeCount": 256,
+        "seed": 16983,
+        "textCharacters": 64,
+        "componentSizes": [257]
+      },
+      "actualEdges": 256,
+      "stagedSelection": {
+        "nodes": 64,
+        "edges": 63,
+        "hiddenReachableNodes": 193,
+        "stoppedAtMaximum": false
+      },
+      "shapes": {
+        "staged": {
+          "nodes": 64,
+          "edges": 63,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 63
+        },
+        "full": {
+          "nodes": 257,
+          "edges": 256,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 257,
+          "maximumComponentEdges": 256
+        }
+      },
+      "timings": {
+        "fixtureGeneration": {
+          "minimumMs": 0.387,
+          "medianMs": 0.843,
+          "p95Ms": 1.522,
+          "maximumMs": 1.522,
+          "samplesMs": [1.522, 1.158, 0.843, 0.777, 0.387]
+        },
+        "semanticInput": {
+          "minimumMs": 0.203,
+          "medianMs": 0.248,
+          "p95Ms": 0.361,
+          "maximumMs": 0.361,
+          "samplesMs": [0.248, 0.254, 0.361, 0.203, 0.236]
+        },
+        "staging": {
+          "minimumMs": 0.213,
+          "medianMs": 0.251,
+          "p95Ms": 0.648,
+          "maximumMs": 0.648,
+          "samplesMs": [0.251, 0.253, 0.648, 0.232, 0.213]
+        },
+        "stagedLayoutInputTransform": {
+          "minimumMs": 0.001,
+          "medianMs": 0.001,
+          "p95Ms": 0.002,
+          "maximumMs": 0.002,
+          "samplesMs": [0.001, 0.001, 0.001, 0.002, 0.001]
+        },
+        "fullLayoutInputTransform": {
+          "minimumMs": 0.004,
+          "medianMs": 0.005,
+          "p95Ms": 0.006,
+          "maximumMs": 0.006,
+          "samplesMs": [0.006, 0.004, 0.005, 0.005, 0.004]
+        }
+      },
+      "memoryObservation": {
+        "heapDeltaBytes": -3098760,
+        "rssDeltaBytes": 4968448
+      }
+    },
+    {
+      "definition": {
+        "name": "boundary-257-mixed",
+        "source": "generated",
+        "nodeCount": 257,
+        "edgeCount": 256,
+        "seed": 1112997889,
+        "textCharacters": 64,
+        "componentSizes": [
+          160, 64, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+          1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+        ]
+      },
+      "actualEdges": 256,
+      "stagedSelection": {
+        "nodes": 64,
+        "edges": 64,
+        "hiddenReachableNodes": 96,
+        "stoppedAtMaximum": false
+      },
+      "shapes": {
+        "staged": {
+          "nodes": 64,
+          "edges": 64,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 64
+        },
+        "full": {
+          "nodes": 257,
+          "edges": 256,
+          "weaklyConnectedComponents": 35,
+          "isolatedNodes": 33,
+          "maximumComponentNodes": 160,
+          "maximumComponentEdges": 176
+        }
+      },
+      "timings": {
+        "fixtureGeneration": {
+          "minimumMs": 0.487,
+          "medianMs": 0.675,
+          "p95Ms": 1.057,
+          "maximumMs": 1.057,
+          "samplesMs": [0.558, 0.487, 1.057, 0.675, 0.82]
+        },
+        "semanticInput": {
+          "minimumMs": 0.149,
+          "medianMs": 0.182,
+          "p95Ms": 0.213,
+          "maximumMs": 0.213,
+          "samplesMs": [0.213, 0.182, 0.153, 0.205, 0.149]
+        },
+        "staging": {
+          "minimumMs": 0.122,
+          "medianMs": 0.125,
+          "p95Ms": 0.132,
+          "maximumMs": 0.132,
+          "samplesMs": [0.129, 0.132, 0.123, 0.125, 0.122]
+        },
+        "stagedLayoutInputTransform": {
+          "minimumMs": 0.001,
+          "medianMs": 0.001,
+          "p95Ms": 0.009,
+          "maximumMs": 0.009,
+          "samplesMs": [0.002, 0.001, 0.001, 0.001, 0.009]
+        },
+        "fullLayoutInputTransform": {
+          "minimumMs": 0.004,
+          "medianMs": 0.004,
+          "p95Ms": 0.005,
+          "maximumMs": 0.005,
+          "samplesMs": [0.004, 0.004, 0.004, 0.005, 0.005]
+        }
+      },
+      "memoryObservation": {
+        "heapDeltaBytes": 4781392,
+        "rssDeltaBytes": 442368
+      }
+    },
+    {
+      "definition": {
+        "name": "representative-1000-e3000-mixed",
+        "source": "generated",
+        "nodeCount": 1000,
+        "edgeCount": 3000,
+        "seed": 1103167470,
+        "textCharacters": 128,
+        "componentSizes": [
+          600, 250, 100, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+          1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+          1, 1, 1, 1, 1, 1, 1, 1, 1
+        ]
+      },
+      "actualEdges": 3000,
+      "stagedSelection": {
+        "nodes": 64,
+        "edges": 71,
+        "hiddenReachableNodes": 536,
+        "stoppedAtMaximum": false
+      },
+      "shapes": {
+        "staged": {
+          "nodes": 64,
+          "edges": 71,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 71
+        },
+        "full": {
+          "nodes": 1000,
+          "edges": 3000,
+          "weaklyConnectedComponents": 53,
+          "isolatedNodes": 50,
+          "maximumComponentNodes": 600,
+          "maximumComponentEdges": 1253
+        }
+      },
+      "timings": {
+        "fixtureGeneration": {
+          "minimumMs": 2.405,
+          "medianMs": 3.272,
+          "p95Ms": 4.308,
+          "maximumMs": 4.308,
+          "samplesMs": [2.405, 3.272, 3.772, 4.308, 2.742]
+        },
+        "semanticInput": {
+          "minimumMs": 1.246,
+          "medianMs": 1.777,
+          "p95Ms": 2.52,
+          "maximumMs": 2.52,
+          "samplesMs": [2.52, 1.256, 1.885, 1.246, 1.777]
+        },
+        "staging": {
+          "minimumMs": 0.815,
+          "medianMs": 0.847,
+          "p95Ms": 1.977,
+          "maximumMs": 1.977,
+          "samplesMs": [1.048, 1.977, 0.815, 0.845, 0.847]
+        },
+        "stagedLayoutInputTransform": {
+          "minimumMs": 0.001,
+          "medianMs": 0.001,
+          "p95Ms": 0.002,
+          "maximumMs": 0.002,
+          "samplesMs": [0.002, 0.001, 0.001, 0.002, 0.001]
+        },
+        "fullLayoutInputTransform": {
+          "minimumMs": 0.046,
+          "medianMs": 0.063,
+          "p95Ms": 0.065,
+          "maximumMs": 0.065,
+          "samplesMs": [0.046, 0.06, 0.065, 0.063, 0.065]
+        }
+      },
+      "memoryObservation": {
+        "heapDeltaBytes": 3197832,
+        "rssDeltaBytes": 1134592
+      }
+    },
+    {
+      "definition": {
+        "name": "product-10000-existing",
+        "source": "client-performance",
+        "nodeCount": 10000,
+        "edgeCount": null,
+        "seed": 308333310,
+        "textCharacters": 768,
+        "componentSizes": [10000]
+      },
+      "actualEdges": 19951,
+      "stagedSelection": {
+        "nodes": 64,
+        "edges": 66,
+        "hiddenReachableNodes": 9936,
+        "stoppedAtMaximum": false
+      },
+      "shapes": {
+        "staged": {
+          "nodes": 64,
+          "edges": 66,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 66
+        },
+        "full": {
+          "nodes": 10000,
+          "edges": 19951,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 10000,
+          "maximumComponentEdges": 19951
+        }
+      },
+      "timings": {
+        "fixtureGeneration": {
+          "minimumMs": 14.732,
+          "medianMs": 16.07,
+          "p95Ms": 17.392,
+          "maximumMs": 17.392,
+          "samplesMs": [17.234, 15.76, 14.732, 16.07, 17.392]
+        },
+        "semanticInput": {
+          "minimumMs": 13.212,
+          "medianMs": 14.588,
+          "p95Ms": 16.979,
+          "maximumMs": 16.979,
+          "samplesMs": [15.06, 14.41, 14.588, 16.979, 13.212]
+        },
+        "staging": {
+          "minimumMs": 15.273,
+          "medianMs": 15.605,
+          "p95Ms": 15.944,
+          "maximumMs": 15.944,
+          "samplesMs": [15.303, 15.273, 15.605, 15.944, 15.766]
+        },
+        "stagedLayoutInputTransform": {
+          "minimumMs": 0.003,
+          "medianMs": 0.003,
+          "p95Ms": 0.003,
+          "maximumMs": 0.003,
+          "samplesMs": [0.003, 0.003, 0.003, 0.003, 0.003]
+        },
+        "fullLayoutInputTransform": {
+          "minimumMs": 0.265,
+          "medianMs": 0.276,
+          "p95Ms": 1.587,
+          "maximumMs": 1.587,
+          "samplesMs": [0.278, 0.272, 0.265, 1.587, 0.276]
+        }
+      },
+      "memoryObservation": {
+        "heapDeltaBytes": 112047024,
+        "rssDeltaBytes": 160313344
+      }
+    },
+    {
+      "definition": {
+        "name": "connected-10000-e20000",
+        "source": "generated",
+        "nodeCount": 10000,
+        "edgeCount": 20000,
+        "seed": 1105119966,
+        "textCharacters": 64,
+        "componentSizes": [10000]
+      },
+      "actualEdges": 20000,
+      "stagedSelection": {
+        "nodes": 64,
+        "edges": 63,
+        "hiddenReachableNodes": 9936,
+        "stoppedAtMaximum": false
+      },
+      "shapes": {
+        "staged": {
+          "nodes": 64,
+          "edges": 63,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 63
+        },
+        "full": {
+          "nodes": 10000,
+          "edges": 20000,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 10000,
+          "maximumComponentEdges": 20000
+        }
+      },
+      "timings": {
+        "fixtureGeneration": {
+          "minimumMs": 23.001,
+          "medianMs": 23.44,
+          "p95Ms": 33.728,
+          "maximumMs": 33.728,
+          "samplesMs": [23.35, 23.001, 33.728, 24.755, 23.44]
+        },
+        "semanticInput": {
+          "minimumMs": 12.765,
+          "medianMs": 13.751,
+          "p95Ms": 27.839,
+          "maximumMs": 27.839,
+          "samplesMs": [13.751, 12.765, 13.925, 13.628, 27.839]
+        },
+        "staging": {
+          "minimumMs": 13.397,
+          "medianMs": 14.295,
+          "p95Ms": 15.517,
+          "maximumMs": 15.517,
+          "samplesMs": [14.295, 13.397, 14.46, 14.153, 15.517]
+        },
+        "stagedLayoutInputTransform": {
+          "minimumMs": 0.003,
+          "medianMs": 0.003,
+          "p95Ms": 0.003,
+          "maximumMs": 0.003,
+          "samplesMs": [0.003, 0.003, 0.003, 0.003, 0.003]
+        },
+        "fullLayoutInputTransform": {
+          "minimumMs": 0.271,
+          "medianMs": 0.279,
+          "p95Ms": 0.287,
+          "maximumMs": 0.287,
+          "samplesMs": [0.279, 0.287, 0.271, 0.271, 0.282]
+        }
+      },
+      "memoryObservation": {
+        "heapDeltaBytes": -72251216,
+        "rssDeltaBytes": -11567104
+      }
+    }
+  ],
+  "isolatedLayouts": [
+    {
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "processWallMs": 838.098,
+      "exitCode": 0,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "boundary-64-connected",
+        "mode": "staged",
+        "status": "completed",
+        "failure": null,
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 1,
+        "layoutSamplesMs": [
+          50.47843999999998, 35.138915999999995, 30.195341999999982,
+          32.82409699999994, 33.70403299999998
+        ],
+        "pathSamplesMs": [
+          1.0550660000000107, 0.17960600000003524, 0.10908599999993385,
+          0.1264609999999493, 0.13718499999993128
+        ],
+        "input": {
+          "nodes": 64,
+          "edges": 63,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 63
+        },
+        "geometry": {
+          "width": 19900,
+          "height": 120,
+          "nodes": 64,
+          "ports": 126,
+          "edges": 63,
+          "sections": 63,
+          "points": 126,
+          "pathCharacters": 1254,
+          "geometryWeight": 253
+        }
+      },
+      "layoutDistribution": {
+        "minimumMs": 30.195,
+        "medianMs": 33.704,
+        "p95Ms": 50.478,
+        "maximumMs": 50.478,
+        "samplesMs": [50.478, 35.139, 30.195, 32.824, 33.704]
+      },
+      "pathDistribution": {
+        "minimumMs": 0.109,
+        "medianMs": 0.137,
+        "p95Ms": 1.055,
+        "maximumMs": 1.055,
+        "samplesMs": [1.055, 0.18, 0.109, 0.126, 0.137]
+      },
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n ✓ tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 352ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  08:15:17\n   Duration  624ms (tests 63%, transform 19%, import 18%)\n\n",
+      "standardErrorTail": ""
+    },
+    {
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "processWallMs": 822.388,
+      "exitCode": 0,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "boundary-64-connected",
+        "mode": "full",
+        "status": "completed",
+        "failure": null,
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 1,
+        "layoutSamplesMs": [
+          42.20098300000001, 36.52173600000003, 33.84381199999996,
+          27.590471999999977, 29.573499000000083
+        ],
+        "pathSamplesMs": [
+          1.405475000000024, 0.20036699999997154, 0.11264700000003813,
+          0.16454600000008668, 0.15673600000002352
+        ],
+        "input": {
+          "nodes": 64,
+          "edges": 63,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 63
+        },
+        "geometry": {
+          "width": 19900,
+          "height": 120,
+          "nodes": 64,
+          "ports": 126,
+          "edges": 63,
+          "sections": 63,
+          "points": 126,
+          "pathCharacters": 1254,
+          "geometryWeight": 253
+        }
+      },
+      "layoutDistribution": {
+        "minimumMs": 27.59,
+        "medianMs": 33.844,
+        "p95Ms": 42.201,
+        "maximumMs": 42.201,
+        "samplesMs": [42.201, 36.522, 33.844, 27.59, 29.573]
+      },
+      "pathDistribution": {
+        "minimumMs": 0.113,
+        "medianMs": 0.165,
+        "p95Ms": 1.405,
+        "maximumMs": 1.405,
+        "samplesMs": [1.405, 0.2, 0.113, 0.165, 0.157]
+      },
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n ✓ tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 335ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  08:15:17\n   Duration  609ms (tests 62%, transform 19%, import 18%)\n\n",
+      "standardErrorTail": ""
+    },
+    {
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "processWallMs": 834.395,
+      "exitCode": 0,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "boundary-65-connected",
+        "mode": "staged",
+        "status": "completed",
+        "failure": null,
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 1,
+        "layoutSamplesMs": [
+          50.98320000000001, 37.41087900000002, 30.94022300000006,
+          29.374648999999977, 27.020201999999927
+        ],
+        "pathSamplesMs": [
+          0.7922649999999862, 0.1267400000000407, 0.11930400000005648,
+          0.12468200000000706, 0.11433300000010149
+        ],
+        "input": {
+          "nodes": 64,
+          "edges": 63,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 63
+        },
+        "geometry": {
+          "width": 19900,
+          "height": 120,
+          "nodes": 64,
+          "ports": 126,
+          "edges": 63,
+          "sections": 63,
+          "points": 126,
+          "pathCharacters": 1254,
+          "geometryWeight": 253
+        }
+      },
+      "layoutDistribution": {
+        "minimumMs": 27.02,
+        "medianMs": 30.94,
+        "p95Ms": 50.983,
+        "maximumMs": 50.983,
+        "samplesMs": [50.983, 37.411, 30.94, 29.375, 27.02]
+      },
+      "pathDistribution": {
+        "minimumMs": 0.114,
+        "medianMs": 0.125,
+        "p95Ms": 0.792,
+        "maximumMs": 0.792,
+        "samplesMs": [0.792, 0.127, 0.119, 0.125, 0.114]
+      },
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n ✓ tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 345ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  08:15:18\n   Duration  621ms (tests 62%, transform 19%, import 18%)\n\n",
+      "standardErrorTail": ""
+    },
+    {
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "processWallMs": 835.181,
+      "exitCode": 0,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "boundary-65-connected",
+        "mode": "full",
+        "status": "completed",
+        "failure": null,
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 1,
+        "layoutSamplesMs": [
+          48.615471000000014, 41.899969, 40.52600300000006, 33.76685400000008,
+          28.976724999999988
+        ],
+        "pathSamplesMs": [
+          0.9522550000000365, 0.1626129999999648, 0.12059300000009898,
+          0.11811699999998382, 0.1517750000000433
+        ],
+        "input": {
+          "nodes": 65,
+          "edges": 64,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 65,
+          "maximumComponentEdges": 64
+        },
+        "geometry": {
+          "width": 20212,
+          "height": 120,
+          "nodes": 65,
+          "ports": 128,
+          "edges": 64,
+          "sections": 64,
+          "points": 128,
+          "pathCharacters": 1275,
+          "geometryWeight": 257
+        }
+      },
+      "layoutDistribution": {
+        "minimumMs": 28.977,
+        "medianMs": 40.526,
+        "p95Ms": 48.615,
+        "maximumMs": 48.615,
+        "samplesMs": [48.615, 41.9, 40.526, 33.767, 28.977]
+      },
+      "pathDistribution": {
+        "minimumMs": 0.118,
+        "medianMs": 0.152,
+        "p95Ms": 0.952,
+        "maximumMs": 0.952,
+        "samplesMs": [0.952, 0.163, 0.121, 0.118, 0.152]
+      },
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n ✓ tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 353ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  08:15:19\n   Duration  620ms (tests 64%, transform 18%, import 18%, worker 1%)\n\n",
+      "standardErrorTail": ""
+    },
+    {
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "processWallMs": 816.474,
+      "exitCode": 0,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "boundary-256-connected",
+        "mode": "staged",
+        "status": "completed",
+        "failure": null,
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 1,
+        "layoutSamplesMs": [
+          41.95694499999996, 34.71907199999998, 30.849666000000013,
+          29.160101000000054, 26.846550000000093
+        ],
+        "pathSamplesMs": [
+          0.7256629999999973, 0.16774700000001985, 0.1544970000001058,
+          0.13104099999998198, 0.12549799999999323
+        ],
+        "input": {
+          "nodes": 64,
+          "edges": 63,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 63
+        },
+        "geometry": {
+          "width": 19900,
+          "height": 120,
+          "nodes": 64,
+          "ports": 126,
+          "edges": 63,
+          "sections": 63,
+          "points": 126,
+          "pathCharacters": 1254,
+          "geometryWeight": 253
+        }
+      },
+      "layoutDistribution": {
+        "minimumMs": 26.847,
+        "medianMs": 30.85,
+        "p95Ms": 41.957,
+        "maximumMs": 41.957,
+        "samplesMs": [41.957, 34.719, 30.85, 29.16, 26.847]
+      },
+      "pathDistribution": {
+        "minimumMs": 0.125,
+        "medianMs": 0.154,
+        "p95Ms": 0.726,
+        "maximumMs": 0.726,
+        "samplesMs": [0.726, 0.168, 0.154, 0.131, 0.125]
+      },
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n ✓ tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 332ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  08:15:20\n   Duration  602ms (tests 62%, import 19%, transform 19%)\n\n",
+      "standardErrorTail": ""
+    },
+    {
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "processWallMs": 1312.149,
+      "exitCode": 0,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "boundary-256-connected",
+        "mode": "full",
+        "status": "completed",
+        "failure": null,
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 1,
+        "layoutSamplesMs": [
+          140.483562, 110.77795600000002, 94.97297800000001, 76.72480499999995,
+          91.477938
+        ],
+        "pathSamplesMs": [
+          1.0150879999999916, 0.502091000000064, 0.8159310000000914,
+          0.5003179999999929, 0.52107100000012
+        ],
+        "input": {
+          "nodes": 256,
+          "edges": 255,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 256,
+          "maximumComponentEdges": 255
+        },
+        "geometry": {
+          "width": 79804,
+          "height": 120,
+          "nodes": 256,
+          "ports": 510,
+          "edges": 255,
+          "sections": 255,
+          "points": 510,
+          "pathCharacters": 5286,
+          "geometryWeight": 1021
+        }
+      },
+      "layoutDistribution": {
+        "minimumMs": 76.725,
+        "medianMs": 94.973,
+        "p95Ms": 140.484,
+        "maximumMs": 140.484,
+        "samplesMs": [140.484, 110.778, 94.973, 76.725, 91.478]
+      },
+      "pathDistribution": {
+        "minimumMs": 0.5,
+        "medianMs": 0.521,
+        "p95Ms": 1.015,
+        "maximumMs": 1.015,
+        "samplesMs": [1.015, 0.502, 0.816, 0.5, 0.521]
+      },
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n ✓ tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 817ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  08:15:21\n   Duration  1.09s (tests 79%, transform 11%, import 10%)\n\n",
+      "standardErrorTail": ""
+    },
+    {
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "processWallMs": 852.82,
+      "exitCode": 0,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "boundary-257-connected",
+        "mode": "staged",
+        "status": "completed",
+        "failure": null,
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 1,
+        "layoutSamplesMs": [
+          44.71571799999998, 45.562232999999935, 34.90587199999993,
+          32.07882300000006, 27.226556999999957
+        ],
+        "pathSamplesMs": [
+          1.3954319999999711, 0.15415299999995113, 0.27690800000004856,
+          0.17012999999997191, 0.2488379999999779
+        ],
+        "input": {
+          "nodes": 64,
+          "edges": 63,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 63
+        },
+        "geometry": {
+          "width": 19900,
+          "height": 120,
+          "nodes": 64,
+          "ports": 126,
+          "edges": 63,
+          "sections": 63,
+          "points": 126,
+          "pathCharacters": 1254,
+          "geometryWeight": 253
+        }
+      },
+      "layoutDistribution": {
+        "minimumMs": 27.227,
+        "medianMs": 34.906,
+        "p95Ms": 45.562,
+        "maximumMs": 45.562,
+        "samplesMs": [44.716, 45.562, 34.906, 32.079, 27.227]
+      },
+      "pathDistribution": {
+        "minimumMs": 0.154,
+        "medianMs": 0.249,
+        "p95Ms": 1.395,
+        "maximumMs": 1.395,
+        "samplesMs": [1.395, 0.154, 0.277, 0.17, 0.249]
+      },
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n ✓ tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 355ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  08:15:22\n   Duration  638ms (tests 62%, transform 19%, import 18%)\n\n",
+      "standardErrorTail": ""
+    },
+    {
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "processWallMs": 1274.274,
+      "exitCode": 0,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "boundary-257-connected",
+        "mode": "full",
+        "status": "completed",
+        "failure": null,
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 1,
+        "layoutSamplesMs": [
+          128.43987100000004, 119.74497899999994, 82.44047699999999, 76.342937,
+          84.39635299999998
+        ],
+        "pathSamplesMs": [
+          1.4553230000000212, 0.4469730000000709, 0.4963780000000497,
+          0.5048299999999699, 0.7921160000000782
+        ],
+        "input": {
+          "nodes": 257,
+          "edges": 256,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 257,
+          "maximumComponentEdges": 256
+        },
+        "geometry": {
+          "width": 80116,
+          "height": 120,
+          "nodes": 257,
+          "ports": 512,
+          "edges": 256,
+          "sections": 256,
+          "points": 512,
+          "pathCharacters": 5307,
+          "geometryWeight": 1025
+        }
+      },
+      "layoutDistribution": {
+        "minimumMs": 76.343,
+        "medianMs": 84.396,
+        "p95Ms": 128.44,
+        "maximumMs": 128.44,
+        "samplesMs": [128.44, 119.745, 82.44, 76.343, 84.396]
+      },
+      "pathDistribution": {
+        "minimumMs": 0.447,
+        "medianMs": 0.505,
+        "p95Ms": 1.455,
+        "maximumMs": 1.455,
+        "samplesMs": [1.455, 0.447, 0.496, 0.505, 0.792]
+      },
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n ✓ tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 785ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  08:15:23\n   Duration  1.06s (tests 79%, transform 11%, import 10%)\n\n",
+      "standardErrorTail": ""
+    },
+    {
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "processWallMs": 1030.864,
+      "exitCode": 0,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "boundary-257-mixed",
+        "mode": "staged",
+        "status": "completed",
+        "failure": null,
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 1,
+        "layoutSamplesMs": [
+          90.119168, 51.60234200000002, 59.926196000000004, 47.78729599999997,
+          47.075379999999996
+        ],
+        "pathSamplesMs": [
+          1.03603099999998, 0.2533969999999499, 0.1733999999999014,
+          0.1861829999999145, 0.21872700000005807
+        ],
+        "input": {
+          "nodes": 64,
+          "edges": 64,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 64
+        },
+        "geometry": {
+          "width": 5548,
+          "height": 1196,
+          "nodes": 64,
+          "ports": 128,
+          "edges": 64,
+          "sections": 64,
+          "points": 162,
+          "pathCharacters": 2345,
+          "geometryWeight": 290
+        }
+      },
+      "layoutDistribution": {
+        "minimumMs": 47.075,
+        "medianMs": 51.602,
+        "p95Ms": 90.119,
+        "maximumMs": 90.119,
+        "samplesMs": [90.119, 51.602, 59.926, 47.787, 47.075]
+      },
+      "pathDistribution": {
+        "minimumMs": 0.173,
+        "medianMs": 0.219,
+        "p95Ms": 1.036,
+        "maximumMs": 1.036,
+        "samplesMs": [1.036, 0.253, 0.173, 0.186, 0.219]
+      },
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n ✓ tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 532ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  08:15:24\n   Duration  814ms (tests 72%, import 14%, transform 14%)\n\n",
+      "standardErrorTail": ""
+    },
+    {
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "processWallMs": 8555.354,
+      "exitCode": 0,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "boundary-257-mixed",
+        "mode": "full",
+        "status": "completed",
+        "failure": null,
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 1,
+        "layoutSamplesMs": [
+          1333.1645629999998, 1276.2248409999997, 1313.5220570000001,
+          1255.0345360000001, 1247.7414840000001
+        ],
+        "pathSamplesMs": [
+          1.5290310000000318, 2.0335759999998118, 1.267055999999684,
+          0.8860899999999674, 0.953298000000359
+        ],
+        "input": {
+          "nodes": 257,
+          "edges": 256,
+          "weaklyConnectedComponents": 35,
+          "isolatedNodes": 33,
+          "maximumComponentNodes": 160,
+          "maximumComponentEdges": 176
+        },
+        "geometry": {
+          "width": 18652,
+          "height": 2180,
+          "nodes": 257,
+          "ports": 512,
+          "edges": 256,
+          "sections": 256,
+          "points": 738,
+          "pathCharacters": 13182,
+          "geometryWeight": 1251
+        }
+      },
+      "layoutDistribution": {
+        "minimumMs": 1247.741,
+        "medianMs": 1276.225,
+        "p95Ms": 1333.165,
+        "maximumMs": 1333.165,
+        "samplesMs": [1333.165, 1276.225, 1313.522, 1255.035, 1247.741]
+      },
+      "pathDistribution": {
+        "minimumMs": 0.886,
+        "medianMs": 1.267,
+        "p95Ms": 2.034,
+        "maximumMs": 2.034,
+        "samplesMs": [1.529, 2.034, 1.267, 0.886, 0.953]
+      },
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n ✓ tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 8053ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  08:15:25\n   Duration  8.33s (tests 97%, transform 1%, import 1%)\n\n",
+      "standardErrorTail": ""
+    },
+    {
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "processWallMs": 1101.177,
+      "exitCode": 0,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "representative-1000-e3000-mixed",
+        "mode": "staged",
+        "status": "completed",
+        "failure": null,
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 1,
+        "layoutSamplesMs": [
+          110.76542400000005, 65.43881299999998, 60.38646099999994,
+          58.772587000000044, 58.36287600000003
+        ],
+        "pathSamplesMs": [
+          1.5007579999999052, 0.42421999999999116, 0.3960739999999987,
+          0.34382399999992685, 0.4404650000000174
+        ],
+        "input": {
+          "nodes": 64,
+          "edges": 71,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 71
+        },
+        "geometry": {
+          "width": 2748,
+          "height": 2257,
+          "nodes": 64,
+          "ports": 142,
+          "edges": 71,
+          "sections": 71,
+          "points": 240,
+          "pathCharacters": 4569,
+          "geometryWeight": 375
+        }
+      },
+      "layoutDistribution": {
+        "minimumMs": 58.363,
+        "medianMs": 60.386,
+        "p95Ms": 110.765,
+        "maximumMs": 110.765,
+        "samplesMs": [110.765, 65.439, 60.386, 58.773, 58.363]
+      },
+      "pathDistribution": {
+        "minimumMs": 0.344,
+        "medianMs": 0.424,
+        "p95Ms": 1.501,
+        "maximumMs": 1.501,
+        "samplesMs": [1.501, 0.424, 0.396, 0.344, 0.44]
+      },
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n ✓ tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 598ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  08:15:34\n   Duration  882ms (tests 74%, transform 13%, import 13%)\n\n",
+      "standardErrorTail": ""
+    },
+    {
+      "outcome": "failed",
+      "timeoutMs": 30000,
+      "processWallMs": 3925.923,
+      "exitCode": 1,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "representative-1000-e3000-mixed",
+        "mode": "full",
+        "status": "failed",
+        "failure": "RangeError: Maximum call stack size exceeded\n    at kGb.HGb [as Nc] (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6519:145404)\n    at bmb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4231:31)\n    at gGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4392:57)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:75)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)\n    at cGb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:4767:130)",
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 0,
+        "layoutSamplesMs": [],
+        "pathSamplesMs": [],
+        "input": {
+          "nodes": 1000,
+          "edges": 3000,
+          "weaklyConnectedComponents": 53,
+          "isolatedNodes": 50,
+          "maximumComponentNodes": 600,
+          "maximumComponentEdges": 1253
+        },
+        "geometry": null
+      },
+      "layoutDistribution": null,
+      "pathDistribution": null,
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n × tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 3328ms\n   → Maximum call stack size exceeded\n\n Test Files  1 failed (1)\n      Tests  1 failed (1)\n   Start at  08:15:35\n   Duration  3.70s (tests 94%, transform 3%, import 3%)\n\n",
+      "standardErrorTail": "\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark\nRangeError: Maximum call stack size exceeded\n ❯ kGb.HGb [as Nc] node_modules/elkjs/lib/elk.bundled.js:6519:145404\n ❯ bmb node_modules/elkjs/lib/elk.bundled.js:4231:31\n ❯ gGb node_modules/elkjs/lib/elk.bundled.js:4392:57\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:75\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n ❯ cGb node_modules/elkjs/lib/elk.bundled.js:4767:130\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\nSerialized Error: { suppressed: [] }\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n"
+    },
+    {
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "processWallMs": 1143.501,
+      "exitCode": 0,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "product-10000-existing",
+        "mode": "staged",
+        "status": "completed",
+        "failure": null,
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 1,
+        "layoutSamplesMs": [
+          87.216364, 68.60265199999992, 60.64303399999994, 53.265617999999904,
+          54.572553000000084
+        ],
+        "pathSamplesMs": [
+          1.2773670000000266, 0.3282979999999043, 0.2527359999999135,
+          0.4503159999999298, 0.30169100000000526
+        ],
+        "input": {
+          "nodes": 64,
+          "edges": 66,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 66
+        },
+        "geometry": {
+          "width": 3060,
+          "height": 2436,
+          "nodes": 64,
+          "ports": 132,
+          "edges": 66,
+          "sections": 66,
+          "points": 212,
+          "pathCharacters": 3904,
+          "geometryWeight": 342
+        }
+      },
+      "layoutDistribution": {
+        "minimumMs": 53.266,
+        "medianMs": 60.643,
+        "p95Ms": 87.216,
+        "maximumMs": 87.216,
+        "samplesMs": [87.216, 68.603, 60.643, 53.266, 54.573]
+      },
+      "pathDistribution": {
+        "minimumMs": 0.253,
+        "medianMs": 0.328,
+        "p95Ms": 1.277,
+        "maximumMs": 1.277,
+        "samplesMs": [1.277, 0.328, 0.253, 0.45, 0.302]
+      },
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n ✓ tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 641ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  08:15:39\n   Duration  917ms (tests 76%, import 13%, transform 12%)\n\n",
+      "standardErrorTail": ""
+    },
+    {
+      "outcome": "failed",
+      "timeoutMs": 30000,
+      "processWallMs": 2343.189,
+      "exitCode": 1,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "product-10000-existing",
+        "mode": "full",
+        "status": "failed",
+        "failure": "RangeError: Maximum call stack size exceeded\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:13)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)",
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 0,
+        "layoutSamplesMs": [],
+        "pathSamplesMs": [],
+        "input": {
+          "nodes": 10000,
+          "edges": 19951,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 10000,
+          "maximumComponentEdges": 19951
+        },
+        "geometry": null
+      },
+      "layoutDistribution": null,
+      "pathDistribution": null,
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n × tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 1626ms\n   → Maximum call stack size exceeded\n\n Test Files  1 failed (1)\n      Tests  1 failed (1)\n   Start at  08:15:40\n   Duration  2.11s (tests 88%, transform 6%, import 6%)\n\n",
+      "standardErrorTail": "\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark\nRangeError: Maximum call stack size exceeded\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:13\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\nSerialized Error: { suppressed: [] }\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n"
+    },
+    {
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "processWallMs": 1137.929,
+      "exitCode": 0,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "connected-10000-e20000",
+        "mode": "staged",
+        "status": "completed",
+        "failure": null,
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 1,
+        "layoutSamplesMs": [
+          87.81374699999992, 59.17069100000003, 54.301466000000005,
+          50.11418400000002, 45.397167999999965
+        ],
+        "pathSamplesMs": [
+          1.2990839999999935, 0.2992789999999559, 0.28485599999999067,
+          0.6049170000000004, 0.3268710000000965
+        ],
+        "input": {
+          "nodes": 64,
+          "edges": 63,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 64,
+          "maximumComponentEdges": 63
+        },
+        "geometry": {
+          "width": 2124,
+          "height": 2856,
+          "nodes": 64,
+          "ports": 126,
+          "edges": 63,
+          "sections": 63,
+          "points": 208,
+          "pathCharacters": 3943,
+          "geometryWeight": 335
+        }
+      },
+      "layoutDistribution": {
+        "minimumMs": 45.397,
+        "medianMs": 54.301,
+        "p95Ms": 87.814,
+        "maximumMs": 87.814,
+        "samplesMs": [87.814, 59.171, 54.301, 50.114, 45.397]
+      },
+      "pathDistribution": {
+        "minimumMs": 0.285,
+        "medianMs": 0.327,
+        "p95Ms": 1.299,
+        "maximumMs": 1.299,
+        "samplesMs": [1.299, 0.299, 0.285, 0.605, 0.327]
+      },
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n ✓ tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 643ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  08:15:42\n   Duration  918ms (tests 76%, transform 12%, import 12%)\n\n",
+      "standardErrorTail": ""
+    },
+    {
+      "outcome": "failed",
+      "timeoutMs": 30000,
+      "processWallMs": 2325.39,
+      "exitCode": 1,
+      "signal": null,
+      "result": {
+        "schemaVersion": 1,
+        "fixture": "connected-10000-e20000",
+        "mode": "full",
+        "status": "failed",
+        "failure": "RangeError: Maximum call stack size exceeded\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:13)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)\n    at kVb (/tmp/fukamu-notes-305/node_modules/elkjs/lib/elk.bundled.js:6011:364)",
+        "processNode": "v22.13.0",
+        "warmupTarget": 1,
+        "measuredTarget": 5,
+        "warmupCompleted": 0,
+        "layoutSamplesMs": [],
+        "pathSamplesMs": [],
+        "input": {
+          "nodes": 10000,
+          "edges": 20000,
+          "weaklyConnectedComponents": 1,
+          "isolatedNodes": 0,
+          "maximumComponentNodes": 10000,
+          "maximumComponentEdges": 20000
+        },
+        "geometry": null
+      },
+      "layoutDistribution": null,
+      "pathDistribution": null,
+      "standardOutputTail": "\n RUN  v5.0.0 /tmp/fukamu-notes-305\n\n × tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark 1616ms\n   → Maximum call stack size exceeded\n\n Test Files  1 failed (1)\n      Tests  1 failed (1)\n   Start at  08:15:43\n   Duration  2.09s (tests 88%, transform 6%, import 6%)\n\n",
+      "standardErrorTail": "\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  tests/benchmarks/connections-full-network-layout-isolated.benchmark.test.ts > isolated full-network ELK baseline process > runs one explicitly selected fixture or remains inert in the parent benchmark\nRangeError: Maximum call stack size exceeded\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:13\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n ❯ kVb node_modules/elkjs/lib/elk.bundled.js:6011:364\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\nSerialized Error: { suppressed: [] }\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n"
+    }
+  ],
+  "diagnostics": {
+    "controllerAba": {
+      "staleBWasAccepted": true,
+      "requestCount": 2,
+      "returnedToAKeyBeforeBSettled": true,
+      "changedToBKeyAfterBSettled": true
+    },
+    "tombstoneVisibility": {
+      "remotelyDeletedCardRemainsVisible": true,
+      "currentCount": 2,
+      "mergedCount": 1,
+      "visibleCount": 2
+    },
+    "syncV2Paging": "A focused unit contract covers 501 changes across a 500-change intermediate page and a terminal page.",
+    "scopeIsolation": "Existing vault runtime, IndexedDB and Sync v2 tests retain scope in their ports/repositories; no cross-scope product change is made in phase 0."
+  },
+  "provisionalBudgets": {
+    "cameraAndVisibilityP95Ms": 8,
+    "interactionLongTaskMaximumMs": 50,
+    "absoluteInitialLayout": "Set only after interpreting these results on the required Node 22.13.0 CI host and desktop/mobile Chromium."
+  }
+}

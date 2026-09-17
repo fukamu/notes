@@ -152,6 +152,61 @@ describe('Sync v2 client page orchestration', () => {
     });
   });
 
+  it('collects more than one 500-change page before committing the complete replica', async () => {
+    const fixture = createCompatibilityFixture();
+    const serverCard = fixture.response.cards[0];
+    if (serverCard === undefined)
+      throw new Error('missing server card fixture');
+    const highWatermark = parseSyncSequence(501);
+    const changes = Array.from({ length: 501 }, (_, index) => ({
+      kind: 'card-upsert' as const,
+      sequence: parseSyncSequence(index + 1),
+      card: { ...serverCard, revision: index + 1 },
+    }));
+    const responses: SyncV2Response[] = [
+      {
+        version: SYNC_V2_VERSION,
+        highWatermark,
+        changes: changes.slice(0, 500),
+        receipts: [],
+        page: { kind: 'more', nextCursor: pageCursor },
+      },
+      {
+        version: SYNC_V2_VERSION,
+        highWatermark,
+        changes: changes.slice(500),
+        receipts: [],
+        page: { kind: 'complete', nextCursor: committedCursor },
+      },
+    ];
+    const send = vi.fn(async (_request: SyncV2RequestWire) => {
+      const response = responses.shift();
+      if (response === undefined) throw new Error('unexpected page request');
+      return response;
+    });
+    const { replica, applyCommit } = createReplica();
+    const client = createSyncV2Client({
+      scope,
+      transport: { scope, send },
+      replica,
+    });
+
+    await expect(
+      client.synchronize({
+        deviceId: compatibilityIds.device,
+        sentMutations: [],
+        isCurrent: () => true,
+      }),
+    ).resolves.toMatchObject({ kind: 'completed' });
+
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(applyCommit).toHaveBeenCalledOnce();
+    expect(applyCommit.mock.calls[0]?.[0].changes).toHaveLength(501);
+    expect(applyCommit.mock.calls[0]?.[0]).toMatchObject({
+      nextCheckpoint: { cursor: committedCursor, highWatermark: 501 },
+    });
+  });
+
   it('does not commit a malformed intermediate page', async () => {
     const fixture = createCompatibilityFixture();
     const transport: SyncV2Transport<VaultNotesScope> = {

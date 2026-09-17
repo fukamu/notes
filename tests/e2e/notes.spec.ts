@@ -2202,7 +2202,7 @@ test('10k history remains viewport-bounded and operable in the browser', async (
 
 test('10k connections bounds layout and DOM around the current card', async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(180_000);
   const cards = createClientPerformanceFixture();
   const current = cards[5_000];
@@ -2211,6 +2211,7 @@ test('10k connections bounds layout and DOM around the current card', async ({
   }
   await serveInitialPerformanceCards(page, cards);
 
+  const navigationStarted = performance.now();
   const response = await page.goto(`/cards/${current.id}/connections`);
   expect(response?.status()).toBe(200);
   const graph = page.getByTestId('connections-graph');
@@ -2222,10 +2223,13 @@ test('10k connections bounds layout and DOM around the current card', async ({
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 30_000,
   });
+  const initialReadyMs = performance.now() - navigationStarted;
   await expect(graph.locator('button[data-card-id]')).toHaveCount(64);
   await expect(page.getByTestId('connections-search')).toHaveCount(0);
 
+  const expansionReadyMs: number[] = [];
   for (const visibleCount of [128, 192, 256]) {
+    const expansionStarted = performance.now();
     await page.getByTestId('connections-expand').click();
     await expect(graph).toHaveAttribute(
       'data-visible-node-count',
@@ -2241,6 +2245,7 @@ test('10k connections bounds layout and DOM around the current card', async ({
     await expect(graph.locator('button[data-card-id]')).toHaveCount(
       visibleCount,
     );
+    expansionReadyMs.push(performance.now() - expansionStarted);
   }
   await expect(page.getByTestId('connections-expand')).toHaveCount(0);
   await expect(
@@ -2256,11 +2261,49 @@ test('10k connections bounds layout and DOM around the current card', async ({
   if (!nextCardId) throw new Error('Bounded graph omitted a linked card');
   await nextCard.click();
   await expectPathname(page, `/cards/${nextCardId}`);
+  const reentryStarted = performance.now();
   await page.getByRole('button', { name: 'つながり', exact: true }).click();
   await expectPathname(page, `/cards/${nextCardId}/connections`);
   await expect(graph).toHaveAttribute('data-stage-focus-id', nextCardId);
   await expect(graph).toHaveAttribute('data-visible-node-count', '64');
   await expect(graph.locator('button[data-card-id]')).toHaveCount(64);
+  const reentryReadyMs = performance.now() - reentryStarted;
+  const dom = await graph.evaluate((element) => ({
+    descendants: element.querySelectorAll('*').length,
+    cardButtons: element.querySelectorAll('button[data-card-id]').length,
+    svgPaths: element.querySelectorAll('svg path').length,
+    semanticEdgeItems: element.querySelectorAll(
+      'ul[aria-label="カード間の一方向リンク一覧"] li',
+    ).length,
+  }));
+  const artifact = {
+    schemaVersion: 1,
+    issue: 305,
+    project: testInfo.project.name,
+    environment: {
+      browser: page.context().browser()?.version() ?? 'unknown',
+      viewport: page.viewportSize(),
+      devicePixelRatio: await page.evaluate(() => window.devicePixelRatio),
+    },
+    fixture: { nodes: cards.length, source: 'client-performance' },
+    comparison:
+      'A: current product staging only; B is measured by the isolated Node ELK artifact',
+    initialReadyMs,
+    expansionReadyMs,
+    reentryReadyMs,
+    finalStage: { visibleNodes: 64, nodeLimit: 64 },
+    dom,
+    heapUsedBytes: await browserHeapUsed(page),
+    policy:
+      'Observational browser evidence. No timing sample is removed and no absolute CI wall-clock gate is added in phase 0.',
+  };
+  console.info(
+    `connections-10k-staged-browser-baseline ${JSON.stringify(artifact)}`,
+  );
+  await testInfo.attach('connections-10k-staged-browser-baseline.json', {
+    body: Buffer.from(`${JSON.stringify(artifact, null, 2)}\n`),
+    contentType: 'application/json',
+  });
 });
 
 test('layout failure fallback opens a card through URL navigation', async ({
