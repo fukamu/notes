@@ -2207,6 +2207,9 @@ test('history centers the current card without obscuring its page chrome', async
     contentType: 'image/png',
   });
   if (testInfo.project.name === 'mobile-chromium') {
+    const portraitListHeight = await historyList.evaluate(
+      (element) => element.clientHeight,
+    );
     const portraitViewport = page.viewportSize();
     if (!portraitViewport) throw new Error('Mobile viewport is unavailable');
     await page.setViewportSize({ width: 667, height: 375 });
@@ -2233,10 +2236,14 @@ test('history centers the current card without obscuring its page chrome', async
       contentType: 'image/png',
     });
     await page.setViewportSize(portraitViewport);
+    await expect
+      .poll(() => historyList.evaluate((element) => element.clientHeight))
+      .toBe(portraitListHeight);
   }
 
   await historyList.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event('scroll'));
   });
   await expect(historyList).toHaveAttribute('data-history-window-end', '12');
   const finalDisplayValues = await historyItems.evaluateAll((items) =>
