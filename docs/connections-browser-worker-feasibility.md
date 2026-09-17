@@ -38,11 +38,11 @@ harness error and are not product evidence.
 
 ## Results
 
-| Fixture | Full input | Maximum weak component | Worker preparation | ELK wall time to failure | Result |
-| --- | ---: | ---: | ---: | ---: | --- |
-| representative mixed | 1,000 nodes / 3,000 edges | 600 nodes / 1,253 edges | 66.6 ms | 2,570.1 ms | stack overflow; no geometry |
-| existing product fixture | 10,000 nodes / 19,951 edges | 10,000 nodes / 19,951 edges | 64.4 ms | 1,142.1 ms | stack overflow; no geometry |
-| connected fixed-seed fixture | 10,000 nodes / 20,000 edges | 10,000 nodes / 20,000 edges | 67.6 ms | 1,144.0 ms | stack overflow; no geometry |
+| Fixture                      |                  Full input |      Maximum weak component | Worker preparation | ELK wall time to failure | Result                      |
+| ---------------------------- | --------------------------: | --------------------------: | -----------------: | -----------------------: | --------------------------- |
+| representative mixed         |   1,000 nodes / 3,000 edges |     600 nodes / 1,253 edges |            66.6 ms |               2,570.1 ms | stack overflow; no geometry |
+| existing product fixture     | 10,000 nodes / 19,951 edges | 10,000 nodes / 19,951 edges |            64.4 ms |               1,142.1 ms | stack overflow; no geometry |
+| connected fixed-seed fixture | 10,000 nodes / 20,000 edges | 10,000 nodes / 20,000 edges |            67.6 ms |               1,144.0 ms | stack overflow; no geometry |
 
 No case reached output decoding, path generation, identity comparison, React
 commit, paint, or full-fit rendering. Therefore there is no successful sample
