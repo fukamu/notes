@@ -555,3 +555,18 @@ conditional OffscreenCanvas Worker is not selected. Cold full-graph raster
 cost remains recorded separately and is not represented as a cache-hit time.
 Detailed evidence is in
 [`connections-bounded-raster-cache.md`](../connections-bounded-raster-cache.md).
+
+## Issue #329 semantic list removal
+
+Issue #329 supersedes the product requirement introduced by Issue #323. The
+visible “カードと参照の一覧”, its card/edge search, pagination, open/map
+actions, and list-specific focus recovery are removed. No replacement list,
+search panel, or hidden complete-item DOM is introduced.
+
+This changes the accessibility surface intentionally: the product no longer
+claims the removed list's complete browse path. It does not change semantic
+graph membership, directed edge order, layout geometry, card windowing,
+overview Canvas, route Canvas, map-card focus retention, or the app-wide search
+and editor link candidate features. Historical Issue #323 measurements remain
+in the repository as decision evidence rather than a description of the
+current UI.

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
   LocateFixed,
@@ -13,13 +13,12 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import type { ConnectionsRendererProps } from '@/components/presentation-contract';
-import { ConnectionsSemanticLists } from '@/components/connections-semantic-lists';
 import { useConnectionsViewport } from '@/hooks/use-connections-viewport';
+import type { CardId } from '@/lib/domain/id';
 import { prepareConnectionsVisibility } from '@/lib/graph/connections-visibility';
 
 export function ConnectionsView({
   model,
-  semanticInput,
   totalNodeCount,
   totalEdgeCount,
   actions,
@@ -50,24 +49,17 @@ export function ConnectionsView({
         : null,
     [edgeMaximumRadius, edgeNodeSpacing, geometry],
   );
-  const [focusedCardId, setFocusedCardId] = useState<
-    (typeof semanticInput.nodes)[number]['cardId'] | null
-  >(null);
-  const pendingMapFocusRef = useRef<
-    (typeof semanticInput.nodes)[number]['cardId'] | null
-  >(null);
-  const readyNodesById = useMemo(
+  const [focusedCardId, setFocusedCardId] = useState<CardId | null>(null);
+  const readyNodeIndexById = useMemo(
     () =>
       new Map(
-        readyModel?.nodes.map((node, nodeIndex) => [
-          node.cardId,
-          { node, nodeIndex },
-        ]) ?? [],
+        readyModel?.nodes.map((node, nodeIndex) => [node.cardId, nodeIndex]) ??
+          [],
       ),
     [readyModel?.nodes],
   );
   const retainedNodeIndex = focusedCardId
-    ? (readyNodesById.get(focusedCardId)?.nodeIndex ?? null)
+    ? (readyNodeIndexById.get(focusedCardId) ?? null)
     : null;
   const {
     viewportRef,
@@ -112,25 +104,6 @@ export function ConnectionsView({
       );
     }
   }, [htmlNodeIndices, nodeRenderMode, viewportRef]);
-  useLayoutEffect(() => {
-    const cardId = pendingMapFocusRef.current;
-    if (!cardId || nodeRenderMode !== 'html') return;
-    const target = document.getElementById(`connections-map-card-${cardId}`);
-    if (!(target instanceof HTMLButtonElement)) return;
-    pendingMapFocusRef.current = null;
-    target.focus({ preventScroll: true });
-  }, [htmlNodeIndices, nodeRenderMode]);
-  const moveToMap = useCallback(
-    (cardId: (typeof semanticInput.nodes)[number]['cardId']) => {
-      const entry = readyNodesById.get(cardId);
-      if (!entry) return;
-      pendingMapFocusRef.current = cardId;
-      setFocusedCardId(cardId);
-      ensureNodeVisible(entry.node);
-    },
-    [ensureNodeVisible, readyNodesById],
-  );
-
   return (
     <section className="w-full min-w-0" aria-labelledby="connections-heading">
       <div className="connections-map-heading mb-4">
@@ -225,13 +198,6 @@ export function ConnectionsView({
         {totalEdgeCount.toLocaleString('ja-JP')}参照
       </p>
 
-      <ConnectionsSemanticLists
-        input={semanticInput}
-        canMoveToMap={readyModel !== null}
-        openCard={openCard}
-        moveToMap={moveToMap}
-      />
-
       <p id="connections-map-instructions" className="sr-only">
         ドラッグまたは一本指で移動、ピンチまたは Control
         キーを押しながらホイールで拡大縮小できます。矢印キーで移動、プラスとマイナスで拡大縮小、0で全体表示、Homeで現在のカードへ戻ります。
@@ -276,7 +242,7 @@ export function ConnectionsView({
           <div className="min-h-64 p-2" role="alert">
             <p className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
               <TriangleAlert aria-hidden="true" className="size-5" />
-              配置を計算できませんでした。上の「カードと参照の一覧」から全カードを検索して開けます。
+              配置を計算できませんでした。カードまたは過去のカードから別のカードへ移動できます。
             </p>
           </div>
         )}
@@ -329,7 +295,6 @@ export function ConnectionsView({
                   }}
                   data-card-id={node.cardId}
                   onFocus={() => {
-                    pendingMapFocusRef.current = null;
                     setFocusedCardId(node.cardId);
                     ensureNodeVisible(node);
                   }}
