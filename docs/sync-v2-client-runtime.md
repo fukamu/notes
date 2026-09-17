@@ -48,6 +48,15 @@ edit made while the request was in flight while retaining the server display ID
 and revision progress. Existing autosave, offline editing, conflict resolution,
 URL behavior, and presentation remain shared with the v1 runtime.
 
+Issue #307 also treats absence from the successfully committed replica as a
+confirmed deletion for a card that has not changed since the request snapshot.
+Such a card is no longer appended back into the visible state after its
+IndexedDB record was removed. A card created during the request, or an existing
+card whose local revision advanced during the request, is still retained. This
+uses the same request-revision snapshot for v1 and v2 reconciliation; it does
+not change the wire protocol, checkpoint, transaction, or pending-mutation
+rules.
+
 ## Rollback
 
 The change can be reverted by removing the v2 Vault composition and client

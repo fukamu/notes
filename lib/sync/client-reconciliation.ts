@@ -140,6 +140,14 @@ export function reconcileVisibleCardsAfterSync(input: {
     };
   });
 
-  visibleCards.push(...remainingLocal.values());
+  for (const [cardId, latestLocal] of remainingLocal) {
+    const revisionAtRequest = input.revisionsAtRequest.get(cardId);
+    if (
+      revisionAtRequest === undefined ||
+      latestLocal.localRevision > revisionAtRequest
+    ) {
+      visibleCards.push(latestLocal);
+    }
+  }
   return visibleCards;
 }

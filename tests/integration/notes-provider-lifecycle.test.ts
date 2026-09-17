@@ -475,6 +475,64 @@ describe('NotesProvider operation lifecycle', () => {
     ]);
   });
 
+  it('removes an unchanged card omitted by a completed v2 replica commit', async () => {
+    const deletedCard = card('provider-v2-deleted', 'deleted remotely');
+    const response = Promise.withResolvers<SyncV2ClientResult>();
+    const client: SyncV2Client<VaultNotesScope> = {
+      scope: vaultScope,
+      synchronize: vi.fn(async () => response.promise),
+    };
+    const runtime = createV2RuntimeHarness(client, {
+      online: true,
+      loadCards: async () => [deletedCard],
+    });
+
+    await renderRuntime(runtime, 'v2-delete-runtime');
+    await vi.waitFor(() => expect(client.synchronize).toHaveBeenCalledOnce());
+
+    await act(async () => {
+      response.resolve({ kind: 'completed', cards: [], conflicts: [] });
+      await flushAsyncCompletion();
+    });
+
+    expect(currentStore().cards).toEqual([]);
+  });
+
+  it('retains a card edited while a v2 deletion response is in flight', async () => {
+    const editedCard = card('provider-v2-delete-race', 'before request');
+    const response = Promise.withResolvers<SyncV2ClientResult>();
+    const client: SyncV2Client<VaultNotesScope> = {
+      scope: vaultScope,
+      synchronize: vi.fn(async () => response.promise),
+    };
+    const runtime = createV2RuntimeHarness(client, {
+      online: true,
+      loadCards: async () => [editedCard],
+    });
+
+    await renderRuntime(runtime, 'v2-delete-race-runtime');
+    await vi.waitFor(() => expect(client.synchronize).toHaveBeenCalledOnce());
+    act(() =>
+      currentStore().updateCard(editedCard.id, {
+        type: 'title',
+        title: 'edited during delete request',
+      }),
+    );
+
+    await act(async () => {
+      response.resolve({ kind: 'completed', cards: [], conflicts: [] });
+      await flushAsyncCompletion();
+    });
+
+    expect(currentStore().cards).toEqual([
+      expect.objectContaining({
+        id: editedCard.id,
+        title: 'edited during delete request',
+        localRevision: 2,
+      }),
+    ]);
+  });
+
   it('prevents a v2 terminal replica commit after the logout fence activates', async () => {
     const terminalResponse = Promise.withResolvers<unknown>();
     const send = vi.fn(async () => terminalResponse.promise);

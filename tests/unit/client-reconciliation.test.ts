@@ -305,4 +305,46 @@ describe('visible card reconciliation after sync', () => {
     expect(mergedCards).toEqual(mergedBefore);
     expect([...revisionsAtRequest]).toEqual(revisionsBefore);
   });
+
+  it('does not restore an unchanged card absent from the committed replica', () => {
+    const retained = card('retained-after-sync', { localRevision: 2 });
+    const deleted = card('deleted-after-sync', { localRevision: 3 });
+
+    expect(
+      reconcileVisibleCardsAfterSync({
+        currentCards: [retained, deleted],
+        revisionsAtRequest: new Map([
+          [retained.id, retained.localRevision],
+          [deleted.id, deleted.localRevision],
+        ]),
+        mergedCards: [retained],
+      }),
+    ).toEqual([retained]);
+  });
+
+  it('retains cards created or edited after the request snapshot', () => {
+    const retained = card('retained-with-concurrent-work', {
+      localRevision: 2,
+    });
+    const edited = card('edited-after-request', {
+      title: 'newer local edit',
+      localRevision: 4,
+    });
+    const created = card('created-after-request', {
+      displayId: { kind: 'provisional', value: 8 },
+      localRevision: 1,
+      serverRevision: null,
+    });
+
+    expect(
+      reconcileVisibleCardsAfterSync({
+        currentCards: [retained, edited, created],
+        revisionsAtRequest: new Map([
+          [retained.id, retained.localRevision],
+          [edited.id, 3],
+        ]),
+        mergedCards: [retained],
+      }),
+    ).toEqual([retained, edited, created]);
+  });
 });
