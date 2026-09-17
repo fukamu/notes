@@ -1782,6 +1782,9 @@ test('connections zoom persists across app views and reloads', async ({
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 30_000,
   });
+  await expect(graph).toHaveAttribute('data-camera-scale', /\d/, {
+    timeout: 5_000,
+  });
   const fitted = await connectionsCamera(graph);
   await page.getByRole('button', { name: '拡大' }).click();
   await page.getByRole('button', { name: '拡大' }).click();
