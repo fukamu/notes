@@ -143,6 +143,10 @@ export function createConnectionsController(
     const key = connectionsLayoutKey(input, metrics);
 
     if (settled?.key === key) {
+      if (activeKey !== null && activeKey !== key) {
+        requestVersion += 1;
+        activeKey = null;
+      }
       state =
         settled.status === 'ready'
           ? readyState(input, key, settled.layout)
