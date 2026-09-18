@@ -2165,6 +2165,131 @@ test('semantic navigation preserves availability, current context and accessible
   ).toHaveAttribute('aria-current', 'true');
 });
 
+test('navigation geometry stays aligned across views and clear of a scrolling card', async ({
+  page,
+}, testInfo) => {
+  const title = unique('タブ配置', testInfo.project.name);
+  const longBody = Array.from(
+    { length: 80 },
+    (_, index) =>
+      `長いカード本文 ${index + 1}。ナビゲーションと編集領域が重ならないことを確認する。`,
+  ).join('\n\n');
+  await ready(page);
+  await page.getByTestId('new-card').click();
+  await page.getByTestId('card-title').fill(title);
+  await page.getByTestId('body-editor').fill(longBody);
+
+  const cardNavigation = page.getByRole('button', {
+    name: 'カード',
+    exact: true,
+  });
+  const historyNavigation = page.getByRole('button', {
+    name: '過去のカード',
+    exact: true,
+  });
+  const connectionsNavigation = page.getByRole('button', {
+    name: 'つながり',
+    exact: true,
+  });
+  const navigation = page.locator('.app-navigation');
+  const navigationGeometry = () =>
+    navigation.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        top: bounds.top,
+        left: bounds.left,
+        right: bounds.right,
+        bottom: bounds.bottom,
+      };
+    });
+  const expectWithinOnePixel = (actual: number, expected: number) => {
+    expect(Math.abs(actual - expected)).toBeLessThanOrEqual(1);
+  };
+
+  await expect(cardNavigation).toHaveAttribute('aria-current', 'page');
+  const cardGeometry = await navigationGeometry();
+
+  await historyNavigation.click();
+  await expect(page.getByTestId('history-list')).toBeVisible();
+  const historyGeometry = await navigationGeometry();
+
+  await connectionsNavigation.click();
+  await expect(page.getByTestId('connections-graph')).toHaveAttribute(
+    'data-layout-status',
+    'ready',
+    { timeout: 15_000 },
+  );
+  const connectionsGeometry = await navigationGeometry();
+
+  const alignedEdges =
+    testInfo.project.name === 'mobile-chromium'
+      ? (['left', 'right', 'bottom'] as const)
+      : (['top', 'left', 'right'] as const);
+  for (const edge of alignedEdges) {
+    expectWithinOnePixel(cardGeometry[edge], historyGeometry[edge]);
+    expectWithinOnePixel(cardGeometry[edge], connectionsGeometry[edge]);
+  }
+
+  await cardNavigation.click();
+  await expect(page.getByTestId('card-title')).toHaveValue(title);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollHeight - window.innerHeight,
+      ),
+    )
+    .toBeGreaterThan(0);
+  await page.evaluate(() =>
+    window.scrollTo(0, document.documentElement.scrollHeight),
+  );
+  await expect
+    .poll(() => page.evaluate(() => window.scrollY))
+    .toBeGreaterThan(0);
+
+  const scrolledLayout = await page.evaluate(() => {
+    const header = document.querySelector('header');
+    const editor = document.querySelector('[data-testid="body-editor"]');
+    const appNavigation = document.querySelector('.app-navigation');
+    if (!header || !editor || !appNavigation) {
+      throw new Error('Card scroll layout elements are missing');
+    }
+    const headerBounds = header.getBoundingClientRect();
+    const editorBounds = editor.getBoundingClientRect();
+    const navigationBounds = appNavigation.getBoundingClientRect();
+    const overlaps = (left: DOMRect, right: DOMRect) =>
+      left.left < right.right &&
+      left.right > right.left &&
+      left.top < right.bottom &&
+      left.bottom > right.top;
+    return {
+      headerBottom: headerBounds.bottom,
+      editorBottom: editorBounds.bottom,
+      navigationTop: navigationBounds.top,
+      navigationBottom: navigationBounds.bottom,
+      navigationLeft: navigationBounds.left,
+      navigationRight: navigationBounds.right,
+      overlapsHeader: overlaps(navigationBounds, headerBounds),
+      overlapsEditor: overlaps(navigationBounds, editorBounds),
+    };
+  });
+
+  expect(scrolledLayout.navigationTop).toBeGreaterThanOrEqual(
+    scrolledLayout.headerBottom - 1,
+  );
+  expect(scrolledLayout.overlapsHeader).toBe(false);
+  expect(scrolledLayout.overlapsEditor).toBe(false);
+  if (testInfo.project.name === 'mobile-chromium') {
+    expect(scrolledLayout.editorBottom).toBeLessThanOrEqual(
+      scrolledLayout.navigationTop + 1,
+    );
+    expectWithinOnePixel(scrolledLayout.navigationLeft, cardGeometry.left);
+    expectWithinOnePixel(scrolledLayout.navigationRight, cardGeometry.right);
+    expectWithinOnePixel(scrolledLayout.navigationBottom, cardGeometry.bottom);
+  } else {
+    expectWithinOnePixel(scrolledLayout.navigationTop, cardGeometry.top);
+  }
+});
+
 test('button and card labels are non-selectable while card editors remain selectable', async ({
   page,
 }, testInfo) => {

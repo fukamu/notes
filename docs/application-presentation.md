@@ -292,13 +292,21 @@ Structural styles are named separately from the default visual theme:
 `.connections-world`, and `.connections-node-structure` define browser behavior
 or geometry. Visual classes such as `.fukamu-editor`, `.card-link-capsule`,
 `.connections-viewport`, and `.connections-node` are replaceable theme choices.
-The history and connections views share a residual-height workspace shell while
-the card view retains its document-scroll layout. `.history-stack` supplies
-functional scroll padding and owns the remaining-height scroll area; fixed
-history row geometry and viewport-bounded overscan are shared with the pure
-range contract and final 10,000-card browser evidence. The connections viewport
-itself is the named, focusable keyboard and gesture boundary; there is no
-separate map toolbar or zoom output.
+The three application views share the full-width `.notes-workspace` gutter and
+the 180 px desktop navigation column. History and connections add the
+residual-height `.notes-workspace-expanded` shell. Card editing instead adds the
+`.notes-workspace-document` modifier: its content padding retains the previous
+document-scroll top, bottom, maximum width, and horizontal position while the
+navigation starts at the same desktop top/left/right coordinates as the other
+views. On desktop that navigation remains sticky below the header during card
+document scrolling. On mobile the card navigation remains fixed, but uses the
+same 8 px side gutter and safe-area-aware bottom edge as the in-flow history and
+connections navigation; retained card content padding keeps the editor end
+clear. `.history-stack` supplies functional scroll padding and owns the
+remaining-height scroll area; fixed history row geometry and viewport-bounded
+overscan are shared with the pure range contract and final 10,000-card browser
+evidence. The connections viewport itself is the named, focusable keyboard and
+gesture boundary; there is no separate map toolbar or zoom output.
 
 Conflict visuals use light/dark semantic `--warning-*` tokens and the shared
 button primitive; no feature component embeds an amber or white palette.
