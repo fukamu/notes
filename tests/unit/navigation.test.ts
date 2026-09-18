@@ -83,13 +83,22 @@ describe('notes navigation', () => {
     const listener = vi.fn();
     navigator.subscribe(listener);
     const before = navigator.getLocation();
+    const beforeSnapshot = navigator.getSnapshot();
 
     expect(navigator.navigate({ type: 'open-card', cardId: first })).toBe(
       before,
     );
     expect(listener).not.toHaveBeenCalled();
+    expect(navigator.getSnapshot()).toBe(beforeSnapshot);
 
     navigator.navigate({ type: 'show-history' });
     expect(listener).toHaveBeenCalledOnce();
+    expect(navigator.getSnapshot()).toMatchObject({
+      location: { kind: 'history', cardId: first },
+      entryId: 2,
+      activationId: 2,
+      cause: 'tab',
+      pending: false,
+    });
   });
 });

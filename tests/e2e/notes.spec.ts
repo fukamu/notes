@@ -3827,6 +3827,7 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   const linkedMapCard = graph.locator(`button[data-card-id="${ids.cardC}"]`);
   await linkedMapCard.focus();
   await expectMapNodeFullyVisible(linkedMapCard, graph);
+  const cameraBeforeCardOpen = await connectionsCamera(graph);
   await linkedMapCard.press('Enter');
   await expectPathname(page, `/cards/${ids.cardC}`);
   await expect(page.getByTestId('card-title')).toHaveValue(titles.cardC);
@@ -3835,6 +3836,16 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await page.goBack();
   await expectPathname(page, `/cards/${ids.cardB}/connections`);
   await expect(page.locator('section[aria-label="つながり"]')).toBeVisible();
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(cameraBeforeCardOpen.x, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(cameraBeforeCardOpen.y, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(cameraBeforeCardOpen.scale, 7);
+  await expect(graph).toBeFocused();
   await pressConnectionsKey(graph, 'Home');
   await expect(
     graph.locator(`button[data-card-id="${ids.cardB}"]`),

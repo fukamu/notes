@@ -1,4 +1,8 @@
 import type { CardId } from '@/lib/domain/id';
+import {
+  createNotesCameraSession,
+  type NotesCameraSession,
+} from '@/lib/application/navigation-camera-session';
 
 export type NotesLocation =
   | { kind: 'empty' }
@@ -14,13 +18,38 @@ export type NotesNavigationIntent =
   | { type: 'show-history' }
   | { type: 'show-connections' };
 
+export type NotesNavigationCause =
+  | 'initial'
+  | 'initialize'
+  | 'open-card'
+  | 'tab'
+  | 'traverse'
+  | 'reconcile';
+
+export type NotesNavigationSnapshot = Readonly<{
+  location: NotesLocation;
+  entryId: number;
+  activationId: number;
+  cause: NotesNavigationCause;
+  pending: boolean;
+}>;
+
 export type NotesNavigator = {
   getLocation: () => NotesLocation;
+  getSnapshot: () => NotesNavigationSnapshot;
   navigate: (intent: NotesNavigationIntent) => NotesLocation;
   subscribe: (listener: () => void) => () => void;
+  cameraSession: NotesCameraSession;
 };
 
 export const EMPTY_NOTES_LOCATION: NotesLocation = { kind: 'empty' };
+export const SERVER_NOTES_NAVIGATION_SNAPSHOT: NotesNavigationSnapshot = {
+  location: EMPTY_NOTES_LOCATION,
+  entryId: 0,
+  activationId: 0,
+  cause: 'initial',
+  pending: false,
+};
 
 export function notesLocationCardId(location: NotesLocation): CardId | null {
   return location.kind === 'empty' ? null : location.cardId;
@@ -99,18 +128,54 @@ export function reduceNotesLocation(
   return areNotesLocationsEqual(current, next) ? current : next;
 }
 
+export function notesNavigationCause(
+  intent: NotesNavigationIntent,
+): Exclude<NotesNavigationCause, 'initial' | 'traverse'> {
+  switch (intent.type) {
+    case 'initialize':
+      return 'initialize';
+    case 'reconcile-cards':
+      return 'reconcile';
+    case 'open-card':
+      return 'open-card';
+    case 'show-current-card':
+    case 'show-history':
+    case 'show-connections':
+      return 'tab';
+  }
+}
+
 export function createInMemoryNotesNavigator(
   initialLocation: NotesLocation = EMPTY_NOTES_LOCATION,
 ): NotesNavigator {
   let location = initialLocation;
+  let snapshot: NotesNavigationSnapshot = {
+    location,
+    entryId: 1,
+    activationId: 1,
+    cause: 'initial',
+    pending: false,
+  };
   const listeners = new Set<() => void>();
+  const cameraSession = createNotesCameraSession(() => snapshot);
 
   return {
     getLocation: () => location,
+    getSnapshot: () => snapshot,
     navigate: (intent) => {
       const next = reduceNotesLocation(location, intent);
       if (next !== location) {
+        const previous = location;
         location = next;
+        const entryId = snapshot.entryId + 1;
+        cameraSession.replaceEntry(entryId, previous, next);
+        snapshot = {
+          location,
+          entryId,
+          activationId: snapshot.activationId + 1,
+          cause: notesNavigationCause(intent),
+          pending: false,
+        };
         for (const listener of listeners) listener();
       }
       return location;
@@ -119,5 +184,6 @@ export function createInMemoryNotesNavigator(
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    cameraSession,
   };
 }

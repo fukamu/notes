@@ -32,18 +32,19 @@ code, tests, configuration, or documentation.
 - Branch every implementation Issue from the latest integration branch, never
   from another work branch. Record the exact branch-point commit in the Issue
   and PR.
-- The current integration branch is `integration/362-native-interactions`.
-  Every implementation PR for parent #362 must use that branch as base and
+- The current integration branch is `integration/376-navigation-continuity`.
+  Every implementation PR for parent #376 must use that branch as base and
   merge target. It was created directly from the exact latest `main` tip
-  `96f510bfb9bdb69b2c7ebd8c673ce7b0fcc32fca`. Completed parent #349 and its
+  `7c4ca43f71d5a6880d79101d8d97a7c15fba46f2`. Completed parent #362 and its
+  retired `integration/362-native-interactions` branch, completed parent #349 and its
   `integration/349-tab-zoom-polish` branch remain the upstream delivery record,
   not the base or merge target for new work. Parent #338 and its completed
   `integration/338-efficiency` branch, completed parent #106 and its
   `integration/106-multi-user-production` branch, parent #41, and its retired
   `refactor/type-safe-functional` branch are also historical delivery records.
-- Parent #362 uses the explicitly approved self-bootstrap CI procedure. Work
+- Parent #376 uses the explicitly approved self-bootstrap CI procedure. Work
   branch pushes run the same read-only Quality job as PRs. The bootstrap PR for
-  implementation Issue #363 may merge only after that job succeeds for its
+  implementation Issue #377 may merge only after that job succeeds for its
   exact head commit; after it merges, all later PRs must also have the Quality
   PR run for the current head and base.
 - Do not commit, push, merge, cherry-pick, retarget a reference, run an update

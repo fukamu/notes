@@ -1,11 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const integrationBranch = 'integration/362-native-interactions';
-const currentParent = '#362';
-const currentBranchPoint = '96f510bfb9bdb69b2c7ebd8c673ce7b0fcc32fca';
-const upstreamParent = '#349';
-const upstreamIntegrationBranch = 'integration/349-tab-zoom-polish';
+const integrationBranch = 'integration/376-navigation-continuity';
+const currentParent = '#376';
+const currentBranchPoint = '7c4ca43f71d5a6880d79101d8d97a7c15fba46f2';
+const upstreamParent = '#362';
+const upstreamIntegrationBranch = 'integration/362-native-interactions';
 
 function normalizeWhitespace(source: string): string {
   return source.replace(/\s+/g, ' ');
@@ -67,7 +67,7 @@ describe('issue-based delivery contract', () => {
     expect(branchFilters).toHaveLength(2);
     expect(mainBranchFilters).toHaveLength(2);
     expect(quality).toContain("- 'work/**'");
-    expect(quality).not.toContain('- integration/349-tab-zoom-polish');
+    expect(quality).not.toContain('- integration/362-native-interactions');
     expect(quality).toContain('permissions:\n  contents: read');
     expect(quality).toContain('run: npm run verify');
     expect(quality).not.toContain('codex/integration-type-safety-ui');

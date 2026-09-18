@@ -12,9 +12,10 @@ import {
   createNotesPresentationModel,
 } from '@/lib/application/notes-controller';
 import {
-  EMPTY_NOTES_LOCATION,
   notesLocationCardId,
+  SERVER_NOTES_NAVIGATION_SNAPSHOT,
 } from '@/lib/application/navigation';
+import type { NotesCameraPosition } from '@/lib/application/navigation-camera-session';
 import {
   isInitialSyncComplete,
   isNotesInitialized,
@@ -44,16 +45,36 @@ export function useNotesApplication(store: NotesDataStore): {
   actions: NotesPresentationActions;
   editorFocusIntent: EditorFocusIntent | null;
   consumeEditorFocusIntent: (requestId: number) => void;
+  connectionsCameraPosition: NotesCameraPosition | null;
 } {
   const [navigator] = useState(createBrowserNotesNavigator);
   const [cardEditorIndexCache] = useState(createCardEditorIndexCache);
   const [connectionsGraphCache] = useState(createConnectionsGraphCache);
   const [ownedEditorFocusIntent, setOwnedEditorFocusIntent] =
     useState<OwnedEditorFocusIntent | null>(null);
-  const location = useSyncExternalStore(
+  const navigation = useSyncExternalStore(
     navigator.subscribe,
-    navigator.getLocation,
-    () => EMPTY_NOTES_LOCATION,
+    navigator.getSnapshot,
+    () => SERVER_NOTES_NAVIGATION_SNAPSHOT,
+  );
+  const location = navigation.location;
+  const connectionsCameraPosition = useMemo(
+    () =>
+      location.kind === 'connections'
+        ? navigator.cameraSession.bind({
+            entryId: navigation.entryId,
+            activationId: navigation.activationId,
+            currentCardId: location.cardId,
+            cause: navigation.cause,
+          })
+        : null,
+    [
+      location,
+      navigation.activationId,
+      navigation.cause,
+      navigation.entryId,
+      navigator.cameraSession,
+    ],
   );
   const publishEditorFocusIntent = useCallback(
     (cardId: EditorFocusIntent['cardId']) => {
@@ -193,5 +214,6 @@ export function useNotesApplication(store: NotesDataStore): {
     actions: controller,
     editorFocusIntent,
     consumeEditorFocusIntent,
+    connectionsCameraPosition,
   };
 }
