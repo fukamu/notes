@@ -23,6 +23,7 @@ import {
   ensureConnectionsRectVisible,
   fitConnectionsCamera,
   initialConnectionsCamera,
+  normalizeConnectionsWheel,
   panConnectionsCamera,
   pinchConnectionsCamera,
   preserveConnectionsRectAnchor,
@@ -73,6 +74,34 @@ function pointerPair(
   const first = points[0];
   const second = points[1];
   return first && second ? [first, second] : null;
+}
+
+function wheelLineHeight(element: HTMLElement): number {
+  const style = window.getComputedStyle(element);
+  const lineHeight = Number.parseFloat(style.lineHeight);
+  if (Number.isFinite(lineHeight) && lineHeight > 0) return lineHeight;
+  const fontSize = Number.parseFloat(style.fontSize);
+  if (Number.isFinite(fontSize) && fontSize > 0) return fontSize * 1.2;
+  return 16;
+}
+
+function wheelTargetsEditableControl(event: WheelEvent): boolean {
+  return event.composedPath().some((target) => {
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement
+    ) {
+      return true;
+    }
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable) return true;
+    const role = target.getAttribute('role');
+    return (
+      (role === 'textbox' || role === 'combobox') &&
+      target.getAttribute('aria-disabled') !== 'true'
+    );
+  });
 }
 
 export function useConnectionsViewport(
@@ -891,21 +920,39 @@ export function useConnectionsViewport(
       event.preventDefault();
     };
     const handleWheel = (event: WheelEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return;
+      if (event.defaultPrevented || wheelTargetsEditableControl(event)) return;
       const geometry = geometryRef.current;
       const camera = cameraRef.current;
       if (!geometry || !camera) return;
       const bounds = viewport.getBoundingClientRect();
-      commitCamera(
-        zoomConnectionsCamera(
-          camera,
-          Math.exp(-event.deltaY * 0.002),
-          { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
-          geometry,
-        ),
-        true,
-      );
-      event.preventDefault();
+      const delta = normalizeConnectionsWheel({
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        deltaMode: event.deltaMode,
+        lineHeight: wheelLineHeight(viewport),
+        pageWidth: bounds.width,
+        pageHeight: bounds.height,
+      });
+      if (!delta) return;
+      if (event.ctrlKey || event.metaKey) {
+        commitCamera(
+          zoomConnectionsCamera(
+            camera,
+            Math.exp(-delta.y * 0.002),
+            { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+            geometry,
+          ),
+          true,
+        );
+      } else {
+        const pan =
+          event.shiftKey && delta.x === 0 ? { x: delta.y, y: 0 } : delta;
+        if (pan.x === 0 && pan.y === 0) return;
+        commitCamera(
+          panConnectionsCamera(camera, { x: -pan.x, y: -pan.y }, geometry),
+        );
+      }
+      if (event.cancelable) event.preventDefault();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.target !== viewport) return;

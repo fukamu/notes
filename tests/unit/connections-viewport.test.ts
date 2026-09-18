@@ -14,6 +14,7 @@ import {
   ensureConnectionsRectVisible,
   fitConnectionsCamera,
   initialConnectionsCamera,
+  normalizeConnectionsWheel,
   panConnectionsCamera,
   pinchConnectionsCamera,
   preserveConnectionsRectAnchor,
@@ -45,6 +46,43 @@ function expectCameraClose(
 }
 
 describe('connections map camera geometry', () => {
+  it('normalizes pixel, line, and page wheel deltas at the pure boundary', () => {
+    const input = {
+      deltaX: 2,
+      deltaY: -3,
+      deltaMode: 0,
+      lineHeight: 18,
+      pageWidth: 800,
+      pageHeight: 600,
+    };
+    expect(normalizeConnectionsWheel(input)).toEqual({ x: 2, y: -3 });
+    expect(normalizeConnectionsWheel({ ...input, deltaMode: 1 })).toEqual({
+      x: 36,
+      y: -54,
+    });
+    expect(normalizeConnectionsWheel({ ...input, deltaMode: 2 })).toEqual({
+      x: 1_600,
+      y: -1_800,
+    });
+  });
+
+  it('rejects unknown wheel modes and non-finite or unusable dimensions', () => {
+    const input = {
+      deltaX: 2,
+      deltaY: -3,
+      deltaMode: 0,
+      lineHeight: 18,
+      pageWidth: 800,
+      pageHeight: 600,
+    };
+    expect(normalizeConnectionsWheel({ ...input, deltaMode: 3 })).toBeNull();
+    expect(
+      normalizeConnectionsWheel({ ...input, deltaY: Number.NaN }),
+    ).toBeNull();
+    expect(normalizeConnectionsWheel({ ...input, lineHeight: 0 })).toBeNull();
+    expect(normalizeConnectionsWheel({ ...input, pageWidth: 0 })).toBeNull();
+  });
+
   it('uses the shared fallback 10–200% camera range before geometry exists', () => {
     expect(DEFAULT_CONNECTIONS_CAMERA_LIMITS).toEqual({
       minimumScale: 0.1,
