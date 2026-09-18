@@ -5,6 +5,7 @@ import {
 } from '@/lib/application/notes-runtime';
 import { browserClock } from '@/lib/client/browser-clock';
 import { browserConnectivity } from '@/lib/client/browser-connectivity';
+import { browserForegroundResume } from '@/lib/client/browser-foreground-resume';
 import { createV1SyncTransport } from '@/lib/client/http-sync-transport';
 import { browserIdGenerator } from '@/lib/client/id-generator';
 import { browserOfflineApp } from '@/lib/client/offline';
@@ -25,6 +26,7 @@ export function createLegacyNotesRuntimePorts(): NotesRuntimePorts<LegacyNotesSc
     clock: browserClock,
     idGenerator: browserIdGenerator,
     connectivity: browserConnectivity,
+    foregroundResume: browserForegroundResume,
     offlineApp: browserOfflineApp,
   };
 }

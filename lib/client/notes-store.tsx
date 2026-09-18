@@ -351,15 +351,22 @@ export function NotesProvider({
       onOnline,
       onOffline,
     });
+    const unsubscribeForeground = ports.foregroundResume.subscribe(() => {
+      if (!operationIsCurrent(operationLifecycleRef.current, operationToken)) {
+        return;
+      }
+      void synchronizeNow();
+    });
     const timer = window.setInterval(() => void synchronizeNow(), 15_000);
     return () => {
       window.clearTimeout(initialSync);
       if (syncTimerRef.current !== undefined)
         window.clearTimeout(syncTimerRef.current);
       unsubscribeConnectivity();
+      unsubscribeForeground();
       window.clearInterval(timer);
     };
-  }, [initialized, ports.connectivity, synchronizeNow]);
+  }, [initialized, ports.connectivity, ports.foregroundResume, synchronizeNow]);
 
   useEffect(() => {
     void ports.offlineApp.prepare().catch((error) => console.error(error));
