@@ -266,19 +266,21 @@ async function pressConnectionsKey(graph: Locator, key: string, count = 1) {
 }
 
 async function expectMapNodeFullyVisible(node: Locator, graph: Locator) {
-  const nodeBox = await node.boundingBox();
-  const viewportBox = await graph.boundingBox();
-  expect(nodeBox).not.toBeNull();
-  expect(viewportBox).not.toBeNull();
-  if (!nodeBox || !viewportBox) throw new Error('Map geometry is missing');
-  expect(nodeBox.x).toBeGreaterThanOrEqual(viewportBox.x);
-  expect(nodeBox.y).toBeGreaterThanOrEqual(viewportBox.y);
-  expect(nodeBox.x + nodeBox.width).toBeLessThanOrEqual(
-    viewportBox.x + viewportBox.width,
-  );
-  expect(nodeBox.y + nodeBox.height).toBeLessThanOrEqual(
-    viewportBox.y + viewportBox.height,
-  );
+  await expect(async () => {
+    const nodeBox = await node.boundingBox();
+    const viewportBox = await graph.boundingBox();
+    expect(nodeBox).not.toBeNull();
+    expect(viewportBox).not.toBeNull();
+    if (!nodeBox || !viewportBox) throw new Error('Map geometry is missing');
+    expect(nodeBox.x).toBeGreaterThanOrEqual(viewportBox.x);
+    expect(nodeBox.y).toBeGreaterThanOrEqual(viewportBox.y);
+    expect(nodeBox.x + nodeBox.width).toBeLessThanOrEqual(
+      viewportBox.x + viewportBox.width,
+    );
+    expect(nodeBox.y + nodeBox.height).toBeLessThanOrEqual(
+      viewportBox.y + viewportBox.height,
+    );
+  }).toPass({ timeout: 5_000 });
 }
 
 async function replaceLocalCards(page: Page, cards: LocalFixtureCard[]) {
@@ -626,6 +628,7 @@ test('title and body share one chronological Undo/Redo history', async ({
   await expect(page.getByTestId('save-sync-status')).toHaveText('保存済み');
   await page.reload();
   await expect(title).toHaveValue(titleA);
+  await expect(page.getByTestId('save-sync-status')).toHaveText('保存済み');
   await expect(undo).toBeDisabled();
 
   await title.fill(titleB);
