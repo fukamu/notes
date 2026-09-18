@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   centerConnectionsCameraOnRect,
+  captureConnectionsCameraSnapshot,
   clampConnectionsCamera,
   connectionsCameraContainsRect,
   connectionsCameraTransform,
@@ -18,11 +19,13 @@ import {
   preserveConnectionsRectAnchor,
   resolveConnectionsCameraLimits,
   resizeConnectionsCamera,
+  restoreConnectionsCameraSnapshot,
   restoreConnectionsCameraScale,
   zoomConnectionsCamera,
   type ConnectionsCamera,
   type ConnectionsCameraGeometry,
 } from '@/lib/graph/connections-viewport';
+import { fixtureCardId } from '@/tests/fixtures/ids';
 
 const geometry: ConnectionsCameraGeometry = {
   viewport: { width: 800, height: 600 },
@@ -183,6 +186,53 @@ describe('connections map camera geometry', () => {
       clampConnectionsCamera({ x: 999, y: -999, scale: 4 }, geometry),
       { x: 999, y: -999, scale: 3 },
     );
+  });
+
+  it('captures and restores the same world center across viewport sizes', () => {
+    const cardId = fixtureCardId('camera-snapshot-current');
+    const camera = { x: -725, y: 340, scale: 1.25 };
+    const snapshot = captureConnectionsCameraSnapshot(
+      cardId,
+      'layout-a',
+      camera,
+      geometry,
+    );
+    expect(snapshot).toEqual({
+      currentCardId: cardId,
+      layoutKey: 'layout-a',
+      scale: 1.25,
+      centerWorld: { x: 900, y: -32 },
+    });
+    if (!snapshot) return;
+    const resizedGeometry = {
+      ...geometry,
+      viewport: { width: 1_000, height: 740 },
+    };
+    expectCameraClose(
+      restoreConnectionsCameraSnapshot(
+        snapshot,
+        cardId,
+        'layout-a',
+        resizedGeometry,
+      ),
+      { x: -625, y: 410, scale: 1.25 },
+    );
+    expect(
+      restoreConnectionsCameraSnapshot(
+        snapshot,
+        fixtureCardId('camera-snapshot-other'),
+        'layout-a',
+        resizedGeometry,
+      ),
+    ).toBeNull();
+    expect(
+      restoreConnectionsCameraSnapshot(
+        snapshot,
+        cardId,
+        'layout-b',
+        resizedGeometry,
+      ),
+    ).toBeNull();
   });
 
   it('crosses every former world boundary without snapping for large and small worlds', () => {
