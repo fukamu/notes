@@ -1,3 +1,5 @@
+import type { CardId } from '@/lib/domain/id';
+
 export const historyWindowLayout = Object.freeze({
   rowHeight: 108,
   rowGap: 12,
@@ -34,6 +36,13 @@ export type HistoryWindow =
 
 export type HistoryFocusMovement = 'previous' | 'next' | 'first' | 'last';
 
+export type HistoryAnchor = Readonly<{
+  currentCardId: CardId;
+  anchorCardId: CardId;
+  fallbackIndex: number;
+  offsetPx: number;
+}>;
+
 function finiteNonNegative(value: number): number {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
@@ -49,6 +58,59 @@ function clampedItemIndex(index: number | null, itemCount: number): number {
 
 function rowExtent(layout: HistoryWindowLayout): number {
   return layout.rowHeight + layout.rowGap;
+}
+
+export function captureHistoryAnchor(
+  itemIds: readonly CardId[],
+  currentCardId: CardId,
+  scrollTop: number,
+  layout: HistoryWindowLayout = historyWindowLayout,
+): HistoryAnchor | null {
+  if (itemIds.length === 0) return null;
+  const extent = rowExtent(layout);
+  if (!Number.isFinite(extent) || extent <= 0) return null;
+  const normalizedScrollTop = finiteNonNegative(scrollTop);
+  const index = Math.min(
+    itemIds.length - 1,
+    Math.max(
+      0,
+      Math.floor(
+        Math.max(0, normalizedScrollTop - layout.contentPadding) / extent,
+      ),
+    ),
+  );
+  const anchorCardId = itemIds[index];
+  if (!anchorCardId) return null;
+  return {
+    currentCardId,
+    anchorCardId,
+    fallbackIndex: index,
+    offsetPx: normalizedScrollTop - (layout.contentPadding + index * extent),
+  };
+}
+
+export function restoreHistoryAnchorScrollTop(
+  anchor: HistoryAnchor,
+  itemIds: readonly CardId[],
+  viewportHeight: number,
+  layout: HistoryWindowLayout = historyWindowLayout,
+): number {
+  if (itemIds.length === 0) return 0;
+  const anchoredIndex = itemIds.indexOf(anchor.anchorCardId);
+  const index =
+    anchoredIndex === -1
+      ? clampedItemIndex(anchor.fallbackIndex, itemIds.length)
+      : anchoredIndex;
+  const offset = Number.isFinite(anchor.offsetPx) ? anchor.offsetPx : 0;
+  const desired = layout.contentPadding + index * rowExtent(layout) + offset;
+  return Math.min(
+    Math.max(0, desired),
+    Math.max(
+      0,
+      historyTotalHeight(itemIds.length, layout) -
+        finiteNonNegative(viewportHeight),
+    ),
+  );
 }
 
 export function historyTotalHeight(

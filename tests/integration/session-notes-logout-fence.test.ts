@@ -157,6 +157,9 @@ function createRuntime(): VaultNotesRuntimePorts {
       isOnline: () => false,
       subscribe: () => () => undefined,
     },
+    foregroundResume: {
+      subscribe: () => () => undefined,
+    },
     offlineApp: {
       prepare: async () => undefined,
       purge: async () => undefined,

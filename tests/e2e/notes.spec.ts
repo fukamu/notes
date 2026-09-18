@@ -192,11 +192,28 @@ async function openFromHistory(page: Page, title: string) {
   await expect(page.getByTestId('card-title')).toHaveValue(title);
 }
 
+async function activateNotesView(
+  page: Page,
+  projectName: string,
+  name: 'カード' | '過去のカード' | 'つながり',
+) {
+  const navigation = page.getByRole('button', { name, exact: true });
+  if (projectName === 'mobile-chromium') {
+    await navigation.focus();
+    await navigation.press('Enter');
+    return;
+  }
+  await navigation.click();
+}
+
 type LocalFixtureCard = {
   id: string;
   displayId: { kind: 'official'; value: number };
   title: string;
-  body: { type: 'link'; targetCardId: string }[];
+  body: (
+    | { type: 'text'; text: string }
+    | { type: 'link'; targetCardId: string }
+  )[];
   createdAt: number;
   updatedAt: number;
   localRevision: number;
@@ -696,6 +713,316 @@ test('title and body share one chronological Undo/Redo history', async ({
   await expect(undo).toBeDisabled();
 });
 
+test('new cards focus the title once and Enter moves into the existing body history', async ({
+  page,
+}, testInfo) => {
+  const titleText = unique('作成フォーカス', testInfo.project.name);
+  const bodyText = 'Enter後の本文';
+
+  await ready(page);
+  await page.evaluate(() => {
+    document.documentElement.dataset.titleFocusCount = '0';
+    document.addEventListener('focusin', (event) => {
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.dataset.testid === 'card-title'
+      ) {
+        const current = Number(
+          document.documentElement.dataset.titleFocusCount ?? '0',
+        );
+        document.documentElement.dataset.titleFocusCount = String(current + 1);
+      }
+    });
+  });
+
+  await page.getByTestId('new-card').click();
+  const title = page.getByTestId('card-title');
+  const editor = page.getByTestId('body-editor');
+  const undo = page.getByTestId('undo');
+  const redo = page.getByTestId('redo');
+  await expect(title).toBeFocused();
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-title-focus-count',
+    '1',
+  );
+
+  await title.fill(titleText);
+  await title.dispatchEvent('compositionstart', { data: '変換中' });
+  await title.press('Enter');
+  await expect(title).toBeFocused();
+  await title.dispatchEvent('compositionend', { data: '変換中' });
+
+  await title.press('Enter');
+  await expect(editor).toBeFocused();
+  await expect(editor).toHaveText('');
+  await editor.pressSequentially(bodyText);
+
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await expect(title).toBeHidden();
+  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await expect(title).not.toBeFocused();
+  await expect(editor).not.toBeFocused();
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-title-focus-count',
+    '1',
+  );
+
+  await undo.click();
+  await expect(editor).not.toContainText(bodyText);
+  await expect(editor).toBeFocused();
+  await undo.click();
+  await expect(title).toHaveValue('');
+  await expect(title).toBeFocused();
+  await redo.click();
+  await expect(title).toHaveValue(titleText);
+  await redo.click();
+  await expect(editor).toContainText(bodyText);
+});
+
+test('an abandoned new-card focus intent cannot steal focus after returning', async ({
+  page,
+}) => {
+  await ready(page);
+  await page.evaluate(() => {
+    document.documentElement.dataset.blockTitleFocus = 'true';
+    const nativeFocus: unknown = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'focus',
+    )?.value;
+    if (typeof nativeFocus !== 'function') {
+      throw new Error('HTMLElement focus is unavailable');
+    }
+    HTMLElement.prototype.focus = function focus(options?: FocusOptions) {
+      if (
+        document.documentElement.dataset.blockTitleFocus === 'true' &&
+        this.dataset.testid === 'card-title'
+      ) {
+        return;
+      }
+      Reflect.apply(nativeFocus, this, [options]);
+    };
+  });
+
+  await page.getByTestId('new-card').click();
+  const title = page.getByTestId('card-title');
+  await expect(title).toBeVisible();
+  await expect(title).not.toBeFocused();
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await expect(title).toBeHidden();
+  await page.evaluate(() => {
+    delete document.documentElement.dataset.blockTitleFocus;
+  });
+  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await expect(title).toBeVisible();
+  await expect(title).not.toBeFocused();
+});
+
+test('the current card keeps one inactive editor session across view tabs', async ({
+  page,
+}, testInfo) => {
+  const titleA = unique('常駐編集A', testInfo.project.name);
+  const titleB = unique('常駐編集B', testInfo.project.name);
+  await ready(page);
+  await page.getByTestId('new-card').click();
+  const cardPath = new URL(page.url()).pathname;
+  const title = page.getByTestId('card-title');
+  const editor = page.getByTestId('body-editor');
+  await title.fill(titleA);
+  await editor.fill('selection body');
+  await expect(page.getByTestId('save-sync-status')).toHaveText('保存済み');
+  await page.reload();
+  await expect(title).toHaveValue(titleA);
+  await expect(editor).toContainText('selection body');
+  await expect(page.getByTestId('undo')).toBeDisabled();
+  await title.fill(titleB);
+  await editor.focus();
+  await editor.press('End');
+  await editor.press('Shift+ArrowLeft');
+  await expect(page.locator('[data-selection-empty]')).toHaveAttribute(
+    'data-selection-empty',
+    'false',
+  );
+  await editor.evaluate((element) => {
+    element.dataset.editorSessionMarker = 'preserved';
+  });
+
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await expect(page.getByTestId('history-list')).toBeVisible();
+  await expect(title).toBeHidden();
+  await expect(editor).toBeHidden();
+  await expect(title).not.toBeFocused();
+  await expect(editor).not.toBeFocused();
+  await expect(page.getByTestId('body-editor')).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'つながり', exact: true }).click();
+  await expect(page.getByTestId('connections-graph')).toHaveAttribute(
+    'data-layout-status',
+    'ready',
+    { timeout: 15_000 },
+  );
+  await expect(page.getByTestId('body-editor')).toHaveCount(1);
+  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await expect(title).toBeVisible();
+  await expect(title).toHaveValue(titleB);
+  await expect(editor).toHaveAttribute(
+    'data-editor-session-marker',
+    'preserved',
+  );
+  await expect(page.locator('[data-selection-empty]')).toHaveAttribute(
+    'data-selection-empty',
+    'false',
+  );
+  await expect(title).not.toBeFocused();
+  await expect(editor).not.toBeFocused();
+
+  await expect(page.getByTestId('undo')).toBeEnabled();
+  await page.getByTestId('undo').click();
+  await expect(title).toHaveValue(titleA);
+  await page.getByTestId('redo').click();
+  await expect(title).toHaveValue(titleB);
+
+  await editor.focus();
+  await editor.press('End');
+  await editor.pressSequentially(' #');
+  await expect(page.getByTestId('link-candidate-scroll')).toBeVisible();
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await expect(page.getByTestId('link-candidate-scroll')).toHaveCount(0);
+  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await expect(page.getByTestId('link-candidate-scroll')).toHaveCount(0);
+
+  await page.goto(`${cardPath}/history`);
+  await expect(page.getByTestId('history-list')).toBeVisible();
+  await expect(page.getByTestId('body-editor')).toHaveCount(0);
+  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await expect(page.getByTestId('body-editor')).toHaveCount(1);
+});
+
+test('the current card restores body, history and map positions across view tabs', async ({
+  page,
+}, testInfo) => {
+  const cards: LocalFixtureCard[] = Array.from({ length: 30 }, (_, index) => ({
+    id: fixtureCardId(`view-state-${testInfo.project.name}-${index}`),
+    displayId: { kind: 'official', value: index + 1 },
+    title: `閲覧位置 ${index + 1}`,
+    body:
+      index === 0
+        ? [
+            { type: 'text', text: '長い本文 '.repeat(2_000) },
+            {
+              type: 'link',
+              targetCardId: fixtureCardId(
+                `view-state-${testInfo.project.name}-1`,
+              ),
+            },
+          ]
+        : [
+            {
+              type: 'link',
+              targetCardId: fixtureCardId(
+                `view-state-${testInfo.project.name}-${(index + 1) % 30}`,
+              ),
+            },
+          ],
+    createdAt: index + 1,
+    updatedAt: index + 1,
+    localRevision: 1,
+    serverRevision: 1,
+  }));
+  const current = cards[0];
+  if (!current) throw new Error('Missing view-state current card');
+  await serveSyncCards(page, cards);
+  const response = await page.goto(`/cards/${current.id}`);
+  expect(response?.status()).toBe(200);
+  await expect(page.getByTestId('card-title')).toHaveValue(current.title, {
+    timeout: 15_000,
+  });
+
+  const bodyScrollY = await page.evaluate(() => {
+    const scrollingElement = document.scrollingElement;
+    if (!scrollingElement) throw new Error('Missing scrolling element');
+    const maximum =
+      scrollingElement.scrollHeight - scrollingElement.clientHeight;
+    if (maximum < 400) throw new Error('Long body did not create scroll space');
+    const target = Math.floor(maximum * 0.6);
+    window.scrollTo({ top: target, behavior: 'auto' });
+    return window.scrollY;
+  });
+  expect(bodyScrollY).toBeGreaterThan(0);
+
+  await activateNotesView(page, testInfo.project.name, '過去のカード');
+  const history = page.getByTestId('history-list');
+  await expect(history).toHaveAttribute('data-history-total-count', '30');
+  const historyScrollTop = 12 + 12 * 120 + 37;
+  await history.evaluate((element, scrollTop) => {
+    element.scrollTop = scrollTop;
+    element.dispatchEvent(new Event('scroll', { bubbles: true }));
+  }, historyScrollTop);
+  await expect
+    .poll(() => history.evaluate((element) => element.scrollTop))
+    .toBe(historyScrollTop);
+
+  await activateNotesView(page, testInfo.project.name, 'つながり');
+  const graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 15_000,
+  });
+  await expect
+    .poll(async () => {
+      const camera = await connectionsCamera(graph);
+      return (
+        Number.isFinite(camera.x) &&
+        Number.isFinite(camera.y) &&
+        Number.isFinite(camera.scale)
+      );
+    })
+    .toBe(true);
+  const cameraBeforeMove = await connectionsCamera(graph);
+  await pressConnectionsKey(graph, 'ArrowRight', 3);
+  await pressConnectionsKey(graph, 'ArrowDown', 2);
+  await pressConnectionsKey(graph, '+');
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).renderCount)
+    .toBeGreaterThan(cameraBeforeMove.renderCount);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeGreaterThan(cameraBeforeMove.scale);
+  const movedCamera = await connectionsCamera(graph);
+
+  await activateNotesView(page, testInfo.project.name, 'カード');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (expected) => Math.abs(window.scrollY - expected),
+        bodyScrollY,
+      ),
+    )
+    .toBeLessThanOrEqual(20);
+
+  await activateNotesView(page, testInfo.project.name, '過去のカード');
+  await expect
+    .poll(() =>
+      history.evaluate(
+        (element, expected) => Math.abs(element.scrollTop - expected),
+        historyScrollTop,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+
+  await activateNotesView(page, testInfo.project.name, 'つながり');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 15_000,
+  });
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(movedCamera.x, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(movedCamera.y, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(movedCamera.scale, 7);
+});
+
 test('headless editor preserves IME, candidate keyboard, link activation and identity reset', async ({
   page,
   context,
@@ -819,7 +1146,15 @@ test('link candidates are descending, prefix-filtered, scroll-following and expl
     id: fixtureCardId(`candidate-prefix-${index + 1}`),
     displayId: { kind: 'official', value: index + 1 },
     title: `候補 ${index + 1}`,
-    body: [],
+    body:
+      index === 100
+        ? [
+            {
+              type: 'text',
+              text: Array.from({ length: 80 }, () => '長文').join('\n'),
+            },
+          ]
+        : [],
     createdAt: index + 1,
     updatedAt: index + 1,
     localRevision: 1,
@@ -833,6 +1168,7 @@ test('link candidates are descending, prefix-filtered, scroll-following and expl
 
   const editor = page.getByTestId('body-editor');
   await editor.click();
+  await editor.press('Control+End');
   const deleteThroughEditingCommand = (inputType = 'deleteContentBackward') =>
     editor.evaluate((editorElement, nextInputType) => {
       const selection = window.getSelection();
@@ -870,16 +1206,51 @@ test('link candidates are descending, prefix-filtered, scroll-following and expl
       );
     }, inputType);
   const input = await context.newCDPSession(page);
-  await input.send('Input.insertText', { text: '#' });
+  await input.send('Input.insertText', { text: ' #' });
   const candidateList = page.getByTestId('link-candidates');
   const candidateButtons = candidateList.getByRole('button');
+  const candidatePopover = page.getByTestId('link-candidate-popover');
+  await expect(candidatePopover).toBeVisible();
+  await expect(candidatePopover).toHaveAttribute('data-side', 'above');
+  const candidateGeometry = await candidatePopover.evaluate((popover) => {
+    const popup = popover.getBoundingClientRect();
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      throw new Error('Expected the editor caret');
+    }
+    const caret = selection.getRangeAt(0).getBoundingClientRect();
+    const viewport = window.visualViewport;
+    return {
+      popupTop: popup.top,
+      popupBottom: popup.bottom,
+      caretTop: caret.top,
+      viewportTop: viewport?.offsetTop ?? 0,
+      viewportBottom:
+        (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight),
+    };
+  });
+  expect(candidateGeometry.popupBottom).toBeLessThanOrEqual(
+    candidateGeometry.caretTop - 7,
+  );
+  expect(candidateGeometry.popupTop).toBeGreaterThanOrEqual(
+    candidateGeometry.viewportTop,
+  );
+  expect(candidateGeometry.popupBottom).toBeLessThanOrEqual(
+    candidateGeometry.viewportBottom,
+  );
   await expect(candidateButtons).toHaveCount(100);
   await expect(candidateButtons.first()).toContainText('#100');
   await expect(candidateButtons.last()).toContainText('#1');
 
+  const documentScrollBeforeCandidateNavigation = await page.evaluate(
+    () => window.scrollY,
+  );
   for (let index = 0; index < 30; index += 1) {
     await editor.press('ArrowDown');
   }
+  expect(await page.evaluate(() => window.scrollY)).toBe(
+    documentScrollBeforeCandidateNavigation,
+  );
   const activeCandidate = candidateList.locator('[aria-current=true]');
   await expect(activeCandidate).toContainText('#70');
   const activeIsVisible = await activeCandidate.evaluate((element) => {
@@ -1040,7 +1411,7 @@ test('global directed graph is safe and operable for the reported and cyclic fix
   await expect(page.getByTestId('new-card')).toBeVisible();
 
   await openFromHistory(page, titles.reportA);
-  await page.getByRole('button', { name: 'つながり' }).click();
+  await activateNotesView(page, testInfo.project.name, 'つながり');
   const graph = page.getByTestId('connections-graph');
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 15_000,
@@ -1257,6 +1628,7 @@ test('connections map supports viewport keyboard, touch gestures and drag-safe s
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeCloseTo(fitted.scale, 5);
 
+  const beforeNormalWheel = await connectionsCamera(graph);
   const normalWheelPrevented = await graph.evaluate((element) => {
     const event = new WheelEvent('wheel', {
       bubbles: true,
@@ -1268,7 +1640,115 @@ test('connections map supports viewport keyboard, touch gestures and drag-safe s
     element.dispatchEvent(event);
     return event.defaultPrevented;
   });
-  expect(normalWheelPrevented).toBe(false);
+  expect(normalWheelPrevented).toBe(true);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(beforeNormalWheel.y + 120, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(beforeNormalWheel.scale, 7);
+
+  const beforeHorizontalWheel = await connectionsCamera(graph);
+  const horizontalWheelPrevented = await graph.evaluate((element) => {
+    const event = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 48,
+    });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(horizontalWheelPrevented).toBe(true);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(beforeHorizontalWheel.x - 48, 5);
+
+  const beforeShiftWheel = await connectionsCamera(graph);
+  await graph.evaluate((element) => {
+    element.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaY: 36,
+        shiftKey: true,
+      }),
+    );
+  });
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(beforeShiftWheel.x - 36, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(beforeShiftWheel.y, 5);
+
+  const beforeAlreadyHorizontalShiftWheel = await connectionsCamera(graph);
+  await graph.evaluate((element) => {
+    element.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaX: 12,
+        deltaY: 20,
+        shiftKey: true,
+      }),
+    );
+  });
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(beforeAlreadyHorizontalShiftWheel.x - 12, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(beforeAlreadyHorizontalShiftWheel.y - 20, 5);
+
+  const beforeEditableWheel = await connectionsCamera(graph);
+  const editableWheelPrevented = await graph.evaluate((element) => {
+    const input = document.createElement('input');
+    element.appendChild(input);
+    const event = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 80,
+    });
+    input.dispatchEvent(event);
+    input.remove();
+    return event.defaultPrevented;
+  });
+  expect(editableWheelPrevented).toBe(false);
+  await page.waitForTimeout(50);
+  expect(await connectionsCamera(graph)).toEqual(beforeEditableWheel);
+
+  const beforeCardWheel = await connectionsCamera(graph);
+  const cardWheelPrevented = await graph.evaluate((element) => {
+    const button = document.createElement('button');
+    element.appendChild(button);
+    const event = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 24,
+    });
+    button.dispatchEvent(event);
+    button.remove();
+    return event.defaultPrevented;
+  });
+  expect(cardWheelPrevented).toBe(true);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(beforeCardWheel.y - 24, 5);
+
+  const beforeOutsideWheel = await connectionsCamera(graph);
+  const outsideWheelPrevented = await page.evaluate(() => {
+    const event = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 80,
+    });
+    document.body.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(outsideWheelPrevented).toBe(false);
+  await page.waitForTimeout(50);
+  expect(await connectionsCamera(graph)).toEqual(beforeOutsideWheel);
+
   const beforeModifiedWheel = await connectionsCamera(graph);
   const modifiedWheelPrevented = await graph.evaluate((element) => {
     const event = new WheelEvent('wheel', {
@@ -1369,8 +1849,11 @@ test('connections map supports viewport keyboard, touch gestures and drag-safe s
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeCloseTo(fitted.scale, 5);
-  await graph.press('+');
-  await graph.press('+');
+  await dispatchMapKey('Home');
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeGreaterThanOrEqual(0.5);
+  await expect(currentNode).toBeInViewport();
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeGreaterThan(fitted.scale);
@@ -1432,6 +1915,16 @@ test('connections map supports viewport keyboard, touch gestures and drag-safe s
       );
     }
   });
+  await expect
+    .poll(() =>
+      graph.evaluate(
+        (element) =>
+          element.querySelectorAll(
+            '[data-testid="connections-canvas"] [data-card-id]',
+          ).length,
+      ),
+    )
+    .toBeLessThan(cards.length);
   const canvasBeforeGesture = await graph.evaluate((element) => {
     const canvas = element.querySelector('[data-testid="connections-canvas"]');
     return {
@@ -3049,6 +3542,7 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   await expect
     .poll(async () => Number(await graph.getAttribute('data-camera-scale')))
     .toBeGreaterThanOrEqual(0.5);
+  const cameraBeforeReentry = await connectionsCamera(graph);
 
   const nextCard = graph.locator('button[data-card-id][aria-current="true"]');
   const nextCardId = await nextCard.getAttribute('data-card-id');
@@ -3060,8 +3554,23 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   await expectPathname(page, `/cards/${nextCardId}/connections`);
   await expect(graph).toHaveAttribute('data-total-node-count', '10000');
   await expect(graph).toHaveAttribute('data-edge-render-status', 'painted');
-  await expect(graph).toHaveAttribute('data-card-render-status', 'painted');
-  await expect(graph.locator('button[data-card-id]')).toHaveCount(0);
+  await expect(graph).toHaveAttribute('data-card-render-status', 'cleared');
+  await expect(graph).toHaveAttribute('data-node-renderer', 'html');
+  await expect
+    .poll(() => graph.locator('button[data-card-id]').count())
+    .toBeGreaterThan(0);
+  await expect
+    .poll(() => graph.locator('button[data-card-id]').count())
+    .toBeLessThan(10_000);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(cameraBeforeReentry.x, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(cameraBeforeReentry.y, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(cameraBeforeReentry.scale, 7);
   const reentryReadyMs = performance.now() - reentryStarted;
   const dom = await graph.evaluate((element) => ({
     descendants: element.querySelectorAll('*').length,
@@ -3291,7 +3800,7 @@ test('canonical URLs restore cards and views through direct, back, forward and o
     timeout: 15_000,
   });
 
-  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await activateNotesView(page, testInfo.project.name, '過去のカード');
   await expectPathname(page, `/cards/${ids.cardA}/history`);
   await expect(
     page.getByTestId('history-list').locator(`[data-card-id="${ids.cardA}"]`),
@@ -3303,7 +3812,7 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await expectPathname(page, `/cards/${ids.cardB}`);
   await expect(page.getByTestId('card-title')).toHaveValue(titles.cardB);
 
-  await page.getByRole('button', { name: 'つながり', exact: true }).click();
+  await activateNotesView(page, testInfo.project.name, 'つながり');
   await expectPathname(page, `/cards/${ids.cardB}/connections`);
   const graph = page.getByTestId('connections-graph');
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
@@ -3353,7 +3862,7 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await expect(page.getByTestId('card-title')).toHaveValue(titles.cardC);
   expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
 
-  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await activateNotesView(page, testInfo.project.name, 'カード');
   await expectPathname(page, `/cards/${ids.cardC}`);
   expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
 
@@ -3374,7 +3883,7 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await expectPathname(page, newCardPathname);
   await page.goBack();
 
-  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await activateNotesView(page, testInfo.project.name, '過去のカード');
   await page
     .getByTestId('history-list')
     .locator(`[data-card-id="${ids.cardA}"]`)

@@ -15,6 +15,7 @@ import { HistoryView } from '@/components/history-view';
 import type { HistoryViewModel } from '@/lib/application/presentation';
 import { historyWindowLayout } from '@/lib/application/history-window';
 import { fixtureCardId } from '@/tests/fixtures/ids';
+import { createNotesViewStatePorts } from '@/lib/client/notes-view-state';
 
 type ResizeRegistration = Readonly<{
   observer: FixtureResizeObserver;
@@ -126,7 +127,10 @@ describe('history windowing adapter', () => {
     document.body.appendChild(container);
     root = createRoot(container);
 
-    act(() => root?.render(createElement(HistoryView, { model, onOpenCard })));
+    const position = createNotesViewStatePorts(model.currentCardId).history;
+    act(() =>
+      root?.render(createElement(HistoryView, { model, onOpenCard, position })),
+    );
 
     const list = historyList();
     expect(list.dataset.historyTotalCount).toBe('10000');
@@ -154,15 +158,18 @@ describe('history windowing adapter', () => {
     historyViewportHeight = 720;
     act(() => notifyResizeObservers());
     expect(renderedButtons().length).toBeLessThanOrEqual(15);
-    expect(list.querySelector('button[data-current="true"]')).not.toBeNull();
+    expect(list.scrollTop).toBe(
+      historyWindowLayout.contentPadding +
+        9_000 * (historyWindowLayout.rowHeight + historyWindowLayout.rowGap),
+    );
 
-    const currentButton = list.querySelector('button[data-current="true"]');
-    if (!(currentButton instanceof HTMLButtonElement)) {
-      throw new Error('Current history button is missing');
+    const visibleButton = list.querySelector('button[data-card-id]');
+    if (!(visibleButton instanceof HTMLButtonElement)) {
+      throw new Error('Visible history button is missing');
     }
     act(() => {
-      currentButton.focus();
-      currentButton.dispatchEvent(
+      visibleButton.focus();
+      visibleButton.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'End', bubbles: true }),
       );
     });

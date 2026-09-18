@@ -13,6 +13,7 @@ export function ConnectionsView({
   totalEdgeCount,
   actions,
   presentation,
+  cameraPosition,
 }: ConnectionsRendererProps) {
   const openCard = actions.openCard;
   const readyModel = model.status === 'ready' ? model : null;
@@ -65,6 +66,7 @@ export function ConnectionsView({
     preparedVisibility,
     retainedNodeIndex,
     openCard,
+    cameraPosition,
   );
   const htmlNodeIndices = useMemo(() => {
     const indices =

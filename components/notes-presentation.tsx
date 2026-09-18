@@ -21,6 +21,7 @@ import type {
   NotesStatusKind,
   NotesViewName,
 } from '@/lib/application/presentation';
+import { useCardScrollPosition } from '@/components/use-card-scroll-position';
 
 function StatusIcon({ kind }: { kind: NotesStatusKind }) {
   if (kind === 'saved') {
@@ -93,7 +94,10 @@ const navigation: {
 function Navigation({
   model,
   actions,
-}: Pick<NotesPresentationProps, 'model' | 'actions'>) {
+  beforeActivate,
+}: Pick<NotesPresentationProps, 'model' | 'actions'> & {
+  beforeActivate: (view: NotesViewName) => void;
+}) {
   return (
     <nav aria-label="表示切り替え" className="app-navigation">
       {navigation.map((item) => {
@@ -104,7 +108,10 @@ function Navigation({
             type="button"
             aria-current={model.activeView === item.view ? 'page' : undefined}
             disabled={!model.availableViews[item.view]}
-            onClick={() => actions[item.activate]()}
+            onClick={() => {
+              beforeActivate(item.view);
+              actions[item.activate]();
+            }}
             className="nav-button aria-[current=page]:nav-button-active disabled:opacity-35"
           >
             <Icon aria-hidden="true" className="size-4" />
@@ -116,9 +123,16 @@ function Navigation({
   );
 }
 
-function EmptyState({ actions }: Pick<NotesPresentationProps, 'actions'>) {
+function EmptyState({
+  actions,
+  active,
+}: Pick<NotesPresentationProps, 'actions'> & { active: boolean }) {
   return (
-    <section className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center rounded-3xl border border-dashed bg-card/45 px-6 text-center">
+    <section
+      className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center rounded-3xl border border-dashed bg-card/45 px-6 text-center"
+      hidden={!active}
+      inert={!active}
+    >
       <div className="mb-5 rounded-full bg-accent p-4 text-accent-foreground">
         <NotebookPen aria-hidden="true" className="size-7" />
       </div>
@@ -140,12 +154,22 @@ function EmptyState({ actions }: Pick<NotesPresentationProps, 'actions'>) {
   );
 }
 
-function CardView({ model, actions, features }: NotesPresentationProps) {
+function CardView({
+  model,
+  actions,
+  features,
+  active,
+}: NotesPresentationProps & { active: boolean }) {
   const card = model.currentCard;
-  if (!card) return <EmptyState actions={actions} />;
+  if (!card) return <EmptyState actions={actions} active={active} />;
 
   return (
-    <section className="mx-auto w-full max-w-3xl" aria-label="カード編集">
+    <section
+      className="mx-auto w-full max-w-3xl"
+      aria-label="カード編集"
+      hidden={!active}
+      inert={!active}
+    >
       {model.conflicts.map((conflict) => (
         <ConflictNotice
           key={conflict.conflictId}
@@ -167,11 +191,7 @@ function CardView({ model, actions, features }: NotesPresentationProps) {
           </span>
           <StatusIndicator model={model} actions={actions} />
         </div>
-        {model.cardEditor &&
-          features.renderCardEditor({
-            input: model.cardEditor,
-            actions,
-          })}
+        {features.renderCardEditor()}
       </article>
     </section>
   );
@@ -182,6 +202,11 @@ export function NotesPresentation({
   actions,
   features,
 }: NotesPresentationProps) {
+  const { captureBeforeViewChange } = useCardScrollPosition(
+    model.activeView,
+    model.currentCard?.id ?? null,
+    features.viewState.body,
+  );
   if (!model.initialized) {
     return (
       <main className="grid min-h-dvh place-items-center text-sm text-muted-foreground">
@@ -230,11 +255,18 @@ export function NotesPresentation({
         }`}
       >
         <div className="notes-workspace-content">
-          {model.activeView === 'card' && (
-            <CardView model={model} actions={actions} features={features} />
-          )}
+          <CardView
+            model={model}
+            actions={actions}
+            features={features}
+            active={model.activeView === 'card'}
+          />
           {model.activeView === 'history' && (
-            <HistoryView model={model.history} onOpenCard={actions.openCard} />
+            <HistoryView
+              model={model.history}
+              onOpenCard={actions.openCard}
+              position={features.viewState.history}
+            />
           )}
           {model.activeView === 'connections' &&
             model.connections &&
@@ -243,7 +275,11 @@ export function NotesPresentation({
               actions,
             })}
         </div>
-        <Navigation model={model} actions={actions} />
+        <Navigation
+          model={model}
+          actions={actions}
+          beforeActivate={captureBeforeViewChange}
+        />
       </div>
     </main>
   );

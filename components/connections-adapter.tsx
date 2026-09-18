@@ -8,12 +8,14 @@ import type {
   ConnectionsInputModel,
   ConnectionsSelectionActions,
 } from '@/lib/graph/connections-contract';
+import type { NotesViewStatePorts } from '@/lib/application/notes-view-state';
 
 type Props = {
   input: ConnectionsInputModel;
   actions: Pick<ConnectionsSelectionActions, 'openCard'>;
   presentation: ConnectionsPresentationAdapter;
   Renderer: ComponentType<ConnectionsRendererProps>;
+  cameraPosition: NotesViewStatePorts['connections'];
 };
 
 export function ConnectionsAdapter({
@@ -21,6 +23,7 @@ export function ConnectionsAdapter({
   actions,
   presentation,
   Renderer,
+  cameraPosition,
 }: Props) {
   const model = useConnectionsController(input, presentation);
   return (
@@ -30,6 +33,7 @@ export function ConnectionsAdapter({
       totalEdgeCount={input.edges.length}
       actions={actions}
       presentation={presentation}
+      cameraPosition={cameraPosition}
     />
   );
 }

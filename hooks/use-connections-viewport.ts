@@ -9,23 +9,27 @@ import {
 import { createConnectionsCanvasCardRenderer } from '@/lib/client/connections-card-canvas-renderer';
 import { createConnectionsCanvasEdgeRenderer } from '@/lib/client/connections-canvas-renderer';
 import type { CardId } from '@/lib/domain/id';
+import type { NotesViewStatePorts } from '@/lib/application/notes-view-state';
 import type {
   ConnectionsReadyNode,
   ConnectionsReadyState,
 } from '@/lib/graph/connections-contract';
 import {
   centerConnectionsCameraOnRect,
+  captureConnectionsCameraSnapshot,
   connectionsCameraContainsRect,
   connectionsCameraTransform,
   createConnectionsCameraFrameAdapter,
   ensureConnectionsRectVisible,
   fitConnectionsCamera,
   initialConnectionsCamera,
+  normalizeConnectionsWheel,
   panConnectionsCamera,
   pinchConnectionsCamera,
   preserveConnectionsRectAnchor,
   resolveConnectionsCameraLimits,
   resizeConnectionsCamera,
+  restoreConnectionsCameraSnapshot,
   zoomConnectionsCamera,
   type ConnectionsCamera,
   type ConnectionsCameraFrameAdapter,
@@ -72,12 +76,41 @@ function pointerPair(
   return first && second ? [first, second] : null;
 }
 
+function wheelLineHeight(element: HTMLElement): number {
+  const style = window.getComputedStyle(element);
+  const lineHeight = Number.parseFloat(style.lineHeight);
+  if (Number.isFinite(lineHeight) && lineHeight > 0) return lineHeight;
+  const fontSize = Number.parseFloat(style.fontSize);
+  if (Number.isFinite(fontSize) && fontSize > 0) return fontSize * 1.2;
+  return 16;
+}
+
+function wheelTargetsEditableControl(event: WheelEvent): boolean {
+  return event.composedPath().some((target) => {
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement
+    ) {
+      return true;
+    }
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable) return true;
+    const role = target.getAttribute('role');
+    return (
+      (role === 'textbox' || role === 'combobox') &&
+      target.getAttribute('aria-disabled') !== 'true'
+    );
+  });
+}
+
 export function useConnectionsViewport(
   model: ConnectionsReadyState | null,
   padding: ConnectionsViewportPadding,
   preparedVisibility: PreparedConnectionsVisibility | null,
   retainedNodeIndex: number | null,
   openOverviewCard: (cardId: CardId) => void,
+  cameraPosition: NotesViewStatePorts['connections'],
 ): ConnectionsViewportController {
   const viewportRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
@@ -89,6 +122,7 @@ export function useConnectionsViewport(
   const preparedVisibilityRef = useRef(preparedVisibility);
   const retainedNodeIndexRef = useRef(retainedNodeIndex);
   const openOverviewCardRef = useRef(openOverviewCard);
+  const cameraPositionRef = useRef(cameraPosition);
   const geometryRef = useRef<ConnectionsCameraGeometry | null>(null);
   const cameraRef = useRef<ConnectionsCamera | null>(null);
   const preferredScaleRef = useRef<number | null>(null);
@@ -164,7 +198,15 @@ export function useConnectionsViewport(
     preparedVisibilityRef.current = preparedVisibility;
     retainedNodeIndexRef.current = retainedNodeIndex;
     openOverviewCardRef.current = openOverviewCard;
-  }, [model, openOverviewCard, padding, preparedVisibility, retainedNodeIndex]);
+    cameraPositionRef.current = cameraPosition;
+  }, [
+    cameraPosition,
+    model,
+    openOverviewCard,
+    padding,
+    preparedVisibility,
+    retainedNodeIndex,
+  ]);
 
   const readGeometry = useCallback((): ConnectionsCameraGeometry | null => {
     const viewport = viewportRef.current;
@@ -419,6 +461,23 @@ export function useConnectionsViewport(
     (camera: ConnectionsCamera | null, persistScale = false) => {
       if (!camera) return;
       cameraRef.current = camera;
+      const geometry = geometryRef.current;
+      const ready = modelRef.current;
+      const geometryModel = geometryModelRef.current;
+      if (
+        geometry &&
+        ready &&
+        geometryModel?.currentCardId === ready.currentCardId &&
+        geometryModel.layoutKey === ready.layoutKey
+      ) {
+        const snapshot = captureConnectionsCameraSnapshot(
+          ready.currentCardId,
+          ready.layoutKey,
+          camera,
+          geometry,
+        );
+        if (snapshot) cameraPositionRef.current.write(snapshot);
+      }
       frameAdapterRef.current?.queue(camera);
       if (persistScale) queuePreferredScale(camera.scale);
     },
@@ -441,10 +500,31 @@ export function useConnectionsViewport(
     const previousCamera = cameraRef.current;
     const previousModel = geometryModelRef.current;
     const layoutChanged = layoutKeyRef.current !== ready.layoutKey;
+    const currentCardChanged =
+      previousModel !== null &&
+      previousModel.currentCardId !== ready.currentCardId;
     geometryRef.current = geometry;
     layoutKeyRef.current = ready.layoutKey;
     geometryModelRef.current = ready;
     if (!previousCamera || !previousGeometry) {
+      const snapshot = cameraPositionRef.current.read();
+      commitCameraWithVisibility(
+        (snapshot &&
+          restoreConnectionsCameraSnapshot(
+            snapshot,
+            ready.currentCardId,
+            ready.layoutKey,
+            geometry,
+          )) ||
+          initialConnectionsCamera(
+            geometry,
+            ready.currentNode,
+            preferredScaleRef.current,
+          ),
+      );
+      return;
+    }
+    if (currentCardChanged) {
       commitCameraWithVisibility(
         initialConnectionsCamera(
           geometry,
@@ -570,6 +650,7 @@ export function useConnectionsViewport(
     synchronizeGeometry();
   }, [
     model?.height,
+    model?.currentCardId,
     model?.layoutKey,
     model?.width,
     preparedVisibility?.worldBounds.height,
@@ -839,21 +920,39 @@ export function useConnectionsViewport(
       event.preventDefault();
     };
     const handleWheel = (event: WheelEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return;
+      if (event.defaultPrevented || wheelTargetsEditableControl(event)) return;
       const geometry = geometryRef.current;
       const camera = cameraRef.current;
       if (!geometry || !camera) return;
       const bounds = viewport.getBoundingClientRect();
-      commitCamera(
-        zoomConnectionsCamera(
-          camera,
-          Math.exp(-event.deltaY * 0.002),
-          { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
-          geometry,
-        ),
-        true,
-      );
-      event.preventDefault();
+      const delta = normalizeConnectionsWheel({
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        deltaMode: event.deltaMode,
+        lineHeight: wheelLineHeight(viewport),
+        pageWidth: bounds.width,
+        pageHeight: bounds.height,
+      });
+      if (!delta) return;
+      if (event.ctrlKey || event.metaKey) {
+        commitCamera(
+          zoomConnectionsCamera(
+            camera,
+            Math.exp(-delta.y * 0.002),
+            { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+            geometry,
+          ),
+          true,
+        );
+      } else {
+        const pan =
+          event.shiftKey && delta.x === 0 ? { x: delta.y, y: 0 } : delta;
+        if (pan.x === 0 && pan.y === 0) return;
+        commitCamera(
+          panConnectionsCamera(camera, { x: -pan.x, y: -pan.y }, geometry),
+        );
+      }
+      if (event.cancelable) event.preventDefault();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.target !== viewport) return;

@@ -65,12 +65,7 @@ export function createAlternatePresentationProbe(
         props.actions.resolveConflict(firstConflict.conflictId, option.choice);
       }
     },
-    editorFeature: editor
-      ? props.features.renderCardEditor({
-          input: editor,
-          actions: props.actions,
-        })
-      : null,
+    editorFeature: props.features.renderCardEditor(),
     connectionsFeature: connections
       ? props.features.renderConnections({
           input: connections,

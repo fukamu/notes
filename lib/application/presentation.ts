@@ -65,6 +65,25 @@ export type CardEditorInputModel = {
   candidateIndex: CardEditorCandidateIndex;
 };
 
+export type CardEditorDocumentInput = Pick<
+  CardEditorInputModel,
+  'cardId' | 'title' | 'body'
+>;
+
+export type CardEditorActivity =
+  | {
+      kind: 'active';
+      labels: CardEditorInputModel['labels'];
+      candidateIndex: CardEditorInputModel['candidateIndex'];
+    }
+  | { kind: 'inactive' };
+
+export type EditorFocusIntent = Readonly<{
+  requestId: number;
+  cardId: CardId;
+  target: 'title';
+}>;
+
 export type ConnectionsViewModel = ConnectionsInputModel;
 
 type NotesPresentationModelBase = {

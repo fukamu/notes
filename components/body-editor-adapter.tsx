@@ -3,31 +3,42 @@
 import type { ComponentType } from 'react';
 import type { CardEditorRendererProps } from '@/components/presentation-contract';
 import type {
-  CardEditorInputModel,
+  CardEditorActivity,
+  CardEditorDocumentInput,
+  EditorFocusIntent,
   NotesPresentationActions,
 } from '@/lib/application/presentation';
 import { useCardEditor } from '@/lib/editor/use-card-editor';
 import type { CardEditorPresentationAdapter } from '@/lib/editor/use-card-editor';
 
 type Props = {
-  model: CardEditorInputModel;
+  document: CardEditorDocumentInput;
+  activity: CardEditorActivity;
   actions: Pick<
     NotesPresentationActions,
     'openCard' | 'updateTitle' | 'updateBody'
   >;
+  focusIntent: EditorFocusIntent | null;
+  consumeFocusIntent: (requestId: number) => void;
   presentation: CardEditorPresentationAdapter;
   Renderer: ComponentType<CardEditorRendererProps>;
 };
 
 export function BodyEditorAdapter({
-  model,
+  document,
+  activity,
   actions,
+  focusIntent,
+  consumeFocusIntent,
   presentation,
   Renderer,
 }: Props) {
   const controller = useCardEditor({
-    input: model,
+    document,
+    activity,
     actions,
+    focusIntent,
+    consumeFocusIntent,
     presentation,
   });
   return <Renderer model={controller.model} commands={controller.commands} />;

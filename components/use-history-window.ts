@@ -2,13 +2,18 @@
 
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+  captureHistoryAnchor,
   centeredHistoryScrollTop,
   moveHistoryFocus,
+  restoreHistoryAnchorScrollTop,
   selectHistoryWindow,
   type HistoryFocusMovement,
   type HistoryViewport,
   type HistoryWindow,
 } from '@/lib/application/history-window';
+import type { ViewStateSlot } from '@/lib/application/notes-view-state';
+import type { HistoryAnchor } from '@/lib/application/history-window';
+import type { CardId } from '@/lib/domain/id';
 
 type HistoryWindowAdapter = Readonly<{
   window: HistoryWindow;
@@ -44,9 +49,12 @@ function sameViewport(
 }
 
 export function useHistoryWindow(
-  itemCount: number,
+  itemIds: readonly CardId[],
+  currentCardId: CardId | null,
   currentIndex: number | null,
+  position: ViewStateSlot<HistoryAnchor>,
 ): HistoryWindowAdapter {
+  const itemCount = itemIds.length;
   const [viewport, setViewport] = useState<HistoryViewport>(unmeasuredViewport);
   const scrollContainer = useRef<HTMLDivElement | null>(null);
   const itemElements = useRef(new Map<number, HTMLButtonElement>());
@@ -75,25 +83,46 @@ export function useHistoryWindow(
     [],
   );
 
+  const capturePosition = useCallback(
+    (element: HTMLDivElement) => {
+      if (currentCardId === null) return;
+      const anchor = captureHistoryAnchor(
+        itemIds,
+        currentCardId,
+        element.scrollTop,
+      );
+      if (anchor) position.write(anchor);
+    },
+    [currentCardId, itemIds, position],
+  );
+
   const updateFromScroll = useCallback(
     (element: HTMLDivElement) => {
+      capturePosition(element);
       const next = measuredViewport(element);
       if (next) setMeasuredViewport(next);
     },
-    [setMeasuredViewport],
+    [capturePosition, setMeasuredViewport],
   );
 
   useLayoutEffect(() => {
     const container = scrollContainer.current;
     if (!container) return;
 
-    const centerCurrent = () => {
+    const restorePosition = () => {
       const measured = measuredViewport(container);
       if (!measured || measured.kind !== 'measured') return;
+      const anchor = currentCardId === null ? null : position.read();
       const nextScrollTop =
-        currentIndex === null
-          ? measured.scrollTop
-          : centeredHistoryScrollTop(currentIndex, itemCount, measured.height);
+        anchor && anchor.currentCardId === currentCardId
+          ? restoreHistoryAnchorScrollTop(anchor, itemIds, measured.height)
+          : currentIndex === null
+            ? measured.scrollTop
+            : centeredHistoryScrollTop(
+                currentIndex,
+                itemCount,
+                measured.height,
+              );
       container.scrollTop = nextScrollTop;
       setMeasuredViewport({
         kind: 'measured',
@@ -102,12 +131,23 @@ export function useHistoryWindow(
       });
     };
 
-    centerCurrent();
+    restorePosition();
     if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(centerCurrent);
+    const observer = new ResizeObserver(restorePosition);
     observer.observe(container);
-    return () => observer.disconnect();
-  }, [currentIndex, itemCount, setMeasuredViewport]);
+    return () => {
+      capturePosition(container);
+      observer.disconnect();
+    };
+  }, [
+    capturePosition,
+    currentCardId,
+    currentIndex,
+    itemCount,
+    itemIds,
+    position,
+    setMeasuredViewport,
+  ]);
 
   useLayoutEffect(() => {
     const target = pendingFocusIndex.current;
@@ -147,13 +187,14 @@ export function useHistoryWindow(
         measured.height,
       );
       container.scrollTop = nextScrollTop;
+      capturePosition(container);
       setMeasuredViewport({
         kind: 'measured',
         height: measured.height,
         scrollTop: nextScrollTop,
       });
     },
-    [itemCount, setMeasuredViewport],
+    [capturePosition, itemCount, setMeasuredViewport],
   );
 
   return {

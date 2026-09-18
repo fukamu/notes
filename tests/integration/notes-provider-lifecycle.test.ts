@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { VaultNotesScope } from '@/lib/application/notes-access';
 import type {
+  ForegroundResumePort,
   NotesRepository,
   NotesRuntimePorts,
   SyncTransport,
@@ -51,6 +52,8 @@ type RuntimeHarness = {
   readonly ports: NotesRuntimePorts<VaultNotesScope>;
   readonly repository: NotesRepository<VaultNotesScope>;
   readonly transport: SyncTransport<VaultNotesScope>;
+  readonly resumeForeground: () => void;
+  readonly resumeLastForegroundSubscriber: () => void;
 };
 
 type RuntimeOverrides = {
@@ -139,9 +142,22 @@ function createRuntimeHarness(
     scope,
     send: vi.fn(overrides.send ?? (async () => ({}))),
   };
+  const foregroundSubscribers = new Set<() => void>();
+  let lastForegroundSubscriber: (() => void) | undefined;
+  const foregroundResume: ForegroundResumePort = {
+    subscribe: vi.fn<ForegroundResumePort['subscribe']>((onResume) => {
+      lastForegroundSubscriber = onResume;
+      foregroundSubscribers.add(onResume);
+      return () => foregroundSubscribers.delete(onResume);
+    }),
+  };
   return {
     repository,
     transport,
+    resumeForeground: () => {
+      for (const subscriber of foregroundSubscribers) subscriber();
+    },
+    resumeLastForegroundSubscriber: () => lastForegroundSubscriber?.(),
     ports: {
       scope,
       repository,
@@ -157,6 +173,7 @@ function createRuntimeHarness(
         isOnline: () => overrides.online ?? false,
         subscribe: vi.fn(() => () => undefined),
       },
+      foregroundResume,
       offlineApp: {
         prepare: vi.fn(async () => undefined),
         purge: vi.fn(async () => undefined),
@@ -222,6 +239,103 @@ async function flushAsyncCompletion(): Promise<void> {
 }
 
 describe('NotesProvider operation lifecycle', () => {
+  it('synchronizes once when an idle online runtime resumes', async () => {
+    const runtime = createRuntimeHarness({ online: true });
+
+    await renderRuntime(runtime, 'foreground-idle-runtime');
+    await vi.waitFor(() =>
+      expect(runtime.transport.send).toHaveBeenCalledOnce(),
+    );
+    vi.mocked(runtime.transport.send).mockClear();
+
+    act(() => runtime.resumeForeground());
+
+    await vi.waitFor(() =>
+      expect(runtime.transport.send).toHaveBeenCalledOnce(),
+    );
+  });
+
+  it('coalesces a resume during sync into the existing follow-up request', async () => {
+    const firstResponse = Promise.withResolvers<unknown>();
+    let sendCount = 0;
+    const runtime = createRuntimeHarness({
+      online: true,
+      send: async () => {
+        sendCount += 1;
+        return sendCount === 1 ? firstResponse.promise : {};
+      },
+    });
+
+    await renderRuntime(runtime, 'foreground-single-flight-runtime');
+    await vi.waitFor(() =>
+      expect(runtime.transport.send).toHaveBeenCalledOnce(),
+    );
+
+    act(() => runtime.resumeForeground());
+    expect(runtime.transport.send).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      firstResponse.resolve({});
+      await vi.waitFor(() =>
+        expect(runtime.transport.send).toHaveBeenCalledTimes(2),
+      );
+    });
+  });
+
+  it('does not send while offline when the runtime resumes', async () => {
+    const runtime = createRuntimeHarness({ online: false });
+
+    await renderRuntime(runtime, 'foreground-offline-runtime');
+    act(() => runtime.resumeForeground());
+    await flushAsyncCompletion();
+
+    expect(runtime.transport.send).not.toHaveBeenCalled();
+    expect(currentStore().syncState).toBe('offline');
+  });
+
+  it('rejects foreground callbacks after a fence, runtime switch, or unmount', async () => {
+    const fencedRuntime = createRuntimeHarness({ online: true });
+    await renderRuntime(fencedRuntime, 'foreground-fence-runtime');
+    await vi.waitFor(() =>
+      expect(fencedRuntime.transport.send).toHaveBeenCalledOnce(),
+    );
+    vi.mocked(fencedRuntime.transport.send).mockClear();
+
+    await renderRuntime(fencedRuntime, 'foreground-fence-runtime', true);
+    act(() => fencedRuntime.resumeLastForegroundSubscriber());
+    await flushAsyncCompletion();
+    expect(fencedRuntime.transport.send).not.toHaveBeenCalled();
+
+    const oldRuntime = createRuntimeHarness({ online: true });
+    const nextRuntime = createRuntimeHarness({
+      scope: { ...vaultScope, vaultId: sessionFixtureIds.otherVaultId },
+      online: false,
+    });
+    await renderRuntime(oldRuntime, 'foreground-old-runtime');
+    await vi.waitFor(() =>
+      expect(oldRuntime.transport.send).toHaveBeenCalledOnce(),
+    );
+    vi.mocked(oldRuntime.transport.send).mockClear();
+    await renderRuntime(nextRuntime, 'foreground-next-runtime');
+
+    act(() => oldRuntime.resumeLastForegroundSubscriber());
+    await flushAsyncCompletion();
+    expect(oldRuntime.transport.send).not.toHaveBeenCalled();
+
+    const unmountedRuntime = createRuntimeHarness({ online: true });
+    await renderRuntime(unmountedRuntime, 'foreground-unmounted-runtime');
+    await vi.waitFor(() =>
+      expect(unmountedRuntime.transport.send).toHaveBeenCalledOnce(),
+    );
+    vi.mocked(unmountedRuntime.transport.send).mockClear();
+    act(() => root?.unmount());
+    root = undefined;
+
+    act(() => unmountedRuntime.resumeLastForegroundSubscriber());
+    await flushAsyncCompletion();
+    expect(unmountedRuntime.transport.send).not.toHaveBeenCalled();
+  });
+
   it.each([
     [
       'session rotation',

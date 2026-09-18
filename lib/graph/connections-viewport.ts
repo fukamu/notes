@@ -1,3 +1,5 @@
+import type { CardId } from '@/lib/domain/id';
+
 export type ConnectionsPoint = Readonly<{
   x: number;
   y: number;
@@ -26,6 +28,22 @@ export type ConnectionsCamera = Readonly<{
   x: number;
   y: number;
   scale: number;
+}>;
+
+export type ConnectionsWheelInput = Readonly<{
+  deltaX: number;
+  deltaY: number;
+  deltaMode: number;
+  lineHeight: number;
+  pageWidth: number;
+  pageHeight: number;
+}>;
+
+export type ConnectionsCameraSnapshot = Readonly<{
+  currentCardId: CardId;
+  layoutKey: string;
+  scale: number;
+  centerWorld: ConnectionsPoint;
 }>;
 
 export type ConnectionsCameraLimits = Readonly<{
@@ -61,6 +79,37 @@ function finite(value: number): boolean {
 
 function finitePoint(point: ConnectionsPoint): boolean {
   return finite(point.x) && finite(point.y);
+}
+
+export function normalizeConnectionsWheel(
+  input: ConnectionsWheelInput,
+): ConnectionsPoint | null {
+  const { deltaX, deltaY, deltaMode, lineHeight, pageWidth, pageHeight } =
+    input;
+  if (
+    ![deltaX, deltaY, deltaMode, lineHeight, pageWidth, pageHeight].every(
+      finite,
+    ) ||
+    lineHeight <= 0 ||
+    pageWidth <= 0 ||
+    pageHeight <= 0
+  ) {
+    return null;
+  }
+  const multiplier =
+    deltaMode === 0
+      ? { x: 1, y: 1 }
+      : deltaMode === 1
+        ? { x: lineHeight, y: lineHeight }
+        : deltaMode === 2
+          ? { x: pageWidth, y: pageHeight }
+          : null;
+  if (!multiplier) return null;
+  const normalized = {
+    x: deltaX * multiplier.x,
+    y: deltaY * multiplier.y,
+  };
+  return finitePoint(normalized) ? normalized : null;
 }
 
 function finiteRect(rect: ConnectionsNodeGeometry): boolean {
@@ -233,6 +282,59 @@ export function clampConnectionsCamera(
     y: camera.y,
     scale,
   };
+}
+
+export function captureConnectionsCameraSnapshot(
+  currentCardId: CardId,
+  layoutKey: string,
+  camera: ConnectionsCamera,
+  geometry: ConnectionsCameraGeometry,
+): ConnectionsCameraSnapshot | null {
+  const viewport = usableViewport(geometry);
+  const acceptedCamera = clampConnectionsCamera(camera, geometry);
+  if (!viewport || !acceptedCamera || layoutKey.length === 0) return null;
+  const center = {
+    x: viewport.left + viewport.width / 2,
+    y: viewport.top + viewport.height / 2,
+  };
+  const centerWorld = {
+    x: (center.x - acceptedCamera.x) / acceptedCamera.scale,
+    y: (center.y - acceptedCamera.y) / acceptedCamera.scale,
+  };
+  if (!finitePoint(centerWorld)) return null;
+  return {
+    currentCardId,
+    layoutKey,
+    scale: acceptedCamera.scale,
+    centerWorld,
+  };
+}
+
+export function restoreConnectionsCameraSnapshot(
+  snapshot: ConnectionsCameraSnapshot,
+  currentCardId: CardId,
+  layoutKey: string,
+  geometry: ConnectionsCameraGeometry,
+): ConnectionsCamera | null {
+  const viewport = usableViewport(geometry);
+  const scale = decodeConnectionsCameraScale(snapshot.scale, geometry.limits);
+  if (
+    !viewport ||
+    scale === null ||
+    snapshot.currentCardId !== currentCardId ||
+    snapshot.layoutKey !== layoutKey ||
+    !finitePoint(snapshot.centerWorld)
+  ) {
+    return null;
+  }
+  return clampConnectionsCamera(
+    {
+      x: viewport.left + viewport.width / 2 - snapshot.centerWorld.x * scale,
+      y: viewport.top + viewport.height / 2 - snapshot.centerWorld.y * scale,
+      scale,
+    },
+    geometry,
+  );
 }
 
 export function fitConnectionsCamera(

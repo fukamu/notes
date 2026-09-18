@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   centerConnectionsCameraOnRect,
+  captureConnectionsCameraSnapshot,
   clampConnectionsCamera,
   connectionsCameraContainsRect,
   connectionsCameraTransform,
@@ -13,16 +14,19 @@ import {
   ensureConnectionsRectVisible,
   fitConnectionsCamera,
   initialConnectionsCamera,
+  normalizeConnectionsWheel,
   panConnectionsCamera,
   pinchConnectionsCamera,
   preserveConnectionsRectAnchor,
   resolveConnectionsCameraLimits,
   resizeConnectionsCamera,
+  restoreConnectionsCameraSnapshot,
   restoreConnectionsCameraScale,
   zoomConnectionsCamera,
   type ConnectionsCamera,
   type ConnectionsCameraGeometry,
 } from '@/lib/graph/connections-viewport';
+import { fixtureCardId } from '@/tests/fixtures/ids';
 
 const geometry: ConnectionsCameraGeometry = {
   viewport: { width: 800, height: 600 },
@@ -42,6 +46,43 @@ function expectCameraClose(
 }
 
 describe('connections map camera geometry', () => {
+  it('normalizes pixel, line, and page wheel deltas at the pure boundary', () => {
+    const input = {
+      deltaX: 2,
+      deltaY: -3,
+      deltaMode: 0,
+      lineHeight: 18,
+      pageWidth: 800,
+      pageHeight: 600,
+    };
+    expect(normalizeConnectionsWheel(input)).toEqual({ x: 2, y: -3 });
+    expect(normalizeConnectionsWheel({ ...input, deltaMode: 1 })).toEqual({
+      x: 36,
+      y: -54,
+    });
+    expect(normalizeConnectionsWheel({ ...input, deltaMode: 2 })).toEqual({
+      x: 1_600,
+      y: -1_800,
+    });
+  });
+
+  it('rejects unknown wheel modes and non-finite or unusable dimensions', () => {
+    const input = {
+      deltaX: 2,
+      deltaY: -3,
+      deltaMode: 0,
+      lineHeight: 18,
+      pageWidth: 800,
+      pageHeight: 600,
+    };
+    expect(normalizeConnectionsWheel({ ...input, deltaMode: 3 })).toBeNull();
+    expect(
+      normalizeConnectionsWheel({ ...input, deltaY: Number.NaN }),
+    ).toBeNull();
+    expect(normalizeConnectionsWheel({ ...input, lineHeight: 0 })).toBeNull();
+    expect(normalizeConnectionsWheel({ ...input, pageWidth: 0 })).toBeNull();
+  });
+
   it('uses the shared fallback 10–200% camera range before geometry exists', () => {
     expect(DEFAULT_CONNECTIONS_CAMERA_LIMITS).toEqual({
       minimumScale: 0.1,
@@ -183,6 +224,53 @@ describe('connections map camera geometry', () => {
       clampConnectionsCamera({ x: 999, y: -999, scale: 4 }, geometry),
       { x: 999, y: -999, scale: 3 },
     );
+  });
+
+  it('captures and restores the same world center across viewport sizes', () => {
+    const cardId = fixtureCardId('camera-snapshot-current');
+    const camera = { x: -725, y: 340, scale: 1.25 };
+    const snapshot = captureConnectionsCameraSnapshot(
+      cardId,
+      'layout-a',
+      camera,
+      geometry,
+    );
+    expect(snapshot).toEqual({
+      currentCardId: cardId,
+      layoutKey: 'layout-a',
+      scale: 1.25,
+      centerWorld: { x: 900, y: -32 },
+    });
+    if (!snapshot) return;
+    const resizedGeometry = {
+      ...geometry,
+      viewport: { width: 1_000, height: 740 },
+    };
+    expectCameraClose(
+      restoreConnectionsCameraSnapshot(
+        snapshot,
+        cardId,
+        'layout-a',
+        resizedGeometry,
+      ),
+      { x: -625, y: 410, scale: 1.25 },
+    );
+    expect(
+      restoreConnectionsCameraSnapshot(
+        snapshot,
+        fixtureCardId('camera-snapshot-other'),
+        'layout-a',
+        resizedGeometry,
+      ),
+    ).toBeNull();
+    expect(
+      restoreConnectionsCameraSnapshot(
+        snapshot,
+        cardId,
+        'layout-b',
+        resizedGeometry,
+      ),
+    ).toBeNull();
   });
 
   it('crosses every former world boundary without snapping for large and small worlds', () => {
