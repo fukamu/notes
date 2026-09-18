@@ -24,6 +24,7 @@ import type { NotesRuntimePorts } from '@/lib/application/notes-runtime';
 import type {
   CardEditorActivity,
   CardEditorDocumentInput,
+  EditorFocusIntent,
   NotesPresentationActions,
 } from '@/lib/application/presentation';
 import type { CardEdit } from '@/lib/domain/card-transitions';
@@ -74,12 +75,16 @@ function CardEditorSession({
   activity,
   openCard,
   updateCard,
+  focusIntent,
+  consumeFocusIntent,
   configuration,
 }: {
   document: CardEditorDocumentInput;
   activity: CardEditorActivity;
   openCard: NotesPresentationActions['openCard'];
   updateCard: (cardId: CardId, edit: CardEdit) => void;
+  focusIntent: EditorFocusIntent | null;
+  consumeFocusIntent: (requestId: number) => void;
   configuration: NotesAppConfiguration;
 }) {
   const [lifetime] = useState(createEditorSessionLifetime);
@@ -113,6 +118,8 @@ function CardEditorSession({
       document={document}
       activity={activity}
       actions={editorActions}
+      focusIntent={focusIntent}
+      consumeFocusIntent={consumeFocusIntent}
       presentation={configuration.cardEditorPresentation}
       Renderer={configuration.CardEditorRenderer}
     />
@@ -125,7 +132,8 @@ function NotesConnector({
   configuration: NotesAppConfiguration;
 }) {
   const store = useNotesDataStore();
-  const { model, actions } = useNotesApplication(store);
+  const { model, actions, editorFocusIntent, consumeEditorFocusIntent } =
+    useNotesApplication(store);
   const currentCardId = model.currentCard?.id ?? null;
   const viewState = useMemo(
     () => createNotesViewStatePorts(currentCardId),
@@ -187,14 +195,18 @@ function NotesConnector({
           activity={editorActivity}
           openCard={actions.openCard}
           updateCard={store.updateCard}
+          focusIntent={editorFocusIntent}
+          consumeFocusIntent={consumeEditorFocusIntent}
           configuration={configuration}
         />
       ) : null,
     [
       actions.openCard,
       configuration,
+      consumeEditorFocusIntent,
       editorActivity,
       editorDocument,
+      editorFocusIntent,
       store.updateCard,
     ],
   );

@@ -713,6 +713,110 @@ test('title and body share one chronological Undo/Redo history', async ({
   await expect(undo).toBeDisabled();
 });
 
+test('new cards focus the title once and Enter moves into the existing body history', async ({
+  page,
+}, testInfo) => {
+  const titleText = unique('作成フォーカス', testInfo.project.name);
+  const bodyText = 'Enter後の本文';
+
+  await ready(page);
+  await page.evaluate(() => {
+    document.documentElement.dataset.titleFocusCount = '0';
+    document.addEventListener('focusin', (event) => {
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.dataset.testid === 'card-title'
+      ) {
+        const current = Number(
+          document.documentElement.dataset.titleFocusCount ?? '0',
+        );
+        document.documentElement.dataset.titleFocusCount = String(current + 1);
+      }
+    });
+  });
+
+  await page.getByTestId('new-card').click();
+  const title = page.getByTestId('card-title');
+  const editor = page.getByTestId('body-editor');
+  const undo = page.getByTestId('undo');
+  const redo = page.getByTestId('redo');
+  await expect(title).toBeFocused();
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-title-focus-count',
+    '1',
+  );
+
+  await title.fill(titleText);
+  await title.dispatchEvent('compositionstart', { data: '変換中' });
+  await title.press('Enter');
+  await expect(title).toBeFocused();
+  await title.dispatchEvent('compositionend', { data: '変換中' });
+
+  await title.press('Enter');
+  await expect(editor).toBeFocused();
+  await expect(editor).toHaveText('');
+  await editor.pressSequentially(bodyText);
+
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await expect(title).toBeHidden();
+  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await expect(title).not.toBeFocused();
+  await expect(editor).not.toBeFocused();
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-title-focus-count',
+    '1',
+  );
+
+  await undo.click();
+  await expect(editor).not.toContainText(bodyText);
+  await expect(editor).toBeFocused();
+  await undo.click();
+  await expect(title).toHaveValue('');
+  await expect(title).toBeFocused();
+  await redo.click();
+  await expect(title).toHaveValue(titleText);
+  await redo.click();
+  await expect(editor).toContainText(bodyText);
+});
+
+test('an abandoned new-card focus intent cannot steal focus after returning', async ({
+  page,
+}) => {
+  await ready(page);
+  await page.evaluate(() => {
+    document.documentElement.dataset.blockTitleFocus = 'true';
+    const nativeFocus: unknown = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'focus',
+    )?.value;
+    if (typeof nativeFocus !== 'function') {
+      throw new Error('HTMLElement focus is unavailable');
+    }
+    HTMLElement.prototype.focus = function focus(options?: FocusOptions) {
+      if (
+        document.documentElement.dataset.blockTitleFocus === 'true' &&
+        this.dataset.testid === 'card-title'
+      ) {
+        return;
+      }
+      Reflect.apply(nativeFocus, this, [options]);
+    };
+  });
+
+  await page.getByTestId('new-card').click();
+  const title = page.getByTestId('card-title');
+  await expect(title).toBeVisible();
+  await expect(title).not.toBeFocused();
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await expect(title).toBeHidden();
+  await page.evaluate(() => {
+    delete document.documentElement.dataset.blockTitleFocus;
+  });
+  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await expect(title).toBeVisible();
+  await expect(title).not.toBeFocused();
+});
+
 test('the current card keeps one inactive editor session across view tabs', async ({
   page,
 }, testInfo) => {

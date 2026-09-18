@@ -1,6 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import {
   createNotesApplicationController,
   createNotesPresentationModel,
@@ -20,27 +26,54 @@ import {
   selectConnectionsGraphForLocation,
 } from '@/lib/client/connections-graph-cache';
 import type {
+  EditorFocusIntent,
   NotesPresentationActions,
   NotesPresentationModel,
 } from '@/lib/application/presentation';
 import { selectHistoryViewModel } from '@/lib/application/view-models';
 import type { NotesDataStore } from '@/lib/client/notes-store';
 
+type OwnedEditorFocusIntent = Readonly<{
+  owner: NotesDataStore['createCard'];
+  nextRequestId: number;
+  intent: EditorFocusIntent | null;
+}>;
+
 export function useNotesApplication(store: NotesDataStore): {
   model: NotesPresentationModel;
   actions: NotesPresentationActions;
+  editorFocusIntent: EditorFocusIntent | null;
+  consumeEditorFocusIntent: (requestId: number) => void;
 } {
   const [navigator] = useState(createBrowserNotesNavigator);
   const [cardEditorIndexCache] = useState(createCardEditorIndexCache);
   const [connectionsGraphCache] = useState(createConnectionsGraphCache);
+  const [ownedEditorFocusIntent, setOwnedEditorFocusIntent] =
+    useState<OwnedEditorFocusIntent | null>(null);
   const location = useSyncExternalStore(
     navigator.subscribe,
     navigator.getLocation,
     () => EMPTY_NOTES_LOCATION,
   );
+  const publishEditorFocusIntent = useCallback(
+    (cardId: EditorFocusIntent['cardId']) => {
+      setOwnedEditorFocusIntent((current) => {
+        const requestId = (current?.nextRequestId ?? 0) + 1;
+        return {
+          owner: store.createCard,
+          nextRequestId: requestId,
+          intent: { requestId, cardId, target: 'title' },
+        };
+      });
+    },
+    [store.createCard],
+  );
   const controller = useMemo(
-    () => createNotesApplicationController(store, navigator),
-    [navigator, store],
+    () =>
+      createNotesApplicationController(store, navigator, {
+        onCardCreated: publishEditorFocusIntent,
+      }),
+    [navigator, publishEditorFocusIntent, store],
   );
   const locationCardId = notesLocationCardId(location);
   const initialized = isNotesInitialized(store.initialization);
@@ -50,6 +83,51 @@ export function useNotesApplication(store: NotesDataStore): {
     locationCardId !== null &&
     !store.hasCard(locationCardId) &&
     !initialSyncComplete;
+  const editorFocusIntent =
+    ownedEditorFocusIntent?.owner === store.createCard &&
+    ownedEditorFocusIntent.intent !== null &&
+    location.kind === 'card' &&
+    location.cardId === ownedEditorFocusIntent.intent.cardId
+      ? ownedEditorFocusIntent.intent
+      : null;
+  const consumeEditorFocusIntent = useCallback(
+    (requestId: number) => {
+      setOwnedEditorFocusIntent((current) =>
+        current?.owner === store.createCard &&
+        current.intent?.requestId === requestId
+          ? { ...current, intent: null }
+          : current,
+      );
+    },
+    [store.createCard],
+  );
+  const discardEditorFocusIntent = useCallback((requestId: number) => {
+    setOwnedEditorFocusIntent((current) =>
+      current?.intent?.requestId === requestId
+        ? { ...current, intent: null }
+        : current,
+    );
+  }, []);
+
+  useEffect(() => {
+    const pending = ownedEditorFocusIntent?.intent;
+    const currentLocation = navigator.getLocation();
+    if (
+      !pending ||
+      (ownedEditorFocusIntent.owner === store.createCard &&
+        currentLocation.kind === 'card' &&
+        currentLocation.cardId === pending.cardId)
+    ) {
+      return;
+    }
+    queueMicrotask(() => discardEditorFocusIntent(pending.requestId));
+  }, [
+    discardEditorFocusIntent,
+    location,
+    navigator,
+    ownedEditorFocusIntent,
+    store.createCard,
+  ]);
 
   useEffect(
     () => () => {
@@ -113,5 +191,7 @@ export function useNotesApplication(store: NotesDataStore): {
       ? { ...model, initialized: false }
       : model,
     actions: controller,
+    editorFocusIntent,
+    consumeEditorFocusIntent,
   };
 }

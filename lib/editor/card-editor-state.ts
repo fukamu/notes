@@ -37,6 +37,19 @@ export type CardEditorHistoryKey = Readonly<{
   composing: boolean;
 }>;
 
+export function shouldMoveCardEditorTitleToBody(
+  event: CardEditorHistoryKey,
+): boolean {
+  return (
+    event.key === 'Enter' &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.composing
+  );
+}
+
 export function cardEditorHistoryShortcut(
   event: CardEditorHistoryKey,
 ): CardEditorHistoryShortcut {

@@ -5,6 +5,7 @@ import type { CardEditorRendererProps } from '@/components/presentation-contract
 import type {
   CardEditorActivity,
   CardEditorDocumentInput,
+  EditorFocusIntent,
   NotesPresentationActions,
 } from '@/lib/application/presentation';
 import { useCardEditor } from '@/lib/editor/use-card-editor';
@@ -17,6 +18,8 @@ type Props = {
     NotesPresentationActions,
     'openCard' | 'updateTitle' | 'updateBody'
   >;
+  focusIntent: EditorFocusIntent | null;
+  consumeFocusIntent: (requestId: number) => void;
   presentation: CardEditorPresentationAdapter;
   Renderer: ComponentType<CardEditorRendererProps>;
 };
@@ -25,6 +28,8 @@ export function BodyEditorAdapter({
   document,
   activity,
   actions,
+  focusIntent,
+  consumeFocusIntent,
   presentation,
   Renderer,
 }: Props) {
@@ -32,6 +37,8 @@ export function BodyEditorAdapter({
     document,
     activity,
     actions,
+    focusIntent,
+    consumeFocusIntent,
     presentation,
   });
   return <Renderer model={controller.model} commands={controller.commands} />;
