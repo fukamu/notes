@@ -4,7 +4,14 @@ set -euo pipefail
 e2e_d1_state="$(mktemp -d)"
 trap 'rm -rf -- "$e2e_d1_state"' EXIT
 
-npm run build
+if [[ "${FUKAMU_E2E_USE_PREBUILT:-0}" == "1" ]]; then
+  if [[ ! -f dist/server/wrangler.json ]]; then
+    echo 'Prebuilt E2E requested, but dist/server/wrangler.json is missing.' >&2
+    exit 1
+  fi
+else
+  npm run build
+fi
 npm exec -- wrangler d1 execute DB \
   --local \
   --persist-to "$e2e_d1_state" \

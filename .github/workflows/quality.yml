@@ -4,11 +4,11 @@ on:
   pull_request:
     branches:
       - main
-      - integration/106-multi-user-production
+      - integration/349-tab-zoom-polish
   push:
     branches:
       - main
-      - integration/106-multi-user-production
+      - integration/349-tab-zoom-polish
       - 'work/**'
 
 permissions:

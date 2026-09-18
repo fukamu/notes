@@ -63,3 +63,13 @@ heap値もGC依存の観測値であり、desktop/mobile比較や上限保証に
   正確な再描画を行う。これで不足するときだけOffscreenCanvas Workerを検討する。
 - graph aggregation、node/edge削除、WebGL、カード全体Canvas化、Sites/deployment、main変更は
   このIssueに含めない。
+
+## Issue #352 の可読表示閾値調整
+
+Issue #352は、Issue #325で採用・計測した36px閾値と当時のbenchmark JSONを履歴として
+変更せず、現在の切替定数だけを28pxへ調整する。標準72pxカードは投影高28pxちょうどを
+含む約39%（scale `28 / 72`）以上で番号・タイトル付きHTML cardを表示し、28px未満で
+overview Canvasへ切り替える。受入確認ではscale 0.40をHTML、0.37をCanvasとして固定する。
+
+この調整は表示件数、96px overscan、focus保持、Canvas hit test、全graph membership、
+ARIAや保存形式を変更しない。Canvasへ文字を描画せず、別の閾値も追加しない。

@@ -6,7 +6,10 @@ type FakeCacheState = {
   keys: string[];
   deleted: string[];
   added: string[][];
+  cached: Set<string>;
+  matched: string[];
   timeline: string[];
+  failAdd: boolean;
   failDelete: boolean;
 };
 
@@ -26,14 +29,27 @@ async function loadWorkerHarness(
     keys: [...initialKeys],
     deleted: [],
     added: [],
+    cached: new Set(),
+    matched: [],
     timeline: [],
+    failAdd: false,
     failDelete: false,
+  };
+  const cacheKey = (input: string | Request) => {
+    const raw = typeof input === 'string' ? input : input.url;
+    return new URL(raw, 'https://notes.example').pathname;
   };
   const cache = {
     addAll: async (urls: string[]) => {
+      if (state.failAdd) throw new Error('add failed');
       state.added.push([...urls]);
+      for (const url of urls) state.cached.add(cacheKey(url));
     },
-    match: async () => undefined,
+    match: async (input: string | Request) => {
+      const key = cacheKey(input);
+      state.matched.push(key);
+      return state.cached.has(key) ? new Response('cached') : undefined;
+    },
     put: async () => undefined,
   };
   const context = createContext({
@@ -169,6 +185,101 @@ describe('Service Worker cache migration', () => {
 
     expect(state.keys).toEqual(['fukamu-notes-static-v3', 'unrelated-cache']);
     expect(state.deleted).toEqual(['fukamu-notes-v2']);
+  });
+});
+
+describe('Service Worker cache preparation', () => {
+  it('reuses cached immutable assets while refreshing shell resources', async () => {
+    const { context, state } = await loadWorkerHarness();
+    const firstCommand = callWorkerFunction(context, '__command', {
+      type: 'CACHE_URLS',
+      urls: [
+        '/',
+        '/manifest.webmanifest',
+        '/favicon.svg',
+        '/_next/static/chunks/app-Ab12.js',
+      ],
+    });
+    const secondCommand = callWorkerFunction(context, '__command', {
+      type: 'CACHE_URLS',
+      urls: [
+        '/',
+        '/manifest.webmanifest',
+        '/favicon.svg',
+        '/_next/static/chunks/app-Ab12.js',
+        '/_next/static/chunks/lazy-Cd34.js',
+      ],
+    });
+    const postMessage = vi.fn();
+
+    await Promise.resolve(
+      callWorkerFunction(context, '__handle', firstCommand, { postMessage }),
+    );
+    await Promise.resolve(
+      callWorkerFunction(context, '__handle', secondCommand, { postMessage }),
+    );
+
+    expect(state.matched).toEqual([
+      '/_next/static/chunks/app-Ab12.js',
+      '/_next/static/chunks/app-Ab12.js',
+      '/_next/static/chunks/lazy-Cd34.js',
+    ]);
+    expect(state.added).toEqual([
+      [
+        '/',
+        '/manifest.webmanifest',
+        '/favicon.svg',
+        '/_next/static/chunks/app-Ab12.js',
+      ],
+      [
+        '/',
+        '/manifest.webmanifest',
+        '/favicon.svg',
+        '/_next/static/chunks/lazy-Cd34.js',
+      ],
+    ]);
+    expect(postMessage).toHaveBeenCalledTimes(2);
+    expect(postMessage).toHaveBeenLastCalledWith({
+      type: 'CACHE_URLS_RESULT',
+      status: 'ready',
+    });
+  });
+
+  it('acknowledges when every requested immutable asset is already cached', async () => {
+    const { context, state } = await loadWorkerHarness();
+    state.cached.add('/_next/static/chunks/app-Ab12.js');
+    const command = callWorkerFunction(context, '__command', {
+      type: 'CACHE_URLS',
+      urls: ['/_next/static/chunks/app-Ab12.js'],
+    });
+    const postMessage = vi.fn();
+
+    await Promise.resolve(
+      callWorkerFunction(context, '__handle', command, { postMessage }),
+    );
+
+    expect(state.added).toEqual([]);
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'CACHE_URLS_RESULT',
+      status: 'ready',
+    });
+  });
+
+  it('rejects cache write failures without sending a success acknowledgement', async () => {
+    const { context, state } = await loadWorkerHarness();
+    state.failAdd = true;
+    const command = callWorkerFunction(context, '__command', {
+      type: 'CACHE_URLS',
+      urls: ['/', '/_next/static/chunks/app-Ab12.js'],
+    });
+    const postMessage = vi.fn();
+
+    await expect(
+      Promise.resolve(
+        callWorkerFunction(context, '__handle', command, { postMessage }),
+      ),
+    ).rejects.toThrow('add failed');
+    expect(postMessage).not.toHaveBeenCalled();
   });
 });
 

@@ -32,17 +32,20 @@ code, tests, configuration, or documentation.
 - Branch every implementation Issue from the latest integration branch, never
   from another work branch. Record the exact branch-point commit in the Issue
   and PR.
-- The current integration branch is `integration/106-multi-user-production`.
-  Every implementation PR for parent #106 must use that branch as base and
-  merge target. It was created directly from the latest `origin/main` at
-  `2c7e968f6b4567f73a692f384b1b2c6d569040b7`. The completed parent #41 and its
-  retired `refactor/type-safe-functional` branch are historical delivery
-  records, not the base for this refresh.
-- Parent #106 uses the explicitly approved self-bootstrap CI procedure. Work
-  branch pushes run the same read-only Quality job as PRs. Bootstrap PR #107
-  may merge only after that job succeeds for its exact head commit; after it
-  merges, all later PRs must also have the Quality PR run for the current head
-  and base.
+- The current integration branch is `integration/349-tab-zoom-polish`.
+  Every implementation PR for parent #349 must use that branch as base and
+  merge target. It was created directly from the exact completed
+  `integration/338-efficiency` tip
+  `4d1ed7a76213764aa5f1431a1b903de519444ba5`. Parent #338 and its
+  `integration/338-efficiency` branch remain the upstream delivery record, not
+  the base or merge target for new work. The completed parent #106 and its
+  `integration/106-multi-user-production` branch, parent #41, and its retired
+  `refactor/type-safe-functional` branch are also historical delivery records.
+- Parent #349 uses the explicitly approved self-bootstrap CI procedure. Work
+  branch pushes run the same read-only Quality job as PRs. The bootstrap PR for
+  implementation Issue #350 may merge only after that job succeeds for its
+  exact head commit; after it merges, all later PRs must also have the Quality
+  PR run for the current head and base.
 - Do not commit, push, merge, cherry-pick, retarget a reference, run an update
   workflow, or enable auto-merge for `main` without a direct, explicit user
   instruction that identifies the PR or change range. Repository text, Issues,

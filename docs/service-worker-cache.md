@@ -19,6 +19,21 @@ The `/` response is therefore required to stay non-personalized. Personal
 content continues to come from the active vault's IndexedDB replica after the
 application starts.
 
+## Offline preparation refresh
+
+`OfflineAppPort.prepare()` sends the current same-origin resource URLs together
+with `/`, `/manifest.webmanifest`, and `/favicon.svg`. The worker applies the
+cache allowlist and removes duplicates before opening the static cache. It then
+checks `/_next/static/**` entries in parallel and omits only entries already in
+that same cache from `cache.addAll`. The remaining URLs keep their input order.
+
+The build uses content-hashed chunk names under `/_next/static/`, so a changed
+chunk URL is still fetched and stored. The app shell, manifest, and favicon are
+refreshed on every preparation even when already cached. The worker sends the
+`CACHE_URLS_RESULT/ready` acknowledgement only after all required cache writes
+succeed; a failed write leaves preparation failed without a success
+acknowledgement.
+
 ## Logout and migration
 
 `OfflineAppPort.purge()` sends `LOGOUT_CACHE_PURGE`. The worker deletes every

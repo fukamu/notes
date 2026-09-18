@@ -1,6 +1,10 @@
+/** @vitest-environment happy-dom */
+
 import { mkdir, writeFile } from 'node:fs/promises';
 import { cpus, platform, release } from 'node:os';
-import { describe, expect, it } from 'vitest';
+import { act, createElement, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   createNotesPresentationModel,
   type NotesStorePort,
@@ -13,6 +17,8 @@ import {
 import type { NotesLocation } from '@/lib/application/navigation';
 import type { NotesPresentationModel } from '@/lib/application/presentation';
 import { queryCardEditorCandidates } from '@/lib/application/card-editor-index';
+import { useNotesApplication } from '@/lib/client/use-notes-application';
+import type { NotesDataStore } from '@/lib/client/notes-store';
 import type { CardRecord } from '@/lib/domain/types';
 import { invariant } from '@/lib/shared/invariant';
 import {
@@ -28,6 +34,25 @@ type ProjectionBenchmark = Readonly<{
   expectedChecksum: number;
   run: () => number;
 }>;
+
+let observedHookModel: NotesPresentationModel | undefined;
+
+beforeAll(() => {
+  Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', {
+    configurable: true,
+    value: true,
+  });
+});
+
+function observeHookModel(model: NotesPresentationModel): void {
+  observedHookModel = model;
+}
+
+function NotesApplicationBenchmark({ store }: { store: NotesDataStore }) {
+  const model = useNotesApplication(store).model;
+  useEffect(() => observeHookModel(model), [model]);
+  return null;
+}
 
 function measureProjection(benchmark: ProjectionBenchmark) {
   for (let index = 0; index < benchmark.warmupIterations; index += 1) {
@@ -54,7 +79,7 @@ function measureProjection(benchmark: ProjectionBenchmark) {
   };
 }
 
-function benchmarkStore(cards: CardRecord[]): NotesStorePort {
+function benchmarkStore(cards: CardRecord[]): NotesDataStore {
   return {
     cards,
     conflicts: [],
@@ -177,12 +202,55 @@ describe('10,000-card demand-driven presentation benchmark', () => {
           'connections',
         ),
     });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    window.history.replaceState(null, '', `/cards/${currentCard.id}/history`);
+    const root = createRoot(container);
+    act(() => {
+      root.render(createElement(NotesApplicationBenchmark, { store }));
+    });
+    const initialHookModel = observedHookModel;
+    if (!initialHookModel || initialHookModel.activeView !== 'history') {
+      throw new Error('History benchmark hook did not render history');
+    }
+    const initialHookHistory = initialHookModel.history;
+    let stateUpdateIndex = 0;
+    const historyStateOnly = measureProjection({
+      name: 'hook-precomputed-history-state-update',
+      warmupIterations: 3,
+      measuredIterations: 15,
+      expectedChecksum: cards.length,
+      run: () => {
+        stateUpdateIndex += 1;
+        const updatedStore: NotesDataStore = {
+          ...store,
+          syncState: stateUpdateIndex % 2 === 0 ? 'idle' : 'syncing',
+        };
+        act(() => {
+          root.render(
+            createElement(NotesApplicationBenchmark, { store: updatedStore }),
+          );
+        });
+        const model = observedHookModel;
+        if (!model || model.activeView !== 'history') {
+          throw new Error('History state update left the history view');
+        }
+        if (model.history !== initialHookHistory) {
+          throw new Error('History state update regenerated history');
+        }
+        return activeProjectionChecksum(model, 'history');
+      },
+    });
+    act(() => root.unmount());
+    container.remove();
+    window.history.replaceState(null, '', '/');
+    observedHookModel = undefined;
     const speedupRatio =
       eagerCardProxy.timing.medianMs / Math.max(card.timing.medianMs, 0.001);
     const artifact = {
-      schemaVersion: 1,
-      issue: 201,
-      branchPoint: '03d57c9dcd71e3bea51151e542dd71805e3d262d',
+      schemaVersion: 2,
+      issue: 341,
+      branchPoint: '08d8d9995c9d6b945d8397fda1fd81b72f2d90cb',
       generatedAt: new Date().toISOString(),
       environment: {
         node: process.version,
@@ -208,6 +276,12 @@ describe('10,000-card demand-driven presentation benchmark', () => {
           history: 'materialized',
           connections: 'null',
         },
+        historyStateOnly: {
+          cardEditor: 'null',
+          conflicts: 'empty',
+          history: 'precomputed by useNotesApplication and reused',
+          connections: 'null',
+        },
         connections: {
           cardEditor: 'null',
           conflicts: 'empty',
@@ -216,9 +290,15 @@ describe('10,000-card demand-driven presentation benchmark', () => {
         },
       },
       comparisonPolicy:
-        'The eager proxy and active projection run on the same host and fixture. Timing is review evidence; the discriminated inactive-null contract is the required regression gate.',
+        'The eager proxy, active projections, and useNotesApplication state-only rerenders run on the same host and fixture. Timing is review evidence; inactive-null and stable precomputed-history references are the required regression gates.',
       eagerToDemandDrivenCardMedianRatio: Number(speedupRatio.toFixed(3)),
-      measurements: [eagerCardProxy, card, history, connections],
+      measurements: [
+        eagerCardProxy,
+        card,
+        history,
+        historyStateOnly,
+        connections,
+      ],
     };
 
     expect(projectionFor(store, locations.card).activeView).toBe('card');

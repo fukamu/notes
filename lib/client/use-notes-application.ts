@@ -23,6 +23,7 @@ import type {
   NotesPresentationActions,
   NotesPresentationModel,
 } from '@/lib/application/presentation';
+import { selectHistoryViewModel } from '@/lib/application/view-models';
 import type { NotesDataStore } from '@/lib/client/notes-store';
 
 export function useNotesApplication(store: NotesDataStore): {
@@ -90,13 +91,21 @@ export function useNotesApplication(store: NotesDataStore): {
       ),
     [connectionsGraphCache, location, store.cards],
   );
+  const history = useMemo(
+    () =>
+      location.kind === 'history'
+        ? selectHistoryViewModel(store.cards, locationCardId)
+        : null,
+    [store.cards, location.kind, locationCardId],
+  );
   const model = useMemo(
     () =>
       createNotesPresentationModel(store, location, {
         cardEditorIndex,
         connectionsGraph: { kind: 'precomputed', graph: connectionsGraph },
+        history,
       }),
-    [cardEditorIndex, connectionsGraph, location, store],
+    [cardEditorIndex, connectionsGraph, history, location, store],
   );
 
   return {

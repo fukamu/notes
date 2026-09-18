@@ -571,6 +571,18 @@ and editor link candidate features. Historical Issue #323 measurements remain
 in the repository as decision evidence rather than a description of the
 current UI.
 
+## Issue #352 readable card threshold adjustment
+
+Issue #352 retains the historical Issue #325 36 px decision and its benchmark
+JSON, but changes the current projected-height threshold to 28 px. A standard
+72 px card therefore keeps its numbered, titled HTML button at roughly 39%
+scale: exactly 28 px is HTML, while any projected height below 28 px uses the
+overview Canvas. Product coverage fixes scale 0.40 as HTML and 0.37 as Canvas.
+
+This tuning does not change the viewport plus 96 px overscan window, retained
+focus node, Canvas point hit test, complete graph membership, ARIA surface, or
+persistence. It adds neither Canvas text nor another threshold family.
+
 ## Issue #330 free camera translation
 
 Issue #330 separates whole-world framing from camera-position validation.

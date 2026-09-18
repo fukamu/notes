@@ -132,7 +132,15 @@ async function handleWorkerCommand(command, replyPort) {
   switch (command.kind) {
     case 'cache-urls': {
       const cache = await caches.open(CACHE_NAME);
-      await cache.addAll(command.urls);
+      const cached = await Promise.all(
+        command.urls.map((url) =>
+          url.startsWith('/_next/static/')
+            ? cache.match(url).then((response) => Boolean(response))
+            : Promise.resolve(false),
+        ),
+      );
+      const toFetch = command.urls.filter((_, index) => !cached[index]);
+      if (toFetch.length > 0) await cache.addAll(toFetch);
       replyPort?.postMessage({ type: 'CACHE_URLS_RESULT', status: 'ready' });
       return;
     }
