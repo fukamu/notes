@@ -1613,6 +1613,7 @@ describe('application and presentation architecture', () => {
       'Clock',
       'IdGenerator',
       'ConnectivityPort',
+      'ForegroundResumePort',
       'OfflineAppPort',
     ]) {
       expect(ports).toContain(`type ${contract}`);
@@ -1624,12 +1625,14 @@ describe('application and presentation architecture', () => {
     expect(legacyComposition).toContain('createIndexedDbNotesRepository');
     expect(legacyComposition).toContain('createV1SyncTransport');
     expect(legacyComposition).toContain('browserOfflineApp');
+    expect(legacyComposition).toContain('browserForegroundResume');
     expect(vaultComposition).toContain('vaultNotesScope(context)');
     expect(vaultComposition).toContain(
       'createIndexedDbSyncV2ReplicaRepository',
     );
     expect(vaultComposition).toContain('createV2SyncTransport');
     expect(vaultComposition).toContain('createSyncV2Client');
+    expect(vaultComposition).toContain('browserForegroundResume');
   });
 
   it('keeps Sync v2 replica decisions pure and IndexedDB behind its scoped port', async () => {

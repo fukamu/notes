@@ -74,6 +74,10 @@ export type ConnectivityPort = {
   }) => () => void;
 };
 
+export type ForegroundResumePort = {
+  subscribe: (onResume: () => void) => () => void;
+};
+
 export type OfflineAppPort = {
   prepare: () => Promise<void>;
   purge: () => Promise<void>;
@@ -86,6 +90,7 @@ export type NotesRuntimePorts<TScope extends NotesScope = NotesScope> = {
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
   readonly connectivity: ConnectivityPort;
+  readonly foregroundResume: ForegroundResumePort;
   readonly offlineApp: OfflineAppPort;
 };
 

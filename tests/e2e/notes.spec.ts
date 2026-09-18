@@ -966,6 +966,16 @@ test('the current card restores body, history and map positions across view tabs
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 15_000,
   });
+  await expect
+    .poll(async () => {
+      const camera = await connectionsCamera(graph);
+      return (
+        Number.isFinite(camera.x) &&
+        Number.isFinite(camera.y) &&
+        Number.isFinite(camera.scale)
+      );
+    })
+    .toBe(true);
   const cameraBeforeMove = await connectionsCamera(graph);
   await pressConnectionsKey(graph, 'ArrowRight', 3);
   await pressConnectionsKey(graph, 'ArrowDown', 2);
@@ -973,6 +983,9 @@ test('the current card restores body, history and map positions across view tabs
   await expect
     .poll(async () => (await connectionsCamera(graph)).renderCount)
     .toBeGreaterThan(cameraBeforeMove.renderCount);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeGreaterThan(cameraBeforeMove.scale);
   const movedCamera = await connectionsCamera(graph);
 
   await activateNotesView(page, testInfo.project.name, 'カード');

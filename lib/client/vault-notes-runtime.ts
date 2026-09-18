@@ -3,6 +3,7 @@ import type { VaultNotesRuntimePorts } from '@/lib/application/notes-runtime';
 import { createSyncV2Client } from '@/lib/application/sync-v2-client';
 import { browserClock } from '@/lib/client/browser-clock';
 import { browserConnectivity } from '@/lib/client/browser-connectivity';
+import { browserForegroundResume } from '@/lib/client/browser-foreground-resume';
 import {
   createV2SyncTransport,
   type SyncFetch,
@@ -34,6 +35,7 @@ export function createVaultNotesRuntimePorts(
     clock: browserClock,
     idGenerator: browserIdGenerator,
     connectivity: browserConnectivity,
+    foregroundResume: browserForegroundResume,
     offlineApp: browserOfflineApp,
   };
 }
