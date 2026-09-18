@@ -157,14 +157,18 @@ describe('connections visibility', () => {
     ).toEqual([0]);
   });
 
-  it('switches below the 28px projected card height for different card sizes', () => {
-    expect(CONNECTIONS_OVERVIEW_CARD_HEIGHT_PX).toBe(28);
-    expect(resolveConnectionsNodeRenderMode(72, 0.4)).toBe('html');
-    expect(resolveConnectionsNodeRenderMode(72, 0.37)).toBe('overview-canvas');
-    expect(resolveConnectionsNodeRenderMode(56, 0.5)).toBe('html');
-    expect(resolveConnectionsNodeRenderMode(56, 0.499)).toBe('overview-canvas');
-    expect(resolveConnectionsNodeRenderMode(40, 0.7)).toBe('html');
-    expect(resolveConnectionsNodeRenderMode(40, 0.699)).toBe('overview-canvas');
+  it('switches below the 24px projected card height for different card sizes', () => {
+    expect(CONNECTIONS_OVERVIEW_CARD_HEIGHT_PX).toBe(24);
+    expect(resolveConnectionsNodeRenderMode(72, 0.35)).toBe('html');
+    expect(resolveConnectionsNodeRenderMode(72, 0.32)).toBe('overview-canvas');
+    expect(resolveConnectionsNodeRenderMode(72, 24 / 72)).toBe('html');
+    expect(resolveConnectionsNodeRenderMode(72, 23.999 / 72)).toBe(
+      'overview-canvas',
+    );
+    expect(resolveConnectionsNodeRenderMode(48, 0.5)).toBe('html');
+    expect(resolveConnectionsNodeRenderMode(48, 0.499)).toBe('overview-canvas');
+    expect(resolveConnectionsNodeRenderMode(40, 0.6)).toBe('html');
+    expect(resolveConnectionsNodeRenderMode(40, 0.599)).toBe('overview-canvas');
   });
 
   it('keeps HTML rendering for invalid projected-height inputs', () => {
