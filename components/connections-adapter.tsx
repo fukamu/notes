@@ -11,7 +11,7 @@ import type {
 
 type Props = {
   input: ConnectionsInputModel;
-  actions: ConnectionsSelectionActions;
+  actions: Pick<ConnectionsSelectionActions, 'openCard'>;
   presentation: ConnectionsPresentationAdapter;
   Renderer: ComponentType<ConnectionsRendererProps>;
 };
@@ -24,6 +24,12 @@ export function ConnectionsAdapter({
 }: Props) {
   const model = useConnectionsController(input, presentation);
   return (
-    <Renderer model={model} actions={actions} presentation={presentation} />
+    <Renderer
+      model={model}
+      totalNodeCount={input.nodes.length}
+      totalEdgeCount={input.edges.length}
+      actions={actions}
+      presentation={presentation}
+    />
   );
 }

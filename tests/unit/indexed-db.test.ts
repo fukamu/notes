@@ -1,18 +1,25 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createCardId } from '@/lib/client/id-generator';
-import { isUuidV7 } from '@/lib/domain/id';
+import { browserIdGenerator, createCardId } from '@/lib/client/id-generator';
+import {
+  LEGACY_NOTES_SCOPE,
+  type IdGenerator,
+} from '@/lib/application/notes-runtime';
+import type { VaultNotesScope } from '@/lib/application/notes-access';
+import {
+  notesDatabaseName,
+  type IndexedDbNotesScope,
+} from '@/lib/application/notes-database-scope';
+import { isUuidV7, parseDeviceId, parseMutationId } from '@/lib/domain/id';
 import type { CardRecord } from '@/lib/domain/types';
 import { invariant } from '@/lib/shared/invariant';
 import {
-  applySyncResponse,
   clearNotesDatabaseForTests,
-  loadCards,
-  loadPendingMutations,
-  loadConflicts,
-  loadOrCreateDeviceId,
+  closeNotesDatabase,
+  createIndexedDbNotesRepository,
+  deleteNotesDatabase,
   openNotesDatabase,
-  persistCardAndMutation,
+  verifyNotesDatabaseDeleted,
 } from '@/lib/storage/indexed-db';
 import {
   encodeStoredConflict,
@@ -22,6 +29,40 @@ import {
   compatibilityIds,
   createCompatibilityFixture,
 } from '@/tests/fixtures/compatibility';
+import { sessionFixtureIds } from '@/tests/fixtures/session';
+
+const vaultScopeA: VaultNotesScope = {
+  kind: 'vault',
+  accountId: sessionFixtureIds.accountId,
+  vaultId: sessionFixtureIds.vaultId,
+  sessionId: sessionFixtureIds.sessionId,
+  sessionEpoch: sessionFixtureIds.epoch,
+};
+
+const vaultScopeB: VaultNotesScope = {
+  kind: 'vault',
+  accountId: sessionFixtureIds.otherAccountId,
+  vaultId: sessionFixtureIds.otherVaultId,
+  sessionId: sessionFixtureIds.nextSessionId,
+  sessionEpoch: sessionFixtureIds.nextEpoch,
+};
+
+const vaultIdGeneratorB: IdGenerator = {
+  createCardId: () => compatibilityIds.cardB,
+  createMutationId: () =>
+    parseMutationId('01991f20-61d2-7000-8000-000000000015'),
+  createDeviceId: () => parseDeviceId('01991f20-61d2-7000-8000-000000000014'),
+};
+
+const {
+  applySyncResponse,
+  loadCards,
+  loadConflicts,
+  loadOrCreateDeviceId,
+  loadPendingMutations,
+  persistLocalCard,
+  persistCardAndMutation,
+} = createIndexedDbNotesRepository(LEGACY_NOTES_SCOPE, browserIdGenerator);
 
 async function transactionDone(transaction: IDBTransaction): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -35,15 +76,22 @@ async function transactionDone(transaction: IDBTransaction): Promise<void> {
   });
 }
 
-async function putRaw(storeName: string, value: unknown): Promise<void> {
-  const database = await openNotesDatabase();
+async function putRaw(
+  storeName: string,
+  value: unknown,
+  scope: IndexedDbNotesScope = LEGACY_NOTES_SCOPE,
+): Promise<void> {
+  const database = await openNotesDatabase(scope);
   const transaction = database.transaction(storeName, 'readwrite');
   transaction.objectStore(storeName).put(value);
   await transactionDone(transaction);
 }
 
-async function getRaw(storeName: string): Promise<unknown[]> {
-  const database = await openNotesDatabase();
+async function getRaw(
+  storeName: string,
+  scope: IndexedDbNotesScope = LEGACY_NOTES_SCOPE,
+): Promise<unknown[]> {
+  const database = await openNotesDatabase(scope);
   const transaction = database.transaction(storeName, 'readonly');
   const request = transaction.objectStore(storeName).getAll();
   const result = await new Promise<unknown[]>((resolve, reject) => {
@@ -59,10 +107,171 @@ async function getRaw(storeName: string): Promise<unknown[]> {
 }
 
 afterEach(async () => {
-  await clearNotesDatabaseForTests();
+  vi.restoreAllMocks();
+  await Promise.all([
+    clearNotesDatabaseForTests(LEGACY_NOTES_SCOPE),
+    clearNotesDatabaseForTests(vaultScopeA),
+    clearNotesDatabaseForTests(vaultScopeB),
+  ]);
 });
 
 describe('local persistence', () => {
+  it('fully separates identical CardIds across two Vault repositories', async () => {
+    const fixture = createCompatibilityFixture();
+    const original = fixture.cards[0];
+    invariant(original, 'Compatibility card is missing');
+    const repositoryA = createIndexedDbNotesRepository(
+      vaultScopeA,
+      browserIdGenerator,
+    );
+    const repositoryB = createIndexedDbNotesRepository(
+      vaultScopeB,
+      vaultIdGeneratorB,
+    );
+    const cardA = { ...original, title: 'Vault A content' };
+    const cardB = { ...original, title: 'Vault B content' };
+
+    await Promise.all([
+      repositoryA.persistCardAndMutation(cardA),
+      repositoryB.persistCardAndMutation(cardB),
+    ]);
+    await putRaw(
+      'conflicts',
+      encodeStoredConflict(fixture.conflict),
+      vaultScopeA,
+    );
+
+    await expect(repositoryA.loadCards()).resolves.toEqual([cardA]);
+    await expect(repositoryB.loadCards()).resolves.toEqual([cardB]);
+    await expect(repositoryA.loadPendingMutations()).resolves.toMatchObject([
+      { cardId: original.id, title: 'Vault A content' },
+    ]);
+    await expect(repositoryB.loadPendingMutations()).resolves.toMatchObject([
+      { cardId: original.id, title: 'Vault B content' },
+    ]);
+    await expect(repositoryA.loadConflicts()).resolves.toEqual([
+      fixture.conflict,
+    ]);
+    await expect(repositoryB.loadConflicts()).resolves.toEqual([]);
+    await expect(repositoryA.loadOrCreateDeviceId()).resolves.not.toBe(
+      vaultIdGeneratorB.createDeviceId(),
+    );
+    await expect(repositoryB.loadOrCreateDeviceId()).resolves.toBe(
+      vaultIdGeneratorB.createDeviceId(),
+    );
+  });
+
+  it('reuses connections per database and can close and reopen one Vault', async () => {
+    const first = await openNotesDatabase(vaultScopeA);
+    const sameVault = await openNotesDatabase({
+      ...vaultScopeA,
+      sessionId: sessionFixtureIds.nextSessionId,
+      sessionEpoch: sessionFixtureIds.nextEpoch,
+    });
+    const otherVault = await openNotesDatabase(vaultScopeB);
+
+    expect(sameVault).toBe(first);
+    expect(otherVault).not.toBe(first);
+    await expect(closeNotesDatabase(vaultScopeA)).resolves.toEqual({
+      kind: 'closed',
+    });
+    await expect(closeNotesDatabase(vaultScopeA)).resolves.toEqual({
+      kind: 'not-open',
+    });
+    await expect(openNotesDatabase(vaultScopeA)).resolves.not.toBe(first);
+  });
+
+  it('reports blocked deletion instead of treating it as success', async () => {
+    const unmanagedRequest = indexedDB.open(notesDatabaseName(vaultScopeA), 1);
+    const unmanagedDatabase = await new Promise<IDBDatabase>(
+      (resolve, reject) => {
+        unmanagedRequest.addEventListener(
+          'success',
+          () => resolve(unmanagedRequest.result),
+          { once: true },
+        );
+        unmanagedRequest.addEventListener(
+          'error',
+          () => reject(unmanagedRequest.error),
+          { once: true },
+        );
+      },
+    );
+
+    await expect(deleteNotesDatabase(vaultScopeA)).resolves.toEqual({
+      kind: 'blocked',
+    });
+    unmanagedDatabase.close();
+    await expect(deleteNotesDatabase(vaultScopeA)).resolves.toEqual({
+      kind: 'deleted',
+    });
+    await expect(verifyNotesDatabaseDeleted(vaultScopeA)).resolves.toEqual({
+      kind: 'verified-deleted',
+    });
+  });
+
+  it('verifies database presence without recreating the deleted Vault', async () => {
+    await openNotesDatabase(vaultScopeA);
+    await expect(verifyNotesDatabaseDeleted(vaultScopeA)).resolves.toEqual({
+      kind: 'still-present',
+    });
+    await expect(deleteNotesDatabase(vaultScopeA)).resolves.toEqual({
+      kind: 'deleted',
+    });
+    await expect(verifyNotesDatabaseDeleted(vaultScopeA)).resolves.toEqual({
+      kind: 'verified-deleted',
+    });
+    await expect(verifyNotesDatabaseDeleted(vaultScopeA)).resolves.toEqual({
+      kind: 'verified-deleted',
+    });
+  });
+
+  it('normalizes a synchronous IndexedDB deletion failure', async () => {
+    vi.spyOn(indexedDB, 'deleteDatabase').mockImplementation(() => {
+      throw new Error('injected delete failure');
+    });
+    await expect(deleteNotesDatabase(vaultScopeA)).resolves.toEqual({
+      kind: 'failed',
+      reason: 'request-threw',
+    });
+  });
+
+  it('does not retain a failed synchronous open in the connection registry', async () => {
+    vi.spyOn(indexedDB, 'open').mockImplementationOnce(() => {
+      throw new Error('injected open failure');
+    });
+
+    await expect(openNotesDatabase(vaultScopeA)).rejects.toThrow(
+      'injected open failure',
+    );
+    await expect(openNotesDatabase(vaultScopeA)).resolves.toBeInstanceOf(
+      IDBDatabase,
+    );
+  });
+
+  it('uses injected identifiers while keeping the fixed legacy database', async () => {
+    const fixture = createCompatibilityFixture();
+    const idGenerator: IdGenerator = {
+      createCardId: () => compatibilityIds.cardB,
+      createMutationId: () => compatibilityIds.mutation,
+      createDeviceId: () => compatibilityIds.device,
+    };
+    const injectedRepository = createIndexedDbNotesRepository(
+      LEGACY_NOTES_SCOPE,
+      idGenerator,
+    );
+    const card = fixture.cards[0];
+    invariant(card, 'Compatibility card is missing');
+
+    expect(injectedRepository.scope).toBe(LEGACY_NOTES_SCOPE);
+    await expect(injectedRepository.loadOrCreateDeviceId()).resolves.toBe(
+      compatibilityIds.device,
+    );
+    await expect(
+      injectedRepository.persistCardAndMutation(card),
+    ).resolves.toMatchObject({ mutationId: compatibilityIds.mutation });
+  });
+
   it('persists an empty offline card with UUIDv7 and provisional id', async () => {
     const id = createCardId();
     const card: CardRecord = {
@@ -106,6 +315,51 @@ describe('local persistence', () => {
     invariant(stored, 'Stored card was not loaded');
     expect(stored.title).toBe('二回目');
     expect(await loadPendingMutations()).toHaveLength(1);
+  });
+
+  it('keeps a pending resolve and its conflict IDs when a later edit is saved', async () => {
+    const fixture = createCompatibilityFixture();
+    const source = fixture.cards[0];
+    invariant(source, 'Compatibility card is missing');
+    await persistCardAndMutation(source, {
+      kind: 'resolve',
+      conflictIds: [fixture.conflict.id],
+    });
+
+    const edited = {
+      ...source,
+      title: '解決選択後の追加入力',
+      localRevision: source.localRevision + 1,
+      updatedAt: source.updatedAt + 1,
+    };
+    await persistCardAndMutation(edited);
+
+    const [storedMutation] = await loadPendingMutations();
+    invariant(storedMutation, 'Pending resolve was not loaded');
+    expect(storedMutation).toMatchObject({
+      kind: 'resolve',
+      cardId: source.id,
+      title: edited.title,
+      conflictIds: [fixture.conflict.id],
+    });
+    expect(await loadPendingMutations()).toHaveLength(1);
+  });
+
+  it('persists edits made before explicit conflict resolution without creating a mutation', async () => {
+    const fixture = createCompatibilityFixture();
+    const source = fixture.cards[0];
+    invariant(source, 'Compatibility card is missing');
+    const edited = {
+      ...source,
+      title: '競合を選ぶ前の現在入力',
+      localRevision: source.localRevision + 1,
+      updatedAt: source.updatedAt + 1,
+    };
+
+    await persistLocalCard(edited);
+
+    expect(await loadCards()).toEqual([edited]);
+    expect(await loadPendingMutations()).toEqual([]);
   });
 
   it('rebases an edit saved while a sync request is in flight', async () => {

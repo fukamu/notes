@@ -15,6 +15,111 @@
       "when": 1789086480489,
       "tag": "0001_amazing_cannonball",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789286874235,
+      "tag": "0002_identity_vault_control_plane",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789289411763,
+      "tag": "0003_late_nighthawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1789292486957,
+      "tag": "0004_known_wind_dancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1789303456792,
+      "tag": "0005_tiny_chat",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789309934476,
+      "tag": "0006_narrow_vapor",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1789312414395,
+      "tag": "0007_special_shadowcat",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1789317963274,
+      "tag": "0008_vault_sync_v2_journal",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1789328483601,
+      "tag": "0009_account_deletion_saga",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1789342935497,
+      "tag": "0010_account_deletion_continuation",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1789357657586,
+      "tag": "0011_happy_lilith",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1789365160292,
+      "tag": "0012_gigantic_iron_lad",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1789365160293,
+      "tag": "0013_vault_quota_finalize_assertions",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1789394088000,
+      "tag": "0014_contract_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1789404559000,
+      "tag": "0015_privacy_request_journal",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1789414652000,
+      "tag": "0016_terms_consent_ledger",
+      "breakpoints": true
     }
   ]
 }

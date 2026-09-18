@@ -15,11 +15,12 @@ toolbar, icons, and theme.
   applies Arrow/Enter/Escape behavior, and distinguishes card identity reset from
   same-card external body synchronization.
 - `lib/editor/use-card-editor.ts` is the headless React/Tiptap adapter. It owns
-  editor creation/destruction, body synchronization, selection/focus state,
-  candidate trigger position, composition state, candidate insertion, and
-  Undo/Redo commands. It consumes `CardEditorInputModel` and the existing
-  `NotesPresentationActions.openCard/updateBody` contract. It has no renderer,
-  icon, Tailwind, theme, store, storage, sync, or API dependency.
+  editor creation/destruction, title/body synchronization, selection/focus
+  state, candidate trigger position, composition state, candidate insertion,
+  and the shared Undo/Redo commands. It consumes `CardEditorInputModel` and the
+  existing `NotesPresentationActions.openCard/updateTitle/updateBody`
+  contract. It has no icon, Tailwind, theme, store, storage, sync, or API
+  dependency.
 - `lib/editor/card-link-extension.ts` defines the atomic Tiptap node and its
   NodeView adapter. Visual class names and the instance label resolver are
   injected. The adapter decodes third-party attributes with the #9 codec
@@ -39,12 +40,15 @@ protocol, or Tiptap event logic.
 
 ## Body and structural contract
 
-Persistence remains an ordered `BodySegment[]` of text and branded card-link
-segments. `segmentsToEditorDocument` maps it to a Tiptap document containing a
-paragraph, text, hard breaks, and `cardLink` nodes;
+Persistence remains a separate title string and ordered `BodySegment[]` of text
+and branded card-link segments. `segmentsToEditorDocument` maps them to a
+Tiptap editing document containing a transient `cardTitle` document attribute,
+a paragraph, text, hard breaks, and `cardLink` nodes;
 `editorDocumentToSegments` validates link attributes and normalizes adjacent
 text while preserving whitespace and line breaks. Hash-like text never becomes
-a link unless a candidate is explicitly selected.
+a link unless a candidate is explicitly selected. The title attribute exists
+only inside the active editor. IndexedDB, sync, API, and D1 keep the existing
+title/body fields and formats.
 
 `cardLink` is inline, atomic, selectable, draggable, and
 `contenteditable=false`. The `data-card-link-id` attribute remains the
@@ -79,17 +83,33 @@ invokes `openCard(CardId)` once. It does not bubble a synthetic click or rely on
 atomic link immediately before the cursor; Delete handles the corresponding
 node after the cursor.
 
-## Identity, external updates, and history
+## Identity, external updates, and shared history
 
 The Tiptap hook’s explicit dependency is `cardId`. A different identity
-destroys the old instance and creates a new one from the selected card body,
-which establishes a fresh Undo/Redo boundary and resets candidate,
-composition, focus, and selection state. The renderer does not use a React
-`key` to obtain this behavior.
+destroys the old instance and creates a new one from the selected card title
+and body, which establishes a fresh Undo/Redo boundary and resets pending title,
+candidate, composition, focus, and selection state. The renderer does not use
+a React `key` to obtain this behavior. The title input is transiently disabled
+until that editor identity is ready, so a rapid card switch cannot apply text
+to the previous card.
 
-When the identity is unchanged, a differing application body is applied with
-`emitUpdate=false` to avoid a save loop; the editor instance and its history
-are retained. A body already equal to the application model is untouched.
+Title input updates the visible value and existing autosave action on every
+input. During one focus/composition session, the editing document keeps the
+session’s `before` title. Blur, transfer to the body, or Undo/Redo commits the
+latest `after` title as one public `setDocAttribute` transaction bounded by
+`closeHistory`. Body changes use the same ProseMirror history plugin, so title
+and body events are replayed in their real chronological order. Starting a new
+title session disables redo immediately; committing that session creates the
+new branch. Platform shortcuts in either input are routed once to the same
+commands and are ignored while IME composition is active.
+
+Each editor update compares title and body independently with the last value
+sent through the application actions. A title-only history step calls only
+`updateTitle`; a body-only step calls only `updateBody`. A matching application
+rerender is a self echo and retains history. If the same card instead receives
+different external title or body content, the editor document and its plugin
+state are recreated from that content, clearing pending input and old history
+so Undo cannot resurrect a stale version.
 
 ## Input and accessibility contract
 
@@ -113,12 +133,14 @@ are retained. A body already equal to the application model is untouched.
   Enter, Escape, or any other unselected completion only closes the popup; the
   typed text remains ordinary editor content. Candidate list names and
   `aria-current` remain the renderer contract.
-- The toolbar keeps `role=toolbar` and accessible name `編集履歴`; button and
-  platform keyboard shortcuts execute the same Tiptap Undo/Redo history and
-  expose their current availability.
+- The toolbar keeps `role=toolbar` and accessible name `編集履歴`; its existing
+  buttons and platform keyboard shortcuts execute the same title/body Tiptap
+  Undo/Redo history and expose pending-title availability before blur. After a
+  history step, focus follows the field that changed instead of always moving
+  to the body.
 - A card link uses `role=link`, is focusable, has an action-oriented accessible
   label, and supports click/tap, Enter, and Space.
 
-All application/domain IDs remain branded and all Tiptap attributes remain at
-the codec boundary introduced by #9. No body storage, IndexedDB, API, D1, sync,
-or navigation format changed in this phase.
+All application/domain IDs remain branded and third-party Tiptap attributes are
+decoded at their boundary. No title/body storage, IndexedDB, API, D1, sync, or
+navigation format changed in this phase.

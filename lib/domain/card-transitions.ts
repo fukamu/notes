@@ -3,6 +3,7 @@ import type { CardId, ConflictId, MutationId } from '@/lib/domain/id';
 import {
   nonNegativeSafeInteger,
   positiveSafeInteger,
+  CONTRACT_LIMITS,
   type BodySegment,
   type CardRecord,
   type ConflictRecord,
@@ -14,11 +15,21 @@ export type CardEdit =
   | { type: 'title'; title: string }
   | { type: 'body'; body: BodySegment[] };
 
-export type ConflictResolutionChoice = 'local' | 'server';
+export type ConflictResolutionChoice = 'local' | 'server' | 'current';
 
 export type ConflictResolutionResult =
-  | { ok: true; card: CardRecord }
-  | { ok: false; reason: 'conflict-card-mismatch' };
+  | {
+      ok: true;
+      card: CardRecord;
+      conflictIds: [ConflictId, ...ConflictId[]];
+    }
+  | {
+      ok: false;
+      reason:
+        | 'conflict-card-mismatch'
+        | 'no-conflicts'
+        | 'selected-conflict-missing';
+    };
 
 export type PendingMutationMode =
   | { kind: 'upsert' }
@@ -26,7 +37,13 @@ export type PendingMutationMode =
 
 export type PendingMutationResult =
   | { ok: true; mutation: PendingMutation }
-  | { ok: false; reason: 'missing-server-revision' };
+  | {
+      ok: false;
+      reason:
+        | 'conflict-limit-exceeded'
+        | 'existing-mutation-card-mismatch'
+        | 'missing-server-revision';
+    };
 
 export function createLocalCard(input: {
   cards: readonly CardRecord[];
@@ -76,23 +93,57 @@ export function applyCardEdit(
   }
 }
 
-export function resolveCardConflict(
+export function resolveCardConflicts(
   card: CardRecord,
-  conflict: ConflictRecord,
+  conflicts: readonly ConflictRecord[],
+  selectedConflictId: ConflictId,
   choice: ConflictResolutionChoice,
   nowInput: number,
 ): ConflictResolutionResult {
-  if (card.id !== conflict.cardId) {
-    return { ok: false, reason: 'conflict-card-mismatch' };
+  if (conflicts.length === 0) {
+    return { ok: false, reason: 'no-conflicts' };
   }
+
+  const conflictIds: ConflictId[] = [];
+  const seen = new Set<ConflictId>();
+  let selectedConflict: ConflictRecord | undefined;
+  let latestKnownServerRevision = card.serverRevision ?? 0;
+  for (const conflict of conflicts) {
+    if (card.id !== conflict.cardId) {
+      return { ok: false, reason: 'conflict-card-mismatch' };
+    }
+    if (conflict.id === selectedConflictId) selectedConflict = conflict;
+    if (!seen.has(conflict.id)) {
+      seen.add(conflict.id);
+      conflictIds.push(conflict.id);
+    }
+    latestKnownServerRevision = Math.max(
+      latestKnownServerRevision,
+      conflict.serverRevision,
+    );
+  }
+  if (!selectedConflict) {
+    return { ok: false, reason: 'selected-conflict-missing' };
+  }
+  const [firstConflictId, ...remainingConflictIds] = conflictIds;
+  if (!firstConflictId) return { ok: false, reason: 'no-conflicts' };
 
   let selected: { title: string; body: BodySegment[] };
   switch (choice) {
     case 'local':
-      selected = { title: conflict.localTitle, body: conflict.localBody };
+      selected = {
+        title: selectedConflict.localTitle,
+        body: selectedConflict.localBody,
+      };
       break;
     case 'server':
-      selected = { title: conflict.serverTitle, body: conflict.serverBody };
+      selected = {
+        title: selectedConflict.serverTitle,
+        body: selectedConflict.serverBody,
+      };
+      break;
+    case 'current':
+      selected = { title: card.title, body: card.body };
       break;
     default:
       return assertNever(choice, 'Unsupported conflict resolution choice');
@@ -102,21 +153,49 @@ export function resolveCardConflict(
     card: {
       ...card,
       ...selected,
-      serverRevision: conflict.serverRevision,
+      serverRevision: positiveSafeInteger(
+        latestKnownServerRevision,
+        'latest known server revision',
+      ),
       updatedAt: nonNegativeSafeInteger(nowInput, 'card timestamp'),
       localRevision: positiveSafeInteger(
         card.localRevision + 1,
         'local revision',
       ),
     },
+    conflictIds: [firstConflictId, ...remainingConflictIds],
   };
+}
+
+function combinedConflictIds(
+  existing: PendingMutation | undefined,
+  requested: readonly ConflictId[],
+): [ConflictId, ...ConflictId[]] | null {
+  const combined: ConflictId[] = [];
+  const seen = new Set<ConflictId>();
+  const append = (conflictId: ConflictId) => {
+    if (seen.has(conflictId)) return;
+    seen.add(conflictId);
+    combined.push(conflictId);
+  };
+  if (existing?.kind === 'resolve') {
+    for (const conflictId of existing.conflictIds) append(conflictId);
+  }
+  for (const conflictId of requested) append(conflictId);
+  if (combined.length > CONTRACT_LIMITS.conflictIds) return null;
+  const [first, ...rest] = combined;
+  return first ? [first, ...rest] : null;
 }
 
 export function createPendingMutation(
   card: CardRecord,
   mutationId: MutationId,
   mode: PendingMutationMode,
+  existing?: PendingMutation,
 ): PendingMutationResult {
+  if (existing && existing.cardId !== card.id) {
+    return { ok: false, reason: 'existing-mutation-card-mismatch' };
+  }
   const base = {
     mutationId,
     cardId: card.id,
@@ -127,7 +206,21 @@ export function createPendingMutation(
   };
 
   switch (mode.kind) {
-    case 'upsert':
+    case 'upsert': {
+      if (existing?.kind === 'resolve') {
+        if (card.serverRevision === null) {
+          return { ok: false, reason: 'missing-server-revision' };
+        }
+        return {
+          ok: true,
+          mutation: {
+            ...base,
+            kind: 'resolve',
+            baseServerRevision: card.serverRevision,
+            conflictIds: existing.conflictIds,
+          },
+        };
+      }
       return {
         ok: true,
         mutation: {
@@ -137,9 +230,14 @@ export function createPendingMutation(
           conflictIds: [],
         },
       };
-    case 'resolve':
+    }
+    case 'resolve': {
       if (card.serverRevision === null) {
         return { ok: false, reason: 'missing-server-revision' };
+      }
+      const conflictIds = combinedConflictIds(existing, mode.conflictIds);
+      if (!conflictIds) {
+        return { ok: false, reason: 'conflict-limit-exceeded' };
       }
       return {
         ok: true,
@@ -147,9 +245,10 @@ export function createPendingMutation(
           ...base,
           kind: mode.kind,
           baseServerRevision: card.serverRevision,
-          conflictIds: mode.conflictIds,
+          conflictIds,
         },
       };
+    }
     default:
       return assertNever(mode, 'Unsupported pending mutation mode');
   }

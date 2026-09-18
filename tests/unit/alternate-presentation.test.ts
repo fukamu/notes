@@ -5,10 +5,12 @@ import type {
   NotesPresentationProps,
 } from '@/components/presentation-contract';
 import type {
+  ConflictViewModel,
   NotesPresentationActions,
   NotesPresentationModel,
 } from '@/lib/application/presentation';
 import type { ConnectionsControllerState } from '@/lib/graph/connections-contract';
+import { createCardEditorCandidateIndex } from '@/lib/application/card-editor-index';
 import { invariant } from '@/lib/shared/invariant';
 import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
 import {
@@ -49,77 +51,119 @@ function model(
     localRevision: 1,
     serverRevision: 1,
   };
+  const candidateCard = {
+    ...currentCard,
+    id: secondId,
+    displayId: { kind: 'official' as const, value: 2 },
+    title: 'Second',
+    createdAt: 2,
+    updatedAt: 2,
+  };
   const activeView = location.kind === 'empty' ? 'card' : location.kind;
-  return {
+  const common = {
     initialized: true,
     location,
-    activeView,
     availableViews: { card: true, history: true, connections: true },
     currentCard,
     currentCardDisplayLabel: '#1',
-    cardEditor: {
-      cardId: firstId,
-      body: [],
-      labels: [{ cardId: firstId, label: '#1 First' }],
-      candidates: [
-        {
-          cardId: secondId,
-          displayLabel: '#2',
-          displayValue: 2,
-          title: 'Second',
-        },
-      ],
+    status: {
+      kind: 'sync-failed' as const,
+      label: 'Sync failed',
+      retryable: true as const,
     },
-    history: {
-      currentCardId: firstId,
-      items: [
-        {
-          cardId: firstId,
-          displayLabel: '#1',
-          displayValue: 1,
-          title: 'First',
-          preview: 'Body',
-          current: true,
-        },
-      ],
-    },
-    conflicts: [
+  };
+  const cardEditor = {
+    cardId: firstId,
+    title: 'First',
+    body: [],
+    labels: [
+      { cardId: firstId, label: '#1 First' },
+      { cardId: secondId, label: '#2 Second' },
+    ],
+    candidateIndex: createCardEditorCandidateIndex(
+      [currentCard, candidateCard],
+      firstId,
+    ),
+  };
+  const history = {
+    currentCardId: firstId,
+    items: [
       {
-        conflictId,
         cardId: firstId,
-        options: [
-          {
-            choice: 'local',
-            heading: '編集案 A',
-            title: 'Local',
-            preview: 'Local body',
-            accessibleName: 'Localを使う',
-          },
-          {
-            choice: 'server',
-            heading: '編集案 B',
-            title: 'Server',
-            preview: 'Server body',
-            accessibleName: 'Serverを使う',
-          },
-        ],
+        displayLabel: '#1',
+        displayValue: 1,
+        title: 'First',
+        preview: 'Body',
+        current: true,
       },
     ],
-    connections: {
-      currentCardId: firstId,
-      nodes: [
+  };
+  const conflicts: ConflictViewModel[] = [
+    {
+      conflictId,
+      cardId: firstId,
+      resolutionState: 'ready',
+      options: [
         {
-          cardId: firstId,
-          displayLabel: '#1',
-          title: 'First',
-          accessibleName: '#1 First、現在のカード',
-          current: true,
+          choice: 'local',
+          heading: '編集案 A',
+          title: 'Local',
+          preview: 'Local body',
+          accessibleName: 'Localを使う',
+        },
+        {
+          choice: 'server',
+          heading: '編集案 B',
+          title: 'Server',
+          preview: 'Server body',
+          accessibleName: 'Serverを使う',
         },
       ],
-      edges: [],
     },
-    status: { kind: 'sync-failed', label: 'Sync failed', retryable: true },
+  ];
+  const connections = {
+    currentCardId: firstId,
+    nodes: [
+      {
+        cardId: firstId,
+        displayLabel: '#1',
+        title: 'First',
+        accessibleName: '#1 First、現在のカード',
+        current: true,
+      },
+    ],
+    edges: [],
   };
+
+  switch (activeView) {
+    case 'card':
+      return {
+        ...common,
+        activeView,
+        cardEditor,
+        history: null,
+        conflicts,
+        connections: null,
+      };
+    case 'history':
+      return {
+        ...common,
+        activeView,
+        cardEditor: null,
+        history,
+        conflicts: [],
+        connections: null,
+      };
+    case 'connections':
+      return {
+        ...common,
+        activeView,
+        cardEditor: null,
+        history: null,
+        conflicts: [],
+        connections,
+      };
+  }
 }
 
 function presentationProps(
@@ -138,7 +182,10 @@ function presentationProps(
 function controllerState(
   status: ConnectionsControllerState['status'],
 ): ConnectionsControllerState {
-  const connections = model({ kind: 'card', cardId: firstId }).connections;
+  const connections = model({
+    kind: 'connections',
+    cardId: firstId,
+  }).connections;
   invariant(connections, 'Alternate fixture requires connections');
   const fallbackItems = connections.nodes;
   const firstItem = fallbackItems[0];
@@ -160,6 +207,30 @@ function controllerState(
   return {
     ...base,
     status,
+    geometry: {
+      width: 200,
+      height: 120,
+      nodes: [
+        {
+          id: firstId,
+          x: 10,
+          y: 20,
+          width: 148,
+          height: 56,
+          ports: [],
+        },
+      ],
+      edges: [
+        {
+          sourceCardId: firstId,
+          targetCardId: firstId,
+          id: 'edge-0',
+          sourcePortId: 'source-0',
+          targetPortId: 'target-0',
+          sections: [],
+        },
+      ],
+    },
     width: 200,
     height: 120,
     nodes: [node],
@@ -199,8 +270,16 @@ describe('alternate presentation contract', () => {
 
     const props = presentationProps({ kind: 'card', cardId: firstId });
     const probe = createAlternatePresentationProbe(props);
+    const historyProbe = createAlternatePresentationProbe({
+      ...props,
+      model: model({ kind: 'history', cardId: firstId }),
+    });
+    createAlternatePresentationProbe({
+      ...props,
+      model: model({ kind: 'connections', cardId: firstId }),
+    });
     await probe.createCard();
-    probe.openFirstHistory();
+    historyProbe.openFirstHistory();
     probe.showCurrentCard();
     probe.showHistory();
     probe.showConnections();
@@ -247,6 +326,13 @@ describe('alternate presentation contract', () => {
 
   it('consumes editor state, candidate link, undo and redo commands', () => {
     const commands: CardEditorRendererProps['commands'] = {
+      setTitleInputElement: vi.fn(),
+      updateTitle: vi.fn(),
+      handleTitleBlur: vi.fn(),
+      handleTitleKeyDown: vi.fn(),
+      handleTitleCompositionStart: vi.fn(),
+      handleTitleCompositionEnd: vi.fn(),
+      prepareBodyEditing: vi.fn(),
       handleKeyDown: vi.fn(),
       handleInput: vi.fn(),
       handleCompositionEnd: vi.fn(),
@@ -258,6 +344,7 @@ describe('alternate presentation contract', () => {
     const props: CardEditorRendererProps = {
       model: {
         editor: null,
+        title: 'First',
         ready: true,
         focused: true,
         selectionEmpty: false,
@@ -278,22 +365,29 @@ describe('alternate presentation contract', () => {
     };
     const probe = createAlternateCardEditorProbe(props);
     expect(probe.summary).toBe(
-      'ready;focused;range-selection;candidates-open;can-undo;can-redo;Second',
+      'First;ready;focused;range-selection;candidates-open;can-undo;can-redo;Second',
     );
+    probe.updateTitle('Changed title');
     probe.undo();
     probe.redo();
     probe.insertCandidateLink();
     expect(commands.undo).toHaveBeenCalled();
     expect(commands.redo).toHaveBeenCalled();
+    expect(commands.updateTitle).toHaveBeenCalledWith('Changed title');
     expect(commands.selectCandidate).toHaveBeenCalledWith(secondId);
   });
 
   it('consumes loading, error and ready connections with one open action', () => {
     const openCard = vi.fn();
     for (const status of ['loading', 'error', 'ready'] as const) {
+      const connectionsState = controllerState(status);
       const props: ConnectionsRendererProps = {
-        model: controllerState(status),
-        actions: { openCard },
+        model: connectionsState,
+        totalNodeCount: 1,
+        totalEdgeCount: status === 'ready' ? 1 : 0,
+        actions: {
+          openCard,
+        },
         presentation: alternateNotesAppConfiguration.connectionsPresentation,
       };
       const probe = createAlternateConnectionsProbe(props);

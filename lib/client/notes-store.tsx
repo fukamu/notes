@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -16,13 +17,22 @@ import {
   transitionNotesInitialization,
   type NotesInitializationLifecycle,
 } from '@/lib/application/initialization-lifecycle';
+import {
+  activateNotesOperationLifecycle,
+  captureNotesOperation,
+  createStoppedNotesOperationLifecycle,
+  decideNotesOperationContinuation,
+  stopNotesOperationLifecycle,
+  type NotesOperationLifecycle,
+  type NotesOperationToken,
+} from '@/lib/application/notes-operation-lifecycle';
+import type { NotesRuntimePorts } from '@/lib/application/notes-runtime';
 import { type CardId, type ConflictId, type DeviceId } from '@/lib/domain/id';
-import { createCardId } from '@/lib/client/id-generator';
 import { reconcileProvisionalDisplayIds } from '@/lib/domain/display-id';
 import {
   applyCardEdit,
   createLocalCard,
-  resolveCardConflict,
+  resolveCardConflicts,
   type CardEdit,
   type ConflictResolutionChoice,
 } from '@/lib/domain/card-transitions';
@@ -32,17 +42,9 @@ import {
   type SaveState,
   type SyncState,
 } from '@/lib/domain/types';
-import {
-  applySyncResponse,
-  loadCards,
-  loadConflicts,
-  loadOrCreateDeviceId,
-  loadPendingMutations,
-  persistCardAndMutation,
-} from '@/lib/storage/indexed-db';
 import { encodeSyncRequest } from '@/lib/sync/protocol';
 import { reconcileVisibleCardsAfterSync } from '@/lib/sync/client-reconciliation';
-import { prepareOfflineApp } from '@/lib/client/offline';
+import { assertNever } from '@/lib/shared/invariant';
 
 export type NotesDataStore = {
   cards: CardRecord[];
@@ -50,6 +52,7 @@ export type NotesDataStore = {
   initialization: NotesInitializationLifecycle;
   saveState: SaveState;
   syncState: SyncState;
+  resolvingConflictCardIds: CardId[];
   createCard: () => Promise<CardRecord>;
   hasCard: (cardId: CardId) => boolean;
   updateCard: (cardId: CardId, edit: CardEdit) => void;
@@ -62,16 +65,34 @@ export type NotesDataStore = {
 
 const NotesDataContext = createContext<NotesDataStore | null>(null);
 
-export function NotesProvider({ children }: { children: ReactNode }) {
+export function NotesProvider({
+  children,
+  ports,
+  fenced = false,
+  fencedFallback = null,
+}: {
+  children: ReactNode;
+  ports: NotesRuntimePorts;
+  fenced?: boolean;
+  fencedFallback?: ReactNode;
+}) {
   const [cards, setCards] = useState<CardRecord[]>([]);
   const [conflicts, setConflicts] = useState<ConflictRecord[]>([]);
   const [initialization, setInitialization] =
     useState<NotesInitializationLifecycle>(INITIAL_NOTES_INITIALIZATION);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [syncState, setSyncState] = useState<SyncState>('idle');
+  const [resolvingConflictCardIds, setResolvingConflictCardIds] = useState<
+    CardId[]
+  >([]);
   const cardsRef = useRef(cards);
+  const conflictsRef = useRef(conflicts);
+  const resolvingConflictCardIdsRef = useRef(resolvingConflictCardIds);
+  const operationLifecycleRef = useRef(
+    createStoppedNotesOperationLifecycle(ports.scope),
+  );
   const deviceIdRef = useRef<DeviceId | undefined>(undefined);
-  const syncRunningRef = useRef(false);
+  const syncRunningRef = useRef<NotesOperationToken | undefined>(undefined);
   const syncRequestedRef = useRef(false);
   const syncTimerRef = useRef<number | undefined>(undefined);
   const saveSequenceRef = useRef(0);
@@ -79,69 +100,211 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const initialized = isNotesInitialized(initialization);
 
   useEffect(() => {
+    operationLifecycleRef.current = activateNotesOperationLifecycle(
+      operationLifecycleRef.current,
+      ports.scope,
+    );
+    deviceIdRef.current = undefined;
+    syncRunningRef.current = undefined;
+    syncRequestedRef.current = false;
+    saveSequenceRef.current = 0;
+    saveQueueRef.current = Promise.resolve();
+    resolvingConflictCardIdsRef.current = [];
+
+    return () => {
+      operationLifecycleRef.current = stopNotesOperationLifecycle(
+        operationLifecycleRef.current,
+      );
+    };
+  }, [ports]);
+
+  useLayoutEffect(() => {
+    if (!fenced) return;
+    operationLifecycleRef.current = stopNotesOperationLifecycle(
+      operationLifecycleRef.current,
+    );
+    syncRunningRef.current = undefined;
+    syncRequestedRef.current = false;
+    if (syncTimerRef.current !== undefined) {
+      window.clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = undefined;
+    }
+  }, [fenced]);
+
+  useEffect(() => {
     cardsRef.current = cards;
   }, [cards]);
 
+  useEffect(() => {
+    conflictsRef.current = conflicts;
+  }, [conflicts]);
+
+  useEffect(() => {
+    resolvingConflictCardIdsRef.current = resolvingConflictCardIds;
+  }, [resolvingConflictCardIds]);
+
   const synchronizeNow = useCallback(async () => {
     if (!initialized) return;
-    if (syncRunningRef.current) {
+    const capture = captureNotesOperation(
+      operationLifecycleRef.current,
+      'sync',
+    );
+    if (capture.kind === 'rejected') return;
+    const operationToken = capture.token;
+    const runningOperation = syncRunningRef.current;
+    if (
+      runningOperation !== undefined &&
+      decideNotesOperationContinuation(
+        operationLifecycleRef.current,
+        runningOperation,
+      ).kind === 'accepted'
+    ) {
       syncRequestedRef.current = true;
       return;
     }
-    if (!navigator.onLine) {
+    if (!ports.connectivity.isOnline()) {
       setSyncState('offline');
       return;
     }
 
-    syncRunningRef.current = true;
+    syncRunningRef.current = operationToken;
+    syncRequestedRef.current = false;
     setSyncState('syncing');
     try {
       do {
+        if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
+          return;
         syncRequestedRef.current = false;
-        const deviceId = deviceIdRef.current ?? (await loadOrCreateDeviceId());
+        const deviceId =
+          deviceIdRef.current ??
+          (await ports.repository.loadOrCreateDeviceId());
+        if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
+          return;
         deviceIdRef.current = deviceId;
-        const mutations = await loadPendingMutations();
+        const mutations = await ports.repository.loadPendingMutations();
+        if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
+          return;
         const revisionsAtRequest = new Map(
           cardsRef.current.map((card) => [card.id, card.localRevision]),
         );
-        const requestBody = encodeSyncRequest({ deviceId, mutations });
-        const response = await fetch('/api/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-        });
-        if (!response.ok) throw new Error(`sync returned ${response.status}`);
-        const result: unknown = await response.json();
-        const merged = await applySyncResponse(result, mutations);
+        let merged: {
+          readonly cards: readonly CardRecord[];
+          readonly conflicts: readonly ConflictRecord[];
+        };
+        switch (ports.sync.kind) {
+          case 'v1': {
+            const requestBody = encodeSyncRequest({ deviceId, mutations });
+            const result = await ports.sync.transport.send(requestBody);
+            // A stale response must never reach the mutation ack boundary.
+            if (
+              !operationIsCurrent(operationLifecycleRef.current, operationToken)
+            )
+              return;
+            merged = await ports.repository.applySyncResponse(
+              result,
+              mutations,
+            );
+            break;
+          }
+          case 'v2': {
+            const result = await ports.sync.client.synchronize({
+              deviceId,
+              sentMutations: mutations,
+              isCurrent: () =>
+                operationIsCurrent(
+                  operationLifecycleRef.current,
+                  operationToken,
+                ),
+            });
+            switch (result.kind) {
+              case 'cancelled':
+                return;
+              case 'rejected':
+                throw new Error(`Sync v2 rejected: ${result.reason}`);
+              case 'completed':
+                merged = result;
+                break;
+              default:
+                return assertNever(result, 'Unsupported Sync v2 client result');
+            }
+            break;
+          }
+          default:
+            return assertNever(ports.sync, 'Unsupported notes sync runtime');
+        }
+        if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
+          return;
         const visibleCards = reconcileVisibleCardsAfterSync({
           currentCards: cardsRef.current,
           revisionsAtRequest,
           mergedCards: merged.cards,
         });
         cardsRef.current = visibleCards;
+        conflictsRef.current = [...merged.conflicts];
         setCards(visibleCards);
-        setConflicts(merged.conflicts);
-      } while (syncRequestedRef.current && navigator.onLine);
+        setConflicts([...merged.conflicts]);
+        const unresolvedCardIds = new Set(
+          merged.conflicts.map((conflict) => conflict.cardId),
+        );
+        setResolvingConflictCardIds((current) => {
+          const next = current.filter((cardId) =>
+            unresolvedCardIds.has(cardId),
+          );
+          resolvingConflictCardIdsRef.current = next;
+          return next;
+        });
+      } while (
+        operationIsCurrent(operationLifecycleRef.current, operationToken) &&
+        syncRequestedRef.current &&
+        ports.connectivity.isOnline()
+      );
+      if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
+        return;
       setSyncState('idle');
     } catch (error) {
+      if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
+        return;
       console.error(error);
-      setSyncState(navigator.onLine ? 'failed' : 'offline');
+      setSyncState(ports.connectivity.isOnline() ? 'failed' : 'offline');
     } finally {
-      syncRunningRef.current = false;
+      if (syncRunningRef.current === operationToken) {
+        syncRunningRef.current = undefined;
+      }
     }
-  }, [initialized]);
+  }, [initialized, ports.connectivity, ports.repository, ports.sync]);
 
   useEffect(() => {
-    let active = true;
-    void Promise.all([loadCards(), loadConflicts(), loadOrCreateDeviceId()])
-      .then(([storedCards, storedConflicts, deviceId]) => {
-        if (!active) return;
+    const capture = captureNotesOperation(
+      operationLifecycleRef.current,
+      'load',
+    );
+    if (capture.kind === 'rejected') return;
+    const operationToken = capture.token;
+    void Promise.all([
+      ports.repository.loadCards(),
+      ports.repository.loadConflicts(),
+      ports.repository.loadOrCreateDeviceId(),
+      ports.repository.loadPendingMutations(),
+    ])
+      .then(([storedCards, storedConflicts, deviceId, storedMutations]) => {
+        if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
+          return;
         const reconciled = reconcileProvisionalDisplayIds(storedCards);
         cardsRef.current = reconciled;
+        conflictsRef.current = storedConflicts;
         deviceIdRef.current = deviceId;
         setCards(reconciled);
         setConflicts(storedConflicts);
-        setSyncState(navigator.onLine ? 'idle' : 'offline');
+        const resolvingCardIds = [
+          ...new Set(
+            storedMutations
+              .filter((mutation) => mutation.kind === 'resolve')
+              .map((mutation) => mutation.cardId),
+          ),
+        ];
+        resolvingConflictCardIdsRef.current = resolvingCardIds;
+        setResolvingConflictCardIds(resolvingCardIds);
+        setSyncState(ports.connectivity.isOnline() ? 'idle' : 'offline');
         setInitialization((lifecycle) =>
           transitionNotesInitialization(lifecycle, {
             type: 'load-completed',
@@ -150,96 +313,127 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         );
       })
       .catch((error) => {
+        if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
+          return;
         console.error(error);
-        if (active) {
-          setSaveState('failed');
-          setInitialization((lifecycle) =>
-            transitionNotesInitialization(lifecycle, {
-              type: 'load-completed',
-              outcome: 'failed',
-            }),
-          );
-        }
+        setSaveState('failed');
+        setInitialization((lifecycle) =>
+          transitionNotesInitialization(lifecycle, {
+            type: 'load-completed',
+            outcome: 'failed',
+          }),
+        );
       });
-    return () => {
-      active = false;
-    };
-  }, []);
+  }, [ports.connectivity, ports.repository]);
 
   useEffect(() => {
     if (!initialized) return;
-    let active = true;
+    const capture = captureNotesOperation(
+      operationLifecycleRef.current,
+      'sync',
+    );
+    if (capture.kind === 'rejected') return;
+    const operationToken = capture.token;
     const initialSync = window.setTimeout(() => {
       void synchronizeNow().finally(() => {
-        if (active) {
-          setInitialization((lifecycle) =>
-            transitionNotesInitialization(lifecycle, {
-              type: 'initial-sync-completed',
-            }),
-          );
-        }
+        if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
+          return;
+        setInitialization((lifecycle) =>
+          transitionNotesInitialization(lifecycle, {
+            type: 'initial-sync-completed',
+          }),
+        );
       });
     }, 0);
     const onOnline = () => void synchronizeNow();
     const onOffline = () => setSyncState('offline');
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
+    const unsubscribeConnectivity = ports.connectivity.subscribe({
+      onOnline,
+      onOffline,
+    });
     const timer = window.setInterval(() => void synchronizeNow(), 15_000);
     return () => {
-      active = false;
       window.clearTimeout(initialSync);
       if (syncTimerRef.current !== undefined)
         window.clearTimeout(syncTimerRef.current);
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
+      unsubscribeConnectivity();
       window.clearInterval(timer);
     };
-  }, [initialized, synchronizeNow]);
+  }, [initialized, ports.connectivity, synchronizeNow]);
 
   useEffect(() => {
-    void prepareOfflineApp().catch((error) => console.error(error));
-  }, []);
+    void ports.offlineApp.prepare().catch((error) => console.error(error));
+  }, [ports.offlineApp]);
 
   const queueSave = useCallback(
     (
       card: CardRecord,
       options:
+        | { kind: 'local-only' }
         | { kind: 'upsert' }
         | { kind: 'resolve'; conflictIds: [ConflictId, ...ConflictId[]] } = {
         kind: 'upsert',
       },
     ) => {
+      const capture = captureNotesOperation(
+        operationLifecycleRef.current,
+        'save',
+      );
+      if (capture.kind === 'rejected') return;
+      const operationToken = capture.token;
       const sequence = ++saveSequenceRef.current;
       setSaveState('saving');
       saveQueueRef.current = saveQueueRef.current
-        .then(() => {
+        .then(async () => {
+          if (
+            !operationIsCurrent(operationLifecycleRef.current, operationToken)
+          )
+            return false;
           const latestCard = cardsRef.current.find(
             (candidate) => candidate.id === card.id,
           );
-          return persistCardAndMutation(latestCard ?? card, options);
-        })
-        .then(() => {
-          if (sequence === saveSequenceRef.current) setSaveState('saved');
-          if (syncTimerRef.current !== undefined)
-            window.clearTimeout(syncTimerRef.current);
-          syncTimerRef.current = window.setTimeout(
-            () => void synchronizeNow(),
-            250,
+          if (options.kind === 'local-only') {
+            await ports.repository.persistLocalCard(latestCard ?? card);
+          } else {
+            await ports.repository.persistCardAndMutation(
+              latestCard ?? card,
+              options,
+            );
+          }
+          return operationIsCurrent(
+            operationLifecycleRef.current,
+            operationToken,
           );
         })
+        .then((operationAccepted) => {
+          if (!operationAccepted) return;
+          if (sequence === saveSequenceRef.current) setSaveState('saved');
+          if (options.kind !== 'local-only') {
+            if (syncTimerRef.current !== undefined)
+              window.clearTimeout(syncTimerRef.current);
+            syncTimerRef.current = window.setTimeout(
+              () => void synchronizeNow(),
+              250,
+            );
+          }
+        })
         .catch((error) => {
+          if (
+            !operationIsCurrent(operationLifecycleRef.current, operationToken)
+          )
+            return;
           console.error(error);
           setSaveState('failed');
         });
     },
-    [synchronizeNow],
+    [ports.repository, synchronizeNow],
   );
 
   const createCard = useCallback(async () => {
-    const now = Date.now();
+    const now = ports.clock.now();
     const card = createLocalCard({
       cards: cardsRef.current,
-      cardId: createCardId(),
+      cardId: ports.idGenerator.createCardId(),
       now,
     });
     const nextCards = [...cardsRef.current, card];
@@ -247,21 +441,31 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     setCards(nextCards);
     queueSave(card);
     return card;
-  }, [queueSave]);
+  }, [ports.clock, ports.idGenerator, queueSave]);
 
   const updateCard = useCallback(
     (cardId: CardId, edit: CardEdit) => {
       const existing = cardsRef.current.find((card) => card.id === cardId);
       if (!existing) return;
-      const updated = applyCardEdit(existing, edit, Date.now());
+      const updated = applyCardEdit(existing, edit, ports.clock.now());
       const nextCards = cardsRef.current.map((card) =>
         card.id === cardId ? updated : card,
       );
       cardsRef.current = nextCards;
       setCards(nextCards);
-      queueSave(updated);
+      const hasUnresolvedConflict = conflictsRef.current.some(
+        (conflict) => conflict.cardId === cardId,
+      );
+      const resolutionIsPending =
+        resolvingConflictCardIdsRef.current.includes(cardId);
+      queueSave(
+        updated,
+        hasUnresolvedConflict && !resolutionIsPending
+          ? { kind: 'local-only' }
+          : { kind: 'upsert' },
+      );
     },
-    [queueSave],
+    [ports.clock, queueSave],
   );
 
   const hasCard = useCallback(
@@ -270,16 +474,20 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   );
 
   const resolveConflict = useCallback(
-    (conflict: ConflictRecord, choice: 'local' | 'server') => {
+    (conflict: ConflictRecord, choice: ConflictResolutionChoice) => {
       const existing = cardsRef.current.find(
         (card) => card.id === conflict.cardId,
       );
       if (!existing) return undefined;
-      const result = resolveCardConflict(
+      const cardConflicts = conflictsRef.current.filter(
+        (candidate) => candidate.cardId === conflict.cardId,
+      );
+      const result = resolveCardConflicts(
         existing,
-        conflict,
+        cardConflicts,
+        conflict.id,
         choice,
-        Date.now(),
+        ports.clock.now(),
       );
       if (!result.ok) return undefined;
       const updated = result.card;
@@ -288,13 +496,21 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       );
       cardsRef.current = nextCards;
       setCards(nextCards);
+      if (!resolvingConflictCardIdsRef.current.includes(conflict.cardId)) {
+        const nextResolving = [
+          ...resolvingConflictCardIdsRef.current,
+          conflict.cardId,
+        ];
+        resolvingConflictCardIdsRef.current = nextResolving;
+        setResolvingConflictCardIds(nextResolving);
+      }
       queueSave(updated, {
         kind: 'resolve',
-        conflictIds: [conflict.id],
+        conflictIds: result.conflictIds,
       });
       return updated;
     },
-    [queueSave],
+    [ports.clock, queueSave],
   );
 
   const value = useMemo<NotesDataStore>(
@@ -304,6 +520,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       initialization,
       saveState,
       syncState,
+      resolvingConflictCardIds,
       createCard,
       hasCard,
       updateCard,
@@ -316,6 +533,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       initialization,
       saveState,
       syncState,
+      resolvingConflictCardIds,
       createCard,
       hasCard,
       updateCard,
@@ -326,9 +544,16 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
   return (
     <NotesDataContext.Provider value={value}>
-      {children}
+      {fenced ? fencedFallback : children}
     </NotesDataContext.Provider>
   );
+}
+
+function operationIsCurrent(
+  lifecycle: NotesOperationLifecycle,
+  token: NotesOperationToken,
+): boolean {
+  return decideNotesOperationContinuation(lifecycle, token).kind === 'accepted';
 }
 
 export function useNotesDataStore(): NotesDataStore {

@@ -200,6 +200,54 @@ describe('sync response application plan', () => {
     ]);
     expect(plan.conflicts).toEqual([conflict]);
   });
+
+  it('turns an edit saved during an acknowledged resolve into a fresh upsert', () => {
+    const localCard = card('resolve-edit', {
+      title: 'edited while resolve was in flight',
+      serverRevision: 5,
+    });
+    const conflictId = fixtureConflictId('resolve-edit');
+    const sent: PendingMutation = {
+      ...mutation('sent-resolve', localCard, {
+        title: 'selected before request',
+      }),
+      kind: 'resolve',
+      baseServerRevision: 5,
+      conflictIds: [conflictId],
+    };
+    const current: PendingMutation = {
+      ...mutation('newer-resolve-edit', localCard),
+      kind: 'resolve',
+      baseServerRevision: 5,
+      conflictIds: [conflictId],
+    };
+    const response: SyncResponse = {
+      cards: [serverCard(localCard, { revision: 6 })],
+      conflicts: [],
+      acknowledgedMutationIds: [sent.mutationId],
+    };
+
+    const plan = planSyncResponseApplication({
+      response,
+      localCards: [localCard],
+      currentMutations: [current],
+      sentMutations: [sent],
+    });
+
+    expect(plan.operations).toContainEqual({
+      type: 'put-mutation',
+      mutation: {
+        ...current,
+        kind: 'upsert',
+        baseServerRevision: 6,
+        conflictIds: [],
+      },
+    });
+    expect(plan.cards[0]).toMatchObject({
+      title: 'edited while resolve was in flight',
+      serverRevision: 6,
+    });
+  });
 });
 
 describe('visible card reconciliation after sync', () => {
@@ -256,5 +304,47 @@ describe('visible card reconciliation after sync', () => {
     expect(currentCards).toEqual(cardsBefore);
     expect(mergedCards).toEqual(mergedBefore);
     expect([...revisionsAtRequest]).toEqual(revisionsBefore);
+  });
+
+  it('does not restore an unchanged card absent from the committed replica', () => {
+    const retained = card('retained-after-sync', { localRevision: 2 });
+    const deleted = card('deleted-after-sync', { localRevision: 3 });
+
+    expect(
+      reconcileVisibleCardsAfterSync({
+        currentCards: [retained, deleted],
+        revisionsAtRequest: new Map([
+          [retained.id, retained.localRevision],
+          [deleted.id, deleted.localRevision],
+        ]),
+        mergedCards: [retained],
+      }),
+    ).toEqual([retained]);
+  });
+
+  it('retains cards created or edited after the request snapshot', () => {
+    const retained = card('retained-with-concurrent-work', {
+      localRevision: 2,
+    });
+    const edited = card('edited-after-request', {
+      title: 'newer local edit',
+      localRevision: 4,
+    });
+    const created = card('created-after-request', {
+      displayId: { kind: 'provisional', value: 8 },
+      localRevision: 1,
+      serverRevision: null,
+    });
+
+    expect(
+      reconcileVisibleCardsAfterSync({
+        currentCards: [retained, edited, created],
+        revisionsAtRequest: new Map([
+          [retained.id, retained.localRevision],
+          [edited.id, 3],
+        ]),
+        mergedCards: [retained],
+      }),
+    ).toEqual([retained, edited, created]);
   });
 });

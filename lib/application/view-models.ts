@@ -1,6 +1,8 @@
-import { bodyToPlainText, linkCandidates } from '@/lib/domain/body';
 import { formatDisplayId } from '@/lib/domain/display-id';
-import { buildConnectionsGraph } from '@/lib/domain/graph';
+import {
+  buildConnectionsGraph,
+  type ConnectionsGraph,
+} from '@/lib/domain/graph';
 import type { CardId } from '@/lib/domain/id';
 import {
   visibleTitle,
@@ -18,24 +20,29 @@ import type {
   HistoryViewModel,
   NotesStatusViewModel,
 } from '@/lib/application/presentation';
+import {
+  createCardEditorCandidateIndex,
+  type CardEditorCandidateIndex,
+} from '@/lib/application/card-editor-index';
+import {
+  bodyToPlainTextFromLookup,
+  createCardBodyTextLookup,
+  type CardBodyTextLookup,
+} from '@/lib/application/card-body-text-lookup';
 
 export function selectCardEditorInputModel(
   cards: CardRecord[],
   currentCard: CardRecord,
+  candidateIndex: CardEditorCandidateIndex | null = null,
 ): CardEditorInputModel {
+  const resolvedCandidateIndex =
+    candidateIndex ?? createCardEditorCandidateIndex(cards, currentCard.id);
   return {
     cardId: currentCard.id,
+    title: currentCard.title,
     body: currentCard.body,
-    labels: cards.map((card) => ({
-      cardId: card.id,
-      label: `${formatDisplayId(card.displayId)} ${visibleTitle(card.title)}`,
-    })),
-    candidates: linkCandidates(cards, currentCard.id).map((card) => ({
-      cardId: card.id,
-      displayLabel: formatDisplayId(card.displayId),
-      displayValue: card.displayId.value,
-      title: visibleTitle(card.title),
-    })),
+    labels: resolvedCandidateIndex.labels,
+    candidateIndex: resolvedCandidateIndex,
   };
 }
 
@@ -89,14 +96,15 @@ function compareHistoryCards(
 }
 
 export function selectHistoryViewModel(
-  cards: CardRecord[],
+  cards: readonly CardRecord[],
   currentCardId: CardId | null,
 ): HistoryViewModel {
+  const bodyTextLookup = createCardBodyTextLookup(cards);
   const items = cards
     .map((card, sourceIndex) => ({ card, sourceIndex }))
     .sort(compareHistoryCards)
     .map(({ card }) => {
-      const preview = bodyToPlainText(card.body, cards)
+      const preview = bodyToPlainTextFromLookup(card.body, bodyTextLookup)
         .replace(/\s+/g, ' ')
         .trim();
       return {
@@ -115,15 +123,15 @@ export function selectHistoryViewModel(
 function conflictOption(
   choice: ConflictChoice,
   conflict: ConflictRecord,
-  cards: CardRecord[],
+  bodyTextLookup: CardBodyTextLookup,
 ): ConflictOptionViewModel {
   const local = choice === 'local';
   const title = visibleTitle(
     local ? conflict.localTitle : conflict.serverTitle,
   );
-  const preview = bodyToPlainText(
+  const preview = bodyToPlainTextFromLookup(
     local ? conflict.localBody : conflict.serverBody,
-    cards,
+    bodyTextLookup,
   );
   return {
     choice,
@@ -136,23 +144,43 @@ function conflictOption(
 
 export function selectConflictViewModel(
   conflict: ConflictRecord,
-  cards: CardRecord[],
+  cards: readonly CardRecord[],
 ): ConflictViewModel {
-  return {
-    conflictId: conflict.id,
-    cardId: conflict.cardId,
-    options: [
-      conflictOption('local', conflict, cards),
-      conflictOption('server', conflict, cards),
-    ],
-  };
+  const model = selectConflictViewModels([conflict], cards)[0];
+  if (!model) throw new Error('Conflict selector omitted its input');
+  return model;
 }
 
-export function selectConnectionsViewModel(
-  cards: CardRecord[],
+export function selectConflictViewModels(
+  conflicts: readonly ConflictRecord[],
+  cards: readonly CardRecord[],
+  resolution: Readonly<{
+    resolvingCardIds: readonly CardId[];
+    failed: boolean;
+  }> = { resolvingCardIds: [], failed: false },
+): ConflictViewModel[] {
+  if (conflicts.length === 0) return [];
+  const bodyTextLookup = createCardBodyTextLookup(cards);
+  const resolvingCardIds = new Set(resolution.resolvingCardIds);
+  return conflicts.map((conflict) => ({
+    conflictId: conflict.id,
+    cardId: conflict.cardId,
+    resolutionState: resolvingCardIds.has(conflict.cardId)
+      ? resolution.failed
+        ? 'failed'
+        : 'pending'
+      : 'ready',
+    options: [
+      conflictOption('local', conflict, bodyTextLookup),
+      conflictOption('server', conflict, bodyTextLookup),
+    ],
+  }));
+}
+
+export function projectConnectionsViewModel(
+  graph: ConnectionsGraph,
   currentCardId: CardId,
 ): ConnectionsViewModel {
-  const graph = buildConnectionsGraph(cards);
   const nodes = graph.nodes.map(({ card }) => {
     const displayLabel = formatDisplayId(card.displayId);
     const title = visibleTitle(card.title);
@@ -176,4 +204,14 @@ export function selectConnectionsViewModel(
       accessibleName: `${nodesById.get(edge.sourceCardId)?.title ?? edge.sourceCardId} から ${nodesById.get(edge.targetCardId)?.title ?? edge.targetCardId} へのリンク`,
     })),
   };
+}
+
+export function selectConnectionsViewModel(
+  cards: CardRecord[],
+  currentCardId: CardId,
+): ConnectionsViewModel {
+  return projectConnectionsViewModel(
+    buildConnectionsGraph(cards),
+    currentCardId,
+  );
 }

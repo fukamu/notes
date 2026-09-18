@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "issue": 325,
+  "branchPoint": "b96a1a024d9aa4b71460d82b5e8e51daca4816d6",
+  "browser": "Chromium 153.0.8010.12",
+  "fixture": {
+    "nodes": 10000,
+    "directedEdges": 19999,
+    "source": "client-performance with browser-adapter missing-target rebinding"
+  },
+  "runs": [
+    {
+      "project": "chromium",
+      "viewport": { "width": 1280, "height": 720 },
+      "devicePixelRatio": 1,
+      "initialReadyMs": 3484.9388489999983,
+      "layoutReadyWallMs": 3420.690794999995,
+      "semanticListOpenMs": 188.3795850000024,
+      "semanticMoveMs": 288.76556499999424,
+      "currentFocusMs": 186.09482099999877,
+      "wholeWorldFitMs": 321.65230699999665,
+      "reentryReadyMs": 1044.041781,
+      "edgeCanvas": {
+        "initialDrawMs": 122.8999999910593,
+        "localizedDrawMs": 0.29999999701976776,
+        "wholeWorldDrawMs": 99.30000001192093,
+        "continuousWholeWorldP95Ms": 90.5
+      },
+      "cardCanvas": {
+        "initialDrawMs": 9.200000002980232,
+        "wholeWorldDrawMs": 4.5,
+        "continuousWholeWorldP95Ms": 4
+      },
+      "browserPipeline": {
+        "visibilityQueryMs": 30.900000005960464,
+        "nodeCommitMs": 1
+      },
+      "localizedDom": {
+        "descendants": 7,
+        "cardButtons": 1,
+        "canvasElements": 2
+      },
+      "wholeWorldDom": {
+        "descendants": 3,
+        "cardButtons": 0,
+        "canvasElements": 2
+      },
+      "continuousWholeWorld": {
+        "samples": 30,
+        "frameP95Ms": 183.39999999999964,
+        "maximumFrameMs": 183.40000000000055,
+        "longTaskCount": 30,
+        "longestTaskMs": 188
+      },
+      "heapUsedBytes": 239000000
+    },
+    {
+      "project": "mobile-chromium",
+      "viewport": { "width": 412, "height": 839 },
+      "devicePixelRatio": 2.625,
+      "initialReadyMs": 2544.7137250000014,
+      "layoutReadyWallMs": 2490.983426999999,
+      "semanticListOpenMs": 148.34056799999962,
+      "semanticMoveMs": 237.27512299999944,
+      "currentFocusMs": 129.0304679999972,
+      "wholeWorldFitMs": 281.7912210000068,
+      "reentryReadyMs": 1187.661573999998,
+      "edgeCanvas": {
+        "initialDrawMs": 125.20000000298023,
+        "localizedDrawMs": 0.20000000298023224,
+        "wholeWorldDrawMs": 103,
+        "continuousWholeWorldP95Ms": 105.5
+      },
+      "cardCanvas": {
+        "initialDrawMs": 6.399999991059303,
+        "wholeWorldDrawMs": 3.7000000029802322,
+        "continuousWholeWorldP95Ms": 3.7000000029802322
+      },
+      "browserPipeline": {
+        "visibilityQueryMs": 25,
+        "nodeCommitMs": 0.7999999970197678
+      },
+      "localizedDom": {
+        "descendants": 7,
+        "cardButtons": 1,
+        "canvasElements": 2
+      },
+      "wholeWorldDom": {
+        "descendants": 3,
+        "cardButtons": 0,
+        "canvasElements": 2
+      },
+      "continuousWholeWorld": {
+        "samples": 30,
+        "frameP95Ms": 216.69999999999982,
+        "maximumFrameMs": 216.70000000000073,
+        "longTaskCount": 30,
+        "longestTaskMs": 210
+      },
+      "heapUsedBytes": 322000000
+    }
+  ],
+  "representativeGesture": {
+    "scope": "existing bounded map gesture scenario, not the 10k whole-world fit",
+    "desktopFrameP95Ms": 16.7,
+    "mobileFrameP95Ms": 16.8,
+    "longTaskCount": 0
+  },
+  "interpretation": {
+    "membership": "complete",
+    "nativeSemanticAccess": "complete through bounded searchable paged lists",
+    "provisionalFiveSecondReadyTarget": "met in both recorded 10k samples",
+    "provisionalThirtyThreeMillisecondNormalGestureTarget": "met in the representative gesture scenario",
+    "provisionalFiftyMillisecondContinuousWholeWorldTarget": "not met",
+    "dominantContinuousWholeWorldCost": "edge Canvas redraw, not card Canvas or HTML card commit",
+    "nextDecision": "create the authorized independent bounded viewport bitmap-reuse Issue; evaluate OffscreenCanvas only if reuse remains insufficient"
+  },
+  "limits": [
+    "one comprehensive recorded run per project on a shared host after earlier exploratory repetitions",
+    "mobile is Chromium emulation and is not a physical-device CPU guarantee",
+    "layoutReadyWallMs includes the product navigation pipeline and is not pure Worker layout time",
+    "performance.memory is coarse, GC-dependent, and browser-specific",
+    "no production backend, Sites deployment, main change, or production data was involved"
+  ]
+}

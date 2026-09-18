@@ -14,6 +14,11 @@ import {
   isNotesInitialized,
 } from '@/lib/application/initialization-lifecycle';
 import { createBrowserNotesNavigator } from '@/lib/client/browser-notes-navigator';
+import { createCardEditorIndexCache } from '@/lib/client/card-editor-index-cache';
+import {
+  createConnectionsGraphCache,
+  selectConnectionsGraphForLocation,
+} from '@/lib/client/connections-graph-cache';
 import type {
   NotesPresentationActions,
   NotesPresentationModel,
@@ -25,6 +30,8 @@ export function useNotesApplication(store: NotesDataStore): {
   actions: NotesPresentationActions;
 } {
   const [navigator] = useState(createBrowserNotesNavigator);
+  const [cardEditorIndexCache] = useState(createCardEditorIndexCache);
+  const [connectionsGraphCache] = useState(createConnectionsGraphCache);
   const location = useSyncExternalStore(
     navigator.subscribe,
     navigator.getLocation,
@@ -43,6 +50,14 @@ export function useNotesApplication(store: NotesDataStore): {
     !store.hasCard(locationCardId) &&
     !initialSyncComplete;
 
+  useEffect(
+    () => () => {
+      cardEditorIndexCache.clear();
+      connectionsGraphCache.clear();
+    },
+    [cardEditorIndexCache, connectionsGraphCache],
+  );
+
   useEffect(() => {
     if (!initialized || awaitingInitialCardResolution) return;
     if (navigator.getLocation().kind === 'empty') {
@@ -59,9 +74,29 @@ export function useNotesApplication(store: NotesDataStore): {
     initialized,
   ]);
 
+  const cardEditorIndex = useMemo(
+    () =>
+      location.kind === 'card'
+        ? cardEditorIndexCache.select(store.cards, location.cardId)
+        : null,
+    [cardEditorIndexCache, location, store.cards],
+  );
+  const connectionsGraph = useMemo(
+    () =>
+      selectConnectionsGraphForLocation(
+        connectionsGraphCache,
+        store.cards,
+        location,
+      ),
+    [connectionsGraphCache, location, store.cards],
+  );
   const model = useMemo(
-    () => createNotesPresentationModel(store, location),
-    [location, store],
+    () =>
+      createNotesPresentationModel(store, location, {
+        cardEditorIndex,
+        connectionsGraph: { kind: 'precomputed', graph: connectionsGraph },
+      }),
+    [cardEditorIndex, connectionsGraph, location, store],
   );
 
   return {

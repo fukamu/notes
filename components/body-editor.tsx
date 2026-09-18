@@ -22,18 +22,44 @@ export const defaultCardEditorPresentation: CardEditorPresentationAdapter = {
 
 export function BodyEditor({ model, commands }: CardEditorRendererProps) {
   const activeCandidateRef = useRef<HTMLButtonElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const setTitleInputElement = commands.setTitleInputElement;
+  useEffect(() => {
+    setTitleInputElement(titleInputRef.current);
+    return () => setTitleInputElement(null);
+  }, [setTitleInputElement]);
   useEffect(() => {
     if (model.suggestionOpen) {
       activeCandidateRef.current?.scrollIntoView({ block: 'nearest' });
     }
   }, [model.activeCandidate, model.suggestionOpen]);
 
+  const titleInput = (
+    <input
+      ref={titleInputRef}
+      aria-label="カードのタイトル"
+      value={model.title}
+      disabled={!model.ready}
+      onChange={(event) => commands.updateTitle(event.target.value)}
+      onBlur={commands.handleTitleBlur}
+      onKeyDown={commands.handleTitleKeyDown}
+      onCompositionStart={commands.handleTitleCompositionStart}
+      onCompositionEnd={commands.handleTitleCompositionEnd}
+      className="mb-6 w-full bg-transparent font-heading text-3xl font-semibold tracking-tight outline-none placeholder:text-muted-foreground/55"
+      placeholder="Untitled"
+      data-testid="card-title"
+    />
+  );
+
   if (!model.ready || !model.editor) {
     return (
-      <div
-        className="min-h-72 animate-pulse rounded-xl bg-muted/35"
-        aria-label="本文を準備中"
-      />
+      <div>
+        {titleInput}
+        <div
+          className="min-h-72 animate-pulse rounded-xl bg-muted/35"
+          aria-label="本文を準備中"
+        />
+      </div>
     );
   }
 
@@ -43,8 +69,11 @@ export function BodyEditor({ model, commands }: CardEditorRendererProps) {
       data-editor-focused={model.focused ? 'true' : 'false'}
       data-selection-empty={model.selectionEmpty ? 'true' : 'false'}
     >
+      {titleInput}
       <EditorContent
         editor={model.editor}
+        onFocusCapture={commands.prepareBodyEditing}
+        onPointerDownCapture={commands.prepareBodyEditing}
         onKeyDownCapture={commands.handleKeyDown}
         onInput={commands.handleInput}
         onCompositionEnd={commands.handleCompositionEnd}

@@ -36,10 +36,13 @@ function identifierDecoder<TName extends string>(): Decoder<Identifier<TName>> {
   );
 }
 
-export const cardIdDecoder = identifierDecoder<'CardId'>();
-export const mutationIdDecoder = identifierDecoder<'MutationId'>();
-export const conflictIdDecoder = identifierDecoder<'ConflictId'>();
-export const deviceIdDecoder = identifierDecoder<'DeviceId'>();
+export const cardIdDecoder: Decoder<CardId> = identifierDecoder<'CardId'>();
+export const mutationIdDecoder: Decoder<MutationId> =
+  identifierDecoder<'MutationId'>();
+export const conflictIdDecoder: Decoder<ConflictId> =
+  identifierDecoder<'ConflictId'>();
+export const deviceIdDecoder: Decoder<DeviceId> =
+  identifierDecoder<'DeviceId'>();
 
 export function parseCardId(input: unknown): CardId {
   return decodeOrThrow(cardIdDecoder, input, 'CardId');

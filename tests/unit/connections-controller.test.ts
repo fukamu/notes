@@ -142,6 +142,8 @@ describe('connections controller', () => {
     const controller = createConnectionsController(input(), metrics, runner);
     controller.update(input(), metrics);
     await vi.waitFor(() => expect(controller.getState().status).toBe('ready'));
+    const initialState = controller.getState();
+    if (initialState.status !== 'ready') return;
 
     controller.update(input(secondId), metrics);
     const state = controller.getState();
@@ -151,6 +153,7 @@ describe('connections controller', () => {
     expect(state.nodes.find((node) => node.cardId === secondId)?.current).toBe(
       true,
     );
+    expect(state.geometry).toBe(initialState.geometry);
     expect(runner).toHaveBeenCalledTimes(1);
   });
 
@@ -267,6 +270,152 @@ describe('connections controller', () => {
     first.resolve(layout(graphs[0] ?? { nodes: [], edges: [] }, 500));
     await Promise.resolve();
     expect(controller.getState()).toBe(accepted);
+  });
+
+  it('keeps settled A when active B resolves after returning to A', async () => {
+    const first = deferred<ConnectionsLayout>();
+    const second = deferred<ConnectionsLayout>();
+    const graphs: ConnectionsLayoutGraph[] = [];
+    const runner: ConnectionsLayoutRunner = (graph) => {
+      graphs.push(graph);
+      return graphs.length === 1 ? first.promise : second.promise;
+    };
+    const controller = createConnectionsController(input(), metrics, runner);
+
+    controller.update(input(), metrics);
+    first.resolve(layout(graphs[0] ?? { nodes: [], edges: [] }));
+    await vi.waitFor(() => expect(controller.getState().status).toBe('ready'));
+    const settledA = controller.getState();
+
+    const widerMetrics = { ...metrics, nodeWidth: metrics.nodeWidth + 20 };
+    controller.update(input(secondId), widerMetrics);
+    expect(controller.getState().status).toBe('loading');
+
+    controller.update(input(secondId), metrics);
+    const returnedA = controller.getState();
+    expect(returnedA).toMatchObject({
+      status: 'ready',
+      layoutKey: settledA.layoutKey,
+      currentCardId: secondId,
+      width: 480,
+    });
+
+    second.resolve(
+      layout(graphs[1] ?? graphs[0] ?? { nodes: [], edges: [] }, 80),
+    );
+    await Promise.resolve();
+    expect(controller.getState()).toBe(returnedA);
+  });
+
+  it('keeps settled A when active B rejects after returning to A', async () => {
+    const first = deferred<ConnectionsLayout>();
+    const second = deferred<ConnectionsLayout>();
+    const graphs: ConnectionsLayoutGraph[] = [];
+    const runner: ConnectionsLayoutRunner = (graph) => {
+      graphs.push(graph);
+      return graphs.length === 1 ? first.promise : second.promise;
+    };
+    const controller = createConnectionsController(input(), metrics, runner);
+
+    controller.update(input(), metrics);
+    first.resolve(layout(graphs[0] ?? { nodes: [], edges: [] }));
+    await vi.waitFor(() => expect(controller.getState().status).toBe('ready'));
+
+    controller.update(input(), { ...metrics, layerSpacing: 148 });
+    controller.update(input(secondId), metrics);
+    const returnedA = controller.getState();
+
+    second.reject(new Error('stale B failure'));
+    await Promise.resolve();
+    expect(controller.getState()).toBe(returnedA);
+    expect(controller.getState().status).toBe('ready');
+  });
+
+  it('accepts only C across A to B to C request ordering', async () => {
+    const first = deferred<ConnectionsLayout>();
+    const second = deferred<ConnectionsLayout>();
+    const third = deferred<ConnectionsLayout>();
+    const pending = [first, second, third];
+    const graphs: ConnectionsLayoutGraph[] = [];
+    const runner: ConnectionsLayoutRunner = (graph) => {
+      graphs.push(graph);
+      const request = pending[graphs.length - 1];
+      if (!request) throw new Error('Unexpected layout request');
+      return request.promise;
+    };
+    const controller = createConnectionsController(input(), metrics, runner);
+
+    controller.update(input(), metrics);
+    controller.update(input(), { ...metrics, nodeWidth: 220 });
+    controller.update(input(secondId), { ...metrics, nodeWidth: 240 });
+
+    third.resolve(
+      layout(graphs[2] ?? graphs[0] ?? { nodes: [], edges: [] }, 60),
+    );
+    await vi.waitFor(() => expect(controller.getState().status).toBe('ready'));
+    const acceptedC = controller.getState();
+    expect(acceptedC).toMatchObject({
+      status: 'ready',
+      currentCardId: secondId,
+      width: 540,
+    });
+
+    second.resolve(
+      layout(graphs[1] ?? graphs[0] ?? { nodes: [], edges: [] }, 30),
+    );
+    first.resolve(layout(graphs[0] ?? { nodes: [], edges: [] }, 10));
+    await Promise.all([first.promise, second.promise]);
+    expect(controller.getState()).toBe(acceptedC);
+  });
+
+  it('does not publish success after destroy', async () => {
+    const success = deferred<ConnectionsLayout>();
+    const controller = createConnectionsController(
+      input(),
+      metrics,
+      () => success.promise,
+    );
+    const listener = vi.fn();
+    controller.subscribe(listener);
+
+    controller.update(input(), metrics);
+    const stateBeforeDestroy = controller.getState();
+    controller.destroy();
+    success.resolve(
+      layout({
+        nodes: input().nodes.map(({ cardId: id }) => ({ id })),
+        edges: input().edges.map(({ sourceCardId, targetCardId }) => ({
+          sourceCardId,
+          targetCardId,
+        })),
+      }),
+    );
+    await success.promise;
+    await Promise.resolve();
+
+    expect(controller.getState()).toBe(stateBeforeDestroy);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not publish failure after destroy', async () => {
+    const failure = deferred<ConnectionsLayout>();
+    const controller = createConnectionsController(
+      input(),
+      metrics,
+      () => failure.promise,
+    );
+    const listener = vi.fn();
+    controller.subscribe(listener);
+
+    controller.update(input(), metrics);
+    const stateBeforeDestroy = controller.getState();
+    controller.destroy();
+    failure.reject(new Error('destroyed request failure'));
+    await expect(failure.promise).rejects.toThrow('destroyed request failure');
+    await Promise.resolve();
+
+    expect(controller.getState()).toBe(stateBeforeDestroy);
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it('exposes every semantic node through the error fallback', async () => {

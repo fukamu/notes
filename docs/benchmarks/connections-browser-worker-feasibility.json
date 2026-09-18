@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "issue": 310,
+  "parentIssue": 304,
+  "branchPoint": "084e9d789eb7a6c77e7ea27ddc579dac459ec75d",
+  "generatedAt": "2026-09-17T04:20:00.532Z",
+  "environment": {
+    "browser": "153.0.8010.12",
+    "project": "chromium",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.8010.12 Safari/537.36",
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "devicePixelRatio": 1,
+    "node": "v26.8.1",
+    "platform": "linux",
+    "release": "7.0.0-31-generic",
+    "cpu": "11th Gen Intel(R) Core(TM) i7-1195G7 @ 2.90GHz",
+    "cpuCount": 8,
+    "totalMemoryBytes": 16463347712,
+    "elkjs": "0.12.0",
+    "layoutConfiguration": "production Worker, FREE + ORTHOGONAL + separateConnectedComponents + thoroughness 7"
+  },
+  "methodology": {
+    "timeoutMs": 30000,
+    "timeoutMeaning": "Per-case research guard. A timeout is incomplete geometry and never a pass.",
+    "fixtureIdentity": "The fixed-seed phase-0 fixture generators are bundled into Chromium and the complete graph is passed directly to the production Worker runner.",
+    "successValidation": "Every node ID and directed edge endpoint must match in input order; decoded geometry, sections, points, and generated paths must be finite.",
+    "memory": "performance.memory is observational and may be null; worker reset is verified after every case.",
+    "nodeComparison": "This browser artifact does not replace the phase-0 Node result. It measures the same full membership under the production Chromium Worker boundary."
+  },
+  "results": [
+    {
+      "schemaVersion": 1,
+      "fixture": "representative-1000-e3000-mixed",
+      "outcome": "failed",
+      "timeoutMs": 30000,
+      "failure": "RangeError: Maximum call stack size exceeded\nRangeError: Maximum call stack size exceeded\n    at Array.splice (<anonymous>)\n    at mDb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:5285:170)\n    at pDb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:2414:21)\n    at bmb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4027:69)\n    at gGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4188:70)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:75)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)\n    at cGb (blob:http://localhost:3100/fdb1ee91-55e3-4d4c-af2b-fbbc1379cc59:4563:130)",
+      "phasesMs": {
+        "fixtureGeneration": 8.2,
+        "semanticInput": 3.3,
+        "workerPreparation": 66.6,
+        "layoutWall": 2570.1,
+        "validation": 0
+      },
+      "input": {
+        "nodes": 1000,
+        "edges": 3000,
+        "weaklyConnectedComponents": 53,
+        "isolatedNodes": 50,
+        "maximumComponentNodes": 600,
+        "maximumComponentEdges": 1253
+      },
+      "geometry": null,
+      "identity": {
+        "nodeIdsMatched": false,
+        "directedEdgesMatched": false
+      },
+      "memory": {
+        "beforeLayoutBytes": 23100000,
+        "afterLayoutBytes": 23100000,
+        "afterResetBytes": 23100000
+      },
+      "worker": {
+        "beforeResetKind": "already-reset",
+        "afterResetKind": "reset",
+        "afterResetRejectedOperations": 0,
+        "isResetAfter": true
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "fixture": "product-10000-existing",
+      "outcome": "failed",
+      "timeoutMs": 30000,
+      "failure": "RangeError: Maximum call stack size exceeded\nRangeError: Maximum call stack size exceeded\n    at Gl (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:2635:12)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:287)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)\n    at kVb (blob:http://localhost:3100/66992aba-1f91-4cbc-a4f6-d9eafb1568be:5807:364)",
+      "phasesMs": {
+        "fixtureGeneration": 17.8,
+        "semanticInput": 20.6,
+        "workerPreparation": 64.4,
+        "layoutWall": 1142.1,
+        "validation": 0
+      },
+      "input": {
+        "nodes": 10000,
+        "edges": 19951,
+        "weaklyConnectedComponents": 1,
+        "isolatedNodes": 0,
+        "maximumComponentNodes": 10000,
+        "maximumComponentEdges": 19951
+      },
+      "geometry": null,
+      "identity": {
+        "nodeIdsMatched": false,
+        "directedEdgesMatched": false
+      },
+      "memory": {
+        "beforeLayoutBytes": 23100000,
+        "afterLayoutBytes": 23100000,
+        "afterResetBytes": 23100000
+      },
+      "worker": {
+        "beforeResetKind": "already-reset",
+        "afterResetKind": "reset",
+        "afterResetRejectedOperations": 0,
+        "isResetAfter": true
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "fixture": "connected-10000-e20000",
+      "outcome": "failed",
+      "timeoutMs": 30000,
+      "failure": "RangeError: Maximum call stack size exceeded\nRangeError: Maximum call stack size exceeded\n    at Gl (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:2635:12)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:287)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)\n    at kVb (blob:http://localhost:3100/a632b6b7-c1c4-4168-9cb1-308685380949:5807:364)",
+      "phasesMs": {
+        "fixtureGeneration": 30,
+        "semanticInput": 9.3,
+        "workerPreparation": 67.6,
+        "layoutWall": 1144,
+        "validation": 0
+      },
+      "input": {
+        "nodes": 10000,
+        "edges": 20000,
+        "weaklyConnectedComponents": 1,
+        "isolatedNodes": 0,
+        "maximumComponentNodes": 10000,
+        "maximumComponentEdges": 20000
+      },
+      "geometry": null,
+      "identity": {
+        "nodeIdsMatched": false,
+        "directedEdgesMatched": false
+      },
+      "memory": {
+        "beforeLayoutBytes": 23100000,
+        "afterLayoutBytes": 23100000,
+        "afterResetBytes": 23100000
+      },
+      "worker": {
+        "beforeResetKind": "already-reset",
+        "afterResetKind": "reset",
+        "afterResetRejectedOperations": 0,
+        "isResetAfter": true
+      }
+    }
+  ]
+}

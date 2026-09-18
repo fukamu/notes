@@ -3,6 +3,11 @@ import type { ConflictResolutionChoice } from '@/lib/domain/card-transitions';
 import type { BodySegment, CardRecord } from '@/lib/domain/types';
 import type { NotesLocation } from '@/lib/application/navigation';
 import type { ConnectionsInputModel } from '@/lib/graph/connections-contract';
+import type {
+  CardEditorCandidateIndex,
+  CardEditorIndexCandidate,
+  CardEditorIndexLabel,
+} from '@/lib/application/card-editor-index';
 
 export type NotesViewName = 'card' | 'history' | 'connections';
 
@@ -31,6 +36,7 @@ export type HistoryViewModel = {
 };
 
 export type ConflictChoice = ConflictResolutionChoice;
+export type ConflictResolutionState = 'ready' | 'pending' | 'failed';
 
 export type ConflictOptionViewModel = {
   choice: ConflictChoice;
@@ -43,43 +49,55 @@ export type ConflictOptionViewModel = {
 export type ConflictViewModel = {
   conflictId: ConflictId;
   cardId: CardId;
+  resolutionState: ConflictResolutionState;
   options: [ConflictOptionViewModel, ConflictOptionViewModel];
 };
 
-export type CardEditorLabelModel = {
-  cardId: CardId;
-  label: string;
-};
+export type CardEditorLabelModel = CardEditorIndexLabel;
 
-export type CardEditorCandidateModel = {
-  cardId: CardId;
-  displayLabel: string;
-  displayValue: number;
-  title: string;
-};
+export type CardEditorCandidateModel = CardEditorIndexCandidate;
 
 export type CardEditorInputModel = {
   cardId: CardId;
+  title: string;
   body: BodySegment[];
-  labels: CardEditorLabelModel[];
-  candidates: CardEditorCandidateModel[];
+  labels: readonly CardEditorLabelModel[];
+  candidateIndex: CardEditorCandidateIndex;
 };
 
 export type ConnectionsViewModel = ConnectionsInputModel;
 
-export type NotesPresentationModel = {
+type NotesPresentationModelBase = {
   initialized: boolean;
   location: NotesLocation;
-  activeView: NotesViewName;
   availableViews: Record<NotesViewName, boolean>;
   currentCard: CardRecord | null;
   currentCardDisplayLabel: string | null;
-  cardEditor: CardEditorInputModel | null;
-  history: HistoryViewModel;
   conflicts: ConflictViewModel[];
-  connections: ConnectionsViewModel | null;
   status: NotesStatusViewModel;
 };
+
+export type NotesPresentationModel = NotesPresentationModelBase &
+  (
+    | {
+        activeView: 'card';
+        cardEditor: CardEditorInputModel | null;
+        history: null;
+        connections: null;
+      }
+    | {
+        activeView: 'history';
+        cardEditor: null;
+        history: HistoryViewModel;
+        connections: null;
+      }
+    | {
+        activeView: 'connections';
+        cardEditor: null;
+        history: null;
+        connections: ConnectionsViewModel | null;
+      }
+  );
 
 export type NotesPresentationActions = {
   createCard: () => Promise<void>;

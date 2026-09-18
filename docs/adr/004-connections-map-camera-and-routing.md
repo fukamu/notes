@@ -316,6 +316,27 @@ Full values and their attribution limits are in
 Desktop/mobile × light/dark visual evidence and its review checklist are in
 [`screenshots/connections-map`](../screenshots/connections-map/README.md).
 
+## 10,000-card staging addendum
+
+Issue #266 applies the approved large-Vault product decision: connections no
+longer sends every card to ELK when a Vault exceeds the small-graph bound. A
+typed pure selector treats incoming and outgoing links as neighborhood
+adjacency while retaining the original directed edges for rendering. It starts
+from the current card, sends at most 64 nodes to the worker, and expands in
+64-node pages to a hard maximum of 256 nodes. Issue #275 removes the
+connections-only search UI and its query logic to preserve the paper
+Zettelkasten product direction. The current card is now always the staging
+root. Reaching the maximum directs the user to open another card before viewing
+its neighborhood rather than silently laying out the rest of the Vault.
+
+Graphs with at most 64 cards retain the existing all-card behavior, including
+isolated and disconnected cards. The full local replica remains available for
+offline editing; staging changes only layout and DOM membership. The
+selector has no DOM, worker, clock, network, or storage dependency, and the
+React adapter passes only its bounded result to the existing renderer-neutral
+layout controller. Fixed-count unit and 10,000-card browser assertions are the
+required structural gate; wall-clock timings remain observational.
+
 ## Consequences
 
 - The original study retained ORTHOGONAL + FIXED_SIDE. The expanded Issue #57
@@ -330,3 +351,268 @@ Desktop/mobile × light/dark visual evidence and its review checklist are in
   route. It smooths corners but is not labeled a routing improvement.
 - Keep the benchmark artifact and fixed fixtures as reproducible compatibility
   evidence. Raw timing remains informational rather than a flaky CI threshold.
+- Preserve the 64/64/256 staging policy unless a later reviewed Issue changes
+  both the structural worker/DOM bounds and the user-visible navigation path.
+
+## Issue #304 phase-0 reopening
+
+Issue #305 is the first reviewed step toward replacing the 64/64/256 product
+policy. It leaves this ADR's production decision unchanged while comparing the
+current staged input (A) with the complete semantic input (B) on Node 22.13.0.
+The complete 257-node connected fixture succeeds, and a 257-node fixture with
+35 components succeeds much more slowly. The complete 1,000/3,000 and both
+10,000/~20,000 cases fail inside ELK before warm-up with `Maximum call stack
+size exceeded`; no full geometry reaches path generation, React, or paint.
+
+The full evidence and limits are in
+[`connections-full-network-phase-0.md`](../connections-full-network-phase-0.md).
+This result blocks a default all-node cutover and does not select lower
+thoroughness, culling, an AABB tree, a larger/weighted cache, Canvas/WebGL, or an
+alternate router. The reproduced controller A→B→A and Sync v2 tombstone
+visibility defects are separate correctness prerequisites. A higher-cost layout
+or renderer alternative requires its own explicit decision; staging remains the
+production fallback until complete 1k and 10k geometry is demonstrated.
+
+Issue #306 fixes the reproduced A→B→A acceptance defect without adding request
+coalescing or Worker cancellation. Returning to a settled A now invalidates an
+active different-key B before publishing A's latest semantic input. A later B
+success or failure is ignored, while same-key semantic updates still share the
+active request and A→B→C continues to accept only C. The phase-0 evidence did not
+show request accumulation, so a latest-only scheduler remains unselected.
+
+Issue #309 separates the cards-dependent graph build from current-card semantic
+projection. A cache owned by one mounted Notes runtime reuses the graph while the
+cards array identity is unchanged; selection and status updates therefore do not
+rescan bodies or reorder the graph. A cards identity change rebuilds the graph,
+and the existing layout key still decides whether ELK geometry can be reused.
+Card and history views remain demand-driven, and unmount clears the runtime-local
+cache. No module-global graph cache or per-card incremental index is introduced.
+
+## Issue #316 large-graph corridor decision
+
+After the Issue #310 browser failures, Issue #316 selects the approved hybrid
+direction without changing the production UI yet. Complete graphs with at most
+256 nodes and 1,024 directed edges retain the current ELK engine. Above either
+calculation boundary, a typed pure corridor core uses iterative weak-component
+BFS, deterministic graph-informed serpentine grids, independent north/south
+ports, interval-coloured routing lanes, and stable shelf packing. The boundary
+chooses an engine; it is not a card or edge display limit.
+
+The corridor result retains every input node and directed edge in original
+order and preserves the existing `ConnectionsLayout` and curve contracts.
+Required 257 mixed, 1,000/3,000, product 10,000/~19,951, and connected
+10,000/20,000 fixtures now complete in the pure-core correctness suite, including
+finite geometry, endpoint identity, curve generation, and conservative
+card-intrusion checks. This is not yet product Worker, DOM/paint, memory, or
+visual-equivalence evidence. The algorithm, fixed values, limitations, and
+evidence boundary are recorded in
+[`connections-corridor-layout.md`](../connections-corridor-layout.md).
+
+## Issue #318 hybrid Worker adoption
+
+Issue #318 connects the corridor core to the production layout Worker manager.
+Complete graphs at or below 256 nodes and 1,024 directed edges continue to use
+the existing ELK Worker; exceeding either calculation boundary selects the
+application-owned corridor Worker. A small ELK request that fails or exceeds
+the 2,000 ms preparation-plus-layout deadline terminates that ELK Worker and
+retries the same complete input through corridor once. The selection values do
+not limit displayed membership.
+
+The adapter now keeps one active and one latest pending request, notifies the
+scheduler before cache lookup, and includes the policy revision in the shared
+controller/cache key. Worker responses are decoded from unknown and checked for
+input order, direction, finite bounds, and port ownership. Scope reset rejects
+active and pending consumers, terminates both engines, and prevents a late ELK
+catch from creating a new corridor Worker.
+
+The required 257, 1,000/3,000, and both 10,000/~20,000 fixtures return complete
+geometry through the production manager/executor path in Chromium. The two 10k
+manager layout wall times in that recorded run were about 406 ms and 339 ms;
+these are geometry-only observations, not React/SVG or camera performance.
+Raw results, environment, phase attribution, and limitations are in
+[`connections-hybrid-worker.md`](../connections-hybrid-worker.md). Staging
+removal, dynamic whole-world zoom, culling, and conditional Canvas remain the
+next reviewed UI step.
+
+## Issue #311 complete-network UI cutover
+
+Issue #311 removes the 64/64/256 staging selector and expansion UI. The adapter
+passes every semantic node and directed edge to the hybrid manager and no longer
+uses the selected card as a React session key. The older staging sections above
+remain decision history, not the current product contract. The 256-node value
+now appears only in the hybrid engine policy and is not a display limit.
+
+The camera derives a geometry-specific minimum scale of
+`min(0.1, rawFitScale / 2)`, and zoom persistence separates positive finite
+decoding from geometry clamping. A pure segment BVH conservatively indexes the
+existing rounded paths, halo, marker, and node decoration bounds. Visual SVG
+and card contents follow the camera query while all card button shells and the
+complete semantic relation list remain available. Edge order, paths, ports,
+arrows, and the rAF camera transform are retained.
+
+The 10k product run proves complete membership and localized culling but misses
+the provisional five-second target: initial ready was about 12.8 s desktop and
+7.9 s mobile. Whole-world fit contains roughly 40k SVG paths and 130k graph DOM
+descendants, whereas localized desktop rendering falls to 195 paths. This
+selects the already-approved conditional Canvas 2D edge evaluation for the next
+independent Issue; it does not authorize WebGL, card Canvas rendering, semantic
+truncation, or a return to staged membership. Detailed evidence and limits are
+in
+[`connections-full-network-cutover.md`](../connections-full-network-cutover.md).
+
+## Issue #321 conditional Canvas edge result
+
+Issue #321 applies the approved conditional Canvas 2D edge renderer while
+retaining the complete layout, HTML card shells, semantic relation list, and
+camera. One viewport×DPR canvas replaces the whole-world SVG edge DOM. Existing
+rounded paths are prepared as `Path2D`; the renderer preserves input order and
+draws the 8-unit halo, 2-unit 0.72-opacity stroke, and opaque terminal arrow.
+The former SVG marker dimensions and terminal tangent are reproduced by a typed
+pure arrow core. The canvas is pointer-inert and hidden from accessibility APIs.
+
+In the saved 10k product samples, whole-world descendants fall from about
+130,002 to 50,003 and 39,999 SVG paths become one canvas. Local drawing is below
+one millisecond, but whole-world Canvas drawing is 73.6–115.1 ms and complete
+readiness remains 11.2–21.0 seconds. The provisional five-second and 50 ms
+targets are not met. This demonstrates that the approved edge-layer change is
+insufficient once the complete card and semantic DOM must also commit. The
+decision does not extend to card Canvas rendering, WebGL, relationship removal,
+or graph aggregation; broader work requires a new review boundary. Evidence is
+in
+[`connections-canvas-edge-layer.md`](../connections-canvas-edge-layer.md).
+
+## Issue #323 bounded native semantic lists
+
+Issue #323 replaces the always-mounted 19,999-item screen-reader-only relation
+list with a visible native `details` operation. Its closed content is not
+mounted. When opened, independent card and directed-relation lists support full
+text search, previous/next and direct page navigation, and render at most 50
+items each. Cards can be opened or moved to on the complete map; relation rows
+identify and can open both directed endpoints.
+
+The searchable projection is a typed pure function of the semantic input and
+does not depend on the camera. Search, page and open state do not change graph
+membership, layout keys, Worker requests or camera state. Native lists,
+buttons, labels and inputs preserve keyboard and accessibility-tree reachability
+without `role=application` or a custom grid/listbox. Closing returns focus to
+the summary; moving to the map uses the existing readable-scale camera path and
+focuses the target card.
+
+The saved 10k product samples retain 10,000 nodes and 19,999 directed edges,
+while closed list items fall to zero and localized graph descendants fall from
+about 30,005 to 10,005. Initial ready is about 6.49–8.66 s desktop and
+6.65–8.37 s mobile in the two exploratory runs, but still misses the five-second
+target. Ten thousand HTML card shells and whole-world card contents remain, so
+the next independent Issue may implement the explicitly approved normal-scale
+card window and overview Canvas card shapes. This section does not mark the
+overall performance objective complete. Evidence is in
+[`connections-semantic-lists.md`](../connections-semantic-lists.md).
+
+## Issue #325 card window and overview Canvas
+
+Issue #325 removes the remaining always-mounted 10,000-card DOM without
+changing graph membership. At normal readable scale, only nodes intersecting
+the camera query plus 96 px overscan and a retained focused node are HTML
+buttons. Below a 36 px screen-height threshold, visible cards are painted as
+individual rounded shapes on a second viewport-sized Canvas; a point query
+against the existing node BVH opens the original card. The searchable paged
+native lists remain the complete keyboard and accessibility representation.
+
+The recorded 10k product samples reach complete initial readiness in about
+2.54–3.48 s. Localized graph DOM falls to seven descendants and one card button;
+whole-world fit uses three descendants, no card buttons, and the edge/card
+canvases. This meets the provisional five-second readiness target. It does not
+meet the continuous whole-world 50 ms frame target: desktop/mobile p95 is about
+183/217 ms, with edge redraw at about 91/106 ms and card Canvas around 4 ms.
+The measured result selects the separately reviewed bounded viewport bitmap
+reuse step; it does not select graph aggregation, WebGL, or reduced semantics.
+Detailed evidence and limitations are in
+[`connections-card-windowing.md`](../connections-card-windowing.md).
+
+## Issue #327 bounded overview bitmap reuse
+
+Issue #327 keeps the complete geometry and the edge/card Canvas renderers, but
+stores the overview result in a browser-owned bitmap surface sized to the graph
+viewport plus the existing 96 px overscan. A compatible pan draws that bounded
+surface at the camera delta instead of replaying all 19,999 edge paths and
+10,000 card shapes. Zoom may scale the capture temporarily and performs an
+exact current-scale refresh after 120 ms. Cache miss and refresh failure retain
+the direct Canvas path, so no uncovered region is accepted.
+
+The pure core computes capture placement and coverage; the browser adapter owns
+at most front/back canvases. Layout, theme, DPR, viewport, mode and selection
+revision invalidate reuse. Switching to readable HTML mode, reset, unmount and
+scope/logout release the surfaces. No whole-world bitmap, tile cache or graph
+aggregation is introduced.
+
+Two recorded product runs per project keep initial complete readiness at about
+2.30–2.42 s. The 30-frame whole-world pan records desktop p95 33.3–33.4 ms and
+mobile-emulation p95 33.4 ms, with every edge/card frame reusing the capture,
+no refresh and no long task. The representative normal-scale gesture remains
+16.7 ms p95. This meets the provisional 5 s, 33 ms normal-operation and 50 ms
+continuous-whole-world targets in the stated shared-host environment, so the
+conditional OffscreenCanvas Worker is not selected. Cold full-graph raster
+cost remains recorded separately and is not represented as a cache-hit time.
+Detailed evidence is in
+[`connections-bounded-raster-cache.md`](../connections-bounded-raster-cache.md).
+
+## Issue #329 semantic list removal
+
+Issue #329 supersedes the product requirement introduced by Issue #323. The
+visible “カードと参照の一覧”, its card/edge search, pagination, open/map
+actions, and list-specific focus recovery are removed. No replacement list,
+search panel, or hidden complete-item DOM is introduced.
+
+This changes the accessibility surface intentionally: the product no longer
+claims the removed list's complete browse path. It does not change semantic
+graph membership, directed edge order, layout geometry, card windowing,
+overview Canvas, route Canvas, map-card focus retention, or the app-wide search
+and editor link candidate features. Historical Issue #323 measurements remain
+in the repository as decision evidence rather than a description of the
+current UI.
+
+## Issue #330 free camera translation
+
+Issue #330 separates whole-world framing from camera-position validation.
+Finite world bounds and the existing 24 px padding remain the source for fit,
+visibility and raster preparation, but they are no longer translation limits.
+`clampConnectionsCamera` validates geometry and finite camera values and clamps
+only scale. Pan, zoom, pinch, resize and surviving-card anchoring therefore keep
+an intentional off-world position until the user explicitly requests fit or
+the current card.
+
+The existing viewport-sized Canvas and 96 px bounded raster overscan remain
+unchanged. Empty space does not create a larger world, bitmap, DOM collection or
+cache chain. Crossing raster coverage performs the existing bounded refresh;
+returning to fit/current restores visible geometry without rebuilding the graph
+or layout.
+
+The former Issue #327 whole-fit keyboard sample did not prove camera movement:
+the then-current translation clamp could keep a fitted world centered. Current
+E2E records intermediate camera positions and separates a 64 px cache-reuse
+round trip from a 512 px one-way movement that crosses overscan. Results and
+environment limits are recorded in
+[`connections-free-pan.md`](../connections-free-pan.md).
+
+## Issue #331 residual-height history and connections workspace
+
+Issue #331 removes the history and connections description blocks and the
+connections map toolbar, zoom output, and visible node/edge summary. The app
+header and responsive view navigation remain. The removal is intentional and
+does not move the deleted controls into a floating menu, hidden duplicate, or
+screen-reader-only replacement.
+
+History and connections now use a view-scoped `100dvh` flex/grid shell. The
+header keeps its intrinsic height, mobile navigation occupies a final grid row,
+desktop navigation keeps the existing 180 px right column, and the content row
+uses `minmax(0, 1fr)`. History scrolls inside that row and the connections
+viewport consumes it directly; neither view estimates the remaining height by
+subtracting description or toolbar constants.
+
+The named connections viewport is the keyboard input boundary. It is reachable
+with Tab and handles arrows, `+`/`-`, `0`, and `Home` only when the viewport
+itself is the event target, so card buttons and other descendants keep their own
+keys. Pointer, pinch, and modifier-wheel listeners no longer depend on a toolbar
+button being mounted. Fit and current-card camera commands remain internal
+operations used by these shortcuts. Complete graph counts remain diagnostic
+data attributes but are no longer rendered as interface text.

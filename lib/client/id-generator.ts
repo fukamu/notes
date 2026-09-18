@@ -1,4 +1,5 @@
 import { v7 as uuidv7 } from 'uuid';
+import type { IdGenerator } from '@/lib/application/notes-runtime';
 import {
   parseCardId,
   parseDeviceId,
@@ -23,3 +24,9 @@ export function createMutationId(): MutationId {
 export function createDeviceId(): DeviceId {
   return parseDeviceId(uuidv7());
 }
+
+export const browserIdGenerator: IdGenerator = {
+  createCardId,
+  createMutationId,
+  createDeviceId,
+};

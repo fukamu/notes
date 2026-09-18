@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  projectConnectionsViewModel,
   selectCardEditorInputModel,
   selectConflictViewModel,
+  selectConflictViewModels,
   selectConnectionsViewModel,
   selectHistoryViewModel,
   selectNotesStatus,
 } from '@/lib/application/view-models';
+import { buildConnectionsGraph } from '@/lib/domain/graph';
 import type {
   CardRecord,
   ConflictRecord,
@@ -13,6 +16,7 @@ import type {
   SyncState,
 } from '@/lib/domain/types';
 import type { NotesStatusViewModel } from '@/lib/application/presentation';
+import { queryCardEditorCandidates } from '@/lib/application/card-editor-index';
 import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
 
 function card(label: string, options: Partial<CardRecord> = {}): CardRecord {
@@ -105,10 +109,14 @@ describe('card editor input view model', () => {
       displayId: { kind: 'provisional', value: 2 },
     });
 
-    expect(
-      selectCardEditorInputModel([current, provisional, earlier], current),
-    ).toEqual({
+    const model = selectCardEditorInputModel(
+      [current, provisional, earlier],
+      current,
+    );
+
+    expect(model).toMatchObject({
       cardId: current.id,
+      title: current.title,
       body: current.body,
       labels: [
         { cardId: current.id, label: '#4 editor-current' },
@@ -118,21 +126,21 @@ describe('card editor input view model', () => {
         },
         { cardId: earlier.id, label: '#1 Untitled' },
       ],
-      candidates: [
-        {
-          cardId: provisional.id,
-          displayLabel: '仮 #2',
-          displayValue: 2,
-          title: 'editor-provisional',
-        },
-        {
-          cardId: earlier.id,
-          displayLabel: '#1',
-          displayValue: 1,
-          title: 'Untitled',
-        },
-      ],
     });
+    expect(queryCardEditorCandidates(model.candidateIndex, '')).toEqual([
+      {
+        cardId: provisional.id,
+        displayLabel: '仮 #2',
+        displayValue: 2,
+        title: 'editor-provisional',
+      },
+      {
+        cardId: earlier.id,
+        displayLabel: '#1',
+        displayValue: 1,
+        title: 'Untitled',
+      },
+    ]);
   });
 });
 
@@ -235,6 +243,33 @@ describe('history view model', () => {
     });
     expect(model.items[1]?.preview).toContain('［リンク先なし］');
   });
+
+  it('normalizes whitespace after resolving links without mutating cards', () => {
+    const target = card('history-preview-target', {
+      displayId: { kind: 'provisional', value: 8 },
+      title: '',
+    });
+    const source = card('history-preview-source', {
+      displayId: { kind: 'official', value: 9 },
+      body: [
+        { type: 'text', text: '  before\n\t' },
+        { type: 'link', targetCardId: target.id },
+        { type: 'text', text: '   after  ' },
+      ],
+    });
+    const cards = [target, source];
+    const snapshot = structuredClone(cards);
+
+    const model = selectHistoryViewModel(cards, source.id);
+
+    expect(model.items.find((item) => item.cardId === source.id)).toMatchObject(
+      {
+        preview: 'before ［仮 #8 Untitled］ after',
+        current: true,
+      },
+    );
+    expect(cards).toEqual(snapshot);
+  });
 });
 
 describe('conflict view model', () => {
@@ -257,6 +292,7 @@ describe('conflict view model', () => {
     };
 
     const model = selectConflictViewModel(conflict, [existing]);
+    expect(model.resolutionState).toBe('ready');
     expect(model.options).toEqual([
       {
         choice: 'local',
@@ -273,6 +309,49 @@ describe('conflict view model', () => {
         accessibleName: '編集案「Server title」を使う',
       },
     ]);
+  });
+
+  it('projects multiple conflicts through the shared card lookup', () => {
+    const existing = card('conflict-shared-target', {
+      displayId: { kind: 'provisional', value: 6 },
+      title: '',
+    });
+    const first: ConflictRecord = {
+      id: fixtureConflictId('shared-first'),
+      cardId: existing.id,
+      serverRevision: 2,
+      localTitle: 'First local',
+      localBody: [{ type: 'link', targetCardId: existing.id }],
+      serverTitle: 'First server',
+      serverBody: [],
+      createdAt: 2,
+    };
+    const second: ConflictRecord = {
+      ...first,
+      id: fixtureConflictId('shared-second'),
+      localTitle: 'Second local',
+      serverTitle: 'Second server',
+      createdAt: 3,
+    };
+
+    const models = selectConflictViewModels([first, second], [existing]);
+
+    expect(models).toHaveLength(2);
+    expect(models[0]?.options[0]?.preview).toBe('［仮 #6 Untitled］');
+    expect(models[1]?.options[0]?.preview).toBe('［仮 #6 Untitled］');
+    expect(
+      selectConflictViewModels([first], [existing], {
+        resolvingCardIds: [existing.id],
+        failed: false,
+      })[0]?.resolutionState,
+    ).toBe('pending');
+    expect(
+      selectConflictViewModels([first], [existing], {
+        resolvingCardIds: [existing.id],
+        failed: true,
+      })[0]?.resolutionState,
+    ).toBe('failed');
+    expect(selectConflictViewModels([], [existing])).toEqual([]);
   });
 });
 
@@ -313,5 +392,28 @@ describe('connections input view model', () => {
         },
       ],
     });
+  });
+
+  it('projects a new current card from one prebuilt graph', () => {
+    const first = card('projection-first', {
+      displayId: { kind: 'official', value: 1 },
+    });
+    const second = card('projection-second', {
+      displayId: { kind: 'official', value: 2 },
+    });
+    const graph = buildConnectionsGraph([first, second]);
+
+    const firstProjection = projectConnectionsViewModel(graph, first.id);
+    const secondProjection = projectConnectionsViewModel(graph, second.id);
+
+    expect(firstProjection.nodes.map((node) => node.current)).toEqual([
+      true,
+      false,
+    ]);
+    expect(secondProjection.nodes.map((node) => node.current)).toEqual([
+      false,
+      true,
+    ]);
+    expect(secondProjection.edges).toEqual(firstProjection.edges);
   });
 });

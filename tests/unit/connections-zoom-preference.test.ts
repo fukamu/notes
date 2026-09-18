@@ -18,14 +18,14 @@ function memoryStorage(initialValue: string | null = null) {
 }
 
 describe('connections zoom preference adapter', () => {
-  it('reads a valid scale and clamps finite out-of-range values', () => {
+  it('reads every finite positive scale before geometry-specific clamping', () => {
     expect(readConnectionsZoomPreference(memoryStorage('1.25').storage)).toBe(
       1.25,
     );
     expect(readConnectionsZoomPreference(memoryStorage('0.01').storage)).toBe(
-      0.1,
+      0.01,
     );
-    expect(readConnectionsZoomPreference(memoryStorage('20').storage)).toBe(2);
+    expect(readConnectionsZoomPreference(memoryStorage('20').storage)).toBe(20);
   });
 
   it('rejects missing and corrupt values without throwing', () => {
@@ -49,7 +49,7 @@ describe('connections zoom preference adapter', () => {
     expect(writeConnectionsZoomPreference(memory.storage, 1.5)).toBe(true);
     expect(memory.value()).toBe('1.5');
     expect(writeConnectionsZoomPreference(memory.storage, 99)).toBe(true);
-    expect(memory.value()).toBe('2');
+    expect(memory.value()).toBe('99');
     expect(writeConnectionsZoomPreference(memory.storage, Number.NaN)).toBe(
       false,
     );

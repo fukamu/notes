@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "issue": 203,
+  "branchPoint": "b9aa21c0b85bc4d235ab5e805f843d28c6c87f6b",
+  "generatedAt": "2026-09-14T08:36:13.754Z",
+  "environment": {
+    "node": "v26.8.1",
+    "platform": "linux",
+    "release": "7.0.0-31-generic",
+    "cpu": "11th Gen Intel(R) Core(TM) i7-1195G7 @ 2.90GHz",
+    "cpuCount": 8
+  },
+  "fixture": {
+    "cards": 10000,
+    "bodySegments": 40000,
+    "source": "tests/fixtures/client-performance.ts",
+    "currentCardId": "01991f20-61d2-7000-8000-000000001389"
+  },
+  "mechanismBudget": {
+    "cardBodyLookupBuildsPerSelector": 1,
+    "maximumLookupEntries": 10000,
+    "historyItems": 10000,
+    "expectedComplexity": "O(cards log cards + total body segments) time and O(cards) derived lookup space.",
+    "exactLegacyOutput": true
+  },
+  "memoryPolicy": "Heap deltas are observational because garbage collection and host load are nondeterministic. The stable memory gate is one lookup with at most one entry per distinct CardId plus one history item per card.",
+  "comparisonPolicy": "Legacy and indexed selectors run on the same host, fixture and current card. Timing is review evidence; exact output equality and the single-lookup complexity contract are required gates.",
+  "measurements": [
+    {
+      "name": "legacy-history-per-item-map",
+      "warmupIterations": 0,
+      "measuredIterations": 1,
+      "timing": {
+        "minimumMs": 5390.062,
+        "medianMs": 5390.062,
+        "p95Ms": 5390.062,
+        "maximumMs": 5390.062,
+        "samplesMs": [5390.062]
+      },
+      "observedHeapDeltaBytes": -2051120
+    },
+    {
+      "name": "indexed-history-single-lookup",
+      "warmupIterations": 1,
+      "measuredIterations": 5,
+      "timing": {
+        "minimumMs": 31.449,
+        "medianMs": 36.277,
+        "p95Ms": 42.604,
+        "maximumMs": 42.604,
+        "samplesMs": [36.954, 36.277, 42.604, 31.835, 31.449]
+      },
+      "observedHeapDeltaBytes": 28964624
+    }
+  ]
+}

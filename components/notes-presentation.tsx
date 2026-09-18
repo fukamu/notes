@@ -167,14 +167,6 @@ function CardView({ model, actions, features }: NotesPresentationProps) {
           </span>
           <StatusIndicator model={model} actions={actions} />
         </div>
-        <input
-          aria-label="カードのタイトル"
-          value={card.title}
-          onChange={(event) => actions.updateTitle(event.target.value)}
-          className="mb-6 w-full bg-transparent font-heading text-3xl font-semibold tracking-tight outline-none placeholder:text-muted-foreground/55"
-          placeholder="Untitled"
-          data-testid="card-title"
-        />
         {model.cardEditor &&
           features.renderCardEditor({
             input: model.cardEditor,
@@ -201,8 +193,15 @@ export function NotesPresentation({
     );
   }
 
+  const usesExpandedWorkspace =
+    model.activeView === 'history' || model.activeView === 'connections';
+
   return (
-    <main className="min-h-dvh bg-background text-foreground">
+    <main
+      className={`min-h-dvh bg-background text-foreground ${
+        usesExpandedWorkspace ? 'notes-shell-expanded' : ''
+      }`}
+    >
       <header className="sticky top-0 z-30 border-b border-border/80 bg-background/92 px-4 py-3 backdrop-blur sm:px-8">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
           <div>
@@ -224,13 +223,17 @@ export function NotesPresentation({
       </header>
 
       <div
-        className={`grid w-full px-4 pb-28 pt-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_180px] lg:pb-12 ${
-          model.activeView === 'connections'
-            ? 'max-w-none gap-4 lg:gap-6 lg:pt-8'
-            : 'mx-auto max-w-6xl gap-8 lg:pt-12'
-        }`}
+        className={
+          usesExpandedWorkspace
+            ? 'notes-workspace-expanded'
+            : 'mx-auto grid w-full max-w-6xl gap-8 px-4 pb-28 pt-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_180px] lg:pb-12 lg:pt-12'
+        }
       >
-        <div className="min-w-0">
+        <div
+          className={
+            usesExpandedWorkspace ? 'notes-workspace-content' : 'min-w-0'
+          }
+        >
           {model.activeView === 'card' && (
             <CardView model={model} actions={actions} features={features} />
           )}

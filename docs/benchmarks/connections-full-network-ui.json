@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "issue": 311,
+  "branchPoint": "0cb24470b85f6622dc126f8161e027c83499534f",
+  "browser": "Chromium 153.0.8010.12",
+  "fixture": {
+    "nodes": 10000,
+    "directedEdges": 19999,
+    "source": "client-performance with browser-adapter missing-target rebinding"
+  },
+  "runs": [
+    {
+      "project": "chromium",
+      "viewport": { "width": 1280, "height": 720 },
+      "devicePixelRatio": 1,
+      "initialReadyMs": 12762.973038,
+      "localizedFocusMs": 1695.572405,
+      "reentryReadyMs": 19619.113702,
+      "fitScale": 0.003512918474389691,
+      "localizedDom": {
+        "descendants": 30396,
+        "cardButtons": 10000,
+        "visualCardContents": 1,
+        "svgPaths": 195,
+        "semanticEdgeItems": 19999
+      },
+      "wholeWorldDom": {
+        "descendants": 130002,
+        "cardButtons": 10000,
+        "svgPaths": 39999,
+        "semanticEdgeItems": 19999
+      },
+      "heapUsedBytes": 322000000
+    },
+    {
+      "project": "mobile-chromium",
+      "viewport": { "width": 412, "height": 839 },
+      "devicePixelRatio": 2.625,
+      "initialReadyMs": 7943.52011,
+      "localizedFocusMs": 1550.648197,
+      "reentryReadyMs": 15653.866563,
+      "fitScale": 0.003537201320986855,
+      "localizedDom": {
+        "descendants": 30200,
+        "cardButtons": 10000,
+        "visualCardContents": 1,
+        "svgPaths": 97,
+        "semanticEdgeItems": 19999
+      },
+      "wholeWorldDom": {
+        "descendants": 130002,
+        "cardButtons": 10000,
+        "svgPaths": 39999,
+        "semanticEdgeItems": 19999
+      },
+      "heapUsedBytes": 286000000
+    }
+  ],
+  "interpretation": {
+    "membership": "complete",
+    "localizedCulling": "effective",
+    "wholeWorldSvgCulling": "not applicable because every route is visible",
+    "provisionalFiveSecondTarget": "not met",
+    "nextDecision": "measure the approved Canvas 2D edge renderer in a separate Issue"
+  },
+  "limits": [
+    "one diagnostic run per project on a shared host",
+    "performance.memory is coarse and browser-specific",
+    "ready includes product Worker, validation, path/BVH preparation, React commit, and paint",
+    "no production backend or data was contacted"
+  ]
+}

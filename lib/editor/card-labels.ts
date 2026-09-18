@@ -3,17 +3,19 @@ import type { CardId } from '@/lib/domain/id';
 
 export type CardLabelResolver = {
   labelFor: (cardId: CardId) => string;
-  replaceLabels: (labels: CardEditorLabelModel[]) => void;
+  replaceLabels: (labels: readonly CardEditorLabelModel[]) => void;
   subscribe: (listener: () => void) => () => void;
   destroy: () => void;
 };
 
-function labelMap(labels: CardEditorLabelModel[]): Map<CardId, string> {
+function labelMap(
+  labels: readonly CardEditorLabelModel[],
+): Map<CardId, string> {
   return new Map(labels.map((item) => [item.cardId, item.label]));
 }
 
 export function createCardLabelResolver(
-  initialLabels: CardEditorLabelModel[],
+  initialLabels: readonly CardEditorLabelModel[],
 ): CardLabelResolver {
   let labels = labelMap(initialLabels);
   let destroyed = false;

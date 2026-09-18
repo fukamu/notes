@@ -33,6 +33,17 @@ export type CardEditorDocumentUpdate =
   | 'external-body-sync'
   | 'unchanged';
 
+export type CardEditorHistoryShortcut = 'undo' | 'redo' | null;
+
+export type CardEditorHistoryKey = Readonly<{
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  composing: boolean;
+}>;
+
 export function classifyCardEditorDocumentUpdate(
   editorCardId: CardId | null,
   nextCardId: CardId,
@@ -40,6 +51,18 @@ export function classifyCardEditorDocumentUpdate(
 ): CardEditorDocumentUpdate {
   if (editorCardId !== nextCardId) return 'identity-reset';
   return bodyMatches ? 'unchanged' : 'external-body-sync';
+}
+
+export function cardEditorHistoryShortcut(
+  event: CardEditorHistoryKey,
+): CardEditorHistoryShortcut {
+  if (event.composing || event.altKey || event.ctrlKey === event.metaKey) {
+    return null;
+  }
+  const key = event.key.toLocaleLowerCase();
+  if (key === 'y') return event.shiftKey ? null : 'redo';
+  if (key !== 'z' && key !== 'я') return null;
+  return event.shiftKey ? 'redo' : 'undo';
 }
 
 export function openCardEditorCandidates(

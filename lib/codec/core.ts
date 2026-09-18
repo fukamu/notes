@@ -120,6 +120,26 @@ export function literalDecoder<const TValue extends string>(
   };
 }
 
+export const booleanDecoder: Decoder<boolean> = {
+  decode(input, path = []) {
+    return typeof input === 'boolean'
+      ? success(input)
+      : failure(path, 'expected boolean');
+  },
+};
+
+export function optionalDecoder<TValue>(
+  decoder: Decoder<TValue>,
+): Decoder<TValue | undefined> {
+  return {
+    decode(input, path = []) {
+      return input === undefined
+        ? success(undefined)
+        : decoder.decode(input, path);
+    },
+  };
+}
+
 export function nullableDecoder<TValue>(
   decoder: Decoder<TValue>,
 ): Decoder<TValue | null> {

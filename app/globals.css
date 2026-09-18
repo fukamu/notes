@@ -193,9 +193,43 @@
   scroll-padding-block: 35%;
 }
 
+.notes-shell-expanded {
+  display: flex;
+  height: 100dvh;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.notes-shell-expanded > header {
+  flex-shrink: 0;
+}
+
+.notes-workspace-expanded {
+  display: grid;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 0%;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem max(0.5rem, env(safe-area-inset-bottom, 0px));
+}
+
+.notes-workspace-content {
+  min-width: 0;
+  min-height: 0;
+}
+
+.notes-workspace-expanded .app-navigation {
+  position: static;
+  inset: auto;
+  z-index: auto;
+}
+
 .connections-viewport-structure {
-  @apply relative min-h-80 touch-none overflow-clip overscroll-contain outline-none sm:min-h-96;
-  height: max(20rem, calc(100dvh - 22rem - env(safe-area-inset-bottom, 0px)));
+  @apply relative min-h-0 touch-none overflow-clip overscroll-contain outline-none;
+  height: 100%;
+  flex: 1 1 0%;
   cursor: grab;
 }
 
@@ -218,6 +252,14 @@
   @apply absolute left-0 top-0;
 }
 
+.connections-edge-canvas {
+  @apply pointer-events-none absolute inset-0 z-0 size-full;
+}
+
+.connections-card-canvas {
+  @apply pointer-events-none absolute inset-0 z-[5] size-full;
+}
+
 .connections-world {
   contain: layout style paint;
   transform-origin: 0 0;
@@ -228,24 +270,12 @@
   cursor: grabbing;
 }
 
-.connections-map-heading {
-  @apply flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between;
-}
-
-.connections-map-toolbar {
-  @apply flex min-h-11 shrink-0 items-center gap-1 self-start rounded-xl border bg-card/92 p-1 shadow-sm backdrop-blur sm:self-auto;
-}
-
-.connections-map-control {
-  @apply inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35 sm:px-3;
-}
-
-.connections-map-control-square {
-  @apply min-w-11 px-0;
-}
-
 .connections-node-structure {
   @apply absolute z-10 flex flex-col justify-center px-4 text-left;
+}
+
+.connections-node-shell {
+  @apply rounded-xl focus-visible:ring-2 focus-visible:ring-ring;
 }
 
 .connections-node {
@@ -253,9 +283,15 @@
 }
 
 @media (min-width: 64rem) {
-  .connections-viewport-structure {
-    min-height: 28rem;
-    height: max(28rem, calc(100dvh - 14.75rem));
+  .notes-workspace-expanded {
+    grid-template-columns: minmax(0, 1fr) 180px;
+    grid-template-rows: minmax(0, 1fr);
+    gap: 1rem;
+    padding: 0.75rem 2rem 1rem;
+  }
+
+  .notes-workspace-expanded .app-navigation {
+    align-self: start;
   }
 }
 

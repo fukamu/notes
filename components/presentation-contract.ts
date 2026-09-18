@@ -22,13 +22,18 @@ export type CardEditorRendererProps = {
 
 export type ConnectionsRendererProps = {
   model: ConnectionsControllerState;
+  totalNodeCount: number;
+  totalEdgeCount: number;
   actions: ConnectionsSelectionActions;
   presentation: ConnectionsPresentationAdapter;
 };
 
 export type CardEditorFeatureProps = {
   input: CardEditorInputModel;
-  actions: Pick<NotesPresentationActions, 'openCard' | 'updateBody'>;
+  actions: Pick<
+    NotesPresentationActions,
+    'openCard' | 'updateTitle' | 'updateBody'
+  >;
 };
 
 export type ConnectionsFeatureProps = {

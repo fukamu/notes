@@ -1,194 +1,96 @@
 'use client';
 
-import { memo, useMemo } from 'react';
-import {
-  ArrowRight,
-  LocateFixed,
-  LoaderCircle,
-  Maximize2,
-  Minus,
-  Move,
-  Network,
-  Plus,
-  TriangleAlert,
-} from 'lucide-react';
+import { useLayoutEffect, useMemo, useState } from 'react';
+import { LoaderCircle, Network, TriangleAlert } from 'lucide-react';
 import type { ConnectionsRendererProps } from '@/components/presentation-contract';
 import { useConnectionsViewport } from '@/hooks/use-connections-viewport';
-import type { ConnectionsReadyEdge } from '@/lib/graph/connections-contract';
-import { createConnectionsSvgPath } from '@/lib/graph/connections-path';
-
-type ConnectionsEdgeLayerProps = {
-  layoutKey: string;
-  edges: ConnectionsReadyEdge[];
-  maximumRadius: number;
-  nodeClearance: number;
-};
-
-const ConnectionsEdgeLayer = memo(
-  function ConnectionsEdgeLayer({
-    edges,
-    maximumRadius,
-    nodeClearance,
-  }: ConnectionsEdgeLayerProps) {
-    const paths = useMemo(
-      () =>
-        edges.map((edge) =>
-          edge.sections.map(
-            (section) =>
-              createConnectionsSvgPath(section, {
-                maximumRadius,
-                nodeClearance,
-              }).d,
-          ),
-        ),
-      [edges, maximumRadius, nodeClearance],
-    );
-    return edges.map((edge, edgeIndex) => (
-      <g key={edge.id}>
-        {edge.sections.map((section, sectionIndex) => {
-          const path = paths[edgeIndex]?.[sectionIndex];
-          if (!path) return null;
-          const isLastSection = sectionIndex === edge.sections.length - 1;
-          return (
-            <g key={section.id}>
-              <path
-                d={path}
-                fill="none"
-                stroke="var(--card)"
-                strokeWidth="8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              />
-              <path
-                d={path}
-                fill="none"
-                stroke="var(--primary)"
-                strokeOpacity="0.72"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                markerEnd={
-                  isLastSection ? 'url(#connection-edge-arrow)' : undefined
-                }
-              />
-            </g>
-          );
-        })}
-      </g>
-    ));
-  },
-  (previous, next) =>
-    previous.layoutKey === next.layoutKey &&
-    previous.maximumRadius === next.maximumRadius &&
-    previous.nodeClearance === next.nodeClearance,
-);
+import type { CardId } from '@/lib/domain/id';
+import { prepareConnectionsVisibility } from '@/lib/graph/connections-visibility';
 
 export function ConnectionsView({
   model,
+  totalNodeCount,
+  totalEdgeCount,
   actions,
   presentation,
 }: ConnectionsRendererProps) {
+  const openCard = actions.openCard;
   const readyModel = model.status === 'ready' ? model : null;
+  const geometry = readyModel?.geometry ?? null;
+  const edgeMaximumRadius = presentation.edgeMaximumRadius;
+  const edgeNodeSpacing = presentation.layoutMetrics.edgeNodeSpacing;
+  const preparedVisibility = useMemo(
+    () =>
+      geometry
+        ? prepareConnectionsVisibility(
+            geometry.nodes,
+            geometry.edges,
+            {
+              x: 0,
+              y: 0,
+              width: geometry.width,
+              height: geometry.height,
+            },
+            {
+              maximumRadius: edgeMaximumRadius,
+              nodeClearance: edgeNodeSpacing,
+            },
+          )
+        : null,
+    [edgeMaximumRadius, edgeNodeSpacing, geometry],
+  );
+  const [focusedCardId, setFocusedCardId] = useState<CardId | null>(null);
+  const readyNodeIndexById = useMemo(
+    () =>
+      new Map(
+        readyModel?.nodes.map((node, nodeIndex) => [node.cardId, nodeIndex]) ??
+          [],
+      ),
+    [readyModel?.nodes],
+  );
+  const retainedNodeIndex = focusedCardId
+    ? (readyNodeIndexById.get(focusedCardId) ?? null)
+    : null;
   const {
     viewportRef,
     worldRef,
-    zoomOutputRef,
-    zoomInRef,
-    zoomOutRef,
-    keyboardRef,
-    zoomIn,
-    zoomOut,
-    fit,
-    centerCurrent,
+    edgeCanvasRef,
+    cardCanvasRef,
     ensureNodeVisible,
-  } = useConnectionsViewport(readyModel, presentation.viewportPadding);
-
+    visibility,
+    nodeRenderMode,
+  } = useConnectionsViewport(
+    readyModel,
+    presentation.viewportPadding,
+    preparedVisibility,
+    retainedNodeIndex,
+    openCard,
+  );
+  const htmlNodeIndices = useMemo(() => {
+    const indices =
+      nodeRenderMode === 'html' ? [...(visibility?.nodeIndices ?? [])] : [];
+    if (retainedNodeIndex !== null && !indices.includes(retainedNodeIndex)) {
+      indices.push(retainedNodeIndex);
+      indices.sort((left, right) => left - right);
+    }
+    return indices;
+  }, [nodeRenderMode, retainedNodeIndex, visibility?.nodeIndices]);
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    viewport.dataset.mountedHtmlNodeCount = String(htmlNodeIndices.length);
+    const requestedAt = Number(viewport.dataset.nodeRenderRequestedAt);
+    if (Number.isFinite(requestedAt)) {
+      viewport.dataset.nodeCommitDurationMs = String(
+        performance.now() - requestedAt,
+      );
+    }
+  }, [htmlNodeIndices, nodeRenderMode, viewportRef]);
   return (
-    <section className="w-full min-w-0" aria-labelledby="connections-heading">
-      <div className="connections-map-heading mb-4">
-        <div>
-          <p className="eyebrow">ALL DIRECTED LINKS</p>
-          <h1
-            id="connections-heading"
-            className="font-heading text-2xl font-semibold"
-          >
-            つながり
-          </h1>
-          <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-            この端末にある全カードと、本文で明示した一方向リンクを表示します。
-            <ArrowRight aria-hidden="true" className="size-4 shrink-0" />
-          </p>
-        </div>
-
-        <div
-          className="connections-map-toolbar"
-          role="toolbar"
-          aria-label="つながりマップの表示操作"
-        >
-          <button
-            type="button"
-            className="connections-map-control"
-            onClick={fit}
-            disabled={!readyModel}
-            aria-label="全体表示"
-          >
-            <Maximize2 aria-hidden="true" className="size-4" />
-            <span>全体</span>
-          </button>
-          <button
-            type="button"
-            className="connections-map-control"
-            onClick={centerCurrent}
-            disabled={!readyModel?.currentNode}
-            aria-label="現在のカードへ戻る"
-          >
-            <LocateFixed aria-hidden="true" className="size-4" />
-            <span>現在地</span>
-          </button>
-          <button
-            ref={keyboardRef}
-            type="button"
-            className="connections-map-control"
-            disabled={!readyModel}
-            aria-label="キーボードでマップを操作"
-            aria-describedby="connections-map-instructions"
-            aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown + - 0 Home"
-          >
-            <Move aria-hidden="true" className="size-4" />
-            <span>操作</span>
-          </button>
-          <button
-            ref={zoomOutRef}
-            type="button"
-            className="connections-map-control connections-map-control-square"
-            onClick={zoomOut}
-            disabled={!readyModel}
-            aria-label="縮小"
-          >
-            <Minus aria-hidden="true" className="size-4" />
-          </button>
-          <output
-            ref={zoomOutputRef}
-            className="min-w-12 text-center font-mono text-xs text-muted-foreground"
-            aria-label="現在のズーム"
-            aria-live="polite"
-          >
-            --
-          </output>
-          <button
-            ref={zoomInRef}
-            type="button"
-            className="connections-map-control connections-map-control-square"
-            onClick={zoomIn}
-            disabled={!readyModel}
-            aria-label="拡大"
-          >
-            <Plus aria-hidden="true" className="size-4" />
-          </button>
-        </div>
-      </div>
-
+    <section
+      className="flex h-full min-h-0 w-full min-w-0 flex-col"
+      aria-label="つながり"
+    >
       <p id="connections-map-instructions" className="sr-only">
         ドラッグまたは一本指で移動、ピンチまたは Control
         キーを押しながらホイールで拡大縮小できます。矢印キーで移動、プラスとマイナスで拡大縮小、0で全体表示、Homeで現在のカードへ戻ります。
@@ -197,18 +99,31 @@ export function ConnectionsView({
       <section
         ref={viewportRef}
         className="connections-viewport-structure connections-viewport"
+        role="tabpanel"
+        tabIndex={0}
         data-testid="connections-graph"
         data-layout-status={model.status}
         data-dragging="false"
         data-camera-render-count="0"
         data-active-pointers="0"
         data-click-suppression="false"
+        data-total-node-count={totalNodeCount}
+        data-total-edge-count={totalEdgeCount}
+        data-visual-node-count={
+          readyModel ? (visibility?.nodeIndices.length ?? 0) : 0
+        }
+        data-visual-edge-count={
+          readyModel ? (visibility?.edgeIndices.length ?? 0) : 0
+        }
+        data-node-renderer={nodeRenderMode}
+        data-mounted-html-node-count={htmlNodeIndices.length}
         aria-busy={model.status === 'loading'}
-        aria-label="全カード間の一方向リンクマップ"
+        aria-label="すべてのカードの一方向リンクマップ"
         aria-describedby="connections-map-instructions"
+        aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown + - 0 Home"
       >
         {model.status === 'loading' && (
-          <output className="grid h-full min-h-64 place-items-center text-sm text-muted-foreground">
+          <output className="grid h-full min-h-0 place-items-center text-sm text-muted-foreground">
             <span className="inline-flex items-center gap-2">
               <LoaderCircle
                 aria-hidden="true"
@@ -220,31 +135,30 @@ export function ConnectionsView({
         )}
 
         {model.status === 'error' && (
-          <div className="min-h-64 p-2" role="alert">
+          <div className="h-full min-h-0 p-2" role="alert">
             <p className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
               <TriangleAlert aria-hidden="true" className="size-5" />
-              配置を計算できませんでした。カードは一覧から開けます。
+              配置を計算できませんでした。カードまたは過去のカードから別のカードへ移動できます。
             </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {model.fallbackItems.map((item) => (
-                <button
-                  key={item.cardId}
-                  type="button"
-                  onClick={() => actions.openCard(item.cardId)}
-                  aria-current={item.current ? 'true' : undefined}
-                  aria-label={item.accessibleName}
-                  className="rounded-xl border bg-card px-4 py-3 text-left shadow-sm focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span className="font-mono text-[11px] font-semibold text-accent-foreground">
-                    {item.displayLabel}
-                  </span>
-                  <span className="mt-1 block truncate font-heading font-semibold">
-                    {item.title}
-                  </span>
-                </button>
-              ))}
-            </div>
           </div>
+        )}
+
+        {model.status === 'ready' && (
+          <canvas
+            ref={edgeCanvasRef}
+            className="connections-edge-canvas"
+            data-testid="connections-edge-canvas"
+            aria-hidden="true"
+          />
+        )}
+
+        {model.status === 'ready' && (
+          <canvas
+            ref={cardCanvasRef}
+            className="connections-card-canvas"
+            data-testid="connections-card-canvas"
+            aria-hidden="true"
+          />
         )}
 
         {model.status === 'ready' && (
@@ -253,82 +167,58 @@ export function ConnectionsView({
             className="connections-canvas-structure connections-world"
             style={{ width: model.width, height: model.height }}
             data-testid="connections-canvas"
+            data-layout-key={model.layoutKey}
             data-layout-width={model.width}
             data-layout-height={model.height}
           >
-            <svg
-              className="pointer-events-none absolute inset-0 overflow-visible"
-              width={model.width}
-              height={model.height}
-              viewBox={`0 0 ${model.width} ${model.height}`}
-              aria-hidden="true"
-            >
-              <defs>
-                <marker
-                  id="connection-edge-arrow"
-                  viewBox="0 0 10 10"
-                  refX="9"
-                  refY="5"
-                  markerWidth="7"
-                  markerHeight="7"
-                  orient="auto-start-reverse"
-                  markerUnits="strokeWidth"
+            {htmlNodeIndices.map((nodeIndex) => {
+              const node = model.nodes[nodeIndex];
+              if (!node) return null;
+              return (
+                <button
+                  key={node.cardId}
+                  id={`connections-map-card-${node.cardId}`}
+                  type="button"
+                  onClick={() => openCard(node.cardId)}
+                  aria-current={node.current ? 'true' : undefined}
+                  aria-label={node.accessibleName}
+                  className="connections-node-structure connections-node-shell connections-node"
+                  style={{
+                    left: node.x,
+                    top: node.y,
+                    width: node.width,
+                    height: node.height,
+                  }}
+                  data-card-id={node.cardId}
+                  onFocus={() => {
+                    setFocusedCardId(node.cardId);
+                    ensureNodeVisible(node);
+                  }}
+                  onBlur={() => setFocusedCardId(null)}
+                  draggable={false}
                 >
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--primary)" />
-                </marker>
-              </defs>
+                  <span className="font-mono text-[11px] font-semibold text-accent-foreground">
+                    {node.displayLabel}
+                  </span>
+                  <span className="mt-1 block w-full truncate font-heading font-semibold">
+                    {node.title}
+                  </span>
+                  {node.current && (
+                    <span className="sr-only">現在のカード</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-              <ConnectionsEdgeLayer
-                layoutKey={model.layoutKey}
-                edges={model.edges}
-                maximumRadius={presentation.edgeMaximumRadius}
-                nodeClearance={presentation.layoutMetrics.edgeNodeSpacing}
-              />
-            </svg>
-
-            <ul className="sr-only" aria-label="カード間の一方向リンク一覧">
-              {model.edges.map((edge) => (
-                <li key={`accessible-${edge.id}`}>{edge.accessibleName}</li>
-              ))}
-            </ul>
-
-            {model.nodes.map((node) => (
-              <button
-                key={node.cardId}
-                type="button"
-                onClick={() => actions.openCard(node.cardId)}
-                aria-current={node.current ? 'true' : undefined}
-                aria-label={node.accessibleName}
-                className="connections-node-structure connections-node"
-                style={{
-                  left: node.x,
-                  top: node.y,
-                  width: node.width,
-                  height: node.height,
-                }}
-                data-card-id={node.cardId}
-                onFocus={() => ensureNodeVisible(node)}
-                draggable={false}
-              >
-                <span className="font-mono text-[11px] font-semibold text-accent-foreground">
-                  {node.displayLabel}
-                </span>
-                <span className="mt-1 block w-full truncate font-heading font-semibold">
-                  {node.title}
-                </span>
-                {node.current && <span className="sr-only">現在のカード</span>}
-              </button>
-            ))}
+        {model.status === 'ready' && model.edges.length === 0 && (
+          <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex items-center gap-3 rounded-xl border border-dashed bg-card/90 px-4 py-3 text-sm text-muted-foreground backdrop-blur">
+            <Network aria-hidden="true" className="size-5 shrink-0" />
+            本文でカードをリンクすると、カード間の一方向リンクが現れます。
           </div>
         )}
       </section>
-
-      {model.status === 'ready' && model.edges.length === 0 && (
-        <div className="mt-4 flex items-center gap-3 rounded-xl border border-dashed px-4 py-4 text-sm text-muted-foreground">
-          <Network aria-hidden="true" className="size-5" />
-          本文でカードをリンクすると、カード間の一方向リンクが現れます。
-        </div>
-      )}
     </section>
   );
 }

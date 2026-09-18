@@ -2,8 +2,12 @@ import type { JSONContent } from '@tiptap/core';
 import { normalizeBody } from '@/lib/domain/body';
 import type { BodySegment } from '@/lib/domain/types';
 import { cardLinkTargetId } from '@/lib/editor/card-link-attributes';
+import { CARD_EDITOR_TITLE_ATTRIBUTE } from '@/lib/editor/card-editor-history';
 
-export function segmentsToEditorDocument(segments: BodySegment[]): JSONContent {
+export function segmentsToEditorDocument(
+  segments: BodySegment[],
+  cardTitle = '',
+): JSONContent {
   const content: JSONContent[] = [];
   for (const segment of segments) {
     if (segment.type === 'link') {
@@ -21,7 +25,11 @@ export function segmentsToEditorDocument(segments: BodySegment[]): JSONContent {
     });
   }
 
-  return { type: 'doc', content: [{ type: 'paragraph', content }] };
+  return {
+    type: 'doc',
+    attrs: { [CARD_EDITOR_TITLE_ATTRIBUTE]: cardTitle },
+    content: [{ type: 'paragraph', content }],
+  };
 }
 
 export function editorDocumentToSegments(document: JSONContent): BodySegment[] {

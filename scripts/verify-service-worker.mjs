@@ -12,9 +12,15 @@ try {
 }
 
 if (
-  !source.includes("data.type !== 'CACHE_URLS'") ||
-  !source.includes("typeof value !== 'string'") ||
-  !source.includes('url.origin === worker.location.origin')
+  !source.includes("const CACHE_NAME = 'fukamu-notes-static-v3'") ||
+  !source.includes("pathname.startsWith('/_next/static/')") ||
+  !source.includes("url.search !== ''") ||
+  !source.includes("data.type === 'LOGOUT_CACHE_PURGE'") ||
+  !source.includes("type: 'LOGOUT_CACHE_PURGE_RESULT'") ||
+  !source.includes('deleteStaleNotesCaches') ||
+  !source.includes("case 'network-only':")
 ) {
-  throw new Error('Production Service Worker is missing the CACHE_URLS guard');
+  throw new Error(
+    'Production Service Worker is missing its static allowlist or purge guard',
+  );
 }
