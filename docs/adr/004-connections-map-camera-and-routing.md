@@ -583,6 +583,33 @@ This tuning does not change the viewport plus 96 px overscan window, retained
 focus node, Canvas point hit test, complete graph membership, ARIA surface, or
 persistence. It adds neither Canvas text nor another threshold family.
 
+## Issue #357 earlier readable card threshold follow-up
+
+Issue #357 retains the historical Issue #325 36 px and Issue #352 28 px
+decisions, but moves the current projected-height threshold to 24 px. A
+standard 72 px card therefore keeps its numbered, titled HTML button from
+roughly 33.3% scale: exactly 24 px is HTML, while any projected height below
+24 px uses the overview Canvas. Product coverage fixes scale 0.35 as HTML and
+0.32 as Canvas.
+
+This follow-up still does not change the viewport plus 96 px overscan window,
+retained focus node, Canvas point hit test, complete graph membership, ARIA
+surface, or persistence. It adds neither Canvas text nor another threshold
+family.
+
+## Issue #359 additional readable card threshold adjustment
+
+Issue #359 also retains the Issue #357 24 px decision as history and moves the
+current projected-height threshold to 20 px. A standard 72 px card therefore
+keeps its numbered, titled HTML button from roughly 27.8% scale: exactly 20 px
+is HTML, while any projected height below 20 px uses the overview Canvas.
+Product coverage fixes scale 0.30 as HTML and 0.27 as Canvas.
+
+This additional adjustment still does not change the viewport plus 96 px
+overscan window, retained focus node, Canvas point hit test, complete graph
+membership, ARIA surface, or persistence. It adds neither Canvas text nor
+another threshold family.
+
 ## Issue #330 free camera translation
 
 Issue #330 separates whole-world framing from camera-position validation.

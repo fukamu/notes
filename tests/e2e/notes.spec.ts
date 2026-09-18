@@ -1826,7 +1826,7 @@ test('connections map supports viewport keyboard, touch gestures and drag-safe s
     if (element instanceof HTMLElement) element.blur();
   });
   const beforeReadableScale = (await connectionsCamera(graph)).scale;
-  const readableWheelDelta = -Math.log(0.4 / beforeReadableScale) / 0.002;
+  const readableWheelDelta = -Math.log(0.3 / beforeReadableScale) / 0.002;
   await graph.evaluate(
     (element, input) => {
       element.dispatchEvent(
@@ -1848,13 +1848,13 @@ test('connections map supports viewport keyboard, touch gestures and drag-safe s
   );
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
-    .toBeCloseTo(0.4, 7);
+    .toBeCloseTo(0.3, 7);
   await expect(graph).toHaveAttribute('data-node-renderer', 'html');
   await expect(currentNode.locator('span').nth(0)).toHaveText('#1');
   await expect(currentNode.locator('span').nth(1)).toHaveText(current.title);
 
   const beforeOverviewScale = (await connectionsCamera(graph)).scale;
-  const overviewWheelDelta = -Math.log(0.37 / beforeOverviewScale) / 0.002;
+  const overviewWheelDelta = -Math.log(0.27 / beforeOverviewScale) / 0.002;
   await graph.evaluate(
     (element, input) => {
       element.dispatchEvent(
@@ -1876,7 +1876,7 @@ test('connections map supports viewport keyboard, touch gestures and drag-safe s
   );
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
-    .toBeCloseTo(0.37, 7);
+    .toBeCloseTo(0.27, 7);
   await expect(graph).toHaveAttribute('data-node-renderer', 'overview-canvas');
   await expect(graph.locator('button[data-card-id]')).toHaveCount(0);
   await page.mouse.click(
