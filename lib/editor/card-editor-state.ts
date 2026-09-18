@@ -1,5 +1,3 @@
-import type { CardId } from '@/lib/domain/id';
-
 export type CardEditorCandidateState = {
   open: boolean;
   activeIndex: number;
@@ -28,11 +26,6 @@ export type CardEditorCandidateToken = Readonly<{
   length: number;
 }>;
 
-export type CardEditorDocumentUpdate =
-  | 'identity-reset'
-  | 'external-body-sync'
-  | 'unchanged';
-
 export type CardEditorHistoryShortcut = 'undo' | 'redo' | null;
 
 export type CardEditorHistoryKey = Readonly<{
@@ -43,15 +36,6 @@ export type CardEditorHistoryKey = Readonly<{
   altKey: boolean;
   composing: boolean;
 }>;
-
-export function classifyCardEditorDocumentUpdate(
-  editorCardId: CardId | null,
-  nextCardId: CardId,
-  bodyMatches: boolean,
-): CardEditorDocumentUpdate {
-  if (editorCardId !== nextCardId) return 'identity-reset';
-  return bodyMatches ? 'unchanged' : 'external-body-sync';
-}
 
 export function cardEditorHistoryShortcut(
   event: CardEditorHistoryKey,
