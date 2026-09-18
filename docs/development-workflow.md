@@ -65,9 +65,9 @@ GitHub sub-Issue/dependencyを利用できる場合は登録し、本文また�
 
 ## BranchとPR
 
-現在の親 #349 のintegration branchは `integration/349-tab-zoom-polish`、完了済み親 #338 の `integration/338-efficiency` からの正確な起点は `4d1ed7a76213764aa5f1431a1b903de519444ba5` です。`main` と `origin/main` は `2b591fbf439421472a7b81102df9fd4fd387eb17` のまま変更しません。完了済み親 #338 と `integration/338-efficiency`、完了済み親 #106 の `integration/106-multi-user-production`、親 #41 の `refactor/type-safe-functional`、さらに以前の親 #29 のintegration branchは過去または上流のdelivery記録であり、#349の新規work branchの分岐元やmerge targetとして再利用しません。integration branchへ直接実装せず、検証済みwork PRだけを集約します。
+現在の親 #362 のintegration branchは `integration/362-native-interactions`、最新 `main` からの正確な起点は `96f510bfb9bdb69b2c7ebd8c673ce7b0fcc32fca` です。`main` と `origin/main` はこの起点のまま変更しません。完了済み親 #349 と `integration/349-tab-zoom-polish`、完了済み親 #338 と `integration/338-efficiency`、完了済み親 #106 の `integration/106-multi-user-production`、親 #41 の `refactor/type-safe-functional`、さらに以前の親 #29 のintegration branchは過去または上流のdelivery記録であり、#362の新規work branchの分岐元やmerge targetとして再利用しません。integration branchへ直接実装せず、検証済みwork PRだけを集約します。
 
-親 #349 のbootstrapは、利用者が明示承認したself-bootstrap方式を使います。Quality workflowは `work/**` のpushを検査するため、最初の実装Issue #350のPRもexact head commitに対するread-only CIを実行できます。そのPRはpush runとlocal共通gateが成功するまでmergeせず、merge後はintegrationへのpush runも成功させます。以後のPRは通常どおり、最新headとintegration baseに対するpull request runもmerge gateに含めます。self-bootstrapはCI省略ではなく、base側filterを更新する最初のPRだけeventをpushへ切り替える手順です。
+親 #362 のbootstrapは、利用者が明示承認したself-bootstrap方式を使います。Quality workflowは `work/**` のpushを検査するため、最初の実装Issue #363のPRもexact head commitに対するread-only CIを実行できます。そのPRはpush runとlocal共通gateが成功するまでmergeせず、merge後はintegrationへのpush runも成功させます。以後のPRは通常どおり、最新headとintegration baseに対するpull request runもmerge gateに含めます。self-bootstrapはCI省略ではなく、base側filterを更新する最初のPRだけeventをpushへ切り替える手順です。
 
 各実装Issueは次の順で進めます。
 
@@ -78,7 +78,7 @@ GitHub sub-Issue/dependencyを利用できる場合は登録し、本文また�
 5. 型付きpure coreと明示effect adapterでIssue範囲だけを実装する。
 6. relevant checkと共通gateを実行し、対象外変更、unsafe escape、check弱体化、互換性破壊をreviewする。
 7. 通常commit/pushする。force pushや公開履歴書換えはしない。
-8. PR baseを `integration/349-tab-zoom-polish` にし、対応Issue、目的、維持契約、検証、risk、branch-point、main未反映を記録する。
+8. PR baseを `integration/362-native-interactions` にし、対応Issue、目的、維持契約、検証、risk、branch-point、main未反映を記録する。
 9. merge直前にもbase、CI、review、branch protection、最新integrationとの組合せを再確認する。
 10. merge後のintegration branchで必要な検査を再実行し、Issue/parentへPR、merge commit、結果、main未反映を記録する。
 

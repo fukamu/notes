@@ -192,6 +192,20 @@ async function openFromHistory(page: Page, title: string) {
   await expect(page.getByTestId('card-title')).toHaveValue(title);
 }
 
+async function activateNotesView(
+  page: Page,
+  projectName: string,
+  name: 'カード' | '過去のカード' | 'つながり',
+) {
+  const navigation = page.getByRole('button', { name, exact: true });
+  if (projectName === 'mobile-chromium') {
+    await navigation.focus();
+    await navigation.press('Enter');
+    return;
+  }
+  await navigation.click();
+}
+
 type LocalFixtureCard = {
   id: string;
   displayId: { kind: 'official'; value: number };
@@ -696,6 +710,86 @@ test('title and body share one chronological Undo/Redo history', async ({
   await expect(undo).toBeDisabled();
 });
 
+test('the current card keeps one inactive editor session across view tabs', async ({
+  page,
+}, testInfo) => {
+  const titleA = unique('常駐編集A', testInfo.project.name);
+  const titleB = unique('常駐編集B', testInfo.project.name);
+  await ready(page);
+  await page.getByTestId('new-card').click();
+  const cardPath = new URL(page.url()).pathname;
+  const title = page.getByTestId('card-title');
+  const editor = page.getByTestId('body-editor');
+  await title.fill(titleA);
+  await editor.fill('selection body');
+  await expect(page.getByTestId('save-sync-status')).toHaveText('保存済み');
+  await page.reload();
+  await expect(title).toHaveValue(titleA);
+  await expect(editor).toContainText('selection body');
+  await expect(page.getByTestId('undo')).toBeDisabled();
+  await title.fill(titleB);
+  await editor.focus();
+  await editor.press('End');
+  await editor.press('Shift+ArrowLeft');
+  await expect(page.locator('[data-selection-empty]')).toHaveAttribute(
+    'data-selection-empty',
+    'false',
+  );
+  await editor.evaluate((element) => {
+    element.dataset.editorSessionMarker = 'preserved';
+  });
+
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await expect(page.getByTestId('history-list')).toBeVisible();
+  await expect(title).toBeHidden();
+  await expect(editor).toBeHidden();
+  await expect(title).not.toBeFocused();
+  await expect(editor).not.toBeFocused();
+  await expect(page.getByTestId('body-editor')).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'つながり', exact: true }).click();
+  await expect(page.getByTestId('connections-graph')).toHaveAttribute(
+    'data-layout-status',
+    'ready',
+    { timeout: 15_000 },
+  );
+  await expect(page.getByTestId('body-editor')).toHaveCount(1);
+  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await expect(title).toBeVisible();
+  await expect(title).toHaveValue(titleB);
+  await expect(editor).toHaveAttribute(
+    'data-editor-session-marker',
+    'preserved',
+  );
+  await expect(page.locator('[data-selection-empty]')).toHaveAttribute(
+    'data-selection-empty',
+    'false',
+  );
+  await expect(title).not.toBeFocused();
+  await expect(editor).not.toBeFocused();
+
+  await expect(page.getByTestId('undo')).toBeEnabled();
+  await page.getByTestId('undo').click();
+  await expect(title).toHaveValue(titleA);
+  await page.getByTestId('redo').click();
+  await expect(title).toHaveValue(titleB);
+
+  await editor.focus();
+  await editor.press('End');
+  await editor.pressSequentially(' #');
+  await expect(page.getByTestId('link-candidate-scroll')).toBeVisible();
+  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await expect(page.getByTestId('link-candidate-scroll')).toHaveCount(0);
+  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await expect(page.getByTestId('link-candidate-scroll')).toHaveCount(0);
+
+  await page.goto(`${cardPath}/history`);
+  await expect(page.getByTestId('history-list')).toBeVisible();
+  await expect(page.getByTestId('body-editor')).toHaveCount(0);
+  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await expect(page.getByTestId('body-editor')).toHaveCount(1);
+});
+
 test('headless editor preserves IME, candidate keyboard, link activation and identity reset', async ({
   page,
   context,
@@ -1040,7 +1134,7 @@ test('global directed graph is safe and operable for the reported and cyclic fix
   await expect(page.getByTestId('new-card')).toBeVisible();
 
   await openFromHistory(page, titles.reportA);
-  await page.getByRole('button', { name: 'つながり' }).click();
+  await activateNotesView(page, testInfo.project.name, 'つながり');
   const graph = page.getByTestId('connections-graph');
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
     timeout: 15_000,
@@ -1369,8 +1463,11 @@ test('connections map supports viewport keyboard, touch gestures and drag-safe s
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeCloseTo(fitted.scale, 5);
-  await graph.press('+');
-  await graph.press('+');
+  await dispatchMapKey('Home');
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeGreaterThanOrEqual(0.5);
+  await expect(currentNode).toBeInViewport();
   await expect
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeGreaterThan(fitted.scale);
@@ -1432,6 +1529,16 @@ test('connections map supports viewport keyboard, touch gestures and drag-safe s
       );
     }
   });
+  await expect
+    .poll(() =>
+      graph.evaluate(
+        (element) =>
+          element.querySelectorAll(
+            '[data-testid="connections-canvas"] [data-card-id]',
+          ).length,
+      ),
+    )
+    .toBeLessThan(cards.length);
   const canvasBeforeGesture = await graph.evaluate((element) => {
     const canvas = element.querySelector('[data-testid="connections-canvas"]');
     return {
@@ -3291,7 +3398,7 @@ test('canonical URLs restore cards and views through direct, back, forward and o
     timeout: 15_000,
   });
 
-  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await activateNotesView(page, testInfo.project.name, '過去のカード');
   await expectPathname(page, `/cards/${ids.cardA}/history`);
   await expect(
     page.getByTestId('history-list').locator(`[data-card-id="${ids.cardA}"]`),
@@ -3303,7 +3410,7 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await expectPathname(page, `/cards/${ids.cardB}`);
   await expect(page.getByTestId('card-title')).toHaveValue(titles.cardB);
 
-  await page.getByRole('button', { name: 'つながり', exact: true }).click();
+  await activateNotesView(page, testInfo.project.name, 'つながり');
   await expectPathname(page, `/cards/${ids.cardB}/connections`);
   const graph = page.getByTestId('connections-graph');
   await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
@@ -3353,7 +3460,7 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await expect(page.getByTestId('card-title')).toHaveValue(titles.cardC);
   expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
 
-  await page.getByRole('button', { name: 'カード', exact: true }).click();
+  await activateNotesView(page, testInfo.project.name, 'カード');
   await expectPathname(page, `/cards/${ids.cardC}`);
   expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
 
@@ -3374,7 +3481,7 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await expectPathname(page, newCardPathname);
   await page.goBack();
 
-  await page.getByRole('button', { name: '過去のカード', exact: true }).click();
+  await activateNotesView(page, testInfo.project.name, '過去のカード');
   await page
     .getByTestId('history-list')
     .locator(`[data-card-id="${ids.cardA}"]`)
