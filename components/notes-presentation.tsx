@@ -198,7 +198,7 @@ export function NotesPresentation({
 
   return (
     <main
-      className={`min-h-dvh bg-background text-foreground ${
+      className={`notes-shell min-h-dvh bg-background text-foreground ${
         usesExpandedWorkspace ? 'notes-shell-expanded' : ''
       }`}
     >
@@ -223,17 +223,13 @@ export function NotesPresentation({
       </header>
 
       <div
-        className={
+        className={`notes-workspace ${
           usesExpandedWorkspace
             ? 'notes-workspace-expanded'
-            : 'mx-auto grid w-full max-w-6xl gap-8 px-4 pb-28 pt-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_180px] lg:pb-12 lg:pt-12'
-        }
+            : 'notes-workspace-document'
+        }`}
       >
-        <div
-          className={
-            usesExpandedWorkspace ? 'notes-workspace-content' : 'min-w-0'
-          }
-        >
+        <div className="notes-workspace-content">
           {model.activeView === 'card' && (
             <CardView model={model} actions={actions} features={features} />
           )}
