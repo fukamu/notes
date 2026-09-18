@@ -253,6 +253,7 @@ describe('notes application controller', () => {
           kind: 'precomputed',
           graph: { nodes: [{ card: current }], edges: [] },
         },
+        history: null,
       },
     );
 
@@ -262,5 +263,42 @@ describe('notes application controller', () => {
       nodes: [{ cardId: current.id, current: true }],
       edges: [],
     });
+  });
+
+  it('uses a precomputed history model without reading card bodies again', () => {
+    const currentBase = card('precomputed-history-current', 1);
+    const current: CardRecord = {
+      ...currentBase,
+      get body(): CardRecord['body'] {
+        throw new Error('precomputed history re-read a card body');
+      },
+    };
+    const store = fakeStore([current]);
+    const history = {
+      currentCardId: current.id,
+      items: [
+        {
+          cardId: current.id,
+          displayLabel: '#1',
+          displayValue: 1,
+          title: current.title,
+          preview: 'precomputed preview',
+          current: true,
+        },
+      ],
+    };
+
+    const model = createNotesPresentationModel(
+      store,
+      { kind: 'history', cardId: current.id },
+      {
+        cardEditorIndex: null,
+        connectionsGraph: { kind: 'derive' },
+        history,
+      },
+    );
+
+    expect(model.activeView).toBe('history');
+    expect(model.history).toBe(history);
   });
 });
