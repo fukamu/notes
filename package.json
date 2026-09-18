@@ -47,7 +47,7 @@
     "check:card-payment-security": "node --experimental-strip-types scripts/verify-card-payment-security.mjs",
     "check:launch-compliance": "node --experimental-strip-types scripts/verify-launch-compliance.mjs",
     "check:production-launch": "node --experimental-strip-types scripts/verify-launch-compliance.mjs --production-release",
-    "verify": "npm run format:check && npm run check && npm run test:e2e",
+    "verify": "npm run format:check && npm run check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
