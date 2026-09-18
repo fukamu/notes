@@ -1,6 +1,6 @@
 import type { HistoryAnchor } from '@/lib/application/history-window';
+import type { NotesCameraPosition } from '@/lib/application/navigation-camera-session';
 import type { CardId } from '@/lib/domain/id';
-import type { ConnectionsCameraSnapshot } from '@/lib/graph/connections-viewport';
 
 export type CardScrollSnapshot = Readonly<{
   currentCardId: CardId;
@@ -15,5 +15,5 @@ export type ViewStateSlot<T> = Readonly<{
 export type NotesViewStatePorts = Readonly<{
   body: ViewStateSlot<CardScrollSnapshot>;
   history: ViewStateSlot<HistoryAnchor>;
-  connections: ViewStateSlot<ConnectionsCameraSnapshot>;
+  connections: NotesCameraPosition;
 }>;

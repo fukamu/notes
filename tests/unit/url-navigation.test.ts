@@ -6,28 +6,35 @@ import {
 } from '@/lib/application/url-navigation';
 import {
   createBrowserNotesNavigator,
+  decodeNotesNavigationHistoryMetadata,
+  NOTES_NAVIGATION_HISTORY_STATE_KEY,
   type NotesBrowserHistoryPort,
 } from '@/lib/client/browser-notes-navigator';
 import { fixtureCardId } from '@/tests/fixtures/ids';
 
-function fakeBrowserHistory(initialUrl: string) {
-  let entries = [initialUrl];
+function fakeBrowserHistory(initialUrl: string, initialState: unknown = null) {
+  let entries = [{ url: initialUrl, state: initialState }];
   let index = 0;
   const listeners = new Set<() => void>();
-  const url = () => new URL(entries[index] ?? '/', 'https://notes.example');
+  let replaceCalls = 0;
+  const current = () => entries[index] ?? { url: '/', state: null };
+  const url = () => new URL(current().url, 'https://notes.example');
   const port: NotesBrowserHistoryPort = {
     getUrl: () => ({
       pathname: url().pathname,
       search: url().search,
       hash: url().hash,
     }),
-    push: (pathname) => {
-      entries = [...entries.slice(0, index + 1), pathname];
+    getState: () => current().state,
+    push: (pathname, state) => {
+      entries = [...entries.slice(0, index + 1), { url: pathname, state }];
       index += 1;
     },
-    replace: (pathname) => {
-      entries[index] = pathname;
+    replace: (pathname, state) => {
+      entries[index] = { url: pathname, state };
+      replaceCalls += 1;
     },
+    back: () => move(-1),
     subscribePop: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -41,8 +48,12 @@ function fakeBrowserHistory(initialUrl: string) {
   };
   return {
     port,
-    entries: () => [...entries],
-    current: () => entries[index],
+    entries: () => entries.map((entry) => entry.url),
+    states: () => entries.map((entry) => entry.state),
+    current: () => current().url,
+    replaceCalls: () => replaceCalls,
+    pushExternal: (pathname: string, state: unknown) =>
+      port.push(pathname, state),
     back: () => move(-1),
     forward: () => move(1),
   };
@@ -107,9 +118,80 @@ describe('browser notes navigator', () => {
   it('has an inert root snapshot during server rendering', () => {
     const navigator = createBrowserNotesNavigator();
     expect(navigator.getLocation()).toEqual({ kind: 'empty' });
+    const initialSnapshot = navigator.getSnapshot();
+    expect(navigator.getSnapshot()).toBe(initialSnapshot);
     expect(
       navigator.navigate({ type: 'initialize', cardIds: [cardA] }),
     ).toEqual({ kind: 'card', cardId: cardA });
+    expect(navigator.getSnapshot()).toMatchObject({
+      location: { kind: 'card', cardId: cardA },
+      cause: 'initialize',
+      pending: false,
+    });
+  });
+
+  it('commits namespaced initial metadata after subscription and preserves foreign state', () => {
+    const browser = fakeBrowserHistory(`/cards/${cardA}`, {
+      router: { scroll: 12 },
+    });
+    const navigator = createBrowserNotesNavigator(browser.port, {
+      createRuntimeId: () => 'runtime-a',
+    });
+    const stopFirst = navigator.subscribe(() => undefined);
+    expect(browser.replaceCalls()).toBe(1);
+    expect(browser.states()[0]).toEqual({
+      router: { scroll: 12 },
+      [NOTES_NAVIGATION_HISTORY_STATE_KEY]: {
+        version: 1,
+        runtimeId: 'runtime-a',
+        entryId: 1,
+      },
+    });
+
+    stopFirst();
+    const stopSecond = navigator.subscribe(() => undefined);
+    expect(browser.replaceCalls()).toBe(1);
+    stopSecond();
+  });
+
+  it('decodes only finite positive versioned navigation metadata', () => {
+    expect(
+      decodeNotesNavigationHistoryMetadata({
+        [NOTES_NAVIGATION_HISTORY_STATE_KEY]: {
+          version: 1,
+          runtimeId: 'runtime-a',
+          entryId: 42,
+        },
+      }),
+    ).toEqual({ version: 1, runtimeId: 'runtime-a', entryId: 42 });
+    for (const value of [
+      null,
+      [],
+      { [NOTES_NAVIGATION_HISTORY_STATE_KEY]: null },
+      {
+        [NOTES_NAVIGATION_HISTORY_STATE_KEY]: {
+          version: 2,
+          runtimeId: 'runtime-a',
+          entryId: 1,
+        },
+      },
+      {
+        [NOTES_NAVIGATION_HISTORY_STATE_KEY]: {
+          version: 1,
+          runtimeId: '',
+          entryId: 1,
+        },
+      },
+      {
+        [NOTES_NAVIGATION_HISTORY_STATE_KEY]: {
+          version: 1,
+          runtimeId: 'runtime-a',
+          entryId: 0,
+        },
+      },
+    ]) {
+      expect(decodeNotesNavigationHistoryMetadata(value)).toBeNull();
+    }
   });
 
   it('pushes user destinations and restores all card/view context on pop', () => {
@@ -155,6 +237,11 @@ describe('browser notes navigator', () => {
     ]);
     expect(browser.entries()).toHaveLength(5);
     expect(listener).toHaveBeenCalledTimes(12);
+    expect(navigator.getSnapshot()).toMatchObject({
+      activationId: 13,
+      cause: 'traverse',
+      pending: false,
+    });
   });
 
   it('replaces initialization, correction and the first card from root', () => {
@@ -189,10 +276,107 @@ describe('browser notes navigator', () => {
     const browser = fakeBrowserHistory(`/cards/${cardA}`);
     const navigator = createBrowserNotesNavigator(browser.port);
     navigator.subscribe(() => undefined);
-    browser.port.push('/unknown');
+    browser.pushExternal('/unknown', null);
     browser.back();
     browser.forward();
     expect(navigator.getLocation()).toEqual({ kind: 'empty' });
     expect(browser.entries()).toEqual([`/cards/${cardA}`, '/']);
+  });
+
+  it('restores a compact camera snapshot for the exact traversed entry', () => {
+    const browser = fakeBrowserHistory(`/cards/${cardA}/connections`);
+    const navigator = createBrowserNotesNavigator(browser.port, {
+      createRuntimeId: () => 'runtime-camera',
+    });
+    navigator.subscribe(() => undefined);
+    const initial = navigator.getSnapshot();
+    const camera = navigator.cameraSession.bind({
+      entryId: initial.entryId,
+      activationId: initial.activationId,
+      currentCardId: cardA,
+      cause: initial.cause,
+    });
+    expect(camera.read('layout-a')).toBeNull();
+    camera.write({
+      currentCardId: cardA,
+      layoutKey: 'layout-a',
+      scale: 1.25,
+      centerWorld: { x: 320, y: -80 },
+    });
+
+    navigator.navigate({ type: 'open-card', cardId: cardB });
+    browser.back();
+    const restored = navigator.getSnapshot();
+    expect(restored).toMatchObject({
+      entryId: initial.entryId,
+      cause: 'traverse',
+      location: { kind: 'connections', cardId: cardA },
+    });
+    const restoredCamera = () => {
+      const current = navigator.getSnapshot();
+      return navigator.cameraSession
+        .bind({
+          entryId: current.entryId,
+          activationId: current.activationId,
+          currentCardId: cardA,
+          cause: current.cause,
+        })
+        .read('layout-a');
+    };
+    expect(restoredCamera()).toEqual({
+      currentCardId: cardA,
+      layoutKey: 'layout-a',
+      scale: 1.25,
+      centerWorld: { x: 320, y: -80 },
+    });
+    browser.forward();
+    expect(navigator.getLocation()).toEqual({ kind: 'card', cardId: cardB });
+    browser.back();
+    expect(restoredCamera()).toEqual({
+      currentCardId: cardA,
+      layoutKey: 'layout-a',
+      scale: 1.25,
+      centerWorld: { x: 320, y: -80 },
+    });
+  });
+
+  it('adopts foreign-runtime pop state and rejects stale camera bindings', () => {
+    const browser = fakeBrowserHistory(`/cards/${cardA}/connections`);
+    const navigator = createBrowserNotesNavigator(browser.port, {
+      createRuntimeId: () => 'runtime-current',
+    });
+    navigator.subscribe(() => undefined);
+    const initial = navigator.getSnapshot();
+    const stale = navigator.cameraSession.bind({
+      entryId: initial.entryId,
+      activationId: initial.activationId,
+      currentCardId: cardA,
+      cause: initial.cause,
+    });
+    stale.read('layout-a');
+
+    browser.pushExternal(`/cards/${cardB}`, {
+      [NOTES_NAVIGATION_HISTORY_STATE_KEY]: {
+        version: 1,
+        runtimeId: 'runtime-foreign',
+        entryId: 99,
+      },
+    });
+    browser.back();
+    browser.forward();
+    expect(navigator.getSnapshot()).toMatchObject({
+      location: { kind: 'card', cardId: cardB },
+      cause: 'traverse',
+    });
+    stale.write({
+      currentCardId: cardA,
+      layoutKey: 'layout-a',
+      scale: 2,
+      centerWorld: { x: 1, y: 1 },
+    });
+    expect(stale.read('layout-a')).toBeNull();
+    expect(
+      decodeNotesNavigationHistoryMetadata(browser.states()[1]),
+    ).toMatchObject({ runtimeId: 'runtime-current' });
   });
 });

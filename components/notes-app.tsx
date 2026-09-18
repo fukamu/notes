@@ -132,12 +132,25 @@ function NotesConnector({
   configuration: NotesAppConfiguration;
 }) {
   const store = useNotesDataStore();
-  const { model, actions, editorFocusIntent, consumeEditorFocusIntent } =
-    useNotesApplication(store);
+  const {
+    model,
+    actions,
+    editorFocusIntent,
+    consumeEditorFocusIntent,
+    connectionsCameraPosition,
+  } = useNotesApplication(store);
   const currentCardId = model.currentCard?.id ?? null;
-  const viewState = useMemo(
+  const currentCardViewState = useMemo(
     () => createNotesViewStatePorts(currentCardId),
     [currentCardId],
+  );
+  const viewState = useMemo(
+    () => ({
+      ...currentCardViewState,
+      connections:
+        connectionsCameraPosition ?? currentCardViewState.connections,
+    }),
+    [connectionsCameraPosition, currentCardViewState],
   );
   const [editorSessionCardId, setEditorSessionCardId] = useState(() =>
     model.activeView === 'card' ? currentCardId : null,
