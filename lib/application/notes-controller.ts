@@ -10,6 +10,7 @@ import {
 } from '@/lib/application/navigation';
 import type {
   ConflictChoice,
+  HistoryViewModel,
   NotesPresentationActions,
   NotesPresentationModel,
   NotesViewName,
@@ -44,11 +45,13 @@ type ConnectionsGraphSource =
 type NotesPresentationOptions = Readonly<{
   cardEditorIndex: CardEditorCandidateIndex | null;
   connectionsGraph: ConnectionsGraphSource;
+  history: HistoryViewModel | null;
 }>;
 
 const DEFAULT_PRESENTATION_OPTIONS: NotesPresentationOptions = {
   cardEditorIndex: null,
   connectionsGraph: { kind: 'derive' },
+  history: null,
 };
 
 export type NotesStorePort = {
@@ -200,7 +203,8 @@ export function createNotesPresentationModel(
         ...common,
         activeView: view,
         cardEditor: null,
-        history: selectHistoryViewModel(store.cards, currentCardId),
+        history:
+          options.history ?? selectHistoryViewModel(store.cards, currentCardId),
         conflicts: [],
         connections: null,
       };
