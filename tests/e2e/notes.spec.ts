@@ -266,19 +266,21 @@ async function pressConnectionsKey(graph: Locator, key: string, count = 1) {
 }
 
 async function expectMapNodeFullyVisible(node: Locator, graph: Locator) {
-  const nodeBox = await node.boundingBox();
-  const viewportBox = await graph.boundingBox();
-  expect(nodeBox).not.toBeNull();
-  expect(viewportBox).not.toBeNull();
-  if (!nodeBox || !viewportBox) throw new Error('Map geometry is missing');
-  expect(nodeBox.x).toBeGreaterThanOrEqual(viewportBox.x);
-  expect(nodeBox.y).toBeGreaterThanOrEqual(viewportBox.y);
-  expect(nodeBox.x + nodeBox.width).toBeLessThanOrEqual(
-    viewportBox.x + viewportBox.width,
-  );
-  expect(nodeBox.y + nodeBox.height).toBeLessThanOrEqual(
-    viewportBox.y + viewportBox.height,
-  );
+  await expect(async () => {
+    const nodeBox = await node.boundingBox();
+    const viewportBox = await graph.boundingBox();
+    expect(nodeBox).not.toBeNull();
+    expect(viewportBox).not.toBeNull();
+    if (!nodeBox || !viewportBox) throw new Error('Map geometry is missing');
+    expect(nodeBox.x).toBeGreaterThanOrEqual(viewportBox.x);
+    expect(nodeBox.y).toBeGreaterThanOrEqual(viewportBox.y);
+    expect(nodeBox.x + nodeBox.width).toBeLessThanOrEqual(
+      viewportBox.x + viewportBox.width,
+    );
+    expect(nodeBox.y + nodeBox.height).toBeLessThanOrEqual(
+      viewportBox.y + viewportBox.height,
+    );
+  }).toPass({ timeout: 5_000 });
 }
 
 async function replaceLocalCards(page: Page, cards: LocalFixtureCard[]) {
@@ -600,6 +602,98 @@ test('inline card links, Backspace, Undo/Redo, shortcuts and plain hashtag input
     return item.top >= list.top && item.bottom <= list.bottom;
   });
   expect(isAtStartPosition).toBe(true);
+});
+
+test('title and body share one chronological Undo/Redo history', async ({
+  page,
+  context,
+}, testInfo) => {
+  const titleA = unique('履歴A', testInfo.project.name);
+  const titleB = unique('履歴B', testInfo.project.name);
+  const titleC = unique('履歴C', testInfo.project.name);
+  const titleD = unique('履歴D', testInfo.project.name);
+  const imeTitle = unique('日本語確定', testInfo.project.name);
+  const bodyText = '本文の履歴';
+  const undoShortcut = process.platform === 'darwin' ? 'Meta+z' : 'Control+z';
+
+  await ready(page);
+  await page.getByTestId('new-card').click();
+  const title = page.getByTestId('card-title');
+  const editor = page.getByTestId('body-editor');
+  const undo = page.getByTestId('undo');
+  const redo = page.getByTestId('redo');
+
+  await title.fill(titleA);
+  await editor.click();
+  await expect(page.getByTestId('save-sync-status')).toHaveText('保存済み');
+  await page.reload();
+  await expect(title).toHaveValue(titleA);
+  await expect(page.getByTestId('save-sync-status')).toHaveText('保存済み');
+  await expect(undo).toBeDisabled();
+
+  await title.fill(titleB);
+  await expect(undo).toBeEnabled();
+  await editor.click();
+  await editor.pressSequentially(bodyText);
+  await title.fill(titleC);
+
+  await undo.click();
+  await expect(title).toHaveValue(titleB);
+  await expect(editor).toContainText(bodyText);
+  await expect(title).toBeFocused();
+
+  await undo.click();
+  await expect(title).toHaveValue(titleB);
+  await expect(editor).not.toContainText(bodyText);
+  await expect(editor).toBeFocused();
+
+  await undo.click();
+  await expect(title).toHaveValue(titleA);
+  await expect(editor).not.toContainText(bodyText);
+  await expect(title).toBeFocused();
+  await expect(undo).toBeDisabled();
+
+  await redo.click();
+  await expect(title).toHaveValue(titleB);
+  await expect(editor).not.toContainText(bodyText);
+  await redo.click();
+  await expect(editor).toContainText(bodyText);
+  await redo.click();
+  await expect(title).toHaveValue(titleC);
+  await expect(redo).toBeDisabled();
+
+  await title.press(undoShortcut);
+  await expect(title).toHaveValue(titleB);
+  await expect(redo).toBeEnabled();
+  await title.fill(titleD);
+  await expect(redo).toBeDisabled();
+  await undo.click();
+  await expect(title).toHaveValue(titleB);
+  await redo.click();
+  await expect(title).toHaveValue(titleD);
+
+  await title.focus();
+  await title.selectText();
+  const ime = await context.newCDPSession(page);
+  await ime.send('Input.imeSetComposition', {
+    text: '日本語',
+    selectionStart: 3,
+    selectionEnd: 3,
+  });
+  await ime.send('Input.insertText', { text: imeTitle });
+  await ime.detach();
+  await expect(title).toHaveValue(imeTitle);
+  await editor.click();
+  await undo.click();
+  await expect(title).toHaveValue(titleD);
+  await redo.click();
+  await expect(title).toHaveValue(imeTitle);
+
+  await expect(page.getByTestId('save-sync-status')).toHaveText('保存済み');
+  await page.reload();
+  await expect(title).toHaveValue(imeTitle);
+  await expect(editor).toContainText(bodyText);
+  await expect(undo).toBeDisabled();
 });
 
 test('headless editor preserves IME, candidate keyboard, link activation and identity reset', async ({

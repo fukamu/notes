@@ -30,7 +30,10 @@ export type ConnectionsRendererProps = {
 
 export type CardEditorFeatureProps = {
   input: CardEditorInputModel;
-  actions: Pick<NotesPresentationActions, 'openCard' | 'updateBody'>;
+  actions: Pick<
+    NotesPresentationActions,
+    'openCard' | 'updateTitle' | 'updateBody'
+  >;
 };
 
 export type ConnectionsFeatureProps = {

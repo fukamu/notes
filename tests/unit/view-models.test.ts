@@ -116,6 +116,7 @@ describe('card editor input view model', () => {
 
     expect(model).toMatchObject({
       cardId: current.id,
+      title: current.title,
       body: current.body,
       labels: [
         { cardId: current.id, label: '#4 editor-current' },

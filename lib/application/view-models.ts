@@ -39,6 +39,7 @@ export function selectCardEditorInputModel(
     candidateIndex ?? createCardEditorCandidateIndex(cards, currentCard.id);
   return {
     cardId: currentCard.id,
+    title: currentCard.title,
     body: currentCard.body,
     labels: resolvedCandidateIndex.labels,
     candidateIndex: resolvedCandidateIndex,

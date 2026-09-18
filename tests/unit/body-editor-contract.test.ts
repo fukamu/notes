@@ -10,6 +10,7 @@ describe('default body editor renderer contract', () => {
   it('is constructible from typed model and commands only', () => {
     const model: CardEditorModel = {
       editor: null,
+      title: 'Card title',
       ready: false,
       focused: false,
       selectionEmpty: true,
@@ -27,6 +28,13 @@ describe('default body editor renderer contract', () => {
       activeCandidate: 0,
     };
     const commands: CardEditorCommands = {
+      setTitleInputElement: vi.fn(),
+      updateTitle: vi.fn(),
+      handleTitleBlur: vi.fn(),
+      handleTitleKeyDown: vi.fn(),
+      handleTitleCompositionStart: vi.fn(),
+      handleTitleCompositionEnd: vi.fn(),
+      prepareBodyEditing: vi.fn(),
       handleKeyDown: vi.fn(),
       handleInput: vi.fn(),
       handleCompositionEnd: vi.fn(),

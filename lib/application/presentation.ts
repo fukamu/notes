@@ -59,6 +59,7 @@ export type CardEditorCandidateModel = CardEditorIndexCandidate;
 
 export type CardEditorInputModel = {
   cardId: CardId;
+  title: string;
   body: BodySegment[];
   labels: readonly CardEditorLabelModel[];
   candidateIndex: CardEditorCandidateIndex;

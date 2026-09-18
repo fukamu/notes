@@ -197,9 +197,11 @@ Do not change domain, codecs, storage, sync, DB/API, `NotesDataStore`,
 connections controller. The test-only alternate configuration demonstrates
 this exact seam and is intentionally unavailable through the production UI.
 
-The editor receives branded identity, body, candidate, and label models plus
-semantic application actions; it no longer receives raw store/card
-collections. See [Card editor contracts](card-editor.md).
+The editor receives branded identity, title, body, candidate, and label models
+plus semantic application actions. Its adapter receives the existing
+`updateTitle` and `updateBody` operations so the renderer can expose one shared
+editing history without receiving raw store/card collections. See
+[Card editor contracts](card-editor.md).
 
 ## Connections contracts
 
