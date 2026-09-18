@@ -65,9 +65,9 @@ GitHub sub-Issue/dependencyを利用できる場合は登録し、本文また�
 
 ## BranchとPR
 
-現在の親 #106 のintegration branchは `integration/106-multi-user-production`、mainからの起点は `2c7e968f6b4567f73a692f384b1b2c6d569040b7` です。完了済み親 #41 の `refactor/type-safe-functional` と、さらに以前の親 #29 のintegration branchは過去のdelivery記録であり、#106の分岐元やmerge targetとして再利用しません。integration branchへ直接実装せず、検証済みwork PRだけを集約します。
+現在の親 #338 のintegration branchは `integration/338-efficiency`、mainからの起点は `2b591fbf439421472a7b81102df9fd4fd387eb17` です。完了済み親 #106 の `integration/106-multi-user-production` と起点 `2c7e968f6b4567f73a692f384b1b2c6d569040b7`、親 #41 の `refactor/type-safe-functional`、さらに以前の親 #29 のintegration branchは過去のdelivery記録であり、#338の分岐元やmerge targetとして再利用しません。integration branchへ直接実装せず、検証済みwork PRだけを集約します。
 
-親 #106 のbootstrapは、利用者が明示承認したself-bootstrap方式を使います。Quality workflowは `work/**` のpushを検査するため、最初の #107 もexact head commitに対するread-only CIを実行できます。#107はそのpush runとlocal共通gateが成功するまでmergeせず、merge後はintegrationへのpush runも成功させます。以後のPRは通常どおり、最新headとintegration baseに対するpull request runもmerge gateに含めます。self-bootstrapはCI省略ではなく、base側filterを更新する最初のPRだけeventをpushへ切り替える手順です。
+親 #338 のbootstrapは、利用者が明示承認したself-bootstrap方式を使います。Quality workflowは `work/**` のpushを検査するため、最初の実装Issue #339のPRもexact head commitに対するread-only CIを実行できます。そのPRはpush runとlocal共通gateが成功するまでmergeせず、merge後はintegrationへのpush runも成功させます。以後のPRは通常どおり、最新headとintegration baseに対するpull request runもmerge gateに含めます。self-bootstrapはCI省略ではなく、base側filterを更新する最初のPRだけeventをpushへ切り替える手順です。
 
 各実装Issueは次の順で進めます。
 
@@ -78,7 +78,7 @@ GitHub sub-Issue/dependencyを利用できる場合は登録し、本文また�
 5. 型付きpure coreと明示effect adapterでIssue範囲だけを実装する。
 6. relevant checkと共通gateを実行し、対象外変更、unsafe escape、check弱体化、互換性破壊をreviewする。
 7. 通常commit/pushする。force pushや公開履歴書換えはしない。
-8. PR baseを `integration/106-multi-user-production` にし、対応Issue、目的、維持契約、検証、risk、branch-point、main未反映を記録する。
+8. PR baseを `integration/338-efficiency` にし、対応Issue、目的、維持契約、検証、risk、branch-point、main未反映を記録する。
 9. merge直前にもbase、CI、review、branch protection、最新integrationとの組合せを再確認する。
 10. merge後のintegration branchで必要な検査を再実行し、Issue/parentへPR、merge commit、結果、main未反映を記録する。
 

@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const integrationBranch = 'integration/106-multi-user-production';
-const currentParent = '#106';
-const currentBranchPoint = '2c7e968f6b4567f73a692f384b1b2c6d569040b7';
+const integrationBranch = 'integration/338-efficiency';
+const currentParent = '#338';
+const currentBranchPoint = '2b591fbf439421472a7b81102df9fd4fd387eb17';
 
 function normalizeWhitespace(source: string): string {
   return source.replace(/\s+/g, ' ');
@@ -31,7 +31,7 @@ describe('issue-based delivery contract', () => {
     expect(workflow).toContain(currentParent);
     expect(agents).toContain(currentBranchPoint);
     expect(workflow).toContain(currentBranchPoint);
-    expect(workflow).toContain('完了済み親 #41');
+    expect(workflow).toContain('完了済み親 #106');
   });
 
   it('requires direct user permission before any main update', async () => {
