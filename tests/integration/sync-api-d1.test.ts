@@ -207,6 +207,41 @@ describe('sync API request and response boundaries', () => {
     expect(decoded.acknowledgedMutationIds).toEqual([ids.createA]);
   });
 
+  it('reads cards and conflicts once for an empty mutation request', async () => {
+    await createConflict(ids.cardA, ids.createA, ids.conflictA);
+    const queries: string[] = [];
+    const recordingDatabase = new Proxy(database, {
+      get(target, property, receiver) {
+        if (property === 'prepare') {
+          return (query: string) => {
+            queries.push(query);
+            return target.prepare(query);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return value;
+      },
+    });
+
+    const state = await synchronize(recordingDatabase, []);
+
+    expect(state.cards).toMatchObject([
+      { id: ids.cardA, title: 'server', revision: 1 },
+    ]);
+    expect(state.conflicts).toHaveLength(1);
+    expect(state.acknowledgedMutationIds).toEqual([]);
+    expect(
+      queries.filter((query) =>
+        query.includes('FROM cards ORDER BY display_id ASC'),
+      ),
+    ).toHaveLength(1);
+    expect(
+      queries.filter((query) =>
+        query.includes('FROM conflicts ORDER BY created_at ASC'),
+      ),
+    ).toHaveLength(1);
+  });
+
   it('classifies malformed and oversized input as 4xx without changing D1', async () => {
     const valid = encodeSyncRequest({
       deviceId: ids.device,
