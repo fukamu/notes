@@ -1511,6 +1511,7 @@ test('connections map supports viewport keyboard, touch gestures and drag-safe s
     .poll(async () => (await connectionsCamera(graph)).scale)
     .toBeCloseTo(fitted.scale, 5);
 
+  const beforeNormalWheel = await connectionsCamera(graph);
   const normalWheelPrevented = await graph.evaluate((element) => {
     const event = new WheelEvent('wheel', {
       bubbles: true,
@@ -1522,7 +1523,115 @@ test('connections map supports viewport keyboard, touch gestures and drag-safe s
     element.dispatchEvent(event);
     return event.defaultPrevented;
   });
-  expect(normalWheelPrevented).toBe(false);
+  expect(normalWheelPrevented).toBe(true);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(beforeNormalWheel.y + 120, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(beforeNormalWheel.scale, 7);
+
+  const beforeHorizontalWheel = await connectionsCamera(graph);
+  const horizontalWheelPrevented = await graph.evaluate((element) => {
+    const event = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 48,
+    });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(horizontalWheelPrevented).toBe(true);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(beforeHorizontalWheel.x - 48, 5);
+
+  const beforeShiftWheel = await connectionsCamera(graph);
+  await graph.evaluate((element) => {
+    element.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaY: 36,
+        shiftKey: true,
+      }),
+    );
+  });
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(beforeShiftWheel.x - 36, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(beforeShiftWheel.y, 5);
+
+  const beforeAlreadyHorizontalShiftWheel = await connectionsCamera(graph);
+  await graph.evaluate((element) => {
+    element.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaX: 12,
+        deltaY: 20,
+        shiftKey: true,
+      }),
+    );
+  });
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(beforeAlreadyHorizontalShiftWheel.x - 12, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(beforeAlreadyHorizontalShiftWheel.y - 20, 5);
+
+  const beforeEditableWheel = await connectionsCamera(graph);
+  const editableWheelPrevented = await graph.evaluate((element) => {
+    const input = document.createElement('input');
+    element.appendChild(input);
+    const event = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 80,
+    });
+    input.dispatchEvent(event);
+    input.remove();
+    return event.defaultPrevented;
+  });
+  expect(editableWheelPrevented).toBe(false);
+  await page.waitForTimeout(50);
+  expect(await connectionsCamera(graph)).toEqual(beforeEditableWheel);
+
+  const beforeCardWheel = await connectionsCamera(graph);
+  const cardWheelPrevented = await graph.evaluate((element) => {
+    const button = document.createElement('button');
+    element.appendChild(button);
+    const event = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 24,
+    });
+    button.dispatchEvent(event);
+    button.remove();
+    return event.defaultPrevented;
+  });
+  expect(cardWheelPrevented).toBe(true);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(beforeCardWheel.y - 24, 5);
+
+  const beforeOutsideWheel = await connectionsCamera(graph);
+  const outsideWheelPrevented = await page.evaluate(() => {
+    const event = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 80,
+    });
+    document.body.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(outsideWheelPrevented).toBe(false);
+  await page.waitForTimeout(50);
+  expect(await connectionsCamera(graph)).toEqual(beforeOutsideWheel);
+
   const beforeModifiedWheel = await connectionsCamera(graph);
   const modifiedWheelPrevented = await graph.evaluate((element) => {
     const event = new WheelEvent('wheel', {

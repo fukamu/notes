@@ -30,6 +30,15 @@ export type ConnectionsCamera = Readonly<{
   scale: number;
 }>;
 
+export type ConnectionsWheelInput = Readonly<{
+  deltaX: number;
+  deltaY: number;
+  deltaMode: number;
+  lineHeight: number;
+  pageWidth: number;
+  pageHeight: number;
+}>;
+
 export type ConnectionsCameraSnapshot = Readonly<{
   currentCardId: CardId;
   layoutKey: string;
@@ -70,6 +79,37 @@ function finite(value: number): boolean {
 
 function finitePoint(point: ConnectionsPoint): boolean {
   return finite(point.x) && finite(point.y);
+}
+
+export function normalizeConnectionsWheel(
+  input: ConnectionsWheelInput,
+): ConnectionsPoint | null {
+  const { deltaX, deltaY, deltaMode, lineHeight, pageWidth, pageHeight } =
+    input;
+  if (
+    ![deltaX, deltaY, deltaMode, lineHeight, pageWidth, pageHeight].every(
+      finite,
+    ) ||
+    lineHeight <= 0 ||
+    pageWidth <= 0 ||
+    pageHeight <= 0
+  ) {
+    return null;
+  }
+  const multiplier =
+    deltaMode === 0
+      ? { x: 1, y: 1 }
+      : deltaMode === 1
+        ? { x: lineHeight, y: lineHeight }
+        : deltaMode === 2
+          ? { x: pageWidth, y: pageHeight }
+          : null;
+  if (!multiplier) return null;
+  const normalized = {
+    x: deltaX * multiplier.x,
+    y: deltaY * multiplier.y,
+  };
+  return finitePoint(normalized) ? normalized : null;
 }
 
 function finiteRect(rect: ConnectionsNodeGeometry): boolean {
