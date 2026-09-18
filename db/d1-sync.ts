@@ -214,6 +214,8 @@ export async function synchronize(
   database: D1Database,
   mutations: PendingMutation[],
 ): Promise<SyncResponse> {
+  if (mutations.length === 0) return readSyncState(database, [], []);
+
   await readSyncState(database, [], []);
   const acknowledgedMutationIds: MutationId[] = [];
   const ordered = [...mutations].sort(
