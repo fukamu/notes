@@ -13,6 +13,7 @@ import type { ConnectionsControllerState } from '@/lib/graph/connections-contrac
 import { createCardEditorCandidateIndex } from '@/lib/application/card-editor-index';
 import { invariant } from '@/lib/shared/invariant';
 import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
+import { createNotesViewStatePorts } from '@/lib/client/notes-view-state';
 import {
   alternateNotesAppConfiguration,
   createAlternateCardEditorProbe,
@@ -169,12 +170,14 @@ function model(
 function presentationProps(
   location: NotesPresentationModel['location'],
 ): NotesPresentationProps {
+  const viewState = createNotesViewStatePorts(firstId);
   return {
     model: model(location),
     actions: actions(),
     features: {
       renderCardEditor: vi.fn(() => 'alternate editor feature'),
       renderConnections: vi.fn(() => 'alternate connections feature'),
+      viewState,
     },
   };
 }
@@ -379,6 +382,7 @@ describe('alternate presentation contract', () => {
 
   it('consumes loading, error and ready connections with one open action', () => {
     const openCard = vi.fn();
+    const cameraPosition = createNotesViewStatePorts(firstId).connections;
     for (const status of ['loading', 'error', 'ready'] as const) {
       const connectionsState = controllerState(status);
       const props: ConnectionsRendererProps = {
@@ -389,6 +393,7 @@ describe('alternate presentation contract', () => {
           openCard,
         },
         presentation: alternateNotesAppConfiguration.connectionsPresentation,
+        cameraPosition,
       };
       const probe = createAlternateConnectionsProbe(props);
       expect(probe.summary).toContain(status);

@@ -5,6 +5,7 @@ import type {
   NotesPresentationActions,
   NotesPresentationModel,
 } from '@/lib/application/presentation';
+import type { NotesViewStatePorts } from '@/lib/application/notes-view-state';
 import type {
   CardEditorCommands,
   CardEditorModel,
@@ -25,6 +26,7 @@ export type ConnectionsRendererProps = {
   totalEdgeCount: number;
   actions: ConnectionsSelectionActions;
   presentation: ConnectionsPresentationAdapter;
+  cameraPosition: NotesViewStatePorts['connections'];
 };
 
 export type ConnectionsFeatureProps = {
@@ -35,6 +37,7 @@ export type ConnectionsFeatureProps = {
 export type NotesPresentationFeatures = {
   renderCardEditor: () => ReactNode;
   renderConnections: (props: ConnectionsFeatureProps) => ReactNode;
+  viewState: Pick<NotesViewStatePorts, 'body' | 'history'>;
 };
 
 export type NotesPresentationProps = {

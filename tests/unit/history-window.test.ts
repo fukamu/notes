@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  captureHistoryAnchor,
   centeredHistoryScrollTop,
   historyTotalHeight,
   historyWindowLayout,
   moveHistoryFocus,
+  restoreHistoryAnchorScrollTop,
   selectHistoryWindow,
 } from '@/lib/application/history-window';
+import { fixtureCardId } from '@/tests/fixtures/ids';
 
 describe('history window', () => {
   it('represents an empty history without a render range', () => {
@@ -101,5 +104,37 @@ describe('history window', () => {
     expect(moveHistoryFocus(3, 4, 'next')).toBe(3);
     expect(moveHistoryFocus(0, 4, 'previous')).toBe(0);
     expect(moveHistoryFocus(0, 0, 'last')).toBeNull();
+  });
+
+  it('restores an ID anchor across insertion and falls back near a removed row', () => {
+    const currentCardId = fixtureCardId('history-anchor-current');
+    const itemIds = ['a', 'b', 'c', 'd'].map((label) =>
+      fixtureCardId(`history-anchor-${label}`),
+    );
+    const captured = captureHistoryAnchor(
+      itemIds,
+      currentCardId,
+      historyWindowLayout.contentPadding + 2 * 120 + 23,
+    );
+    expect(captured).toEqual({
+      currentCardId,
+      anchorCardId: itemIds[2],
+      fallbackIndex: 2,
+      offsetPx: 23,
+    });
+    if (!captured) return;
+    const prepended = [fixtureCardId('history-anchor-new'), ...itemIds];
+    expect(restoreHistoryAnchorScrollTop(captured, prepended, 200)).toBe(
+      historyWindowLayout.contentPadding + 3 * 120 + 23,
+    );
+    expect(
+      restoreHistoryAnchorScrollTop(
+        captured,
+        prepended.filter((itemId) => itemId !== captured.anchorCardId),
+        200,
+      ),
+    ).toBe(historyWindowLayout.contentPadding + 2 * 120 + 23);
+    expect(captureHistoryAnchor([], currentCardId, 100)).toBeNull();
+    expect(restoreHistoryAnchorScrollTop(captured, [], 200)).toBe(0);
   });
 });

@@ -9,6 +9,7 @@ import {
 import { createInMemoryNotesNavigator } from '@/lib/application/navigation';
 import type { CardRecord, ConflictRecord } from '@/lib/domain/types';
 import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
+import { createNotesViewStatePorts } from '@/lib/client/notes-view-state';
 
 function card(label: string, value: number): CardRecord {
   return {
@@ -177,6 +178,7 @@ describe('notes application controller', () => {
       features: {
         renderCardEditor: () => null,
         renderConnections: () => null,
+        viewState: createNotesViewStatePorts(current.id),
       },
     };
 

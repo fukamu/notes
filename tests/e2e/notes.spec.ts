@@ -210,7 +210,10 @@ type LocalFixtureCard = {
   id: string;
   displayId: { kind: 'official'; value: number };
   title: string;
-  body: { type: 'link'; targetCardId: string }[];
+  body: (
+    | { type: 'text'; text: string }
+    | { type: 'link'; targetCardId: string }
+  )[];
   createdAt: number;
   updatedAt: number;
   localRevision: number;
@@ -788,6 +791,119 @@ test('the current card keeps one inactive editor session across view tabs', asyn
   await expect(page.getByTestId('body-editor')).toHaveCount(0);
   await page.getByRole('button', { name: 'カード', exact: true }).click();
   await expect(page.getByTestId('body-editor')).toHaveCount(1);
+});
+
+test('the current card restores body, history and map positions across view tabs', async ({
+  page,
+}, testInfo) => {
+  const cards: LocalFixtureCard[] = Array.from({ length: 30 }, (_, index) => ({
+    id: fixtureCardId(`view-state-${testInfo.project.name}-${index}`),
+    displayId: { kind: 'official', value: index + 1 },
+    title: `閲覧位置 ${index + 1}`,
+    body:
+      index === 0
+        ? [
+            { type: 'text', text: '長い本文 '.repeat(2_000) },
+            {
+              type: 'link',
+              targetCardId: fixtureCardId(
+                `view-state-${testInfo.project.name}-1`,
+              ),
+            },
+          ]
+        : [
+            {
+              type: 'link',
+              targetCardId: fixtureCardId(
+                `view-state-${testInfo.project.name}-${(index + 1) % 30}`,
+              ),
+            },
+          ],
+    createdAt: index + 1,
+    updatedAt: index + 1,
+    localRevision: 1,
+    serverRevision: 1,
+  }));
+  const current = cards[0];
+  if (!current) throw new Error('Missing view-state current card');
+  await serveSyncCards(page, cards);
+  const response = await page.goto(`/cards/${current.id}`);
+  expect(response?.status()).toBe(200);
+  await expect(page.getByTestId('card-title')).toHaveValue(current.title, {
+    timeout: 15_000,
+  });
+
+  const bodyScrollY = await page.evaluate(() => {
+    const scrollingElement = document.scrollingElement;
+    if (!scrollingElement) throw new Error('Missing scrolling element');
+    const maximum =
+      scrollingElement.scrollHeight - scrollingElement.clientHeight;
+    if (maximum < 400) throw new Error('Long body did not create scroll space');
+    const target = Math.floor(maximum * 0.6);
+    window.scrollTo({ top: target, behavior: 'auto' });
+    return window.scrollY;
+  });
+  expect(bodyScrollY).toBeGreaterThan(0);
+
+  await activateNotesView(page, testInfo.project.name, '過去のカード');
+  const history = page.getByTestId('history-list');
+  await expect(history).toHaveAttribute('data-history-total-count', '30');
+  const historyScrollTop = 12 + 12 * 120 + 37;
+  await history.evaluate((element, scrollTop) => {
+    element.scrollTop = scrollTop;
+    element.dispatchEvent(new Event('scroll', { bubbles: true }));
+  }, historyScrollTop);
+  await expect
+    .poll(() => history.evaluate((element) => element.scrollTop))
+    .toBe(historyScrollTop);
+
+  await activateNotesView(page, testInfo.project.name, 'つながり');
+  const graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 15_000,
+  });
+  const cameraBeforeMove = await connectionsCamera(graph);
+  await pressConnectionsKey(graph, 'ArrowRight', 3);
+  await pressConnectionsKey(graph, 'ArrowDown', 2);
+  await pressConnectionsKey(graph, '+');
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).renderCount)
+    .toBeGreaterThan(cameraBeforeMove.renderCount);
+  const movedCamera = await connectionsCamera(graph);
+
+  await activateNotesView(page, testInfo.project.name, 'カード');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (expected) => Math.abs(window.scrollY - expected),
+        bodyScrollY,
+      ),
+    )
+    .toBeLessThanOrEqual(20);
+
+  await activateNotesView(page, testInfo.project.name, '過去のカード');
+  await expect
+    .poll(() =>
+      history.evaluate(
+        (element, expected) => Math.abs(element.scrollTop - expected),
+        historyScrollTop,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+
+  await activateNotesView(page, testInfo.project.name, 'つながり');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 15_000,
+  });
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(movedCamera.x, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(movedCamera.y, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(movedCamera.scale, 7);
 });
 
 test('headless editor preserves IME, candidate keyboard, link activation and identity reset', async ({
@@ -3156,6 +3272,7 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   await expect
     .poll(async () => Number(await graph.getAttribute('data-camera-scale')))
     .toBeGreaterThanOrEqual(0.5);
+  const cameraBeforeReentry = await connectionsCamera(graph);
 
   const nextCard = graph.locator('button[data-card-id][aria-current="true"]');
   const nextCardId = await nextCard.getAttribute('data-card-id');
@@ -3167,8 +3284,23 @@ test('10k connections lays out the complete graph and paints edges on Canvas', a
   await expectPathname(page, `/cards/${nextCardId}/connections`);
   await expect(graph).toHaveAttribute('data-total-node-count', '10000');
   await expect(graph).toHaveAttribute('data-edge-render-status', 'painted');
-  await expect(graph).toHaveAttribute('data-card-render-status', 'painted');
-  await expect(graph.locator('button[data-card-id]')).toHaveCount(0);
+  await expect(graph).toHaveAttribute('data-card-render-status', 'cleared');
+  await expect(graph).toHaveAttribute('data-node-renderer', 'html');
+  await expect
+    .poll(() => graph.locator('button[data-card-id]').count())
+    .toBeGreaterThan(0);
+  await expect
+    .poll(() => graph.locator('button[data-card-id]').count())
+    .toBeLessThan(10_000);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(cameraBeforeReentry.x, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(cameraBeforeReentry.y, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(cameraBeforeReentry.scale, 7);
   const reentryReadyMs = performance.now() - reentryStarted;
   const dom = await graph.evaluate((element) => ({
     descendants: element.querySelectorAll('*').length,

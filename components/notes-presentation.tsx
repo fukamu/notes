@@ -21,6 +21,7 @@ import type {
   NotesStatusKind,
   NotesViewName,
 } from '@/lib/application/presentation';
+import { useCardScrollPosition } from '@/components/use-card-scroll-position';
 
 function StatusIcon({ kind }: { kind: NotesStatusKind }) {
   if (kind === 'saved') {
@@ -93,7 +94,10 @@ const navigation: {
 function Navigation({
   model,
   actions,
-}: Pick<NotesPresentationProps, 'model' | 'actions'>) {
+  beforeActivate,
+}: Pick<NotesPresentationProps, 'model' | 'actions'> & {
+  beforeActivate: (view: NotesViewName) => void;
+}) {
   return (
     <nav aria-label="表示切り替え" className="app-navigation">
       {navigation.map((item) => {
@@ -104,7 +108,10 @@ function Navigation({
             type="button"
             aria-current={model.activeView === item.view ? 'page' : undefined}
             disabled={!model.availableViews[item.view]}
-            onClick={() => actions[item.activate]()}
+            onClick={() => {
+              beforeActivate(item.view);
+              actions[item.activate]();
+            }}
             className="nav-button aria-[current=page]:nav-button-active disabled:opacity-35"
           >
             <Icon aria-hidden="true" className="size-4" />
@@ -195,6 +202,11 @@ export function NotesPresentation({
   actions,
   features,
 }: NotesPresentationProps) {
+  const { captureBeforeViewChange } = useCardScrollPosition(
+    model.activeView,
+    model.currentCard?.id ?? null,
+    features.viewState.body,
+  );
   if (!model.initialized) {
     return (
       <main className="grid min-h-dvh place-items-center text-sm text-muted-foreground">
@@ -250,7 +262,11 @@ export function NotesPresentation({
             active={model.activeView === 'card'}
           />
           {model.activeView === 'history' && (
-            <HistoryView model={model.history} onOpenCard={actions.openCard} />
+            <HistoryView
+              model={model.history}
+              onOpenCard={actions.openCard}
+              position={features.viewState.history}
+            />
           )}
           {model.activeView === 'connections' &&
             model.connections &&
@@ -259,7 +275,11 @@ export function NotesPresentation({
               actions,
             })}
         </div>
-        <Navigation model={model} actions={actions} />
+        <Navigation
+          model={model}
+          actions={actions}
+          beforeActivate={captureBeforeViewChange}
+        />
       </div>
     </main>
   );

@@ -1,5 +1,8 @@
 import { ArrowRight } from 'lucide-react';
+import { useMemo } from 'react';
 import type { CardId } from '@/lib/domain/id';
+import type { HistoryAnchor } from '@/lib/application/history-window';
+import type { ViewStateSlot } from '@/lib/application/notes-view-state';
 import type { HistoryViewModel } from '@/lib/application/presentation';
 import {
   historyWindowLayout,
@@ -10,9 +13,14 @@ import { useHistoryWindow } from '@/components/use-history-window';
 type Props = {
   model: HistoryViewModel;
   onOpenCard: (cardId: CardId) => void;
+  position: ViewStateSlot<HistoryAnchor>;
 };
 
-export function HistoryView({ model, onOpenCard }: Props) {
+export function HistoryView({ model, onOpenCard, position }: Props) {
+  const itemIds = useMemo(
+    () => model.items.map((item) => item.cardId),
+    [model.items],
+  );
   const currentIndex = model.currentCardId
     ? model.items.findIndex((item) => item.cardId === model.currentCardId)
     : -1;
@@ -23,8 +31,10 @@ export function HistoryView({ model, onOpenCard }: Props) {
     updateFromScroll,
     moveFocus,
   } = useHistoryWindow(
-    model.items.length,
+    itemIds,
+    model.currentCardId,
     currentIndex === -1 ? null : currentIndex,
+    position,
   );
   const visibleItems = model.items.slice(window.start, window.endExclusive);
   const rowExtent = historyWindowLayout.rowHeight + historyWindowLayout.rowGap;

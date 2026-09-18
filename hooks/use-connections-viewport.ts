@@ -9,12 +9,14 @@ import {
 import { createConnectionsCanvasCardRenderer } from '@/lib/client/connections-card-canvas-renderer';
 import { createConnectionsCanvasEdgeRenderer } from '@/lib/client/connections-canvas-renderer';
 import type { CardId } from '@/lib/domain/id';
+import type { NotesViewStatePorts } from '@/lib/application/notes-view-state';
 import type {
   ConnectionsReadyNode,
   ConnectionsReadyState,
 } from '@/lib/graph/connections-contract';
 import {
   centerConnectionsCameraOnRect,
+  captureConnectionsCameraSnapshot,
   connectionsCameraContainsRect,
   connectionsCameraTransform,
   createConnectionsCameraFrameAdapter,
@@ -26,6 +28,7 @@ import {
   preserveConnectionsRectAnchor,
   resolveConnectionsCameraLimits,
   resizeConnectionsCamera,
+  restoreConnectionsCameraSnapshot,
   zoomConnectionsCamera,
   type ConnectionsCamera,
   type ConnectionsCameraFrameAdapter,
@@ -78,6 +81,7 @@ export function useConnectionsViewport(
   preparedVisibility: PreparedConnectionsVisibility | null,
   retainedNodeIndex: number | null,
   openOverviewCard: (cardId: CardId) => void,
+  cameraPosition: NotesViewStatePorts['connections'],
 ): ConnectionsViewportController {
   const viewportRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
@@ -89,6 +93,7 @@ export function useConnectionsViewport(
   const preparedVisibilityRef = useRef(preparedVisibility);
   const retainedNodeIndexRef = useRef(retainedNodeIndex);
   const openOverviewCardRef = useRef(openOverviewCard);
+  const cameraPositionRef = useRef(cameraPosition);
   const geometryRef = useRef<ConnectionsCameraGeometry | null>(null);
   const cameraRef = useRef<ConnectionsCamera | null>(null);
   const preferredScaleRef = useRef<number | null>(null);
@@ -164,7 +169,15 @@ export function useConnectionsViewport(
     preparedVisibilityRef.current = preparedVisibility;
     retainedNodeIndexRef.current = retainedNodeIndex;
     openOverviewCardRef.current = openOverviewCard;
-  }, [model, openOverviewCard, padding, preparedVisibility, retainedNodeIndex]);
+    cameraPositionRef.current = cameraPosition;
+  }, [
+    cameraPosition,
+    model,
+    openOverviewCard,
+    padding,
+    preparedVisibility,
+    retainedNodeIndex,
+  ]);
 
   const readGeometry = useCallback((): ConnectionsCameraGeometry | null => {
     const viewport = viewportRef.current;
@@ -419,6 +432,23 @@ export function useConnectionsViewport(
     (camera: ConnectionsCamera | null, persistScale = false) => {
       if (!camera) return;
       cameraRef.current = camera;
+      const geometry = geometryRef.current;
+      const ready = modelRef.current;
+      const geometryModel = geometryModelRef.current;
+      if (
+        geometry &&
+        ready &&
+        geometryModel?.currentCardId === ready.currentCardId &&
+        geometryModel.layoutKey === ready.layoutKey
+      ) {
+        const snapshot = captureConnectionsCameraSnapshot(
+          ready.currentCardId,
+          ready.layoutKey,
+          camera,
+          geometry,
+        );
+        if (snapshot) cameraPositionRef.current.write(snapshot);
+      }
       frameAdapterRef.current?.queue(camera);
       if (persistScale) queuePreferredScale(camera.scale);
     },
@@ -441,10 +471,31 @@ export function useConnectionsViewport(
     const previousCamera = cameraRef.current;
     const previousModel = geometryModelRef.current;
     const layoutChanged = layoutKeyRef.current !== ready.layoutKey;
+    const currentCardChanged =
+      previousModel !== null &&
+      previousModel.currentCardId !== ready.currentCardId;
     geometryRef.current = geometry;
     layoutKeyRef.current = ready.layoutKey;
     geometryModelRef.current = ready;
     if (!previousCamera || !previousGeometry) {
+      const snapshot = cameraPositionRef.current.read();
+      commitCameraWithVisibility(
+        (snapshot &&
+          restoreConnectionsCameraSnapshot(
+            snapshot,
+            ready.currentCardId,
+            ready.layoutKey,
+            geometry,
+          )) ||
+          initialConnectionsCamera(
+            geometry,
+            ready.currentNode,
+            preferredScaleRef.current,
+          ),
+      );
+      return;
+    }
+    if (currentCardChanged) {
       commitCameraWithVisibility(
         initialConnectionsCamera(
           geometry,
@@ -570,6 +621,7 @@ export function useConnectionsViewport(
     synchronizeGeometry();
   }, [
     model?.height,
+    model?.currentCardId,
     model?.layoutKey,
     model?.width,
     preparedVisibility?.worldBounds.height,

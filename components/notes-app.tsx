@@ -28,6 +28,7 @@ import type {
 } from '@/lib/application/presentation';
 import type { CardEdit } from '@/lib/domain/card-transitions';
 import type { CardId } from '@/lib/domain/id';
+import { createNotesViewStatePorts } from '@/lib/client/notes-view-state';
 import { createLegacyNotesRuntimePorts } from '@/lib/client/legacy-notes-runtime';
 import { NotesProvider, useNotesDataStore } from '@/lib/client/notes-store';
 import { useNotesApplication } from '@/lib/client/use-notes-application';
@@ -126,6 +127,10 @@ function NotesConnector({
   const store = useNotesDataStore();
   const { model, actions } = useNotesApplication(store);
   const currentCardId = model.currentCard?.id ?? null;
+  const viewState = useMemo(
+    () => createNotesViewStatePorts(currentCardId),
+    [currentCardId],
+  );
   const [editorSessionCardId, setEditorSessionCardId] = useState(() =>
     model.activeView === 'card' ? currentCardId : null,
   );
@@ -202,10 +207,15 @@ function NotesConnector({
           actions={connectionsActions}
           presentation={configuration.connectionsPresentation}
           Renderer={configuration.ConnectionsRenderer}
+          cameraPosition={viewState.connections}
         />
       ),
+      viewState: {
+        body: viewState.body,
+        history: viewState.history,
+      },
     }),
-    [configuration, editorFeature],
+    [configuration, editorFeature, viewState],
   );
   const Presentation = configuration.Presentation;
   return <Presentation model={model} actions={actions} features={features} />;
