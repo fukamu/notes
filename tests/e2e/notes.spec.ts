@@ -1029,7 +1029,15 @@ test('link candidates are descending, prefix-filtered, scroll-following and expl
     id: fixtureCardId(`candidate-prefix-${index + 1}`),
     displayId: { kind: 'official', value: index + 1 },
     title: `候補 ${index + 1}`,
-    body: [],
+    body:
+      index === 100
+        ? [
+            {
+              type: 'text',
+              text: Array.from({ length: 80 }, () => '長文').join('\n'),
+            },
+          ]
+        : [],
     createdAt: index + 1,
     updatedAt: index + 1,
     localRevision: 1,
@@ -1043,6 +1051,7 @@ test('link candidates are descending, prefix-filtered, scroll-following and expl
 
   const editor = page.getByTestId('body-editor');
   await editor.click();
+  await editor.press('Control+End');
   const deleteThroughEditingCommand = (inputType = 'deleteContentBackward') =>
     editor.evaluate((editorElement, nextInputType) => {
       const selection = window.getSelection();
@@ -1080,16 +1089,51 @@ test('link candidates are descending, prefix-filtered, scroll-following and expl
       );
     }, inputType);
   const input = await context.newCDPSession(page);
-  await input.send('Input.insertText', { text: '#' });
+  await input.send('Input.insertText', { text: ' #' });
   const candidateList = page.getByTestId('link-candidates');
   const candidateButtons = candidateList.getByRole('button');
+  const candidatePopover = page.getByTestId('link-candidate-popover');
+  await expect(candidatePopover).toBeVisible();
+  await expect(candidatePopover).toHaveAttribute('data-side', 'above');
+  const candidateGeometry = await candidatePopover.evaluate((popover) => {
+    const popup = popover.getBoundingClientRect();
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      throw new Error('Expected the editor caret');
+    }
+    const caret = selection.getRangeAt(0).getBoundingClientRect();
+    const viewport = window.visualViewport;
+    return {
+      popupTop: popup.top,
+      popupBottom: popup.bottom,
+      caretTop: caret.top,
+      viewportTop: viewport?.offsetTop ?? 0,
+      viewportBottom:
+        (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight),
+    };
+  });
+  expect(candidateGeometry.popupBottom).toBeLessThanOrEqual(
+    candidateGeometry.caretTop - 7,
+  );
+  expect(candidateGeometry.popupTop).toBeGreaterThanOrEqual(
+    candidateGeometry.viewportTop,
+  );
+  expect(candidateGeometry.popupBottom).toBeLessThanOrEqual(
+    candidateGeometry.viewportBottom,
+  );
   await expect(candidateButtons).toHaveCount(100);
   await expect(candidateButtons.first()).toContainText('#100');
   await expect(candidateButtons.last()).toContainText('#1');
 
+  const documentScrollBeforeCandidateNavigation = await page.evaluate(
+    () => window.scrollY,
+  );
   for (let index = 0; index < 30; index += 1) {
     await editor.press('ArrowDown');
   }
+  expect(await page.evaluate(() => window.scrollY)).toBe(
+    documentScrollBeforeCandidateNavigation,
+  );
   const activeCandidate = candidateList.locator('[aria-current=true]');
   await expect(activeCandidate).toContainText('#70');
   const activeIsVisible = await activeCandidate.evaluate((element) => {
