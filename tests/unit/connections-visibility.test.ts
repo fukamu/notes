@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CONNECTIONS_OVERVIEW_CARD_HEIGHT_PX,
   hitTestConnectionsNode,
   prepareConnectionsVisibility,
   queryConnectionsVisibility,
@@ -156,11 +157,31 @@ describe('connections visibility', () => {
     ).toEqual([0]);
   });
 
-  it('switches to overview from projected card height, not graph size', () => {
-    expect(resolveConnectionsNodeRenderMode(72, 0.5)).toBe('html');
-    expect(resolveConnectionsNodeRenderMode(72, 0.499)).toBe('overview-canvas');
-    expect(resolveConnectionsNodeRenderMode(72, 1)).toBe('html');
-    expect(resolveConnectionsNodeRenderMode(0, 1)).toBe('html');
+  it('switches below the 28px projected card height for different card sizes', () => {
+    expect(CONNECTIONS_OVERVIEW_CARD_HEIGHT_PX).toBe(28);
+    expect(resolveConnectionsNodeRenderMode(72, 0.4)).toBe('html');
+    expect(resolveConnectionsNodeRenderMode(72, 0.37)).toBe('overview-canvas');
+    expect(resolveConnectionsNodeRenderMode(56, 0.5)).toBe('html');
+    expect(resolveConnectionsNodeRenderMode(56, 0.499)).toBe('overview-canvas');
+    expect(resolveConnectionsNodeRenderMode(40, 0.7)).toBe('html');
+    expect(resolveConnectionsNodeRenderMode(40, 0.699)).toBe('overview-canvas');
+  });
+
+  it('keeps HTML rendering for invalid projected-height inputs', () => {
+    for (const [nodeHeight, cameraScale] of [
+      [0, 1],
+      [-1, 1],
+      [Number.NaN, 1],
+      [Number.POSITIVE_INFINITY, 1],
+      [72, 0],
+      [72, -1],
+      [72, Number.NaN],
+      [72, Number.POSITIVE_INFINITY],
+    ] as const) {
+      expect(resolveConnectionsNodeRenderMode(nodeHeight, cameraScale)).toBe(
+        'html',
+      );
+    }
   });
 
   it('hit-tests exact card bounds through the node BVH in viewport coordinates', () => {
