@@ -122,13 +122,20 @@ describe('notes application controller', () => {
     expect(navigator.getLocation()).toEqual({ kind: 'empty' });
     expect(listener).not.toHaveBeenCalled();
 
-    const controller = createNotesApplicationController(store, navigator);
+    const onCardCreated = vi.fn(() => navigator.getLocation());
+    const controller = createNotesApplicationController(store, navigator, {
+      onCardCreated,
+    });
     await controller.createCard();
     expect(navigator.getLocation()).toEqual({
       kind: 'card',
       cardId: store.cards.at(-1)?.id,
     });
     expect(listener).toHaveBeenCalledOnce();
+    expect(onCardCreated).toHaveBeenCalledWith(store.cards.at(-1)?.id);
+    expect(onCardCreated.mock.results[0]?.value).toEqual(
+      navigator.getLocation(),
+    );
   });
 
   it('coordinates edits and conflict resolution around the current card', () => {

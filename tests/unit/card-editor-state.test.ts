@@ -8,6 +8,7 @@ import {
   isCardEditorHashContext,
   isTypedCardEditorInput,
   openCardEditorCandidates,
+  shouldMoveCardEditorTitleToBody,
 } from '@/lib/editor/card-editor-state';
 
 describe('card editor candidate state', () => {
@@ -54,6 +55,29 @@ describe('card editor candidate state', () => {
 });
 
 describe('card editor input and IME classification', () => {
+  it('moves only unmodified non-composing title Enter to the body', () => {
+    const key = (
+      overrides: Partial<Parameters<typeof shouldMoveCardEditorTitleToBody>[0]>,
+    ) =>
+      shouldMoveCardEditorTitleToBody({
+        key: 'Enter',
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+        composing: false,
+        ...overrides,
+      });
+
+    expect(key({})).toBe(true);
+    expect(key({ composing: true })).toBe(false);
+    expect(key({ shiftKey: true })).toBe(false);
+    expect(key({ ctrlKey: true })).toBe(false);
+    expect(key({ metaKey: true })).toBe(false);
+    expect(key({ altKey: true })).toBe(false);
+    expect(key({ key: 'Tab' })).toBe(false);
+  });
+
   it('routes platform history shortcuts once and leaves composition alone', () => {
     const key = (
       overrides: Partial<Parameters<typeof cardEditorHistoryShortcut>[0]>,

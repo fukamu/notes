@@ -23,6 +23,7 @@ import type {
   CardEditorActivity,
   CardEditorCandidateModel,
   CardEditorDocumentInput,
+  EditorFocusIntent,
   NotesPresentationActions,
 } from '@/lib/application/presentation';
 import type { CardId } from '@/lib/domain/id';
@@ -36,6 +37,7 @@ import {
   isCardEditorDeletionInput,
   isTypedCardEditorInput,
   openCardEditorCandidates,
+  shouldMoveCardEditorTitleToBody,
   type CardEditorCandidateState,
 } from '@/lib/editor/card-editor-state';
 import {
@@ -98,6 +100,8 @@ type UseCardEditorOptions = {
   activity: CardEditorActivity;
   actions: CardEditorActions;
   presentation: CardEditorPresentationAdapter;
+  focusIntent?: EditorFocusIntent | null;
+  consumeFocusIntent?: (requestId: number) => void;
 };
 
 export function sanitizePastedCardEditorHtml(html: string): string {
@@ -167,6 +171,8 @@ export function useCardEditor({
   activity,
   actions,
   presentation,
+  focusIntent = null,
+  consumeFocusIntent = () => undefined,
 }: UseCardEditorOptions): {
   model: CardEditorModel;
   commands: CardEditorCommands;
@@ -204,11 +210,56 @@ export function useCardEditor({
   const activityRef = useRef(activity);
   const actionsRef = useRef(actions);
   const mountedRef = useRef(true);
+  const focusIntentRef = useRef(focusIntent);
+  const consumeFocusIntentRef = useRef(consumeFocusIntent);
+  const editorInstanceRef = useRef<Editor | null>(null);
+  const editorCardIdRef = useRef<CardId | null>(null);
+  const scheduledTitleFocusRequestIdRef = useRef<number | null>(null);
+  const completedTitleFocusRequestIdRef = useRef<number | null>(null);
+  const requestTitleFocus = useCallback((element: HTMLInputElement | null) => {
+    const requested = focusIntentRef.current;
+    if (
+      !element ||
+      !requested ||
+      scheduledTitleFocusRequestIdRef.current === requested.requestId ||
+      completedTitleFocusRequestIdRef.current === requested.requestId
+    ) {
+      return;
+    }
+    scheduledTitleFocusRequestIdRef.current = requested.requestId;
+    queueMicrotask(() => {
+      if (scheduledTitleFocusRequestIdRef.current === requested.requestId) {
+        scheduledTitleFocusRequestIdRef.current = null;
+      }
+      const currentIntent = focusIntentRef.current;
+      const currentEditor = editorInstanceRef.current;
+      if (
+        !mountedRef.current ||
+        titleInputRef.current !== element ||
+        !currentIntent ||
+        currentIntent.requestId !== requested.requestId ||
+        currentIntent.cardId !== documentRef.current.cardId ||
+        currentIntent.target !== 'title' ||
+        activityRef.current.kind !== 'active' ||
+        editorCardIdRef.current !== currentIntent.cardId ||
+        !currentEditor ||
+        currentEditor.isDestroyed
+      ) {
+        return;
+      }
+      element.focus({ preventScroll: true });
+      if (element.ownerDocument.activeElement === element) {
+        completedTitleFocusRequestIdRef.current = currentIntent.requestId;
+        consumeFocusIntentRef.current(currentIntent.requestId);
+      }
+    });
+  }, []);
   const setTitleInputElement = useCallback(
     (element: HTMLInputElement | null) => {
       titleInputRef.current = element;
+      requestTitleFocus(element);
     },
-    [],
+    [requestTitleFocus],
   );
   const candidates =
     activity.kind === 'active'
@@ -257,7 +308,9 @@ export function useCardEditor({
     documentRef.current = documentInput;
     activityRef.current = activity;
     actionsRef.current = actions;
-  }, [actions, activity, documentInput]);
+    focusIntentRef.current = focusIntent;
+    consumeFocusIntentRef.current = consumeFocusIntent;
+  }, [actions, activity, consumeFocusIntent, documentInput, focusIntent]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -372,6 +425,15 @@ export function useCardEditor({
     },
     [documentInput.cardId],
   );
+
+  useLayoutEffect(() => {
+    editorInstanceRef.current = editor;
+    editorCardIdRef.current = editorCardId;
+  }, [editor, editorCardId]);
+
+  useEffect(() => {
+    requestTitleFocus(titleInputRef.current);
+  }, [editor, editorCardId, focusIntent, requestTitleFocus]);
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
@@ -607,6 +669,27 @@ export function useCardEditor({
   };
 
   const handleTitleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    const key = {
+      key: event.key,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      composing: event.nativeEvent.isComposing || titleCompositionRef.current,
+    };
+    if (
+      shouldMoveCardEditorTitleToBody(key) &&
+      editor &&
+      !editor.isDestroyed &&
+      editorCardId === documentInput.cardId &&
+      activityRef.current.kind === 'active'
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      prepareBodyEditing();
+      editor.commands.focus();
+      return;
+    }
     const shortcut = historyShortcutFor(event);
     if (!shortcut) return;
     event.preventDefault();
@@ -747,6 +830,10 @@ export function useCardEditor({
     });
   };
 
+  const prepareBodyEditing = () => {
+    if (editor) commitPendingTitle(editor);
+  };
+
   return {
     model: {
       editor,
@@ -781,9 +868,7 @@ export function useCardEditor({
           commitPendingTitle(editor);
         }
       },
-      prepareBodyEditing: () => {
-        if (editor) commitPendingTitle(editor);
-      },
+      prepareBodyEditing,
       handleKeyDown,
       handleInput,
       handleCompositionEnd,

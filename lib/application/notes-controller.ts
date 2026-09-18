@@ -76,6 +76,14 @@ export type NotesApplicationController = NotesPresentationActions & {
   reconcileNavigation: () => NotesLocation;
 };
 
+export type NotesApplicationControllerPorts = Readonly<{
+  onCardCreated: (cardId: CardId) => void;
+}>;
+
+const DEFAULT_CONTROLLER_PORTS: NotesApplicationControllerPorts = {
+  onCardCreated: () => undefined,
+};
+
 function activeView(location: NotesLocation): NotesViewName {
   return location.kind === 'empty' ? 'card' : location.kind;
 }
@@ -90,6 +98,7 @@ function navigate(
 export function createNotesApplicationController(
   store: NotesStorePort,
   navigator: NotesNavigator,
+  ports: NotesApplicationControllerPorts = DEFAULT_CONTROLLER_PORTS,
 ): NotesApplicationController {
   const currentCard = () => {
     const currentCardId = notesLocationCardId(navigator.getLocation());
@@ -110,6 +119,7 @@ export function createNotesApplicationController(
     createCard: async () => {
       const card = await store.createCard();
       navigate(navigator, { type: 'open-card', cardId: card.id });
+      ports.onCardCreated(card.id);
     },
     openCard: (cardId) => {
       if (!store.hasCard(cardId)) return;

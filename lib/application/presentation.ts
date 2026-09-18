@@ -78,6 +78,12 @@ export type CardEditorActivity =
     }
   | { kind: 'inactive' };
 
+export type EditorFocusIntent = Readonly<{
+  requestId: number;
+  cardId: CardId;
+  target: 'title';
+}>;
+
 export type ConnectionsViewModel = ConnectionsInputModel;
 
 type NotesPresentationModelBase = {
