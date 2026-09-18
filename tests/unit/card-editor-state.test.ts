@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   cardEditorCandidateToken,
   cardEditorHistoryShortcut,
-  classifyCardEditorDocumentUpdate,
   filterCardEditorCandidates,
   handleCardEditorCandidateKey,
   isCardEditorDeletionInput,
@@ -10,7 +9,6 @@ import {
   isTypedCardEditorInput,
   openCardEditorCandidates,
 } from '@/lib/editor/card-editor-state';
-import { fixtureCardId } from '@/tests/fixtures/ids';
 
 describe('card editor candidate state', () => {
   it('wraps ArrowUp/ArrowDown and selects the active candidate with Enter', () => {
@@ -171,21 +169,5 @@ describe('card editor input and IME classification', () => {
     expect(valuesFor('3')).toEqual([39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 3]);
     expect(valuesFor('')).toHaveLength(100);
     expect(candidates).toHaveLength(100);
-  });
-});
-
-describe('card editor document lifecycle', () => {
-  it('resets only for identity changes and syncs external body separately', () => {
-    const first = fixtureCardId('editor-lifecycle-first');
-    const second = fixtureCardId('editor-lifecycle-second');
-    expect(classifyCardEditorDocumentUpdate(first, second, false)).toBe(
-      'identity-reset',
-    );
-    expect(classifyCardEditorDocumentUpdate(first, first, false)).toBe(
-      'external-body-sync',
-    );
-    expect(classifyCardEditorDocumentUpdate(first, first, true)).toBe(
-      'unchanged',
-    );
   });
 });

@@ -8,6 +8,7 @@ import {
   type SyntheticEvent,
 } from 'react';
 import { type Editor } from '@tiptap/core';
+import type { Fragment } from '@tiptap/pm/model';
 import { EditorState } from '@tiptap/pm/state';
 import { useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -19,7 +20,6 @@ import type {
 import type { CardId } from '@/lib/domain/id';
 import { queryCardEditorCandidates } from '@/lib/application/card-editor-index';
 import {
-  classifyCardEditorDocumentUpdate,
   cardEditorHistoryShortcut,
   cardEditorCandidateToken,
   clampCardEditorCandidate,
@@ -31,6 +31,7 @@ import {
   type CardEditorCandidateState,
 } from '@/lib/editor/card-editor-state';
 import {
+  CARD_EDITOR_TITLE_ATTRIBUTE,
   CardEditorTitleAttribute,
   CardEditorUndoRedo,
   cardEditorDocumentTitle,
@@ -123,12 +124,14 @@ type PendingCardTitle = Readonly<{
   after: string;
 }>;
 
+type EditorBodySnapshot = Readonly<{
+  content: Fragment;
+  body: CardEditorInputModel['body'];
+  key: string;
+}>;
+
 function bodyKey(body: CardEditorInputModel['body']): string {
   return JSON.stringify(body);
-}
-
-function editorBodyKey(editor: Editor): string {
-  return bodyKey(editorDocumentToSegments(editor.getJSON()));
 }
 
 function titleFromEditor(editor: Editor): string | null {
@@ -177,7 +180,9 @@ export function useCardEditor({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const pendingTitleRef = useRef<PendingCardTitle | null>(null);
   const persistedTitleRef = useRef(input.title);
-  const persistedBodyKeyRef = useRef(bodyKey(input.body));
+  const inputBodyKey = useMemo(() => bodyKey(input.body), [input.body]);
+  const persistedBodyKeyRef = useRef(inputBodyKey);
+  const bodySnapshotRef = useRef<EditorBodySnapshot | null>(null);
   const inputRef = useRef(input);
   const actionsRef = useRef(actions);
   const mountedRef = useRef(true);
@@ -194,6 +199,20 @@ export function useCardEditor({
   const normalizedCandidateState = clampCardEditorCandidate(
     candidateState,
     candidates.length,
+  );
+  const inputBodyDocument = useMemo(
+    () => segmentsToEditorDocument(input.body),
+    [input.body],
+  );
+  const inputDocument = useMemo(
+    () => ({
+      ...inputBodyDocument,
+      attrs: {
+        ...inputBodyDocument.attrs,
+        [CARD_EDITOR_TITLE_ATTRIBUTE]: input.title,
+      },
+    }),
+    [inputBodyDocument, input.title],
   );
   const extensions = useMemo(
     () => [
@@ -227,11 +246,22 @@ export function useCardEditor({
 
   useEffect(() => () => labels.destroy(), [labels]);
 
+  const readEditorBody = useCallback((currentEditor: Editor) => {
+    const content = currentEditor.state.doc.content;
+    const cached = bodySnapshotRef.current;
+    if (cached?.content === content) return cached;
+
+    const body = editorDocumentToSegments(currentEditor.getJSON());
+    const snapshot = { content, body, key: bodyKey(body) };
+    bodySnapshotRef.current = snapshot;
+    return snapshot;
+  }, []);
+
   const editor = useEditor(
     {
       immediatelyRender: false,
       extensions,
-      content: segmentsToEditorDocument(input.body, input.title),
+      content: inputDocument,
       editorProps: {
         attributes: presentation.contentAttributes,
         transformPastedHTML: sanitizePastedCardEditorHtml,
@@ -239,12 +269,13 @@ export function useCardEditor({
       onCreate: ({ editor: currentEditor }) => {
         triggerPositionRef.current = undefined;
         compositionInputRef.current = false;
+        bodySnapshotRef.current = null;
         setCandidateState(closeCardEditorCandidates());
         setEditorCardId(input.cardId);
         const createdTitle = titleFromEditor(currentEditor) ?? input.title;
         setTitle(createdTitle);
         persistedTitleRef.current = input.title;
-        persistedBodyKeyRef.current = bodyKey(input.body);
+        persistedBodyKeyRef.current = inputBodyKey;
         pendingTitleRef.current = null;
         setPendingTitleAvailability({ active: false, changed: false });
         setHistoryCanUndo(currentEditor.can().undo());
@@ -253,6 +284,7 @@ export function useCardEditor({
         setSelectionEmpty(currentEditor.state.selection.empty);
       },
       onDestroy: () => {
+        bodySnapshotRef.current = null;
         setEditorCardId((current) =>
           current === input.cardId ? null : current,
         );
@@ -266,11 +298,10 @@ export function useCardEditor({
             actionsRef.current.updateTitle(nextTitle);
           }
         }
-        const nextBody = editorDocumentToSegments(currentEditor.getJSON());
-        const nextBodyKey = bodyKey(nextBody);
-        if (nextBodyKey !== persistedBodyKeyRef.current) {
-          persistedBodyKeyRef.current = nextBodyKey;
-          actionsRef.current.updateBody(nextBody);
+        const nextBody = readEditorBody(currentEditor);
+        if (nextBody.key !== persistedBodyKeyRef.current) {
+          persistedBodyKeyRef.current = nextBody.key;
+          actionsRef.current.updateBody(nextBody.body);
         }
         const triggerPosition = triggerPositionRef.current;
         if (triggerPosition === undefined || currentEditor.view.composing)
@@ -315,17 +346,12 @@ export function useCardEditor({
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    const editorBodyMatches = editorBodyKey(editor) === bodyKey(input.body);
-    const update = classifyCardEditorDocumentUpdate(
-      editorCardId,
-      input.cardId,
-      editorBodyMatches,
-    );
-    if (update === 'identity-reset') {
+    if (editorCardId !== input.cardId) {
       pendingTitleRef.current = null;
       titleCompositionRef.current = false;
       persistedTitleRef.current = input.title;
-      persistedBodyKeyRef.current = bodyKey(input.body);
+      persistedBodyKeyRef.current = inputBodyKey;
+      bodySnapshotRef.current = null;
       return;
     }
 
@@ -334,12 +360,10 @@ export function useCardEditor({
       input.title === persistedTitleRef.current ||
       (pendingTitle?.cardId === input.cardId &&
         input.title === pendingTitle.after);
-    const bodyIsSelfEcho = bodyKey(input.body) === persistedBodyKeyRef.current;
+    const bodyIsSelfEcho = inputBodyKey === persistedBodyKeyRef.current;
     if (titleIsSelfEcho && bodyIsSelfEcho) return;
 
-    const nextDocument = editor.schema.nodeFromJSON(
-      segmentsToEditorDocument(input.body, input.title),
-    );
+    const nextDocument = editor.schema.nodeFromJSON(inputDocument);
     editor.view.updateState(
       EditorState.create({
         schema: editor.schema,
@@ -347,10 +371,11 @@ export function useCardEditor({
         plugins: editor.state.plugins,
       }),
     );
+    bodySnapshotRef.current = null;
     pendingTitleRef.current = null;
     titleCompositionRef.current = false;
     persistedTitleRef.current = input.title;
-    persistedBodyKeyRef.current = bodyKey(input.body);
+    persistedBodyKeyRef.current = inputBodyKey;
     triggerPositionRef.current = undefined;
     const synchronizedCardId = input.cardId;
     queueMicrotask(() => {
@@ -367,7 +392,14 @@ export function useCardEditor({
       setCandidateState(closeCardEditorCandidates());
       setSelectionEmpty(editor.state.selection.empty);
     });
-  }, [editor, editorCardId, input.body, input.cardId, input.title]);
+  }, [
+    editor,
+    editorCardId,
+    input.cardId,
+    input.title,
+    inputBodyKey,
+    inputDocument,
+  ]);
 
   const updateHistoryAvailability = (currentEditor: Editor) => {
     setHistoryCanUndo(currentEditor.can().undo());
@@ -432,7 +464,7 @@ export function useCardEditor({
     if (!editor || editor.isDestroyed || editorCardId !== input.cardId) return;
     commitPendingTitle(editor);
     const beforeTitle = titleFromEditor(editor);
-    const beforeBody = editorBodyKey(editor);
+    const beforeBody = readEditorBody(editor);
     const applied =
       direction === 'undo' ? editor.commands.undo() : editor.commands.redo();
     if (!applied) {
@@ -440,11 +472,11 @@ export function useCardEditor({
       return;
     }
     const afterTitle = titleFromEditor(editor);
-    const afterBody = editorBodyKey(editor);
+    const afterBody = readEditorBody(editor);
     focusHistoryTarget(
       editor,
       beforeTitle !== afterTitle,
-      beforeBody !== afterBody,
+      beforeBody.key !== afterBody.key,
     );
   };
 
