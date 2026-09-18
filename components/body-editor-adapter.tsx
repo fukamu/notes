@@ -3,14 +3,16 @@
 import type { ComponentType } from 'react';
 import type { CardEditorRendererProps } from '@/components/presentation-contract';
 import type {
-  CardEditorInputModel,
+  CardEditorActivity,
+  CardEditorDocumentInput,
   NotesPresentationActions,
 } from '@/lib/application/presentation';
 import { useCardEditor } from '@/lib/editor/use-card-editor';
 import type { CardEditorPresentationAdapter } from '@/lib/editor/use-card-editor';
 
 type Props = {
-  model: CardEditorInputModel;
+  document: CardEditorDocumentInput;
+  activity: CardEditorActivity;
   actions: Pick<
     NotesPresentationActions,
     'openCard' | 'updateTitle' | 'updateBody'
@@ -20,13 +22,15 @@ type Props = {
 };
 
 export function BodyEditorAdapter({
-  model,
+  document,
+  activity,
   actions,
   presentation,
   Renderer,
 }: Props) {
   const controller = useCardEditor({
-    input: model,
+    document,
+    activity,
     actions,
     presentation,
   });

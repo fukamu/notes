@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import {
   BodyEditor,
@@ -21,6 +21,13 @@ import type {
   NotesPresentationFeatures,
 } from '@/components/presentation-contract';
 import type { NotesRuntimePorts } from '@/lib/application/notes-runtime';
+import type {
+  CardEditorActivity,
+  CardEditorDocumentInput,
+  NotesPresentationActions,
+} from '@/lib/application/presentation';
+import type { CardEdit } from '@/lib/domain/card-transitions';
+import type { CardId } from '@/lib/domain/id';
 import { createLegacyNotesRuntimePorts } from '@/lib/client/legacy-notes-runtime';
 import { NotesProvider, useNotesDataStore } from '@/lib/client/notes-store';
 import { useNotesApplication } from '@/lib/client/use-notes-application';
@@ -42,6 +49,75 @@ export const defaultNotesAppConfiguration: NotesAppConfiguration = {
   connectionsPresentation: defaultConnectionsPresentation,
 };
 
+type EditorSessionLifetime = {
+  start: () => void;
+  stop: () => void;
+  isActive: () => boolean;
+};
+
+function createEditorSessionLifetime(): EditorSessionLifetime {
+  let active = true;
+  return {
+    start: () => {
+      active = true;
+    },
+    stop: () => {
+      active = false;
+    },
+    isActive: () => active,
+  };
+}
+
+function CardEditorSession({
+  document,
+  activity,
+  openCard,
+  updateCard,
+  configuration,
+}: {
+  document: CardEditorDocumentInput;
+  activity: CardEditorActivity;
+  openCard: NotesPresentationActions['openCard'];
+  updateCard: (cardId: CardId, edit: CardEdit) => void;
+  configuration: NotesAppConfiguration;
+}) {
+  const [lifetime] = useState(createEditorSessionLifetime);
+  useEffect(() => {
+    lifetime.start();
+    return lifetime.stop;
+  }, [lifetime]);
+  const sessionCardId = document.cardId;
+  const editorActions = useMemo(
+    () => ({
+      openCard: (cardId: CardId) => {
+        if (lifetime.isActive()) openCard(cardId);
+      },
+      updateTitle: (title: string) => {
+        if (lifetime.isActive()) {
+          updateCard(sessionCardId, { type: 'title', title });
+        }
+      },
+      updateBody: (
+        body: Parameters<NotesPresentationActions['updateBody']>[0],
+      ) => {
+        if (lifetime.isActive()) {
+          updateCard(sessionCardId, { type: 'body', body });
+        }
+      },
+    }),
+    [lifetime, openCard, sessionCardId, updateCard],
+  );
+  return (
+    <BodyEditorAdapter
+      document={document}
+      activity={activity}
+      actions={editorActions}
+      presentation={configuration.cardEditorPresentation}
+      Renderer={configuration.CardEditorRenderer}
+    />
+  );
+}
+
 function NotesConnector({
   configuration,
 }: {
@@ -49,16 +125,77 @@ function NotesConnector({
 }) {
   const store = useNotesDataStore();
   const { model, actions } = useNotesApplication(store);
+  const currentCardId = model.currentCard?.id ?? null;
+  const [editorSessionCardId, setEditorSessionCardId] = useState(() =>
+    model.activeView === 'card' ? currentCardId : null,
+  );
+  const validEditorSessionCardId =
+    editorSessionCardId === currentCardId ? editorSessionCardId : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setEditorSessionCardId((current) => {
+        if (currentCardId === null) return null;
+        if (current === currentCardId) return current;
+        return model.activeView === 'card' ? currentCardId : null;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentCardId, model.activeView]);
+
+  const editorDocument = useMemo<CardEditorDocumentInput | null>(() => {
+    if (
+      validEditorSessionCardId === null ||
+      model.currentCard?.id !== validEditorSessionCardId
+    ) {
+      return null;
+    }
+    return {
+      cardId: model.currentCard.id,
+      title: model.currentCard.title,
+      body: model.currentCard.body,
+    };
+  }, [model.currentCard, validEditorSessionCardId]);
+  const editorActivity = useMemo<CardEditorActivity>(() => {
+    if (
+      model.activeView === 'card' &&
+      model.cardEditor?.cardId === validEditorSessionCardId
+    ) {
+      return {
+        kind: 'active',
+        labels: model.cardEditor.labels,
+        candidateIndex: model.cardEditor.candidateIndex,
+      };
+    }
+    return { kind: 'inactive' };
+  }, [model.activeView, model.cardEditor, validEditorSessionCardId]);
+  const editorFeature = useMemo(
+    () =>
+      editorDocument ? (
+        <CardEditorSession
+          key={editorDocument.cardId}
+          document={editorDocument}
+          activity={editorActivity}
+          openCard={actions.openCard}
+          updateCard={store.updateCard}
+          configuration={configuration}
+        />
+      ) : null,
+    [
+      actions.openCard,
+      configuration,
+      editorActivity,
+      editorDocument,
+      store.updateCard,
+    ],
+  );
   const features = useMemo<NotesPresentationFeatures>(
     () => ({
-      renderCardEditor: ({ input, actions: editorActions }) => (
-        <BodyEditorAdapter
-          model={input}
-          actions={editorActions}
-          presentation={configuration.cardEditorPresentation}
-          Renderer={configuration.CardEditorRenderer}
-        />
-      ),
+      renderCardEditor: () => editorFeature,
       renderConnections: ({ input, actions: connectionsActions }) => (
         <ConnectionsAdapter
           input={input}
@@ -68,7 +205,7 @@ function NotesConnector({
         />
       ),
     }),
-    [configuration],
+    [configuration, editorFeature],
   );
   const Presentation = configuration.Presentation;
   return <Presentation model={model} actions={actions} features={features} />;

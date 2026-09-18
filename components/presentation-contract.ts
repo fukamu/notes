@@ -1,7 +1,6 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { ConnectionsPresentationAdapter } from '@/components/connections-presentation';
 import type {
-  CardEditorInputModel,
   ConnectionsViewModel,
   NotesPresentationActions,
   NotesPresentationModel,
@@ -28,21 +27,13 @@ export type ConnectionsRendererProps = {
   presentation: ConnectionsPresentationAdapter;
 };
 
-export type CardEditorFeatureProps = {
-  input: CardEditorInputModel;
-  actions: Pick<
-    NotesPresentationActions,
-    'openCard' | 'updateTitle' | 'updateBody'
-  >;
-};
-
 export type ConnectionsFeatureProps = {
   input: ConnectionsViewModel;
   actions: Pick<NotesPresentationActions, 'openCard'>;
 };
 
 export type NotesPresentationFeatures = {
-  renderCardEditor: (props: CardEditorFeatureProps) => ReactNode;
+  renderCardEditor: () => ReactNode;
   renderConnections: (props: ConnectionsFeatureProps) => ReactNode;
 };
 

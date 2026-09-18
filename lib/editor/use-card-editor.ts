@@ -1,6 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   type CompositionEvent as ReactCompositionEvent,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -13,8 +20,9 @@ import { EditorState } from '@tiptap/pm/state';
 import { useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import type {
+  CardEditorActivity,
   CardEditorCandidateModel,
-  CardEditorInputModel,
+  CardEditorDocumentInput,
   NotesPresentationActions,
 } from '@/lib/application/presentation';
 import type { CardId } from '@/lib/domain/id';
@@ -86,7 +94,8 @@ type CardEditorActions = Pick<
 >;
 
 type UseCardEditorOptions = {
-  input: CardEditorInputModel;
+  document: CardEditorDocumentInput;
+  activity: CardEditorActivity;
   actions: CardEditorActions;
   presentation: CardEditorPresentationAdapter;
 };
@@ -126,11 +135,11 @@ type PendingCardTitle = Readonly<{
 
 type EditorBodySnapshot = Readonly<{
   content: Fragment;
-  body: CardEditorInputModel['body'];
+  body: CardEditorDocumentInput['body'];
   key: string;
 }>;
 
-function bodyKey(body: CardEditorInputModel['body']): string {
+function bodyKey(body: CardEditorDocumentInput['body']): string {
   return JSON.stringify(body);
 }
 
@@ -154,16 +163,19 @@ function candidateTokenAtSelection(editor: Editor): {
 }
 
 export function useCardEditor({
-  input,
+  document: documentInput,
+  activity,
   actions,
   presentation,
 }: UseCardEditorOptions): {
   model: CardEditorModel;
   commands: CardEditorCommands;
 } {
-  const [labels] = useState(() => createCardLabelResolver(input.labels));
+  const [labels] = useState(() =>
+    createCardLabelResolver(activity.kind === 'active' ? activity.labels : []),
+  );
   const [editorCardId, setEditorCardId] = useState<CardId | null>(null);
-  const [title, setTitle] = useState(input.title);
+  const [title, setTitle] = useState(documentInput.title);
   const [pendingTitleAvailability, setPendingTitleAvailability] = useState({
     active: false,
     changed: false,
@@ -179,11 +191,17 @@ export function useCardEditor({
   const titleCompositionRef = useRef(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const pendingTitleRef = useRef<PendingCardTitle | null>(null);
-  const persistedTitleRef = useRef(input.title);
-  const inputBodyKey = useMemo(() => bodyKey(input.body), [input.body]);
+  const persistedTitleRef = useRef(documentInput.title);
+  const inputBodyKey = useMemo(
+    () => bodyKey(documentInput.body),
+    [documentInput.body],
+  );
+  const observedTitleRef = useRef(documentInput.title);
+  const observedBodyKeyRef = useRef(inputBodyKey);
   const persistedBodyKeyRef = useRef(inputBodyKey);
   const bodySnapshotRef = useRef<EditorBodySnapshot | null>(null);
-  const inputRef = useRef(input);
+  const documentRef = useRef(documentInput);
+  const activityRef = useRef(activity);
   const actionsRef = useRef(actions);
   const mountedRef = useRef(true);
   const setTitleInputElement = useCallback(
@@ -192,27 +210,30 @@ export function useCardEditor({
     },
     [],
   );
-  const candidates = queryCardEditorCandidates(
-    input.candidateIndex,
-    candidateState.numberPrefix,
-  );
+  const candidates =
+    activity.kind === 'active'
+      ? queryCardEditorCandidates(
+          activity.candidateIndex,
+          candidateState.numberPrefix,
+        )
+      : [];
   const normalizedCandidateState = clampCardEditorCandidate(
     candidateState,
     candidates.length,
   );
   const inputBodyDocument = useMemo(
-    () => segmentsToEditorDocument(input.body),
-    [input.body],
+    () => segmentsToEditorDocument(documentInput.body),
+    [documentInput.body],
   );
   const inputDocument = useMemo(
     () => ({
       ...inputBodyDocument,
       attrs: {
         ...inputBodyDocument.attrs,
-        [CARD_EDITOR_TITLE_ATTRIBUTE]: input.title,
+        [CARD_EDITOR_TITLE_ATTRIBUTE]: documentInput.title,
       },
     }),
-    [inputBodyDocument, input.title],
+    [documentInput.title, inputBodyDocument],
   );
   const extensions = useMemo(
     () => [
@@ -229,13 +250,14 @@ export function useCardEditor({
   );
 
   useEffect(() => {
-    labels.replaceLabels(input.labels);
-  }, [input.labels, labels]);
+    if (activity.kind === 'active') labels.replaceLabels(activity.labels);
+  }, [activity, labels]);
 
-  useEffect(() => {
-    inputRef.current = input;
+  useLayoutEffect(() => {
+    documentRef.current = documentInput;
+    activityRef.current = activity;
     actionsRef.current = actions;
-  }, [actions, input]);
+  }, [actions, activity, documentInput]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -271,10 +293,13 @@ export function useCardEditor({
         compositionInputRef.current = false;
         bodySnapshotRef.current = null;
         setCandidateState(closeCardEditorCandidates());
-        setEditorCardId(input.cardId);
-        const createdTitle = titleFromEditor(currentEditor) ?? input.title;
+        setEditorCardId(documentInput.cardId);
+        const createdTitle =
+          titleFromEditor(currentEditor) ?? documentInput.title;
         setTitle(createdTitle);
-        persistedTitleRef.current = input.title;
+        persistedTitleRef.current = documentInput.title;
+        observedTitleRef.current = documentInput.title;
+        observedBodyKeyRef.current = inputBodyKey;
         persistedBodyKeyRef.current = inputBodyKey;
         pendingTitleRef.current = null;
         setPendingTitleAvailability({ active: false, changed: false });
@@ -286,7 +311,7 @@ export function useCardEditor({
       onDestroy: () => {
         bodySnapshotRef.current = null;
         setEditorCardId((current) =>
-          current === input.cardId ? null : current,
+          current === documentInput.cardId ? null : current,
         );
       },
       onUpdate: ({ editor: currentEditor }) => {
@@ -303,6 +328,7 @@ export function useCardEditor({
           persistedBodyKeyRef.current = nextBody.key;
           actionsRef.current.updateBody(nextBody.body);
         }
+        if (activityRef.current.kind !== 'active') return;
         const triggerPosition = triggerPositionRef.current;
         if (triggerPosition === undefined || currentEditor.view.composing)
           return;
@@ -323,7 +349,9 @@ export function useCardEditor({
         setHistoryCanUndo(currentEditor.can().undo());
         setHistoryCanRedo(currentEditor.can().redo());
       },
-      onFocus: () => setFocused(true),
+      onFocus: () => {
+        if (activityRef.current.kind === 'active') setFocused(true);
+      },
       onBlur: () => {
         setFocused(false);
         setCandidateState(closeCardEditorCandidates());
@@ -332,6 +360,7 @@ export function useCardEditor({
       onSelectionUpdate: ({ editor: currentEditor }) => {
         const { selection } = currentEditor.state;
         setSelectionEmpty(selection.empty);
+        if (activityRef.current.kind !== 'active') return;
         const triggerPosition = triggerPositionRef.current;
         if (triggerPosition === undefined) return;
         const token = candidateTokenAtSelection(currentEditor);
@@ -341,27 +370,44 @@ export function useCardEditor({
         }
       },
     },
-    [input.cardId],
+    [documentInput.cardId],
   );
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    if (editorCardId !== input.cardId) {
+    if (editorCardId !== documentInput.cardId) {
       pendingTitleRef.current = null;
       titleCompositionRef.current = false;
-      persistedTitleRef.current = input.title;
+      persistedTitleRef.current = documentInput.title;
+      observedTitleRef.current = documentInput.title;
+      observedBodyKeyRef.current = inputBodyKey;
       persistedBodyKeyRef.current = inputBodyKey;
       bodySnapshotRef.current = null;
       return;
     }
 
     const pendingTitle = pendingTitleRef.current;
-    const titleIsSelfEcho =
-      input.title === persistedTitleRef.current ||
-      (pendingTitle?.cardId === input.cardId &&
-        input.title === pendingTitle.after);
-    const bodyIsSelfEcho = inputBodyKey === persistedBodyKeyRef.current;
-    if (titleIsSelfEcho && bodyIsSelfEcho) return;
+    const titleMatchesEditor =
+      documentInput.title === persistedTitleRef.current ||
+      (pendingTitle?.cardId === documentInput.cardId &&
+        documentInput.title === pendingTitle.after);
+    const titleIsStaleLocalEcho =
+      documentInput.title === observedTitleRef.current &&
+      persistedTitleRef.current !== observedTitleRef.current;
+    const bodyMatchesEditor = inputBodyKey === persistedBodyKeyRef.current;
+    const bodyIsStaleLocalEcho =
+      inputBodyKey === observedBodyKeyRef.current &&
+      persistedBodyKeyRef.current !== observedBodyKeyRef.current;
+    if (
+      (titleMatchesEditor || titleIsStaleLocalEcho) &&
+      (bodyMatchesEditor || bodyIsStaleLocalEcho)
+    ) {
+      if (titleMatchesEditor) {
+        observedTitleRef.current = documentInput.title;
+      }
+      if (bodyMatchesEditor) observedBodyKeyRef.current = inputBodyKey;
+      return;
+    }
 
     const nextDocument = editor.schema.nodeFromJSON(inputDocument);
     editor.view.updateState(
@@ -374,18 +420,20 @@ export function useCardEditor({
     bodySnapshotRef.current = null;
     pendingTitleRef.current = null;
     titleCompositionRef.current = false;
-    persistedTitleRef.current = input.title;
+    persistedTitleRef.current = documentInput.title;
+    observedTitleRef.current = documentInput.title;
+    observedBodyKeyRef.current = inputBodyKey;
     persistedBodyKeyRef.current = inputBodyKey;
     triggerPositionRef.current = undefined;
-    const synchronizedCardId = input.cardId;
+    const synchronizedCardId = documentInput.cardId;
     queueMicrotask(() => {
       if (
         !mountedRef.current ||
-        inputRef.current.cardId !== synchronizedCardId
+        documentRef.current.cardId !== synchronizedCardId
       ) {
         return;
       }
-      setTitle(input.title);
+      setTitle(documentInput.title);
       setPendingTitleAvailability({ active: false, changed: false });
       setHistoryCanUndo(false);
       setHistoryCanRedo(false);
@@ -395,8 +443,8 @@ export function useCardEditor({
   }, [
     editor,
     editorCardId,
-    input.cardId,
-    input.title,
+    documentInput.cardId,
+    documentInput.title,
     inputBodyKey,
     inputDocument,
   ]);
@@ -410,7 +458,7 @@ export function useCardEditor({
     const pending = pendingTitleRef.current;
     if (
       !pending ||
-      pending.cardId !== inputRef.current.cardId ||
+      pending.cardId !== documentRef.current.cardId ||
       currentEditor.isDestroyed
     ) {
       return false;
@@ -435,6 +483,21 @@ export function useCardEditor({
     return true;
   };
 
+  useEffect(() => {
+    if (activity.kind === 'active') return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setFocused(false);
+      setCandidateState(closeCardEditorCandidates());
+      triggerPositionRef.current = undefined;
+      if (editor && !titleCompositionRef.current) commitPendingTitle(editor);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activity.kind, editor]);
+
   const focusHistoryTarget = (
     currentEditor: Editor,
     titleChanged: boolean,
@@ -444,7 +507,8 @@ export function useCardEditor({
       if (
         !mountedRef.current ||
         currentEditor.isDestroyed ||
-        editorCardId !== inputRef.current.cardId
+        editorCardId !== documentRef.current.cardId ||
+        activityRef.current.kind !== 'active'
       ) {
         return;
       }
@@ -461,7 +525,14 @@ export function useCardEditor({
   };
 
   const runHistoryCommand = (direction: 'undo' | 'redo') => {
-    if (!editor || editor.isDestroyed || editorCardId !== input.cardId) return;
+    if (
+      !editor ||
+      editor.isDestroyed ||
+      editorCardId !== documentInput.cardId ||
+      activityRef.current.kind !== 'active'
+    ) {
+      return;
+    }
     commitPendingTitle(editor);
     const beforeTitle = titleFromEditor(editor);
     const beforeBody = readEditorBody(editor);
@@ -496,9 +567,13 @@ export function useCardEditor({
 
   const updateTitle = (nextTitle: string) => {
     if (nextTitle === title) return;
-    if (editor && !editor.isDestroyed && editorCardId === input.cardId) {
+    if (
+      editor &&
+      !editor.isDestroyed &&
+      editorCardId === documentInput.cardId
+    ) {
       const currentPending = pendingTitleRef.current;
-      if (currentPending?.cardId === input.cardId) {
+      if (currentPending?.cardId === documentInput.cardId) {
         const nextPending = {
           ...currentPending,
           after: nextTitle,
@@ -513,7 +588,7 @@ export function useCardEditor({
         if (before !== null) {
           editor.view.dispatch(closeCardEditorHistory(editor.state.tr));
           pendingTitleRef.current = {
-            cardId: input.cardId,
+            cardId: documentInput.cardId,
             before,
             after: nextTitle,
           };
@@ -545,7 +620,14 @@ export function useCardEditor({
   };
 
   const updateSuggestionsForCandidateToken = () => {
-    if (!editor || editor.isDestroyed || editorCardId !== input.cardId) return;
+    if (
+      !editor ||
+      editor.isDestroyed ||
+      editorCardId !== documentInput.cardId ||
+      activityRef.current.kind !== 'active'
+    ) {
+      return;
+    }
     const token = candidateTokenAtSelection(editor);
     if (!token) {
       closeSuggestions();
@@ -573,7 +655,14 @@ export function useCardEditor({
   };
 
   const selectCandidate = (cardId: CardId) => {
-    if (!editor || editor.isDestroyed || editorCardId !== input.cardId) return;
+    if (
+      !editor ||
+      editor.isDestroyed ||
+      editorCardId !== documentInput.cardId ||
+      activityRef.current.kind !== 'active'
+    ) {
+      return;
+    }
     commitPendingTitle(editor);
     if (!candidates.some((candidate) => candidate.cardId === cardId)) return;
     const from = triggerPositionRef.current;
@@ -598,7 +687,7 @@ export function useCardEditor({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (!editor) return;
+    if (!editor || activityRef.current.kind !== 'active') return;
     const shortcut = historyShortcutFor(event);
     if (shortcut) {
       event.preventDefault();
@@ -661,15 +750,19 @@ export function useCardEditor({
   return {
     model: {
       editor,
-      title: editorCardId === input.cardId ? title : input.title,
+      title:
+        editorCardId === documentInput.cardId ? title : documentInput.title,
       ready:
-        editor !== null && !editor.isDestroyed && editorCardId === input.cardId,
+        editor !== null &&
+        !editor.isDestroyed &&
+        editorCardId === documentInput.cardId,
       focused,
       selectionEmpty,
       canUndo: pendingTitleAvailability.changed || historyCanUndo,
       canRedo: pendingTitleAvailability.active ? false : historyCanRedo,
       candidates,
-      suggestionOpen: normalizedCandidateState.open,
+      suggestionOpen:
+        activity.kind === 'active' && normalizedCandidateState.open,
       activeCandidate: normalizedCandidateState.activeIndex,
     },
     commands: {
@@ -684,6 +777,9 @@ export function useCardEditor({
       },
       handleTitleCompositionEnd: () => {
         titleCompositionRef.current = false;
+        if (editor && activityRef.current.kind === 'inactive') {
+          commitPendingTitle(editor);
+        }
       },
       prepareBodyEditing: () => {
         if (editor) commitPendingTitle(editor);
