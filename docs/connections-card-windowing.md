@@ -73,3 +73,13 @@ overview Canvasへ切り替える。受入確認ではscale 0.40をHTML、0.37�
 
 この調整は表示件数、96px overscan、focus保持、Canvas hit test、全graph membership、
 ARIAや保存形式を変更しない。Canvasへ文字を描画せず、別の閾値も追加しない。
+
+## Issue #357 のフォローアップ可読表示閾値調整
+
+Issue #357は、Issue #325の36pxとIssue #352の28pxを過去の判断として保持したまま、
+現在の切替定数を24pxへ調整する。標準72pxカードは投影高24pxちょうどを含む約33.3%
+（scale `24 / 72`）以上で番号・タイトル付きHTML cardを表示し、24px未満でoverview
+Canvasへ切り替える。受入確認ではscale 0.35をHTML、0.32をCanvasとして固定する。
+
+このフォローアップも表示件数、96px overscan、focus保持、Canvas hit test、全graph
+membership、ARIAや保存形式を変更しない。Canvasへ文字を描画せず、別の閾値も追加しない。
