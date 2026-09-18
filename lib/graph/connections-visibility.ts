@@ -79,7 +79,7 @@ export type PreparedConnectionsVisibility = Readonly<{
 }>;
 
 export const CONNECTIONS_VISIBILITY_OVERSCAN_PX = 96;
-export const CONNECTIONS_OVERVIEW_CARD_HEIGHT_PX = 24;
+export const CONNECTIONS_OVERVIEW_CARD_HEIGHT_PX = 20;
 const nodeVisualMargin = 8;
 // The 8px halo has a 4px half-width. The SVG marker is 7 stroke-width units
 // at a 2px stroke, so 14 world units conservatively covers its full extent.
