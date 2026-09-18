@@ -122,6 +122,7 @@ export function createAlternateCardEditorProbe({
   const candidate = model.candidates[model.activeCandidate];
   return {
     summary: [
+      model.title,
       model.ready ? 'ready' : 'loading',
       model.focused ? 'focused' : 'blurred',
       model.selectionEmpty ? 'empty-selection' : 'range-selection',
@@ -130,6 +131,7 @@ export function createAlternateCardEditorProbe({
       model.canRedo ? 'can-redo' : 'cannot-redo',
       candidate?.title ?? 'no-candidate',
     ].join(';'),
+    updateTitle: commands.updateTitle,
     undo: commands.undo,
     redo: commands.redo,
     insertCandidateLink: () => {
@@ -143,6 +145,11 @@ export function AlternateCardEditorRenderer(props: CardEditorRendererProps) {
   return createElement(
     'section',
     { 'aria-label': 'Alternate editor' },
+    createElement(
+      'button',
+      { onClick: () => probe.updateTitle('Alternate title') },
+      'Update title',
+    ),
     createElement('output', null, probe.summary),
     createElement('button', { onClick: probe.undo }, 'Undo'),
     createElement('button', { onClick: probe.redo }, 'Redo'),

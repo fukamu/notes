@@ -167,14 +167,6 @@ function CardView({ model, actions, features }: NotesPresentationProps) {
           </span>
           <StatusIndicator model={model} actions={actions} />
         </div>
-        <input
-          aria-label="カードのタイトル"
-          value={card.title}
-          onChange={(event) => actions.updateTitle(event.target.value)}
-          className="mb-6 w-full bg-transparent font-heading text-3xl font-semibold tracking-tight outline-none placeholder:text-muted-foreground/55"
-          placeholder="Untitled"
-          data-testid="card-title"
-        />
         {model.cardEditor &&
           features.renderCardEditor({
             input: model.cardEditor,

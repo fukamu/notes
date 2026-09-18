@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cardEditorCandidateToken,
+  cardEditorHistoryShortcut,
   classifyCardEditorDocumentUpdate,
   filterCardEditorCandidates,
   handleCardEditorCandidateKey,
@@ -55,6 +56,30 @@ describe('card editor candidate state', () => {
 });
 
 describe('card editor input and IME classification', () => {
+  it('routes platform history shortcuts once and leaves composition alone', () => {
+    const key = (
+      overrides: Partial<Parameters<typeof cardEditorHistoryShortcut>[0]>,
+    ) =>
+      cardEditorHistoryShortcut({
+        key: 'z',
+        ctrlKey: true,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+        composing: false,
+        ...overrides,
+      });
+
+    expect(key({})).toBe('undo');
+    expect(key({ shiftKey: true })).toBe('redo');
+    expect(key({ key: 'y' })).toBe('redo');
+    expect(key({ key: 'я' })).toBe('undo');
+    expect(key({ composing: true })).toBeNull();
+    expect(key({ altKey: true })).toBeNull();
+    expect(key({ ctrlKey: true, metaKey: true })).toBeNull();
+    expect(key({ ctrlKey: false, metaKey: false })).toBeNull();
+  });
+
   it('inspects direct text and completed composition, but not active composition or paste', () => {
     expect(isTypedCardEditorInput('insertText', false)).toBe(true);
     expect(isTypedCardEditorInput('insertCompositionText', false)).toBe(true);

@@ -74,6 +74,7 @@ function model(
   };
   const cardEditor = {
     cardId: firstId,
+    title: 'First',
     body: [],
     labels: [
       { cardId: firstId, label: '#1 First' },
@@ -325,6 +326,13 @@ describe('alternate presentation contract', () => {
 
   it('consumes editor state, candidate link, undo and redo commands', () => {
     const commands: CardEditorRendererProps['commands'] = {
+      setTitleInputElement: vi.fn(),
+      updateTitle: vi.fn(),
+      handleTitleBlur: vi.fn(),
+      handleTitleKeyDown: vi.fn(),
+      handleTitleCompositionStart: vi.fn(),
+      handleTitleCompositionEnd: vi.fn(),
+      prepareBodyEditing: vi.fn(),
       handleKeyDown: vi.fn(),
       handleInput: vi.fn(),
       handleCompositionEnd: vi.fn(),
@@ -336,6 +344,7 @@ describe('alternate presentation contract', () => {
     const props: CardEditorRendererProps = {
       model: {
         editor: null,
+        title: 'First',
         ready: true,
         focused: true,
         selectionEmpty: false,
@@ -356,13 +365,15 @@ describe('alternate presentation contract', () => {
     };
     const probe = createAlternateCardEditorProbe(props);
     expect(probe.summary).toBe(
-      'ready;focused;range-selection;candidates-open;can-undo;can-redo;Second',
+      'First;ready;focused;range-selection;candidates-open;can-undo;can-redo;Second',
     );
+    probe.updateTitle('Changed title');
     probe.undo();
     probe.redo();
     probe.insertCandidateLink();
     expect(commands.undo).toHaveBeenCalled();
     expect(commands.redo).toHaveBeenCalled();
+    expect(commands.updateTitle).toHaveBeenCalledWith('Changed title');
     expect(commands.selectCandidate).toHaveBeenCalledWith(secondId);
   });
 

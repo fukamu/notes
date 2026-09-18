@@ -11,7 +11,10 @@ import type { CardEditorPresentationAdapter } from '@/lib/editor/use-card-editor
 
 type Props = {
   model: CardEditorInputModel;
-  actions: Pick<NotesPresentationActions, 'openCard' | 'updateBody'>;
+  actions: Pick<
+    NotesPresentationActions,
+    'openCard' | 'updateTitle' | 'updateBody'
+  >;
   presentation: CardEditorPresentationAdapter;
   Renderer: ComponentType<CardEditorRendererProps>;
 };
