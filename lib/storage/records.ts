@@ -4,7 +4,10 @@ import {
   literalDecoder,
   nullableDecoder,
   objectDecoder,
+  refineDecoder,
   stringDecoder,
+  transformDecoder,
+  unionDecoder,
   type InferDecoder,
 } from '@/lib/codec/core';
 import {
@@ -20,13 +23,24 @@ import {
   type ConflictRecord,
   type PendingMutation,
 } from '@/lib/domain/types';
-import { cardIdDecoder, deviceIdDecoder, type DeviceId } from '@/lib/domain/id';
+import {
+  cardIdDecoder,
+  deviceIdDecoder,
+  mutationIdDecoder,
+  type DeviceId,
+} from '@/lib/domain/id';
 import { assertNever } from '@/lib/shared/invariant';
 import type { SyncV2Checkpoint } from '@/lib/sync/v2-page-application';
 import {
   syncSequenceDecoder,
   syncV2CursorDecoder,
 } from '@/lib/sync/v2-protocol';
+import type {
+  LocalMutationDraft,
+  OutgoingBatch,
+  OutgoingBatchId,
+} from '@/lib/sync/outgoing-batch';
+import { legacyMutationDraft } from '@/lib/sync/outgoing-batch';
 
 const storedCardRecordDecoder = objectDecoder({
   id: cardIdDecoder,
@@ -41,6 +55,63 @@ const storedCardRecordDecoder = objectDecoder({
 
 const storedConflictRecordDecoder = conflictRecordDecoder;
 const storedPendingMutationDecoder = pendingMutationDecoder;
+const outgoingBatchIdDecoder = transformDecoder(
+  refineDecoder(
+    stringDecoder({ minLength: 48, maxLength: 64 }),
+    (value) => /^outgoing\.v1\.[0-9a-f-]{36}$/.test(value),
+    'expected a versioned outgoing batch ID',
+  ),
+  (value) => value as OutgoingBatchId,
+);
+const mutationDraftOriginVersionDecoder = refineDecoder(
+  positiveSafeIntegerDecoder,
+  (value) => value === 1,
+  'expected mutation draft origin version 1',
+);
+const storedMutationOriginDecoder = objectDecoder({
+  version: mutationDraftOriginVersionDecoder,
+  baseServerRevision: nullableDecoder(positiveSafeIntegerDecoder),
+  predecessorMutationId: nullableDecoder(mutationIdDecoder),
+});
+const storedMutationDraftDecoder = transformDecoder(
+  refineDecoder(
+    objectDecoder({
+      version: literalDecoder('mutation-draft/v1'),
+      cardId: cardIdDecoder,
+      mutation: pendingMutationDecoder,
+      origin: storedMutationOriginDecoder,
+    }),
+    (stored) => stored.cardId === stored.mutation.cardId,
+    'expected matching stored and mutation card IDs',
+  ),
+  (stored): LocalMutationDraft => ({
+    mutation: stored.mutation,
+    origin: { ...stored.origin, version: 1 },
+  }),
+);
+const compatibleStoredMutationDecoder = unionDecoder(
+  storedMutationDraftDecoder,
+  transformDecoder(storedPendingMutationDecoder, legacyMutationDraft),
+);
+const storedOutgoingBatchDecoder = transformDecoder(
+  objectDecoder({
+    key: literalDecoder('outgoing'),
+    version: literalDecoder('outgoing-batch/v1'),
+    batchId: outgoingBatchIdDecoder,
+    deviceId: deviceIdDecoder,
+    mutations: arrayDecoder(pendingMutationDecoder, {
+      minLength: 1,
+      maxLength: CONTRACT_LIMITS.mutations,
+      uniqueBy: (mutation) => mutation.cardId,
+    }),
+  }),
+  (stored): OutgoingBatch => ({
+    version: 1,
+    batchId: stored.batchId,
+    deviceId: stored.deviceId,
+    mutations: stored.mutations,
+  }),
+);
 const storedMetaRecordDecoder = objectDecoder({
   key: literalDecoder('deviceId'),
   value: deviceIdDecoder,
@@ -55,10 +126,13 @@ const storedCardsDecoder = arrayDecoder(storedCardRecordDecoder, {
   maxLength: CONTRACT_LIMITS.cards,
   uniqueBy: (card) => card.id,
 });
-const storedMutationsDecoder = arrayDecoder(storedPendingMutationDecoder, {
-  maxLength: CONTRACT_LIMITS.cards,
-  uniqueBy: (mutation) => mutation.cardId,
-});
+const storedMutationDraftsDecoder = arrayDecoder(
+  compatibleStoredMutationDecoder,
+  {
+    maxLength: CONTRACT_LIMITS.cards,
+    uniqueBy: (draft) => draft.mutation.cardId,
+  },
+);
 const storedConflictsDecoder = arrayDecoder(storedConflictRecordDecoder, {
   maxLength: CONTRACT_LIMITS.conflicts,
   uniqueBy: (conflict) => conflict.id,
@@ -81,7 +155,25 @@ export function decodeStoredCards(input: unknown): CardRecord[] {
 }
 
 export function decodeStoredMutations(input: unknown): PendingMutation[] {
-  return decodeOrThrow(storedMutationsDecoder, input, 'IndexedDB mutations');
+  return decodeStoredMutationDrafts(input).map((draft) => draft.mutation);
+}
+
+export function decodeStoredMutationDrafts(
+  input: unknown,
+): LocalMutationDraft[] {
+  return decodeOrThrow(
+    storedMutationDraftsDecoder,
+    input,
+    'IndexedDB mutations',
+  );
+}
+
+export function decodeStoredOutgoingBatch(input: unknown): OutgoingBatch {
+  return decodeOrThrow(
+    storedOutgoingBatchDecoder,
+    input,
+    'IndexedDB Sync v2 outgoing batch',
+  );
 }
 
 export function decodeStoredConflicts(input: unknown): ConflictRecord[] {
@@ -135,7 +227,7 @@ export function encodeStoredCard(card: CardRecord) {
   };
 }
 
-export function encodeStoredMutation(mutation: PendingMutation) {
+function encodePendingMutation(mutation: PendingMutation) {
   const base = {
     mutationId: wireString(mutation.mutationId),
     cardId: wireString(mutation.cardId),
@@ -157,6 +249,35 @@ export function encodeStoredMutation(mutation: PendingMutation) {
     default:
       return assertNever(mutation, 'Unsupported stored mutation');
   }
+}
+
+export function encodeStoredMutation(
+  mutation: PendingMutation,
+  origin = legacyMutationDraft(mutation).origin,
+) {
+  return {
+    version: 'mutation-draft/v1' as const,
+    cardId: wireString(mutation.cardId),
+    mutation: encodePendingMutation(mutation),
+    origin: {
+      version: 1 as const,
+      baseServerRevision: origin.baseServerRevision,
+      predecessorMutationId:
+        origin.predecessorMutationId === null
+          ? null
+          : wireString(origin.predecessorMutationId),
+    },
+  };
+}
+
+export function encodeStoredOutgoingBatch(batch: OutgoingBatch) {
+  return {
+    key: 'outgoing' as const,
+    version: 'outgoing-batch/v1' as const,
+    batchId: wireString(batch.batchId),
+    deviceId: wireString(batch.deviceId),
+    mutations: batch.mutations.map(encodePendingMutation),
+  };
 }
 
 export function encodeStoredConflict(conflict: ConflictRecord) {
@@ -190,4 +311,7 @@ export type StoredConflictWire = ReturnType<typeof encodeStoredConflict>;
 export type StoredMetaWire = ReturnType<typeof encodeStoredMeta>;
 export type StoredSyncV2CheckpointWire = ReturnType<
   typeof encodeStoredSyncV2Checkpoint
+>;
+export type StoredOutgoingBatchWire = ReturnType<
+  typeof encodeStoredOutgoingBatch
 >;

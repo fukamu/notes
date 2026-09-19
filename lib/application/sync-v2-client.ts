@@ -18,6 +18,7 @@ import {
   type SyncV2RequestWire,
 } from '../sync/v2-protocol';
 import type { DeviceId } from '../domain/id';
+import type { OutgoingBatchId } from '../sync/outgoing-batch';
 
 export type SyncV2Transport<TScope> = {
   readonly scope: TScope;
@@ -39,6 +40,7 @@ export type SyncV2ClientResult =
       readonly kind: 'completed';
       readonly cards: readonly CardRecord[];
       readonly conflicts: readonly ConflictRecord[];
+      readonly hasEligiblePendingMutations: boolean;
     }
   | { readonly kind: 'cancelled' }
   | {
@@ -59,6 +61,7 @@ export type SyncV2Client<TScope> = {
   synchronize: (input: {
     readonly deviceId: DeviceId;
     readonly sentMutations: readonly PendingMutation[];
+    readonly outgoingBatchId: OutgoingBatchId | null;
     readonly isCurrent: () => boolean;
     readonly executeCommit: SyncV2CommitExecutor;
   }) => Promise<SyncV2ClientResult>;
@@ -104,7 +107,11 @@ export function createSyncV2Client<TScope>(input: {
           case 'ready-to-commit': {
             if (!operation.isCurrent()) return { kind: 'cancelled' };
             const commit = await operation.executeCommit(() =>
-              input.replica.applyCommit(decision.plan, state.sentMutations),
+              input.replica.applyCommit(
+                decision.plan,
+                state.sentMutations,
+                operation.outgoingBatchId,
+              ),
             );
             if (!operation.isCurrent()) return { kind: 'cancelled' };
             switch (commit.kind) {
@@ -116,6 +123,8 @@ export function createSyncV2Client<TScope>(input: {
                   kind: 'completed',
                   cards: commit.cards,
                   conflicts: commit.conflicts,
+                  hasEligiblePendingMutations:
+                    commit.hasEligiblePendingMutations,
                 };
               case 'rejected':
                 return { kind: 'rejected', reason: commit.reason };

@@ -5,6 +5,10 @@ import {
   initialSyncV2Checkpoint,
   planSyncV2ReplicaCommit,
 } from '@/lib/sync/v2-replica';
+import {
+  legacyMutationDraft,
+  outgoingBatchIdFromMutation,
+} from '@/lib/sync/outgoing-batch';
 import type { SyncV2CommitPlan } from '@/lib/sync/v2-page-application';
 import { parseSyncSequence, parseSyncV2Cursor } from '@/lib/sync/v2-protocol';
 import {
@@ -76,9 +80,16 @@ describe('Sync v2 local replica commit planner', () => {
       plan: completePlan(),
       currentCheckpoint: initialSyncV2Checkpoint(),
       localCards: fixture.cards,
-      currentMutations: [fixture.mutation],
+      currentDrafts: [],
       localConflicts: [fixture.conflict],
       sentMutations: [fixture.mutation],
+      outgoingBatch: {
+        version: 1,
+        batchId: outgoingBatchIdFromMutation(fixture.mutation.mutationId),
+        deviceId: compatibilityIds.device,
+        mutations: [fixture.mutation],
+      },
+      outgoingBatchId: outgoingBatchIdFromMutation(fixture.mutation.mutationId),
     });
 
     expect(decision.kind).toBe('apply');
@@ -93,7 +104,6 @@ describe('Sync v2 local replica commit planner', () => {
     expect(decision.conflicts).toEqual([]);
     expect(decision.operations).toEqual(
       expect.arrayContaining([
-        { type: 'delete-mutation', cardId: compatibilityIds.cardA },
         { type: 'delete-card', cardId: compatibilityIds.cardB },
         { type: 'delete-conflict', conflictId: compatibilityIds.conflict },
       ]),
@@ -145,9 +155,25 @@ describe('Sync v2 local replica commit planner', () => {
       },
       currentCheckpoint: initialSyncV2Checkpoint(),
       localCards: [newerCard],
-      currentMutations: [newerMutation],
+      currentDrafts: [
+        {
+          mutation: newerMutation,
+          origin: {
+            version: 1,
+            baseServerRevision: fixture.mutation.baseServerRevision,
+            predecessorMutationId: fixture.mutation.mutationId,
+          },
+        },
+      ],
       localConflicts: [],
       sentMutations: [fixture.mutation],
+      outgoingBatch: {
+        version: 1,
+        batchId: outgoingBatchIdFromMutation(fixture.mutation.mutationId),
+        deviceId: compatibilityIds.device,
+        mutations: [fixture.mutation],
+      },
+      outgoingBatchId: outgoingBatchIdFromMutation(fixture.mutation.mutationId),
     });
 
     expect(decision.kind).toBe('apply');
@@ -161,7 +187,14 @@ describe('Sync v2 local replica commit planner', () => {
     ]);
     expect(decision.operations).toContainEqual({
       type: 'put-mutation',
-      mutation: { ...newerMutation, baseServerRevision: 2 },
+      draft: {
+        mutation: { ...newerMutation, baseServerRevision: 2 },
+        origin: {
+          version: 1,
+          baseServerRevision: 2,
+          predecessorMutationId: null,
+        },
+      },
     });
     expect(decision.operations).not.toContainEqual({
       type: 'delete-mutation',
@@ -225,20 +258,43 @@ describe('Sync v2 local replica commit planner', () => {
       },
       currentCheckpoint: initialSyncV2Checkpoint(),
       localCards: [newerCard],
-      currentMutations: [newerResolve],
+      currentDrafts: [
+        {
+          mutation: newerResolve,
+          origin: {
+            version: 1,
+            baseServerRevision: sentResolve.baseServerRevision,
+            predecessorMutationId: sentResolve.mutationId,
+          },
+        },
+      ],
       localConflicts: [fixture.conflict],
       sentMutations: [sentResolve],
+      outgoingBatch: {
+        version: 1,
+        batchId: outgoingBatchIdFromMutation(sentResolve.mutationId),
+        deviceId: compatibilityIds.device,
+        mutations: [sentResolve],
+      },
+      outgoingBatchId: outgoingBatchIdFromMutation(sentResolve.mutationId),
     });
 
     expect(decision.kind).toBe('apply');
     if (decision.kind !== 'apply') return;
     expect(decision.operations).toContainEqual({
       type: 'put-mutation',
-      mutation: {
-        ...newerResolve,
-        kind: 'upsert',
-        baseServerRevision: serverCard.revision,
-        conflictIds: [],
+      draft: {
+        mutation: {
+          ...newerResolve,
+          kind: 'upsert',
+          baseServerRevision: serverCard.revision,
+          conflictIds: [],
+        },
+        origin: {
+          version: 1,
+          baseServerRevision: serverCard.revision,
+          predecessorMutationId: null,
+        },
       },
     });
     expect(decision.operations).toContainEqual({
@@ -271,9 +327,11 @@ describe('Sync v2 local replica commit planner', () => {
       },
       currentCheckpoint: initialSyncV2Checkpoint(),
       localCards: [local],
-      currentMutations: [fixture.mutation],
+      currentDrafts: [legacyMutationDraft(fixture.mutation)],
       localConflicts: [],
       sentMutations: [],
+      outgoingBatch: undefined,
+      outgoingBatchId: null,
     });
 
     expect(decision.kind).toBe('apply');
@@ -293,9 +351,11 @@ describe('Sync v2 local replica commit planner', () => {
         plan,
         currentCheckpoint: initialSyncV2Checkpoint(),
         localCards: fixture.cards,
-        currentMutations: [fixture.mutation],
+        currentDrafts: [legacyMutationDraft(fixture.mutation)],
         localConflicts: [],
         sentMutations: [],
+        outgoingBatch: undefined,
+        outgoingBatchId: null,
       }),
     ).toMatchObject({ kind: 'rejected', reason: 'invalid-receipt' });
 
@@ -307,9 +367,18 @@ describe('Sync v2 local replica commit planner', () => {
           highWatermark: parseSyncSequence(3),
         },
         localCards: fixture.cards,
-        currentMutations: [fixture.mutation],
+        currentDrafts: [legacyMutationDraft(fixture.mutation)],
         localConflicts: [],
         sentMutations: [fixture.mutation],
+        outgoingBatch: {
+          version: 1,
+          batchId: outgoingBatchIdFromMutation(fixture.mutation.mutationId),
+          deviceId: compatibilityIds.device,
+          mutations: [fixture.mutation],
+        },
+        outgoingBatchId: outgoingBatchIdFromMutation(
+          fixture.mutation.mutationId,
+        ),
       }),
     ).toMatchObject({ kind: 'rejected', reason: 'stale-checkpoint' });
 
@@ -318,9 +387,13 @@ describe('Sync v2 local replica commit planner', () => {
         plan,
         currentCheckpoint: plan.nextCheckpoint,
         localCards: fixture.cards,
-        currentMutations: [],
+        currentDrafts: [],
         localConflicts: [],
         sentMutations: [fixture.mutation],
+        outgoingBatch: undefined,
+        outgoingBatchId: outgoingBatchIdFromMutation(
+          fixture.mutation.mutationId,
+        ),
       }),
     ).toMatchObject({ kind: 'already-applied' });
   });

@@ -1,6 +1,7 @@
 import type {
   IdGenerator,
   NotesRepository,
+  NotesSyncRequestMode,
   NotesSyncRequestSnapshot,
 } from '@/lib/application/notes-runtime';
 import type { VaultNotesScope } from '@/lib/application/notes-access';
@@ -12,10 +13,7 @@ import {
   type NotesDatabaseName,
   type VerifyNotesDatabaseDeletionResult,
 } from '@/lib/application/notes-database-scope';
-import {
-  createPendingMutation,
-  type PendingMutationMode,
-} from '@/lib/domain/card-transitions';
+import type { PendingMutationMode } from '@/lib/domain/card-transitions';
 import type { DeviceId } from '@/lib/domain/id';
 import type {
   CardRecord,
@@ -24,6 +22,12 @@ import type {
 } from '@/lib/domain/types';
 import { decodeSyncResponse } from '@/lib/sync/protocol';
 import { planSyncResponseApplication } from '@/lib/sync/client-reconciliation';
+import {
+  createLocalMutationDraft,
+  outgoingBatchIdFromMutation,
+  selectEligibleMutationDrafts,
+  type OutgoingBatchId,
+} from '@/lib/sync/outgoing-batch';
 import type { SyncV2CommitPlan } from '@/lib/sync/v2-page-application';
 import {
   initialSyncV2Checkpoint,
@@ -31,17 +35,21 @@ import {
   type SyncV2ReplicaCommitResult,
   type SyncV2ReplicaRepository,
 } from '@/lib/sync/v2-replica';
+import { SYNC_V2_LIMITS } from '@/lib/sync/v2-protocol';
 import { assertNever } from '@/lib/shared/invariant';
 import {
   decodeStoredCards,
   decodeStoredConflicts,
   decodeStoredMeta,
+  decodeStoredMutationDrafts,
   decodeStoredMutations,
+  decodeStoredOutgoingBatch,
   decodeStoredSyncV2Checkpoint,
   encodeStoredCard,
   encodeStoredConflict,
   encodeStoredMeta,
   encodeStoredMutation,
+  encodeStoredOutgoingBatch,
   encodeStoredSyncV2Checkpoint,
 } from '@/lib/storage/records';
 
@@ -222,29 +230,112 @@ async function loadPendingMutations(
   scope: IndexedDbNotesScope,
 ): Promise<PendingMutation[]> {
   const database = await openNotesDatabase(scope);
-  const transaction = database.transaction('mutations', 'readonly');
-  return decodeStoredMutations(
-    await requestResult(transaction.objectStore('mutations').getAll()),
+  const transaction = database.transaction(
+    ['mutations', SYNC_V2_STORE_NAME],
+    'readonly',
   );
+  const [mutationsInput, outgoingInput] = await Promise.all([
+    requestResult(transaction.objectStore('mutations').getAll()),
+    requestResult(transaction.objectStore(SYNC_V2_STORE_NAME).get('outgoing')),
+  ]);
+  const mutations = decodeStoredMutations(mutationsInput);
+  return outgoingInput === undefined
+    ? mutations
+    : [...decodeStoredOutgoingBatch(outgoingInput).mutations, ...mutations];
 }
 
 async function loadSyncRequestSnapshot(
   scope: IndexedDbNotesScope,
+  mode: NotesSyncRequestMode,
 ): Promise<NotesSyncRequestSnapshot> {
   const database = await openNotesDatabase(scope);
-  const transaction = database.transaction(['cards', 'mutations'], 'readonly');
+  if (mode.kind === 'v1') {
+    const transaction = database.transaction(
+      ['cards', 'mutations'],
+      'readonly',
+    );
+    const cardsRequest = transaction.objectStore('cards').getAll();
+    const mutationsRequest = transaction.objectStore('mutations').getAll();
+    const [cardsInput, mutationsInput] = await Promise.all([
+      requestResult(cardsRequest),
+      requestResult(mutationsRequest),
+    ]);
+    const cards = decodeStoredCards(cardsInput);
+    return {
+      sentMutations: decodeStoredMutations(mutationsInput),
+      revisionsAtRequest: new Map(
+        cards.map((card) => [card.id, card.localRevision]),
+      ),
+      outgoingBatchId: null,
+    };
+  }
+
+  const transaction = database.transaction(
+    ['cards', 'mutations', 'conflicts', SYNC_V2_STORE_NAME],
+    'readwrite',
+  );
+  const completion = transactionComplete(transaction);
+  const mutationStore = transaction.objectStore('mutations');
+  const conflictStore = transaction.objectStore('conflicts');
+  const syncStore = transaction.objectStore(SYNC_V2_STORE_NAME);
   const cardsRequest = transaction.objectStore('cards').getAll();
-  const mutationsRequest = transaction.objectStore('mutations').getAll();
-  const [cardsInput, mutationsInput] = await Promise.all([
-    requestResult(cardsRequest),
-    requestResult(mutationsRequest),
-  ]);
+  const mutationsRequest = mutationStore.getAll();
+  const conflictsRequest = conflictStore.getAll();
+  const outgoingRequest = syncStore.get('outgoing');
+  const [cardsInput, mutationsInput, conflictsInput, outgoingInput] =
+    await Promise.all([
+      requestResult(cardsRequest),
+      requestResult(mutationsRequest),
+      requestResult(conflictsRequest),
+      requestResult(outgoingRequest),
+    ]);
   const cards = decodeStoredCards(cardsInput);
+  const revisionsAtRequest = new Map(
+    cards.map((card) => [card.id, card.localRevision]),
+  );
+  if (outgoingInput !== undefined) {
+    const outgoing = decodeStoredOutgoingBatch(outgoingInput);
+    if (outgoing.deviceId !== mode.deviceId) {
+      throw new Error('Stored outgoing batch belongs to another device');
+    }
+    await completion;
+    return {
+      sentMutations: outgoing.mutations,
+      revisionsAtRequest,
+      outgoingBatchId: outgoing.batchId,
+    };
+  }
+
+  const drafts = decodeStoredMutationDrafts(mutationsInput);
+  const selected = selectEligibleMutationDrafts({
+    drafts,
+    conflicts: decodeStoredConflicts(conflictsInput),
+    limit: SYNC_V2_LIMITS.mutationsPerRequest,
+  });
+  const first = selected[0];
+  if (first === undefined) {
+    await completion;
+    return {
+      sentMutations: [],
+      revisionsAtRequest,
+      outgoingBatchId: null,
+    };
+  }
+  const outgoing = {
+    version: 1 as const,
+    batchId: outgoingBatchIdFromMutation(first.mutation.mutationId),
+    deviceId: mode.deviceId,
+    mutations: selected.map((draft) => draft.mutation),
+  };
+  syncStore.put(encodeStoredOutgoingBatch(outgoing));
+  for (const draft of selected) {
+    mutationStore.delete(draft.mutation.cardId);
+  }
+  await completion;
   return {
-    sentMutations: decodeStoredMutations(mutationsInput),
-    revisionsAtRequest: new Map(
-      cards.map((card) => [card.id, card.localRevision]),
-    ),
+    sentMutations: outgoing.mutations,
+    revisionsAtRequest,
+    outgoingBatchId: outgoing.batchId,
   };
 }
 
@@ -302,27 +393,42 @@ async function persistCardAndMutation(
   },
 ): Promise<PendingMutation> {
   const database = await openNotesDatabase(scope);
-  const transaction = database.transaction(['cards', 'mutations'], 'readwrite');
+  const transaction = database.transaction(
+    ['cards', 'mutations', SYNC_V2_STORE_NAME],
+    'readwrite',
+  );
   const cardStore = transaction.objectStore('cards');
   const mutationStore = transaction.objectStore('mutations');
+  const syncStore = transaction.objectStore(SYNC_V2_STORE_NAME);
   const completion = transactionComplete(transaction);
   try {
-    const storedMutationInput = await requestResult(mutationStore.get(card.id));
-    const [existingMutation] = decodeStoredMutations(
+    const [storedMutationInput, outgoingInput] = await Promise.all([
+      requestResult(mutationStore.get(card.id)),
+      requestResult(syncStore.get('outgoing')),
+    ]);
+    const [existingDraft] = decodeStoredMutationDrafts(
       storedMutationInput === undefined ? [] : [storedMutationInput],
     );
-    const result = createPendingMutation(
+    const outgoing =
+      outgoingInput === undefined
+        ? undefined
+        : decodeStoredOutgoingBatch(outgoingInput);
+    const draftResult = createLocalMutationDraft({
       card,
-      idGenerator.createMutationId(),
-      options,
-      existingMutation,
-    );
-    if (!result.ok) {
-      throw new Error(`Cannot persist pending mutation: ${result.reason}`);
+      mutationId: idGenerator.createMutationId(),
+      mode: options,
+      existingDraft,
+      outgoingMutation: outgoing?.mutations.find(
+        (mutation) => mutation.cardId === card.id,
+      ),
+    });
+    if (!draftResult.ok) {
+      throw new Error(`Cannot persist pending mutation: ${draftResult.reason}`);
     }
-    const mutation = result.mutation;
+    const { draft } = draftResult;
+    const mutation = draft.mutation;
     cardStore.put(encodeStoredCard(card));
-    mutationStore.put(encodeStoredMutation(mutation));
+    mutationStore.put(encodeStoredMutation(mutation, draft.origin));
     await completion;
     return mutation;
   } catch (error) {
@@ -427,6 +533,7 @@ async function applySyncV2Commit(
   scope: VaultNotesScope,
   plan: SyncV2CommitPlan,
   sentMutations: readonly PendingMutation[],
+  outgoingBatchId: OutgoingBatchId | null,
 ): Promise<SyncV2ReplicaCommitResult> {
   const database = await openNotesDatabase(scope);
   const transaction = database.transaction(
@@ -440,20 +547,32 @@ async function applySyncV2Commit(
   const completion = transactionComplete(transaction);
 
   try {
-    const [cardsInput, mutationsInput, conflictsInput, checkpointInput] =
-      await Promise.all([
-        requestResult(cardStore.getAll()),
-        requestResult(mutationStore.getAll()),
-        requestResult(conflictStore.getAll()),
-        requestResult(checkpointStore.get('checkpoint')),
-      ]);
+    const [
+      cardsInput,
+      mutationsInput,
+      conflictsInput,
+      checkpointInput,
+      outgoingInput,
+    ] = await Promise.all([
+      requestResult(cardStore.getAll()),
+      requestResult(mutationStore.getAll()),
+      requestResult(conflictStore.getAll()),
+      requestResult(checkpointStore.get('checkpoint')),
+      requestResult(checkpointStore.get('outgoing')),
+    ]);
+    const outgoingBatch =
+      outgoingInput === undefined
+        ? undefined
+        : decodeStoredOutgoingBatch(outgoingInput);
     const decision = planSyncV2ReplicaCommit({
       plan,
       currentCheckpoint: checkpointFromStored(checkpointInput),
       localCards: decodeStoredCards(cardsInput),
-      currentMutations: decodeStoredMutations(mutationsInput),
+      currentDrafts: decodeStoredMutationDrafts(mutationsInput),
       localConflicts: decodeStoredConflicts(conflictsInput),
       sentMutations,
+      outgoingBatch,
+      outgoingBatchId,
     });
 
     switch (decision.kind) {
@@ -474,7 +593,12 @@ async function applySyncV2Commit(
               mutationStore.delete(operation.cardId);
               break;
             case 'put-mutation':
-              mutationStore.put(encodeStoredMutation(operation.mutation));
+              mutationStore.put(
+                encodeStoredMutation(
+                  operation.draft.mutation,
+                  operation.draft.origin,
+                ),
+              );
               break;
             case 'delete-conflict':
               conflictStore.delete(operation.conflictId);
@@ -487,12 +611,14 @@ async function applySyncV2Commit(
           }
         }
         checkpointStore.put(encodeStoredSyncV2Checkpoint(decision.checkpoint));
+        if (decision.clearOutgoingBatch) checkpointStore.delete('outgoing');
         await completion;
         return {
           kind: 'applied',
           checkpoint: decision.checkpoint,
           cards: decision.cards,
           conflicts: decision.conflicts,
+          hasEligiblePendingMutations: decision.hasEligiblePendingMutations,
         };
       default:
         return assertNever(decision, 'Unsupported Sync v2 commit decision');
@@ -521,7 +647,7 @@ export function createIndexedDbNotesRepository<
     loadConflicts: () => loadConflicts(scope),
     loadOrCreateDeviceId: () => loadOrCreateDeviceId(scope, idGenerator),
     loadPendingMutations: () => loadPendingMutations(scope),
-    loadSyncRequestSnapshot: () => loadSyncRequestSnapshot(scope),
+    loadSyncRequestSnapshot: (mode) => loadSyncRequestSnapshot(scope, mode),
     persistLocalCard: (card) => persistLocalCard(scope, card),
     persistCardAndMutation: (card, options) =>
       persistCardAndMutation(scope, idGenerator, card, options),
@@ -536,8 +662,8 @@ export function createIndexedDbSyncV2ReplicaRepository<
   return {
     scope,
     loadCheckpoint: () => loadSyncV2Checkpoint(scope),
-    applyCommit: (plan, sentMutations) =>
-      applySyncV2Commit(scope, plan, sentMutations),
+    applyCommit: (plan, sentMutations, outgoingBatchId) =>
+      applySyncV2Commit(scope, plan, sentMutations, outgoingBatchId),
   };
 }
 

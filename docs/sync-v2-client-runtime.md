@@ -23,17 +23,30 @@ of this Issue.
 
 ## Page and commit boundary
 
-The application client loads the persisted checkpoint, keeps changes and
-mutation receipts from intermediate pages in memory, and resends the same
-mutation snapshot on every page request. Each response is decoded by the pure
-page planner. Cursor mismatch, a non-advancing cursor, sequence reordering, a
-changed high-watermark, changed receipts, or malformed data rejects the attempt.
+The application client atomically moves eligible drafts into one durable
+outgoing batch before the request, then loads the persisted checkpoint. The
+same batch ID, device ID, mutation IDs, bases, and content are reused across
+pages, response-loss retries, reloads, and competing tabs. Edits saved after
+capture remain separate drafts; they never replace the outgoing payload. Each
+response is decoded by the pure page planner. Cursor mismatch, a non-advancing
+cursor, sequence reordering, a changed high-watermark, changed receipts, or
+malformed data rejects the attempt.
 
 Only a valid terminal page produces a replica commit. The #165 adapter then
-updates cards, pending mutations, conflicts, receipts, and the checkpoint in a
-single IndexedDB transaction. A lost response or malformed intermediate page
-does not advance the checkpoint, so the next attempt starts from the last
-committed position and relies on mutation-receipt idempotency.
+updates cards, draft mutations, conflicts, the outgoing batch, and the
+checkpoint in a single IndexedDB transaction. It clears an outgoing batch only
+when the transaction sees the expected batch ID and receipts for every mutation
+in that batch. A lost response or malformed intermediate page therefore keeps
+both the checkpoint and exact request payload available for an idempotent
+retry.
+
+When input continues during the request, a draft records the mutation ID it
+causally follows. A receipt rebases only that successor, only to the receipt's
+exact applied revision, and only when the collected changes contain the matching
+server card content. A later revision from another device may still update the
+local replica, but it cannot become the draft's base silently; sending that
+draft preserves the genuine conflict. An eligible successor triggers an
+immediate follow-up sync after the outgoing batch commits.
 
 ## Session epoch and visible edits
 
