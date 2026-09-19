@@ -3,6 +3,7 @@ import {
   type NotesInitializationLifecycle,
 } from '@/lib/application/initialization-lifecycle';
 import {
+  areNotesLocationsEqual,
   notesLocationCardId,
   type NotesLocation,
   type NotesNavigationIntent,
@@ -46,12 +47,14 @@ type NotesPresentationOptions = Readonly<{
   cardEditorIndex: CardEditorCandidateIndex | null;
   connectionsGraph: ConnectionsGraphSource;
   history: HistoryViewModel | null;
+  navigationPending?: boolean;
 }>;
 
 const DEFAULT_PRESENTATION_OPTIONS: NotesPresentationOptions = {
   cardEditorIndex: null,
   connectionsGraph: { kind: 'derive' },
   history: null,
+  navigationPending: false,
 };
 
 export type NotesStorePort = {
@@ -78,10 +81,12 @@ export type NotesApplicationController = NotesPresentationActions & {
 
 export type NotesApplicationControllerPorts = Readonly<{
   onCardCreated: (cardId: CardId) => void;
+  isActive?: () => boolean;
 }>;
 
 const DEFAULT_CONTROLLER_PORTS: NotesApplicationControllerPorts = {
   onCardCreated: () => undefined,
+  isActive: () => true,
 };
 
 function activeView(location: NotesLocation): NotesViewName {
@@ -117,9 +122,36 @@ export function createNotesApplicationController(
         cardIds: store.cards.map((card) => card.id),
       }),
     createCard: async () => {
+      const started = navigator.getSnapshot();
+      if (started.pending || ports.isActive?.() === false) return;
       const card = await store.createCard();
-      navigate(navigator, { type: 'open-card', cardId: card.id });
-      ports.onCardCreated(card.id);
+      const current = navigator.getSnapshot();
+      const stayedAtStart =
+        current.activationId === started.activationId &&
+        areNotesLocationsEqual(current.location, started.location);
+      const initializedCreatedCard =
+        started.location.kind === 'empty' &&
+        current.cause === 'initialize' &&
+        current.location.kind === 'card' &&
+        current.location.cardId === card.id;
+      if (
+        ports.isActive?.() === false ||
+        current.pending ||
+        (!stayedAtStart && !initializedCreatedCard)
+      ) {
+        return;
+      }
+      const destination = navigate(navigator, {
+        type: 'open-card',
+        cardId: card.id,
+      });
+      if (
+        !navigator.getSnapshot().pending &&
+        destination.kind === 'card' &&
+        destination.cardId === card.id
+      ) {
+        ports.onCardCreated(card.id);
+      }
     },
     openCard: (cardId) => {
       if (!store.hasCard(cardId)) return;
@@ -167,6 +199,7 @@ export function createNotesPresentationModel(
 
   const common = {
     initialized: isNotesInitialized(store.initialization),
+    navigationPending: options.navigationPending ?? false,
     location,
     availableViews: {
       card: hasCurrentCard,

@@ -138,6 +138,115 @@ describe('notes application controller', () => {
     );
   });
 
+  it('does not let a delayed card creation steal a newer navigation', async () => {
+    const current = card('create-race-current', 1);
+    const created = card('create-race-created', 2);
+    const store = fakeStore([current]);
+    const gate = Promise.withResolvers<void>();
+    store.createCard = async () => {
+      await gate.promise;
+      store.cards = [...store.cards, created];
+      return created;
+    };
+    const navigator = createInMemoryNotesNavigator({
+      kind: 'card',
+      cardId: current.id,
+    });
+    const onCardCreated = vi.fn();
+    const controller = createNotesApplicationController(store, navigator, {
+      onCardCreated,
+    });
+
+    const pendingCreate = controller.createCard();
+    controller.showHistory();
+    gate.resolve();
+    await pendingCreate;
+
+    expect(store.cards).toContain(created);
+    expect(navigator.getLocation()).toEqual({
+      kind: 'history',
+      cardId: current.id,
+    });
+    expect(onCardCreated).not.toHaveBeenCalled();
+  });
+
+  it('does not start card creation while navigation is pending', async () => {
+    const current = card('create-pending-current', 1);
+    const store = fakeStore([current]);
+    store.createCard = vi.fn(store.createCard);
+    const base = createInMemoryNotesNavigator({
+      kind: 'card',
+      cardId: current.id,
+    });
+    const pendingSnapshot = { ...base.getSnapshot(), pending: true };
+    const navigator = {
+      ...base,
+      getSnapshot: () => pendingSnapshot,
+    };
+    const controller = createNotesApplicationController(store, navigator);
+
+    await controller.createCard();
+
+    expect(store.createCard).not.toHaveBeenCalled();
+  });
+
+  it('allows first-card focus when initialization wins the create completion race', async () => {
+    const created = card('create-initialize-created', 1);
+    const store = fakeStore();
+    const navigator = createInMemoryNotesNavigator();
+    const onCardCreated = vi.fn();
+    store.createCard = async () => {
+      store.cards = [created];
+      controller.initializeNavigation();
+      return created;
+    };
+    const controller = createNotesApplicationController(store, navigator, {
+      onCardCreated,
+    });
+
+    await controller.createCard();
+
+    expect(navigator.getSnapshot()).toMatchObject({
+      location: { kind: 'card', cardId: created.id },
+      cause: 'initialize',
+    });
+    expect(onCardCreated).toHaveBeenCalledWith(created.id);
+  });
+
+  it('keeps a completed card but skips navigation after the runtime ends', async () => {
+    const current = card('create-ended-current', 1);
+    const created = card('create-ended-created', 2);
+    const store = fakeStore([current]);
+    const gate = Promise.withResolvers<void>();
+    store.createCard = async () => {
+      await gate.promise;
+      store.cards = [...store.cards, created];
+      return created;
+    };
+    const navigator = createInMemoryNotesNavigator({
+      kind: 'card',
+      cardId: current.id,
+    });
+    let active = true;
+    const onCardCreated = vi.fn();
+    const controller = createNotesApplicationController(store, navigator, {
+      onCardCreated,
+      isActive: () => active,
+    });
+
+    const pendingCreate = controller.createCard();
+    active = false;
+    gate.resolve();
+    await pendingCreate;
+
+    expect(store.cards).toContain(created);
+    expect(navigator.getLocation()).toEqual({
+      kind: 'card',
+      cardId: current.id,
+    });
+    expect(onCardCreated).not.toHaveBeenCalled();
+  });
+
   it('coordinates edits and conflict resolution around the current card', () => {
     const current = card('controller-current', 1);
     const store = fakeStore([current]);

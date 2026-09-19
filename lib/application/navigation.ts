@@ -18,6 +18,12 @@ export type NotesNavigationIntent =
   | { type: 'show-history' }
   | { type: 'show-connections' };
 
+export type NotesHistoryEffect =
+  | { type: 'noop' }
+  | { type: 'push' }
+  | { type: 'replace' }
+  | { type: 'return-to-previous' };
+
 export type NotesNavigationCause =
   | 'initial'
   | 'initialize'
@@ -128,6 +134,34 @@ export function reduceNotesLocation(
   return areNotesLocationsEqual(current, next) ? current : next;
 }
 
+export function decideNotesHistoryEffect(input: {
+  current: NotesLocation;
+  next: NotesLocation;
+  intent: NotesNavigationIntent;
+  previousManagedLocation: NotesLocation | null;
+}): NotesHistoryEffect {
+  if (areNotesLocationsEqual(input.current, input.next)) {
+    return { type: 'noop' };
+  }
+
+  switch (input.intent.type) {
+    case 'initialize':
+    case 'reconcile-cards':
+      return { type: 'replace' };
+    case 'open-card':
+      return input.current.kind === 'empty'
+        ? { type: 'replace' }
+        : { type: 'push' };
+    case 'show-current-card':
+      return { type: 'replace' };
+    case 'show-history':
+    case 'show-connections':
+      return input.previousManagedLocation?.kind === input.next.kind
+        ? { type: 'return-to-previous' }
+        : { type: 'replace' };
+  }
+}
+
 export function notesNavigationCause(
   intent: NotesNavigationIntent,
 ): Exclude<NotesNavigationCause, 'initial' | 'traverse'> {
@@ -166,8 +200,15 @@ export function createInMemoryNotesNavigator(
       const next = reduceNotesLocation(location, intent);
       if (next !== location) {
         const previous = location;
+        const effect = decideNotesHistoryEffect({
+          current: previous,
+          next,
+          intent,
+          previousManagedLocation: null,
+        });
         location = next;
-        const entryId = snapshot.entryId + 1;
+        const entryId =
+          effect.type === 'push' ? snapshot.entryId + 1 : snapshot.entryId;
         cameraSession.replaceEntry(entryId, previous, next);
         snapshot = {
           location,

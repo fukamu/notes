@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LoaderCircle, Network, TriangleAlert } from 'lucide-react';
 import type { ConnectionsRendererProps } from '@/components/presentation-contract';
 import { useConnectionsViewport } from '@/hooks/use-connections-viewport';
@@ -14,8 +14,15 @@ export function ConnectionsView({
   actions,
   presentation,
   cameraPosition,
+  navigationPending,
 }: ConnectionsRendererProps) {
   const openCard = actions.openCard;
+  const selectCard = useCallback(
+    (cardId: CardId) => {
+      if (!navigationPending) openCard(cardId);
+    },
+    [navigationPending, openCard],
+  );
   const readyModel = model.status === 'ready' ? model : null;
   const geometry = readyModel?.geometry ?? null;
   const edgeMaximumRadius = presentation.edgeMaximumRadius;
@@ -67,7 +74,7 @@ export function ConnectionsView({
     presentation.viewportPadding,
     preparedVisibility,
     retainedNodeIndex,
-    openCard,
+    selectCard,
     cameraPosition,
   );
   const htmlNodeIndices = useMemo(() => {
@@ -236,7 +243,8 @@ export function ConnectionsView({
                   key={node.cardId}
                   id={`connections-map-card-${node.cardId}`}
                   type="button"
-                  onClick={() => openCard(node.cardId)}
+                  disabled={navigationPending}
+                  onClick={() => selectCard(node.cardId)}
                   aria-current={node.current ? 'true' : undefined}
                   aria-label={node.accessibleName}
                   className="connections-node-structure connections-node-shell connections-node"
