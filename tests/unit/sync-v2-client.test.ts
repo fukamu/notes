@@ -7,6 +7,7 @@ import type { VaultNotesScope } from '@/lib/application/notes-access';
 import type { SyncV2CommitPlan } from '@/lib/sync/v2-page-application';
 import {
   initialSyncV2Checkpoint,
+  type SyncV2ReplicaCommitResult,
   type SyncV2ReplicaRepository,
 } from '@/lib/sync/v2-replica';
 import {
@@ -39,6 +40,12 @@ const pageCursor = parseSyncV2Cursor(
 const committedCursor = parseSyncV2Cursor(
   'sync.v2.client.committed.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
 );
+
+async function executeCommit(
+  commit: () => Promise<SyncV2ReplicaCommitResult>,
+): Promise<SyncV2ReplicaCommitResult> {
+  return commit();
+}
 
 function pages(): readonly [SyncV2Response, SyncV2Response] {
   const fixture = createCompatibilityFixture();
@@ -125,6 +132,7 @@ describe('Sync v2 client page orchestration', () => {
         deviceId: compatibilityIds.device,
         sentMutations: [fixture.mutation],
         isCurrent: () => true,
+        executeCommit,
       }),
     ).resolves.toMatchObject({
       kind: 'completed',
@@ -196,6 +204,7 @@ describe('Sync v2 client page orchestration', () => {
         deviceId: compatibilityIds.device,
         sentMutations: [],
         isCurrent: () => true,
+        executeCommit,
       }),
     ).resolves.toMatchObject({ kind: 'completed' });
 
@@ -221,6 +230,7 @@ describe('Sync v2 client page orchestration', () => {
         deviceId: compatibilityIds.device,
         sentMutations: [fixture.mutation],
         isCurrent: () => true,
+        executeCommit,
       }),
     ).resolves.toEqual({ kind: 'rejected', reason: 'malformed-page' });
     expect(applyCommit).not.toHaveBeenCalled();
@@ -244,6 +254,7 @@ describe('Sync v2 client page orchestration', () => {
         deviceId: compatibilityIds.device,
         sentMutations: [fixture.mutation],
         isCurrent: () => true,
+        executeCommit,
       }),
     ).rejects.toThrow('response lost');
     expect(applyCommit).not.toHaveBeenCalled();
@@ -264,6 +275,7 @@ describe('Sync v2 client page orchestration', () => {
         deviceId: compatibilityIds.device,
         sentMutations: [fixture.mutation],
         isCurrent: () => true,
+        executeCommit,
       }),
     ).resolves.toMatchObject({ kind: 'completed' });
     expect(retrySend.mock.calls[0]?.[0]?.cursor).toBeNull();
@@ -288,8 +300,37 @@ describe('Sync v2 client page orchestration', () => {
         deviceId: compatibilityIds.device,
         sentMutations: [fixture.mutation],
         isCurrent: () => current,
+        executeCommit,
       }),
     ).resolves.toEqual({ kind: 'cancelled' });
+    expect(applyCommit).not.toHaveBeenCalled();
+  });
+
+  it('delegates the terminal commit so the local effect boundary can cancel it', async () => {
+    const fixture = createCompatibilityFixture();
+    const responses = [...pages()];
+    const transport: SyncV2Transport<VaultNotesScope> = {
+      scope,
+      send: vi.fn(async () => {
+        const response = responses.shift();
+        if (response === undefined) throw new Error('unexpected page request');
+        return response;
+      }),
+    };
+    const { replica, applyCommit } = createReplica();
+    const client = createSyncV2Client({ scope, transport, replica });
+    const cancelCommit = vi.fn(async () => ({ kind: 'cancelled' as const }));
+
+    await expect(
+      client.synchronize({
+        deviceId: compatibilityIds.device,
+        sentMutations: [fixture.mutation],
+        isCurrent: () => true,
+        executeCommit: cancelCommit,
+      }),
+    ).resolves.toEqual({ kind: 'cancelled' });
+
+    expect(cancelCommit).toHaveBeenCalledOnce();
     expect(applyCommit).not.toHaveBeenCalled();
   });
 
@@ -318,6 +359,7 @@ describe('Sync v2 client page orchestration', () => {
         deviceId: compatibilityIds.device,
         sentMutations: [fixture.mutation],
         isCurrent: () => true,
+        executeCommit,
       }),
     ).resolves.toEqual({ kind: 'rejected', reason: 'stale-checkpoint' });
     expect(applyCommit).toHaveBeenCalledOnce();

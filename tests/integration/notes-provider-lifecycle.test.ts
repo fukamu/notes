@@ -8,6 +8,7 @@ import type {
   ForegroundResumePort,
   NotesRepository,
   NotesRuntimePorts,
+  NotesSyncRequestSnapshot,
   SyncTransport,
 } from '@/lib/application/notes-runtime';
 import {
@@ -20,7 +21,10 @@ import {
   useNotesDataStore,
   type NotesDataStore,
 } from '@/lib/client/notes-store';
-import { createPendingMutation } from '@/lib/domain/card-transitions';
+import {
+  createPendingMutation,
+  type CardEdit,
+} from '@/lib/domain/card-transitions';
 import type {
   CardRecord,
   ConflictRecord,
@@ -62,6 +66,7 @@ type RuntimeOverrides = {
   readonly loadCards?: () => Promise<CardRecord[]>;
   readonly loadConflicts?: () => Promise<ConflictRecord[]>;
   readonly loadPendingMutations?: () => Promise<PendingMutation[]>;
+  readonly loadSyncRequestSnapshot?: () => Promise<NotesSyncRequestSnapshot>;
   readonly persistLocalCard?: (card: CardRecord) => Promise<void>;
   readonly persistCardAndMutation?: (
     card: CardRecord,
@@ -120,13 +125,35 @@ function createRuntimeHarness(
 ): RuntimeHarness {
   const scope = overrides.scope ?? vaultScope;
   let cardSequence = 0;
+  let storedCards: CardRecord[] = [];
+  let storedMutations: PendingMutation[] = [];
+  const loadCards = vi.fn(async () => {
+    const loaded = await (overrides.loadCards ?? (async () => []))();
+    storedCards = loaded;
+    return loaded;
+  });
+  const loadPendingMutations = vi.fn(async () => {
+    const loaded = await (overrides.loadPendingMutations ?? (async () => []))();
+    storedMutations = loaded;
+    return loaded;
+  });
   const repository: NotesRepository<VaultNotesScope> = {
     scope,
-    loadCards: vi.fn(overrides.loadCards ?? (async () => [])),
+    loadCards,
     loadConflicts: vi.fn(overrides.loadConflicts ?? (async () => [])),
     loadOrCreateDeviceId: vi.fn(async () => compatibilityIds.device),
-    loadPendingMutations: vi.fn(
-      overrides.loadPendingMutations ?? (async () => []),
+    loadPendingMutations,
+    loadSyncRequestSnapshot: vi.fn(
+      overrides.loadSyncRequestSnapshot ??
+        (async () => ({
+          sentMutations: [...storedMutations],
+          revisionsAtRequest: new Map(
+            storedCards.map((cardRecord) => [
+              cardRecord.id,
+              cardRecord.localRevision,
+            ]),
+          ),
+        })),
     ),
     persistLocalCard: vi.fn(overrides.persistLocalCard ?? (async () => {})),
     persistCardAndMutation: vi.fn(
@@ -193,6 +220,36 @@ function createV2RuntimeHarness(
       ...harness.ports,
       sync: { kind: 'v2', client },
     },
+  };
+}
+
+function createDeferredV2Client(
+  response: Promise<SyncV2ClientResult>,
+): SyncV2Client<VaultNotesScope> {
+  return {
+    scope: vaultScope,
+    synchronize: vi.fn<SyncV2Client<VaultNotesScope>['synchronize']>(
+      async (operation) => {
+        const result = await response;
+        if (result.kind !== 'completed') return result;
+        const commit = await operation.executeCommit(async () => ({
+          kind: 'applied' as const,
+          checkpoint: initialSyncV2Checkpoint(),
+          cards: result.cards,
+          conflicts: result.conflicts,
+        }));
+        switch (commit.kind) {
+          case 'cancelled':
+            return { kind: 'cancelled' as const };
+          case 'rejected':
+            return { kind: 'rejected' as const, reason: commit.reason };
+          case 'applied':
+          case 'already-applied':
+            return result;
+        }
+        throw new Error('Unsupported deferred Sync v2 commit result');
+      },
+    ),
   };
 }
 
@@ -444,6 +501,42 @@ describe('NotesProvider operation lifecycle', () => {
     expect(runtime.transport.send).not.toHaveBeenCalled();
   });
 
+  it('continues the local queue after one save fails', async () => {
+    const initialCard = card('provider-save-recovery', 'initial');
+    let saveCount = 0;
+    const runtime = createRuntimeHarness({
+      loadCards: async () => [initialCard],
+      persistCardAndMutation: async (cardRecord) => {
+        saveCount += 1;
+        if (saveCount === 1) throw new Error('injected save failure');
+        return mutationFor(cardRecord);
+      },
+    });
+
+    await renderRuntime(runtime, 'save-recovery-runtime');
+    act(() => {
+      currentStore().updateCard(initialCard.id, {
+        type: 'title',
+        title: 'first edit',
+      });
+      currentStore().updateCard(initialCard.id, {
+        type: 'title',
+        title: 'second edit',
+      });
+    });
+
+    await vi.waitFor(() =>
+      expect(runtime.repository.persistCardAndMutation).toHaveBeenCalledTimes(
+        2,
+      ),
+    );
+    await vi.waitFor(() => expect(currentStore().saveState).toBe('saved'));
+    expect(runtime.repository.persistCardAndMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: 'second edit' }),
+      { kind: 'upsert' },
+    );
+  });
+
   it('preserves an edit made while a current-session sync is in flight', async () => {
     const initialCard = card('provider-rebase', 'before request');
     const serverCard = {
@@ -485,6 +578,140 @@ describe('NotesProvider operation lifecycle', () => {
       }),
     ]);
   });
+
+  it.each([
+    {
+      label: 'title',
+      edit: { type: 'title', title: 'continued title' } satisfies CardEdit,
+      expected: { title: 'continued title' },
+    },
+    {
+      label: 'body',
+      edit: {
+        type: 'body',
+        body: [{ type: 'text', text: 'continued body' }],
+      } satisfies CardEdit,
+      expected: { body: [{ type: 'text', text: 'continued body' }] },
+    },
+    {
+      label: 'link',
+      edit: {
+        type: 'body',
+        body: [
+          { type: 'text', text: 'link to ' },
+          { type: 'link', targetCardId: compatibilityIds.cardB },
+        ],
+      } satisfies CardEdit,
+      expected: {
+        body: [
+          { type: 'text', text: 'link to ' },
+          { type: 'link', targetCardId: compatibilityIds.cardB },
+        ],
+      },
+    },
+  ])(
+    'publishes an ACK before the queued $label save without restoring its stale base',
+    async ({ edit, expected }) => {
+      const initialCard = card('provider-ack-first', 'sent title');
+      const sent = mutationFor(initialCard);
+      const acknowledgedCard = {
+        ...initialCard,
+        serverRevision: 2,
+      };
+      const applyStarted = Promise.withResolvers<void>();
+      const releaseApply = Promise.withResolvers<void>();
+      const applyCommit = vi.fn(async () => {
+        applyStarted.resolve();
+        await releaseApply.promise;
+        return {
+          kind: 'applied' as const,
+          checkpoint: {
+            cursor: parseSyncV2Cursor(
+              'sync.v2.provider.ack-first.aaaaaaaaaaaaaaaaaaaaaaaa',
+            ),
+            highWatermark: parseSyncSequence(1),
+          },
+          cards: [acknowledgedCard],
+          conflicts: [],
+        };
+      });
+      const client = createSyncV2Client({
+        scope: vaultScope,
+        transport: {
+          scope: vaultScope,
+          send: vi.fn(async () => ({
+            version: SYNC_V2_VERSION,
+            highWatermark: 1,
+            changes: [
+              {
+                kind: 'card-upsert',
+                sequence: 1,
+                card: {
+                  id: initialCard.id,
+                  officialDisplayId: 1,
+                  title: initialCard.title,
+                  body: initialCard.body,
+                  createdAt: initialCard.createdAt,
+                  updatedAt: initialCard.updatedAt,
+                  revision: 2,
+                },
+              },
+            ],
+            receipts: [
+              {
+                mutationId: sent.mutationId,
+                cardId: sent.cardId,
+                appliedRevision: 2,
+              },
+            ],
+            page: {
+              kind: 'complete',
+              nextCursor: 'sync.v2.provider.ack-first.aaaaaaaaaaaaaaaaaaaaaaaa',
+            },
+          })),
+        },
+        replica: {
+          scope: vaultScope,
+          loadCheckpoint: vi.fn(async () => initialSyncV2Checkpoint()),
+          applyCommit,
+        },
+      });
+      const runtime = createV2RuntimeHarness(client, {
+        online: true,
+        loadCards: async () => [initialCard],
+        loadPendingMutations: async () => [sent],
+        loadSyncRequestSnapshot: async () => ({
+          sentMutations: [sent],
+          revisionsAtRequest: new Map([
+            [initialCard.id, initialCard.localRevision],
+          ]),
+        }),
+      });
+
+      await renderRuntime(runtime, `ack-first-${edit.type}`);
+      await applyStarted.promise;
+      act(() => currentStore().updateCard(initialCard.id, edit));
+      releaseApply.resolve();
+
+      await vi.waitFor(() =>
+        expect(runtime.repository.persistCardAndMutation).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: initialCard.id,
+            serverRevision: 2,
+            ...expected,
+          }),
+          { kind: 'upsert' },
+        ),
+      );
+      expect(currentStore().cards).toEqual([
+        expect.objectContaining({
+          id: initialCard.id,
+          serverRevision: 2,
+          ...expected,
+        }),
+      ]);
+    },
+  );
 
   it('keeps conflict-time edits local until one card-level resolution is selected', async () => {
     const initialCard = card('provider-conflict-current', 'server title');
@@ -542,6 +769,82 @@ describe('NotesProvider operation lifecycle', () => {
     expect(currentStore().resolvingConflictCardIds).toEqual([initialCard.id]);
   });
 
+  it('downgrades a queued upsert when an unresolved conflict publishes first', async () => {
+    const initialCard = card('provider-conflict-race', 'before conflict');
+    const conflict: ConflictRecord = {
+      id: fixtureConflictId('provider-conflict-race'),
+      cardId: initialCard.id,
+      serverRevision: 2,
+      localTitle: 'local alternative',
+      localBody: [],
+      serverTitle: 'server alternative',
+      serverBody: [],
+      createdAt: 1_200,
+    };
+    const commitStarted = Promise.withResolvers<void>();
+    const releaseCommit = Promise.withResolvers<void>();
+    const client: SyncV2Client<VaultNotesScope> = {
+      scope: vaultScope,
+      synchronize: vi.fn<SyncV2Client<VaultNotesScope>['synchronize']>(
+        async (operation) => {
+          const commit = await operation.executeCommit(async () => {
+            commitStarted.resolve();
+            await releaseCommit.promise;
+            return {
+              kind: 'applied' as const,
+              checkpoint: initialSyncV2Checkpoint(),
+              cards: [{ ...initialCard, serverRevision: 2 }],
+              conflicts: [conflict],
+            };
+          });
+          if (commit.kind === 'cancelled') {
+            return { kind: 'cancelled' as const };
+          }
+          if (commit.kind === 'rejected') {
+            return { kind: 'rejected' as const, reason: commit.reason };
+          }
+          return {
+            kind: 'completed' as const,
+            cards: commit.cards,
+            conflicts: commit.conflicts,
+          };
+        },
+      ),
+    };
+    const runtime = createV2RuntimeHarness(client, {
+      online: true,
+      loadCards: async () => [initialCard],
+      loadSyncRequestSnapshot: async () => ({
+        sentMutations: [],
+        revisionsAtRequest: new Map([
+          [initialCard.id, initialCard.localRevision],
+        ]),
+      }),
+    });
+
+    await renderRuntime(runtime, 'conflict-race-runtime');
+    await commitStarted.promise;
+    act(() =>
+      currentStore().updateCard(initialCard.id, {
+        type: 'title',
+        title: 'typed before conflict publication',
+      }),
+    );
+    releaseCommit.resolve();
+
+    await vi.waitFor(() =>
+      expect(runtime.repository.persistLocalCard).toHaveBeenCalledOnce(),
+    );
+    expect(runtime.repository.persistCardAndMutation).not.toHaveBeenCalled();
+    expect(currentStore().cards).toEqual([
+      expect.objectContaining({
+        id: initialCard.id,
+        title: 'typed before conflict publication',
+        serverRevision: 2,
+      }),
+    ]);
+  });
+
   it('reconciles v2 replica results without routing them through the v1 decoder', async () => {
     const initialCard = card('provider-v2-rebase', 'before v2 request');
     const serverCard = {
@@ -551,10 +854,7 @@ describe('NotesProvider operation lifecycle', () => {
       serverRevision: 2,
     };
     const response = Promise.withResolvers<SyncV2ClientResult>();
-    const client: SyncV2Client<VaultNotesScope> = {
-      scope: vaultScope,
-      synchronize: vi.fn(async () => response.promise),
-    };
+    const client = createDeferredV2Client(response.promise);
     const runtime = createV2RuntimeHarness(client, {
       online: true,
       loadCards: async () => [initialCard],
@@ -592,10 +892,7 @@ describe('NotesProvider operation lifecycle', () => {
   it('removes an unchanged card omitted by a completed v2 replica commit', async () => {
     const deletedCard = card('provider-v2-deleted', 'deleted remotely');
     const response = Promise.withResolvers<SyncV2ClientResult>();
-    const client: SyncV2Client<VaultNotesScope> = {
-      scope: vaultScope,
-      synchronize: vi.fn(async () => response.promise),
-    };
+    const client = createDeferredV2Client(response.promise);
     const runtime = createV2RuntimeHarness(client, {
       online: true,
       loadCards: async () => [deletedCard],
@@ -615,10 +912,7 @@ describe('NotesProvider operation lifecycle', () => {
   it('retains a card edited while a v2 deletion response is in flight', async () => {
     const editedCard = card('provider-v2-delete-race', 'before request');
     const response = Promise.withResolvers<SyncV2ClientResult>();
-    const client: SyncV2Client<VaultNotesScope> = {
-      scope: vaultScope,
-      synchronize: vi.fn(async () => response.promise),
-    };
+    const client = createDeferredV2Client(response.promise);
     const runtime = createV2RuntimeHarness(client, {
       online: true,
       loadCards: async () => [editedCard],

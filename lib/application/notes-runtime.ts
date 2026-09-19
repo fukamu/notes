@@ -24,12 +24,18 @@ export type LegacyNotesScope = typeof LEGACY_NOTES_SCOPE;
 /** Every runtime scope accepted by the notes application composition. */
 export type NotesScope = LegacyNotesScope | VaultNotesScope;
 
+export type NotesSyncRequestSnapshot = {
+  readonly sentMutations: readonly PendingMutation[];
+  readonly revisionsAtRequest: ReadonlyMap<CardId, number>;
+};
+
 export type NotesRepository<TScope extends NotesScope = NotesScope> = {
   readonly scope: TScope;
   loadCards: () => Promise<CardRecord[]>;
   loadConflicts: () => Promise<ConflictRecord[]>;
   loadOrCreateDeviceId: () => Promise<DeviceId>;
   loadPendingMutations: () => Promise<PendingMutation[]>;
+  loadSyncRequestSnapshot: () => Promise<NotesSyncRequestSnapshot>;
   persistLocalCard: (card: CardRecord) => Promise<void>;
   persistCardAndMutation: (
     card: CardRecord,

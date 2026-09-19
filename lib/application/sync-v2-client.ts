@@ -46,12 +46,21 @@ export type SyncV2ClientResult =
       readonly reason: PageRejectionReason | CommitRejectionReason;
     };
 
+export type SyncV2CommitExecutionResult =
+  | SyncV2ReplicaCommitResult
+  | { readonly kind: 'cancelled' };
+
+export type SyncV2CommitExecutor = (
+  commit: () => Promise<SyncV2ReplicaCommitResult>,
+) => Promise<SyncV2CommitExecutionResult>;
+
 export type SyncV2Client<TScope> = {
   readonly scope: TScope;
   synchronize: (input: {
     readonly deviceId: DeviceId;
     readonly sentMutations: readonly PendingMutation[];
     readonly isCurrent: () => boolean;
+    readonly executeCommit: SyncV2CommitExecutor;
   }) => Promise<SyncV2ClientResult>;
 };
 
@@ -94,12 +103,13 @@ export function createSyncV2Client<TScope>(input: {
             break;
           case 'ready-to-commit': {
             if (!operation.isCurrent()) return { kind: 'cancelled' };
-            const commit = await input.replica.applyCommit(
-              decision.plan,
-              state.sentMutations,
+            const commit = await operation.executeCommit(() =>
+              input.replica.applyCommit(decision.plan, state.sentMutations),
             );
             if (!operation.isCurrent()) return { kind: 'cancelled' };
             switch (commit.kind) {
+              case 'cancelled':
+                return { kind: 'cancelled' };
               case 'applied':
               case 'already-applied':
                 return {

@@ -26,7 +26,7 @@ export function ConflictNotice({ model, onResolve }: Props) {
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
-            <p className="pt-2 font-semibold">別の端末の編集と重なりました</p>
+            <p className="pt-2 font-semibold">変更が競合しました</p>
             <Button
               type="button"
               variant="ghost"
