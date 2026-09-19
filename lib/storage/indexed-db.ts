@@ -1,6 +1,7 @@
 import type {
   IdGenerator,
   NotesRepository,
+  NotesSyncRequestSnapshot,
 } from '@/lib/application/notes-runtime';
 import type { VaultNotesScope } from '@/lib/application/notes-access';
 import {
@@ -225,6 +226,26 @@ async function loadPendingMutations(
   return decodeStoredMutations(
     await requestResult(transaction.objectStore('mutations').getAll()),
   );
+}
+
+async function loadSyncRequestSnapshot(
+  scope: IndexedDbNotesScope,
+): Promise<NotesSyncRequestSnapshot> {
+  const database = await openNotesDatabase(scope);
+  const transaction = database.transaction(['cards', 'mutations'], 'readonly');
+  const cardsRequest = transaction.objectStore('cards').getAll();
+  const mutationsRequest = transaction.objectStore('mutations').getAll();
+  const [cardsInput, mutationsInput] = await Promise.all([
+    requestResult(cardsRequest),
+    requestResult(mutationsRequest),
+  ]);
+  const cards = decodeStoredCards(cardsInput);
+  return {
+    sentMutations: decodeStoredMutations(mutationsInput),
+    revisionsAtRequest: new Map(
+      cards.map((card) => [card.id, card.localRevision]),
+    ),
+  };
 }
 
 async function loadConflicts(
@@ -500,6 +521,7 @@ export function createIndexedDbNotesRepository<
     loadConflicts: () => loadConflicts(scope),
     loadOrCreateDeviceId: () => loadOrCreateDeviceId(scope, idGenerator),
     loadPendingMutations: () => loadPendingMutations(scope),
+    loadSyncRequestSnapshot: () => loadSyncRequestSnapshot(scope),
     persistLocalCard: (card) => persistLocalCard(scope, card),
     persistCardAndMutation: (card, options) =>
       persistCardAndMutation(scope, idGenerator, card, options),

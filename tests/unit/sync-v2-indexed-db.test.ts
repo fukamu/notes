@@ -219,6 +219,45 @@ describe('Sync v2 IndexedDB replica repository', () => {
     });
   });
 
+  it('keeps a newer saved edit when its predecessor acknowledgement commits later', async () => {
+    const fixture = createCompatibilityFixture();
+    const card = fixture.cards[0];
+    invariant(card, 'Card fixture is missing');
+    const notes = createIndexedDbNotesRepository(
+      vaultScopeA,
+      browserIdGenerator,
+    );
+    const sent = await notes.persistCardAndMutation(card);
+    const edited = {
+      ...card,
+      title: 'continued local title',
+      localRevision: card.localRevision + 1,
+      updatedAt: card.updatedAt + 1,
+    };
+    const newer = await notes.persistCardAndMutation(edited);
+    const replica = createIndexedDbSyncV2ReplicaRepository(vaultScopeA);
+
+    await expect(
+      replica.applyCommit(commitPlan({ sentMutation: sent }), [sent]),
+    ).resolves.toMatchObject({ kind: 'applied' });
+
+    await expect(notes.loadCards()).resolves.toEqual([
+      expect.objectContaining({
+        id: edited.id,
+        title: edited.title,
+        localRevision: edited.localRevision,
+        serverRevision: 2,
+      }),
+    ]);
+    await expect(notes.loadPendingMutations()).resolves.toEqual([
+      expect.objectContaining({
+        mutationId: newer.mutationId,
+        title: edited.title,
+        baseServerRevision: 2,
+      }),
+    ]);
+  });
+
   it('rolls back every replica write when the checkpoint write fails', async () => {
     const fixture = createCompatibilityFixture();
     const card = fixture.cards[0];
