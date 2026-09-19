@@ -70,6 +70,7 @@ export function createAlternatePresentationProbe(
       ? props.features.renderConnections({
           input: connections,
           actions: props.actions,
+          navigationPending: props.model.navigationPending,
         })
       : null,
   };

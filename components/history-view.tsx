@@ -14,9 +14,15 @@ type Props = {
   model: HistoryViewModel;
   onOpenCard: (cardId: CardId) => void;
   position: ViewStateSlot<HistoryAnchor>;
+  navigationPending: boolean;
 };
 
-export function HistoryView({ model, onOpenCard, position }: Props) {
+export function HistoryView({
+  model,
+  onOpenCard,
+  position,
+  navigationPending,
+}: Props) {
   const itemIds = useMemo(
     () => model.items.map((item) => item.cardId),
     [model.items],
@@ -94,6 +100,7 @@ export function HistoryView({ model, onOpenCard, position }: Props) {
                     registerItem(itemIndex, element);
                   }}
                   type="button"
+                  disabled={navigationPending}
                   aria-current={item.current ? 'page' : undefined}
                   data-card-id={item.cardId}
                   data-display-value={item.displayValue}

@@ -107,7 +107,9 @@ function Navigation({
             key={item.view}
             type="button"
             aria-current={model.activeView === item.view ? 'page' : undefined}
-            disabled={!model.availableViews[item.view]}
+            disabled={
+              model.navigationPending || !model.availableViews[item.view]
+            }
             onClick={() => {
               beforeActivate(item.view);
               actions[item.activate]();
@@ -126,7 +128,11 @@ function Navigation({
 function EmptyState({
   actions,
   active,
-}: Pick<NotesPresentationProps, 'actions'> & { active: boolean }) {
+  navigationPending,
+}: Pick<NotesPresentationProps, 'actions'> & {
+  active: boolean;
+  navigationPending: boolean;
+}) {
   return (
     <section
       className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center rounded-3xl border border-dashed bg-card/45 px-6 text-center"
@@ -147,6 +153,7 @@ function EmptyState({
         className="mt-6 rounded-full"
         size="lg"
         onClick={() => void actions.createCard()}
+        disabled={navigationPending}
       >
         <Plus aria-hidden="true" /> 新しいカード
       </Button>
@@ -161,7 +168,15 @@ function CardView({
   active,
 }: NotesPresentationProps & { active: boolean }) {
   const card = model.currentCard;
-  if (!card) return <EmptyState actions={actions} active={active} />;
+  if (!card) {
+    return (
+      <EmptyState
+        actions={actions}
+        active={active}
+        navigationPending={model.navigationPending}
+      />
+    );
+  }
 
   return (
     <section
@@ -240,6 +255,7 @@ export function NotesPresentation({
           <Button
             className="rounded-full"
             onClick={() => void actions.createCard()}
+            disabled={model.navigationPending}
             data-testid="new-card"
           >
             <Plus aria-hidden="true" /> 新しいカード
@@ -266,6 +282,7 @@ export function NotesPresentation({
               model={model.history}
               onOpenCard={actions.openCard}
               position={features.viewState.history}
+              navigationPending={model.navigationPending}
             />
           )}
           {model.activeView === 'connections' &&
@@ -273,6 +290,7 @@ export function NotesPresentation({
             features.renderConnections({
               input: model.connections,
               actions,
+              navigationPending: model.navigationPending,
             })}
         </div>
         <Navigation

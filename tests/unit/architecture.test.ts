@@ -1580,6 +1580,11 @@ describe('application and presentation architecture', () => {
       'lib/client/browser-notes-navigator.ts',
       'utf8',
     );
+    const popstate = await readFile(
+      'lib/client/notes-navigation-popstate.ts',
+      'utf8',
+    );
+    const instrumentation = await readFile('instrumentation-client.ts', 'utf8');
     const connector = await readFile(
       'lib/client/use-notes-application.ts',
       'utf8',
@@ -1591,8 +1596,12 @@ describe('application and presentation architecture', () => {
     expect(codec).not.toMatch(/window\.|history\.|popstate|react/);
     expect(browser).toContain('window.history.pushState');
     expect(browser).toContain('window.history.replaceState');
-    expect(browser).toContain("window.addEventListener('popstate'");
+    expect(browser).toContain('subscribeNotesNavigationPopstate');
     expect(browser).not.toMatch(/notes-store|indexed-db|fetch\(|react/);
+    expect(popstate).toContain('window.addEventListener');
+    expect(popstate).toContain("'popstate'");
+    expect(popstate).not.toMatch(/notes-store|indexed-db|fetch\(|react/);
+    expect(instrumentation).toContain('installNotesNavigationPopstateBridge');
     expect(connector).toContain('createBrowserNotesNavigator');
     expect(store).not.toMatch(/pushState|replaceState|popstate|pathname/);
   });

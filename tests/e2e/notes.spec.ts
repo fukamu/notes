@@ -3827,6 +3827,7 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   const linkedMapCard = graph.locator(`button[data-card-id="${ids.cardC}"]`);
   await linkedMapCard.focus();
   await expectMapNodeFullyVisible(linkedMapCard, graph);
+  const cameraBeforeCardOpen = await connectionsCamera(graph);
   await linkedMapCard.press('Enter');
   await expectPathname(page, `/cards/${ids.cardC}`);
   await expect(page.getByTestId('card-title')).toHaveValue(titles.cardC);
@@ -3835,26 +3836,26 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await page.goBack();
   await expectPathname(page, `/cards/${ids.cardB}/connections`);
   await expect(page.locator('section[aria-label="つながり"]')).toBeVisible();
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(cameraBeforeCardOpen.x, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(cameraBeforeCardOpen.y, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(cameraBeforeCardOpen.scale, 7);
+  await expect(graph).toBeFocused();
   await pressConnectionsKey(graph, 'Home');
   await expect(
     graph.locator(`button[data-card-id="${ids.cardB}"]`),
   ).toHaveAttribute('aria-current', 'true');
   await page.goBack();
-  await expectPathname(page, `/cards/${ids.cardB}`);
-  await expect(page.getByTestId('card-title')).toHaveValue(titles.cardB);
-  await page.goBack();
   await expectPathname(page, `/cards/${ids.cardA}/history`);
   await expect(
     page.getByTestId('history-list').locator(`[data-card-id="${ids.cardA}"]`),
   ).toHaveAttribute('aria-current', 'page');
-  await page.goBack();
-  await expectPathname(page, `/cards/${ids.cardA}`);
-  await expect(page.getByTestId('card-title')).toHaveValue(titles.cardA);
 
-  await page.goForward();
-  await expectPathname(page, `/cards/${ids.cardA}/history`);
-  await page.goForward();
-  await expectPathname(page, `/cards/${ids.cardB}`);
   await page.goForward();
   await expectPathname(page, `/cards/${ids.cardB}/connections`);
   await page.goForward();
@@ -3920,6 +3921,77 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   await page.goto(`/cards/${ids.missing}`);
   await expectPathname(page, newCardPathname);
   await expect(page.getByTestId('card-title')).toHaveValue('');
+});
+
+test('an explicit connections-tab return reuses its immediate map entry and keeps its camera', async ({
+  page,
+}, testInfo) => {
+  const cardA = '01991f20-61d2-7000-8000-000000000611';
+  const cardB = '01991f20-61d2-7000-8000-000000000612';
+  const suffix = unique('tab-return', testInfo.project.name);
+  await serveSyncCards(page, [
+    {
+      id: cardA,
+      displayId: { kind: 'official', value: 1 },
+      title: `出発カード ${suffix}`,
+      body: [{ type: 'link', targetCardId: cardB }],
+      createdAt: 1,
+      updatedAt: 1,
+      localRevision: 1,
+      serverRevision: 1,
+    },
+    {
+      id: cardB,
+      displayId: { kind: 'official', value: 2 },
+      title: `復帰カード ${suffix}`,
+      body: [],
+      createdAt: 2,
+      updatedAt: 2,
+      localRevision: 1,
+      serverRevision: 1,
+    },
+  ]);
+  const response = await page.goto(`/cards/${cardB}/connections`);
+  expect(response?.status()).toBe(200);
+  const graph = page.getByTestId('connections-graph');
+  await expect(graph).toHaveAttribute('data-layout-status', 'ready', {
+    timeout: 15_000,
+  });
+  await pressConnectionsKey(graph, 'Home');
+  await pressConnectionsKey(graph, 'ArrowRight');
+  await pressConnectionsKey(graph, 'ArrowDown');
+  const currentNode = graph.locator(`button[data-card-id="${cardB}"]`);
+  await expect(currentNode).toBeVisible();
+  await currentNode.focus();
+  await expectMapNodeFullyVisible(currentNode, graph);
+  const cameraBeforeOpen = await connectionsCamera(graph);
+  await currentNode.press('Enter');
+  await expectPathname(page, `/cards/${cardB}`);
+  const historyLength = await page.evaluate(() => window.history.length);
+
+  await activateNotesView(page, testInfo.project.name, 'つながり');
+  await expectPathname(page, `/cards/${cardB}/connections`);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(cameraBeforeOpen.x, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(cameraBeforeOpen.y, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).scale)
+    .toBeCloseTo(cameraBeforeOpen.scale, 7);
+  expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
+
+  await page.goForward();
+  await expectPathname(page, `/cards/${cardB}`);
+  await page.goBack();
+  await expectPathname(page, `/cards/${cardB}/connections`);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).x)
+    .toBeCloseTo(cameraBeforeOpen.x, 5);
+  await expect
+    .poll(async () => (await connectionsCamera(graph)).y)
+    .toBeCloseTo(cameraBeforeOpen.y, 5);
 });
 
 test('the first card replaces the empty root history entry', async ({

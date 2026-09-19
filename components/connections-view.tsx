@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LoaderCircle, Network, TriangleAlert } from 'lucide-react';
 import type { ConnectionsRendererProps } from '@/components/presentation-contract';
 import { useConnectionsViewport } from '@/hooks/use-connections-viewport';
@@ -14,8 +14,15 @@ export function ConnectionsView({
   actions,
   presentation,
   cameraPosition,
+  navigationPending,
 }: ConnectionsRendererProps) {
   const openCard = actions.openCard;
+  const selectCard = useCallback(
+    (cardId: CardId) => {
+      if (!navigationPending) openCard(cardId);
+    },
+    [navigationPending, openCard],
+  );
   const readyModel = model.status === 'ready' ? model : null;
   const geometry = readyModel?.geometry ?? null;
   const edgeMaximumRadius = presentation.edgeMaximumRadius;
@@ -41,6 +48,8 @@ export function ConnectionsView({
     [edgeMaximumRadius, edgeNodeSpacing, geometry],
   );
   const [focusedCardId, setFocusedCardId] = useState<CardId | null>(null);
+  const userActivityVersionRef = useRef(0);
+  const focusedActivationRef = useRef<number | null>(null);
   const readyNodeIndexById = useMemo(
     () =>
       new Map(
@@ -65,7 +74,7 @@ export function ConnectionsView({
     presentation.viewportPadding,
     preparedVisibility,
     retainedNodeIndex,
-    openCard,
+    selectCard,
     cameraPosition,
   );
   const htmlNodeIndices = useMemo(() => {
@@ -88,6 +97,57 @@ export function ConnectionsView({
       );
     }
   }, [htmlNodeIndices, nodeRenderMode, viewportRef]);
+  useLayoutEffect(() => {
+    const recordActivity = () => {
+      userActivityVersionRef.current += 1;
+    };
+    document.addEventListener('pointerdown', recordActivity, true);
+    document.addEventListener('keydown', recordActivity, true);
+    document.addEventListener('touchstart', recordActivity, true);
+    return () => {
+      document.removeEventListener('pointerdown', recordActivity, true);
+      document.removeEventListener('keydown', recordActivity, true);
+      document.removeEventListener('touchstart', recordActivity, true);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (
+      !viewport ||
+      !readyModel ||
+      !cameraPosition.restoreViewportFocus ||
+      focusedActivationRef.current === cameraPosition.activationId
+    ) {
+      return;
+    }
+    const activationId = cameraPosition.activationId;
+    const activityVersion = userActivityVersionRef.current;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (
+        cancelled ||
+        !cameraPosition.isActive() ||
+        userActivityVersionRef.current !== activityVersion ||
+        !viewport.isConnected
+      ) {
+        return;
+      }
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        active !== document.body &&
+        active !== document.documentElement &&
+        active.isConnected
+      ) {
+        return;
+      }
+      focusedActivationRef.current = activationId;
+      viewport.focus({ preventScroll: true });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [cameraPosition, readyModel, viewportRef]);
   return (
     <section
       className="flex h-full min-h-0 w-full min-w-0 flex-col"
@@ -109,6 +169,8 @@ export function ConnectionsView({
         data-camera-render-count="0"
         data-active-pointers="0"
         data-click-suppression="false"
+        data-navigation-entry-id={cameraPosition.entryId}
+        data-navigation-activation-id={cameraPosition.activationId}
         data-total-node-count={totalNodeCount}
         data-total-edge-count={totalEdgeCount}
         data-visual-node-count={
@@ -181,7 +243,8 @@ export function ConnectionsView({
                   key={node.cardId}
                   id={`connections-map-card-${node.cardId}`}
                   type="button"
-                  onClick={() => openCard(node.cardId)}
+                  disabled={navigationPending}
+                  onClick={() => selectCard(node.cardId)}
                   aria-current={node.current ? 'true' : undefined}
                   aria-label={node.accessibleName}
                   className="connections-node-structure connections-node-shell connections-node"

@@ -132,6 +132,7 @@ export function useConnectionsViewport(
   const pendingPreferredScaleRef = useRef<number | null>(null);
   const preferenceTimerRef = useRef<number | null>(null);
   const layoutKeyRef = useRef<string | null>(null);
+  const activationIdRef = useRef(cameraPosition.activationId);
   const frameAdapterRef = useRef<ConnectionsCameraFrameAdapter | null>(null);
   const rasterSettleTimerRef = useRef<number | null>(null);
   const [edgeRenderer] = useState(createConnectionsCanvasEdgeRenderer);
@@ -496,6 +497,9 @@ export function useConnectionsViewport(
     const geometry = readGeometry();
     const ready = modelRef.current;
     if (!geometry || !ready) return;
+    const position = cameraPositionRef.current;
+    const activationChanged = activationIdRef.current !== position.activationId;
+    const restorableSnapshot = position.read(ready.layoutKey);
     const previousGeometry = geometryRef.current;
     const previousCamera = cameraRef.current;
     const previousModel = geometryModelRef.current;
@@ -506,12 +510,12 @@ export function useConnectionsViewport(
     geometryRef.current = geometry;
     layoutKeyRef.current = ready.layoutKey;
     geometryModelRef.current = ready;
-    if (!previousCamera || !previousGeometry) {
-      const snapshot = cameraPositionRef.current.read();
+    activationIdRef.current = position.activationId;
+    if (activationChanged || !previousCamera || !previousGeometry) {
       commitCameraWithVisibility(
-        (snapshot &&
+        (restorableSnapshot &&
           restoreConnectionsCameraSnapshot(
-            snapshot,
+            restorableSnapshot,
             ready.currentCardId,
             ready.layoutKey,
             geometry,
@@ -653,6 +657,7 @@ export function useConnectionsViewport(
     model?.currentCardId,
     model?.layoutKey,
     model?.width,
+    cameraPosition.activationId,
     preparedVisibility?.worldBounds.height,
     preparedVisibility?.worldBounds.width,
     preparedVisibility?.worldBounds.x,
