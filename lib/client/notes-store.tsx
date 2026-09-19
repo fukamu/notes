@@ -96,7 +96,7 @@ export function NotesProvider({
   const syncRequestedRef = useRef(false);
   const syncTimerRef = useRef<number | undefined>(undefined);
   const saveSequenceRef = useRef(0);
-  const saveQueueRef = useRef(Promise.resolve());
+  const localQueueRef = useRef(Promise.resolve());
   const initialized = isNotesInitialized(initialization);
 
   useEffect(() => {
@@ -108,7 +108,7 @@ export function NotesProvider({
     syncRunningRef.current = undefined;
     syncRequestedRef.current = false;
     saveSequenceRef.current = 0;
-    saveQueueRef.current = Promise.resolve();
+    localQueueRef.current = Promise.resolve();
     resolvingConflictCardIdsRef.current = [];
 
     return () => {
@@ -142,6 +142,47 @@ export function NotesProvider({
   useEffect(() => {
     resolvingConflictCardIdsRef.current = resolvingConflictCardIds;
   }, [resolvingConflictCardIds]);
+
+  const enqueueLocalOperation = useCallback(
+    <T,>(operation: () => Promise<T>): Promise<T> => {
+      const result = localQueueRef.current.then(operation);
+      localQueueRef.current = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    },
+    [],
+  );
+
+  const publishSynchronizedReplica = useCallback(
+    (input: {
+      readonly cards: readonly CardRecord[];
+      readonly conflicts: readonly ConflictRecord[];
+      readonly revisionsAtRequest: ReadonlyMap<CardId, number>;
+    }) => {
+      const visibleCards = reconcileVisibleCardsAfterSync({
+        currentCards: cardsRef.current,
+        revisionsAtRequest: input.revisionsAtRequest,
+        mergedCards: input.cards,
+      });
+      const nextConflicts = [...input.conflicts];
+      cardsRef.current = visibleCards;
+      conflictsRef.current = nextConflicts;
+      setCards(visibleCards);
+      setConflicts(nextConflicts);
+      const unresolvedCardIds = new Set(
+        input.conflicts.map((conflict) => conflict.cardId),
+      );
+      const nextResolvingConflictCardIds =
+        resolvingConflictCardIdsRef.current.filter((cardId) =>
+          unresolvedCardIds.has(cardId),
+        );
+      resolvingConflictCardIdsRef.current = nextResolvingConflictCardIds;
+      setResolvingConflictCardIds(nextResolvingConflictCardIds);
+    },
+    [],
+  );
 
   const synchronizeNow = useCallback(async () => {
     if (!initialized) return;
@@ -181,40 +222,116 @@ export function NotesProvider({
         if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
           return;
         deviceIdRef.current = deviceId;
-        const mutations = await ports.repository.loadPendingMutations();
-        if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
-          return;
-        const revisionsAtRequest = new Map(
-          cardsRef.current.map((card) => [card.id, card.localRevision]),
-        );
-        let merged: {
-          readonly cards: readonly CardRecord[];
-          readonly conflicts: readonly ConflictRecord[];
-        };
+        const snapshotResult = await enqueueLocalOperation(async () => {
+          if (
+            !operationIsCurrent(operationLifecycleRef.current, operationToken)
+          ) {
+            return { kind: 'cancelled' as const };
+          }
+          const snapshot = await ports.repository.loadSyncRequestSnapshot(
+            ports.sync.kind === 'v2'
+              ? { kind: 'v2', deviceId }
+              : { kind: 'v1' },
+          );
+          if (
+            !operationIsCurrent(operationLifecycleRef.current, operationToken)
+          ) {
+            return { kind: 'cancelled' as const };
+          }
+          return { kind: 'captured' as const, snapshot };
+        });
+        if (snapshotResult.kind === 'cancelled') return;
+        const { sentMutations, revisionsAtRequest, outgoingBatchId } =
+          snapshotResult.snapshot;
         switch (ports.sync.kind) {
           case 'v1': {
-            const requestBody = encodeSyncRequest({ deviceId, mutations });
+            const requestBody = encodeSyncRequest({
+              deviceId,
+              mutations: [...sentMutations],
+            });
             const result = await ports.sync.transport.send(requestBody);
             // A stale response must never reach the mutation ack boundary.
             if (
               !operationIsCurrent(operationLifecycleRef.current, operationToken)
             )
               return;
-            merged = await ports.repository.applySyncResponse(
-              result,
-              mutations,
-            );
+            const commit = await enqueueLocalOperation(async () => {
+              if (
+                !operationIsCurrent(
+                  operationLifecycleRef.current,
+                  operationToken,
+                )
+              ) {
+                return { kind: 'cancelled' as const };
+              }
+              const merged = await ports.repository.applySyncResponse(result, [
+                ...sentMutations,
+              ]);
+              if (
+                !operationIsCurrent(
+                  operationLifecycleRef.current,
+                  operationToken,
+                )
+              ) {
+                return { kind: 'cancelled' as const };
+              }
+              publishSynchronizedReplica({
+                ...merged,
+                revisionsAtRequest,
+              });
+              return { kind: 'applied' as const };
+            });
+            if (commit.kind === 'cancelled') return;
             break;
           }
           case 'v2': {
             const result = await ports.sync.client.synchronize({
               deviceId,
-              sentMutations: mutations,
+              sentMutations,
+              outgoingBatchId: outgoingBatchId ?? null,
               isCurrent: () =>
                 operationIsCurrent(
                   operationLifecycleRef.current,
                   operationToken,
                 ),
+              executeCommit: (commit) =>
+                enqueueLocalOperation(async () => {
+                  if (
+                    !operationIsCurrent(
+                      operationLifecycleRef.current,
+                      operationToken,
+                    )
+                  ) {
+                    return { kind: 'cancelled' as const };
+                  }
+                  const committed = await commit();
+                  if (
+                    !operationIsCurrent(
+                      operationLifecycleRef.current,
+                      operationToken,
+                    )
+                  ) {
+                    return { kind: 'cancelled' as const };
+                  }
+                  switch (committed.kind) {
+                    case 'applied':
+                    case 'already-applied':
+                      publishSynchronizedReplica({
+                        cards: committed.cards,
+                        conflicts: committed.conflicts,
+                        revisionsAtRequest,
+                      });
+                      break;
+                    case 'rejected':
+                      break;
+                    default:
+                      return assertNever(
+                        committed,
+                        'Unsupported Sync v2 repository commit result',
+                      );
+                  }
+                  return committed;
+                }),
             });
             switch (result.kind) {
               case 'cancelled':
@@ -222,7 +339,9 @@ export function NotesProvider({
               case 'rejected':
                 throw new Error(`Sync v2 rejected: ${result.reason}`);
               case 'completed':
-                merged = result;
+                if (result.hasEligiblePendingMutations) {
+                  syncRequestedRef.current = true;
+                }
                 break;
               default:
                 return assertNever(result, 'Unsupported Sync v2 client result');
@@ -234,25 +353,6 @@ export function NotesProvider({
         }
         if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
           return;
-        const visibleCards = reconcileVisibleCardsAfterSync({
-          currentCards: cardsRef.current,
-          revisionsAtRequest,
-          mergedCards: merged.cards,
-        });
-        cardsRef.current = visibleCards;
-        conflictsRef.current = [...merged.conflicts];
-        setCards(visibleCards);
-        setConflicts([...merged.conflicts]);
-        const unresolvedCardIds = new Set(
-          merged.conflicts.map((conflict) => conflict.cardId),
-        );
-        setResolvingConflictCardIds((current) => {
-          const next = current.filter((cardId) =>
-            unresolvedCardIds.has(cardId),
-          );
-          resolvingConflictCardIdsRef.current = next;
-          return next;
-        });
       } while (
         operationIsCurrent(operationLifecycleRef.current, operationToken) &&
         syncRequestedRef.current &&
@@ -271,7 +371,14 @@ export function NotesProvider({
         syncRunningRef.current = undefined;
       }
     }
-  }, [initialized, ports.connectivity, ports.repository, ports.sync]);
+  }, [
+    enqueueLocalOperation,
+    initialized,
+    ports.connectivity,
+    ports.repository,
+    ports.sync,
+    publishSynchronizedReplica,
+  ]);
 
   useEffect(() => {
     const capture = captureNotesOperation(
@@ -390,32 +497,43 @@ export function NotesProvider({
       const operationToken = capture.token;
       const sequence = ++saveSequenceRef.current;
       setSaveState('saving');
-      saveQueueRef.current = saveQueueRef.current
-        .then(async () => {
-          if (
-            !operationIsCurrent(operationLifecycleRef.current, operationToken)
-          )
-            return false;
-          const latestCard = cardsRef.current.find(
-            (candidate) => candidate.id === card.id,
+      void enqueueLocalOperation(async () => {
+        if (!operationIsCurrent(operationLifecycleRef.current, operationToken))
+          return { operationAccepted: false, shouldSync: false };
+        const latestCard = cardsRef.current.find(
+          (candidate) => candidate.id === card.id,
+        );
+        const hasUnresolvedConflict = conflictsRef.current.some(
+          (conflict) => conflict.cardId === card.id,
+        );
+        const resolutionIsPending =
+          resolvingConflictCardIdsRef.current.includes(card.id);
+        const effectiveOptions =
+          options.kind === 'upsert' &&
+          hasUnresolvedConflict &&
+          !resolutionIsPending
+            ? ({ kind: 'local-only' } as const)
+            : options;
+        if (effectiveOptions.kind === 'local-only') {
+          await ports.repository.persistLocalCard(latestCard ?? card);
+        } else {
+          await ports.repository.persistCardAndMutation(
+            latestCard ?? card,
+            effectiveOptions,
           );
-          if (options.kind === 'local-only') {
-            await ports.repository.persistLocalCard(latestCard ?? card);
-          } else {
-            await ports.repository.persistCardAndMutation(
-              latestCard ?? card,
-              options,
-            );
-          }
-          return operationIsCurrent(
+        }
+        return {
+          operationAccepted: operationIsCurrent(
             operationLifecycleRef.current,
             operationToken,
-          );
-        })
-        .then((operationAccepted) => {
+          ),
+          shouldSync: effectiveOptions.kind !== 'local-only',
+        };
+      })
+        .then(({ operationAccepted, shouldSync }) => {
           if (!operationAccepted) return;
           if (sequence === saveSequenceRef.current) setSaveState('saved');
-          if (options.kind !== 'local-only') {
+          if (shouldSync) {
             if (syncTimerRef.current !== undefined)
               window.clearTimeout(syncTimerRef.current);
             syncTimerRef.current = window.setTimeout(
@@ -433,7 +551,7 @@ export function NotesProvider({
           setSaveState('failed');
         });
     },
-    [ports.repository, synchronizeNow],
+    [enqueueLocalOperation, ports.repository, synchronizeNow],
   );
 
   const createCard = useCallback(async () => {

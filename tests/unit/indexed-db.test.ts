@@ -60,6 +60,7 @@ const {
   loadConflicts,
   loadOrCreateDeviceId,
   loadPendingMutations,
+  loadSyncRequestSnapshot,
   persistLocalCard,
   persistCardAndMutation,
 } = createIndexedDbNotesRepository(LEGACY_NOTES_SCOPE, browserIdGenerator);
@@ -116,6 +117,36 @@ afterEach(async () => {
 });
 
 describe('local persistence', () => {
+  it('captures pending mutations and every persisted card revision atomically', async () => {
+    const fixture = createCompatibilityFixture();
+    const first = fixture.cards[0];
+    const second = fixture.cards[1];
+    invariant(first, 'First compatibility card is missing');
+    invariant(second, 'Second compatibility card is missing');
+    const editedFirst = {
+      ...first,
+      title: 'pending local edit',
+      localRevision: first.localRevision + 2,
+    };
+    const localSecond = {
+      ...second,
+      localRevision: second.localRevision + 3,
+    };
+
+    const pending = await persistCardAndMutation(editedFirst);
+    await persistLocalCard(localSecond);
+
+    const snapshot = await loadSyncRequestSnapshot({ kind: 'v1' });
+
+    expect(snapshot.sentMutations).toEqual([pending]);
+    expect(snapshot.revisionsAtRequest).toEqual(
+      new Map([
+        [editedFirst.id, editedFirst.localRevision],
+        [localSecond.id, localSecond.localRevision],
+      ]),
+    );
+  });
+
   it('fully separates identical CardIds across two Vault repositories', async () => {
     const fixture = createCompatibilityFixture();
     const original = fixture.cards[0];

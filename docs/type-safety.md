@@ -55,7 +55,7 @@ Oxlintはapp、API／D1／server、Service Worker、tooling、testの全対象�
 
 ## wire／storage／domain mapping
 
-domain objectをnetworkまたはIndexedDBへ渡すときは、`encodeSyncRequest` と `encodeStored*` がplain DTOへ写します。受信時は `decodeSyncResponse` と `decodeStored*` が `unknown` から全fieldを検証してbrandを復元します。wire DTOとIndexedDB recordをdomain modelのaliasとして扱いません。保存するJSON／IndexedDB objectのfield名と値はv1から変更せず、database versionも1のままです。
+domain objectをnetworkまたはIndexedDBへ渡すときは、`encodeSyncRequest` と `encodeStored*` がplain DTOへ写します。受信時は `decodeSyncResponse` と `decodeStored*` が `unknown` から全fieldを検証してbrandを復元します。wire DTOとIndexedDB recordをdomain modelのaliasとして扱いません。Sync v2のmutation draftはversioned wrapperへ保存し、旧flat recordはdecoderで保守的なoriginへ移すため、既存offline dataを破壊的にmigrationしません。
 
 同期responseは、全field、重複、参照、ack subsetを検証し終えてからreadwrite transactionを開きます。適用中に例外が起きた場合はtransactionを明示的にabortするため、card put、pending mutation delete、conflict clearの一部だけがcommitされません。不正な2xx responseは同期失敗となり、未送信mutationと画面上の最新編集を保持して同じretry操作から再送できます。
 

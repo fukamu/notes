@@ -130,6 +130,11 @@ function createRuntime(): VaultNotesRuntimePorts {
       loadConflicts: async () => [],
       loadOrCreateDeviceId: async () => compatibilityIds.device,
       loadPendingMutations: async () => [],
+      loadSyncRequestSnapshot: async () => ({
+        sentMutations: [],
+        revisionsAtRequest: new Map(),
+        outgoingBatchId: null,
+      }),
       persistLocalCard: async () => {},
       persistCardAndMutation: async (card) => {
         throw new Error(`unexpected save for ${card.id}`);
@@ -144,6 +149,7 @@ function createRuntime(): VaultNotesRuntimePorts {
           kind: 'completed',
           cards: [],
           conflicts: [],
+          hasEligiblePendingMutations: false,
         }),
       },
     },

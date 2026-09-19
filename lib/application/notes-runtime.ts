@@ -8,6 +8,7 @@ import type {
 } from '@/lib/domain/types';
 import type { SyncRequestWire } from '@/lib/sync/protocol';
 import type { SyncV2Client } from '@/lib/application/sync-v2-client';
+import type { OutgoingBatchId } from '@/lib/sync/outgoing-batch';
 
 /**
  * The only scope understood by the pre-account v1 adapters. Later vault-aware
@@ -24,12 +25,25 @@ export type LegacyNotesScope = typeof LEGACY_NOTES_SCOPE;
 /** Every runtime scope accepted by the notes application composition. */
 export type NotesScope = LegacyNotesScope | VaultNotesScope;
 
+export type NotesSyncRequestSnapshot = {
+  readonly sentMutations: readonly PendingMutation[];
+  readonly revisionsAtRequest: ReadonlyMap<CardId, number>;
+  readonly outgoingBatchId: OutgoingBatchId | null;
+};
+
+export type NotesSyncRequestMode =
+  | { readonly kind: 'v1' }
+  | { readonly kind: 'v2'; readonly deviceId: DeviceId };
+
 export type NotesRepository<TScope extends NotesScope = NotesScope> = {
   readonly scope: TScope;
   loadCards: () => Promise<CardRecord[]>;
   loadConflicts: () => Promise<ConflictRecord[]>;
   loadOrCreateDeviceId: () => Promise<DeviceId>;
   loadPendingMutations: () => Promise<PendingMutation[]>;
+  loadSyncRequestSnapshot: (
+    mode: NotesSyncRequestMode,
+  ) => Promise<NotesSyncRequestSnapshot>;
   persistLocalCard: (card: CardRecord) => Promise<void>;
   persistCardAndMutation: (
     card: CardRecord,

@@ -18,6 +18,7 @@ import {
   type SyncV2RequestWire,
 } from '../sync/v2-protocol';
 import type { DeviceId } from '../domain/id';
+import type { OutgoingBatchId } from '../sync/outgoing-batch';
 
 export type SyncV2Transport<TScope> = {
   readonly scope: TScope;
@@ -39,6 +40,7 @@ export type SyncV2ClientResult =
       readonly kind: 'completed';
       readonly cards: readonly CardRecord[];
       readonly conflicts: readonly ConflictRecord[];
+      readonly hasEligiblePendingMutations: boolean;
     }
   | { readonly kind: 'cancelled' }
   | {
@@ -46,12 +48,22 @@ export type SyncV2ClientResult =
       readonly reason: PageRejectionReason | CommitRejectionReason;
     };
 
+export type SyncV2CommitExecutionResult =
+  | SyncV2ReplicaCommitResult
+  | { readonly kind: 'cancelled' };
+
+export type SyncV2CommitExecutor = (
+  commit: () => Promise<SyncV2ReplicaCommitResult>,
+) => Promise<SyncV2CommitExecutionResult>;
+
 export type SyncV2Client<TScope> = {
   readonly scope: TScope;
   synchronize: (input: {
     readonly deviceId: DeviceId;
     readonly sentMutations: readonly PendingMutation[];
+    readonly outgoingBatchId: OutgoingBatchId | null;
     readonly isCurrent: () => boolean;
+    readonly executeCommit: SyncV2CommitExecutor;
   }) => Promise<SyncV2ClientResult>;
 };
 
@@ -94,18 +106,25 @@ export function createSyncV2Client<TScope>(input: {
             break;
           case 'ready-to-commit': {
             if (!operation.isCurrent()) return { kind: 'cancelled' };
-            const commit = await input.replica.applyCommit(
-              decision.plan,
-              state.sentMutations,
+            const commit = await operation.executeCommit(() =>
+              input.replica.applyCommit(
+                decision.plan,
+                state.sentMutations,
+                operation.outgoingBatchId,
+              ),
             );
             if (!operation.isCurrent()) return { kind: 'cancelled' };
             switch (commit.kind) {
+              case 'cancelled':
+                return { kind: 'cancelled' };
               case 'applied':
               case 'already-applied':
                 return {
                   kind: 'completed',
                   cards: commit.cards,
                   conflicts: commit.conflicts,
+                  hasEligiblePendingMutations:
+                    commit.hasEligiblePendingMutations,
                 };
               case 'rejected':
                 return { kind: 'rejected', reason: commit.reason };
