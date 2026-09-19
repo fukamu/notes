@@ -153,6 +153,7 @@ function createRuntimeHarness(
               cardRecord.localRevision,
             ]),
           ),
+          outgoingBatchId: null,
         })),
     ),
     persistLocalCard: vi.fn(overrides.persistLocalCard ?? (async () => {})),
@@ -237,6 +238,7 @@ function createDeferredV2Client(
           checkpoint: initialSyncV2Checkpoint(),
           cards: result.cards,
           conflicts: result.conflicts,
+          hasEligiblePendingMutations: false,
         }));
         switch (commit.kind) {
           case 'cancelled':
@@ -337,6 +339,28 @@ describe('NotesProvider operation lifecycle', () => {
         expect(runtime.transport.send).toHaveBeenCalledTimes(2),
       );
     });
+  });
+
+  it('immediately follows an acknowledged outgoing batch with its eligible successor', async () => {
+    let synchronization = 0;
+    const client: SyncV2Client<VaultNotesScope> = {
+      scope: vaultScope,
+      synchronize: vi.fn(async () => {
+        synchronization += 1;
+        return {
+          kind: 'completed' as const,
+          cards: [],
+          conflicts: [],
+          hasEligiblePendingMutations: synchronization === 1,
+        };
+      }),
+    };
+    const runtime = createV2RuntimeHarness(client, { online: true });
+
+    await renderRuntime(runtime, 'v2-causal-successor-runtime');
+
+    await vi.waitFor(() => expect(client.synchronize).toHaveBeenCalledTimes(2));
+    expect(runtime.repository.loadSyncRequestSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it('does not send while offline when the runtime resumes', async () => {
@@ -633,6 +657,7 @@ describe('NotesProvider operation lifecycle', () => {
           },
           cards: [acknowledgedCard],
           conflicts: [],
+          hasEligiblePendingMutations: false,
         };
       });
       const client = createSyncV2Client({
@@ -682,6 +707,7 @@ describe('NotesProvider operation lifecycle', () => {
         loadPendingMutations: async () => [sent],
         loadSyncRequestSnapshot: async () => ({
           sentMutations: [sent],
+          outgoingBatchId: null,
           revisionsAtRequest: new Map([
             [initialCard.id, initialCard.localRevision],
           ]),
@@ -795,6 +821,7 @@ describe('NotesProvider operation lifecycle', () => {
               checkpoint: initialSyncV2Checkpoint(),
               cards: [{ ...initialCard, serverRevision: 2 }],
               conflicts: [conflict],
+              hasEligiblePendingMutations: false,
             };
           });
           if (commit.kind === 'cancelled') {
@@ -807,6 +834,7 @@ describe('NotesProvider operation lifecycle', () => {
             kind: 'completed' as const,
             cards: commit.cards,
             conflicts: commit.conflicts,
+            hasEligiblePendingMutations: commit.hasEligiblePendingMutations,
           };
         },
       ),
@@ -816,6 +844,7 @@ describe('NotesProvider operation lifecycle', () => {
       loadCards: async () => [initialCard],
       loadSyncRequestSnapshot: async () => ({
         sentMutations: [],
+        outgoingBatchId: null,
         revisionsAtRequest: new Map([
           [initialCard.id, initialCard.localRevision],
         ]),
@@ -874,6 +903,7 @@ describe('NotesProvider operation lifecycle', () => {
         kind: 'completed',
         cards: [serverCard],
         conflicts: [],
+        hasEligiblePendingMutations: false,
       });
       await flushAsyncCompletion();
     });
@@ -902,7 +932,12 @@ describe('NotesProvider operation lifecycle', () => {
     await vi.waitFor(() => expect(client.synchronize).toHaveBeenCalledOnce());
 
     await act(async () => {
-      response.resolve({ kind: 'completed', cards: [], conflicts: [] });
+      response.resolve({
+        kind: 'completed',
+        cards: [],
+        conflicts: [],
+        hasEligiblePendingMutations: false,
+      });
       await flushAsyncCompletion();
     });
 
@@ -928,7 +963,12 @@ describe('NotesProvider operation lifecycle', () => {
     );
 
     await act(async () => {
-      response.resolve({ kind: 'completed', cards: [], conflicts: [] });
+      response.resolve({
+        kind: 'completed',
+        cards: [],
+        conflicts: [],
+        hasEligiblePendingMutations: false,
+      });
       await flushAsyncCompletion();
     });
 
@@ -954,6 +994,7 @@ describe('NotesProvider operation lifecycle', () => {
       },
       cards: [],
       conflicts: [],
+      hasEligiblePendingMutations: false,
     }));
     const client = createSyncV2Client({
       scope: vaultScope,

@@ -228,7 +228,11 @@ export function NotesProvider({
           ) {
             return { kind: 'cancelled' as const };
           }
-          const snapshot = await ports.repository.loadSyncRequestSnapshot();
+          const snapshot = await ports.repository.loadSyncRequestSnapshot(
+            ports.sync.kind === 'v2'
+              ? { kind: 'v2', deviceId }
+              : { kind: 'v1' },
+          );
           if (
             !operationIsCurrent(operationLifecycleRef.current, operationToken)
           ) {
@@ -237,7 +241,8 @@ export function NotesProvider({
           return { kind: 'captured' as const, snapshot };
         });
         if (snapshotResult.kind === 'cancelled') return;
-        const { sentMutations, revisionsAtRequest } = snapshotResult.snapshot;
+        const { sentMutations, revisionsAtRequest, outgoingBatchId } =
+          snapshotResult.snapshot;
         switch (ports.sync.kind) {
           case 'v1': {
             const requestBody = encodeSyncRequest({
@@ -283,6 +288,7 @@ export function NotesProvider({
             const result = await ports.sync.client.synchronize({
               deviceId,
               sentMutations,
+              outgoingBatchId: outgoingBatchId ?? null,
               isCurrent: () =>
                 operationIsCurrent(
                   operationLifecycleRef.current,
@@ -333,6 +339,9 @@ export function NotesProvider({
               case 'rejected':
                 throw new Error(`Sync v2 rejected: ${result.reason}`);
               case 'completed':
+                if (result.hasEligiblePendingMutations) {
+                  syncRequestedRef.current = true;
+                }
                 break;
               default:
                 return assertNever(result, 'Unsupported Sync v2 client result');

@@ -17,6 +17,8 @@ import {
 } from '@/lib/storage/indexed-db';
 import { encodeStoredCard, encodeStoredConflict } from '@/lib/storage/records';
 import type { PendingMutation } from '@/lib/domain/types';
+import { parseMutationId } from '@/lib/domain/id';
+import { outgoingBatchIdFromMutation } from '@/lib/sync/outgoing-batch';
 import type { SyncV2CommitPlan } from '@/lib/sync/v2-page-application';
 import { initialSyncV2Checkpoint } from '@/lib/sync/v2-replica';
 import {
@@ -185,6 +187,43 @@ describe('Sync v2 IndexedDB replica repository', () => {
     ).resolves.toEqual(initialSyncV2Checkpoint());
   });
 
+  it('decodes legacy flat mutation records without rewriting them', async () => {
+    const fixture = createCompatibilityFixture();
+    await putRaw('mutations', fixture.mutation);
+    const notes = createIndexedDbNotesRepository(
+      vaultScopeA,
+      browserIdGenerator,
+    );
+
+    await expect(notes.loadPendingMutations()).resolves.toEqual([
+      fixture.mutation,
+    ]);
+    expect(await getRaw('mutations')).toEqual([fixture.mutation]);
+  });
+
+  it('rejects a corrupt outgoing batch without deleting its raw record', async () => {
+    const corruptOutgoing = {
+      key: 'outgoing',
+      version: 'outgoing-batch/v1',
+      batchId: 'broken-batch-id',
+      deviceId: compatibilityIds.device,
+      mutations: [],
+    };
+    await putRaw('sync-v2', corruptOutgoing);
+    const notes = createIndexedDbNotesRepository(
+      vaultScopeA,
+      browserIdGenerator,
+    );
+
+    await expect(
+      notes.loadSyncRequestSnapshot({
+        kind: 'v2',
+        deviceId: compatibilityIds.device,
+      }),
+    ).rejects.toThrow('IndexedDB Sync v2 outgoing batch');
+    expect(await getRaw('sync-v2')).toEqual([corruptOutgoing]);
+  });
+
   it('commits cards, conflicts, receipt acknowledgement, and checkpoint atomically', async () => {
     const fixture = createCompatibilityFixture();
     const card = fixture.cards[0];
@@ -193,11 +232,19 @@ describe('Sync v2 IndexedDB replica repository', () => {
       vaultScopeA,
       browserIdGenerator,
     );
-    const sent = await notes.persistCardAndMutation(card);
+    await notes.persistCardAndMutation(card);
+    const snapshot = await notes.loadSyncRequestSnapshot({
+      kind: 'v2',
+      deviceId: compatibilityIds.device,
+    });
+    const sent = snapshot.sentMutations[0];
+    invariant(sent, 'Outgoing mutation is missing');
     const replica = createIndexedDbSyncV2ReplicaRepository(vaultScopeA);
     const plan = commitPlan({ includeConflict: true, sentMutation: sent });
 
-    await expect(replica.applyCommit(plan, [sent])).resolves.toMatchObject({
+    await expect(
+      replica.applyCommit(plan, [sent], snapshot.outgoingBatchId),
+    ).resolves.toMatchObject({
       kind: 'applied',
       checkpoint: plan.nextCheckpoint,
     });
@@ -213,7 +260,9 @@ describe('Sync v2 IndexedDB replica repository', () => {
     await expect(replica.loadCheckpoint()).resolves.toEqual(
       plan.nextCheckpoint,
     );
-    await expect(replica.applyCommit(plan, [sent])).resolves.toMatchObject({
+    await expect(
+      replica.applyCommit(plan, [sent], snapshot.outgoingBatchId),
+    ).resolves.toMatchObject({
       kind: 'already-applied',
       checkpoint: plan.nextCheckpoint,
     });
@@ -227,7 +276,13 @@ describe('Sync v2 IndexedDB replica repository', () => {
       vaultScopeA,
       browserIdGenerator,
     );
-    const sent = await notes.persistCardAndMutation(card);
+    await notes.persistCardAndMutation(card);
+    const snapshot = await notes.loadSyncRequestSnapshot({
+      kind: 'v2',
+      deviceId: compatibilityIds.device,
+    });
+    const sent = snapshot.sentMutations[0];
+    invariant(sent, 'Outgoing mutation is missing');
     const edited = {
       ...card,
       title: 'continued local title',
@@ -238,7 +293,11 @@ describe('Sync v2 IndexedDB replica repository', () => {
     const replica = createIndexedDbSyncV2ReplicaRepository(vaultScopeA);
 
     await expect(
-      replica.applyCommit(commitPlan({ sentMutation: sent }), [sent]),
+      replica.applyCommit(
+        commitPlan({ sentMutation: sent }),
+        [sent],
+        snapshot.outgoingBatchId,
+      ),
     ).resolves.toMatchObject({ kind: 'applied' });
 
     await expect(notes.loadCards()).resolves.toEqual([
@@ -256,6 +315,214 @@ describe('Sync v2 IndexedDB replica repository', () => {
         baseServerRevision: 2,
       }),
     ]);
+  });
+
+  it('retries the exact outgoing payload after response loss and reload, then sends the causal successor', async () => {
+    const fixture = createCompatibilityFixture();
+    const card = fixture.cards[0];
+    invariant(card, 'Card fixture is missing');
+    const notes = createIndexedDbNotesRepository(
+      vaultScopeA,
+      browserIdGenerator,
+    );
+    await notes.persistCardAndMutation(card);
+    const firstAttempt = await notes.loadSyncRequestSnapshot({
+      kind: 'v2',
+      deviceId: compatibilityIds.device,
+    });
+    const sent = firstAttempt.sentMutations[0];
+    invariant(sent, 'Outgoing mutation is missing');
+
+    const continued = {
+      ...card,
+      title: '応答消失後も続けたタイトル',
+      body: [
+        { type: 'text' as const, text: '応答消失後の本文 ' },
+        { type: 'link' as const, targetCardId: compatibilityIds.cardB },
+      ],
+      localRevision: card.localRevision + 1,
+      updatedAt: card.updatedAt + 1,
+    };
+    const successor = await notes.persistCardAndMutation(continued);
+    const reloaded = createIndexedDbNotesRepository(
+      vaultScopeA,
+      browserIdGenerator,
+    );
+    const retry = await reloaded.loadSyncRequestSnapshot({
+      kind: 'v2',
+      deviceId: compatibilityIds.device,
+    });
+
+    expect(retry).toMatchObject({
+      outgoingBatchId: firstAttempt.outgoingBatchId,
+      sentMutations: [sent],
+    });
+    const replica = createIndexedDbSyncV2ReplicaRepository(vaultScopeA);
+    await expect(
+      replica.applyCommit(
+        commitPlan({ sentMutation: sent }),
+        retry.sentMutations,
+        retry.outgoingBatchId,
+      ),
+    ).resolves.toMatchObject({
+      kind: 'applied',
+      hasEligiblePendingMutations: true,
+    });
+
+    const next = await reloaded.loadSyncRequestSnapshot({
+      kind: 'v2',
+      deviceId: compatibilityIds.device,
+    });
+    expect(next.outgoingBatchId).not.toBe(firstAttempt.outgoingBatchId);
+    expect(next.sentMutations).toEqual([
+      {
+        ...successor,
+        baseServerRevision: 2,
+      },
+    ]);
+  });
+
+  it('rebases a causal successor to its exact receipt while preserving a later remote revision as a real conflict base', async () => {
+    const fixture = createCompatibilityFixture();
+    const card = fixture.cards[0];
+    const acknowledgedCard = fixture.response.cards[0];
+    invariant(card, 'Card fixture is missing');
+    invariant(acknowledgedCard, 'Server card fixture is missing');
+    const notes = createIndexedDbNotesRepository(
+      vaultScopeA,
+      browserIdGenerator,
+    );
+    await notes.persistCardAndMutation(card);
+    const outgoing = await notes.loadSyncRequestSnapshot({
+      kind: 'v2',
+      deviceId: compatibilityIds.device,
+    });
+    const sent = outgoing.sentMutations[0];
+    invariant(sent, 'Outgoing mutation is missing');
+    const continued = {
+      ...card,
+      title: '端末の継続編集',
+      localRevision: card.localRevision + 1,
+      updatedAt: card.updatedAt + 1,
+    };
+    const successor = await notes.persistCardAndMutation(continued);
+    const laterRemoteCard = {
+      ...acknowledgedCard,
+      revision: 3,
+      title: '別端末の後続編集',
+      updatedAt: acknowledgedCard.updatedAt + 10,
+    };
+    const plan: SyncV2CommitPlan = {
+      previousCheckpoint: initialSyncV2Checkpoint(),
+      nextCheckpoint: {
+        cursor: committedCursor,
+        highWatermark: parseSyncSequence(2),
+      },
+      changes: [
+        {
+          kind: 'card-upsert',
+          sequence: parseSyncSequence(1),
+          card: acknowledgedCard,
+        },
+        {
+          kind: 'card-upsert',
+          sequence: parseSyncSequence(2),
+          card: laterRemoteCard,
+        },
+      ],
+      receipts: [
+        {
+          mutationId: sent.mutationId,
+          cardId: sent.cardId,
+          appliedRevision: 2,
+        },
+      ],
+    };
+
+    await createIndexedDbSyncV2ReplicaRepository(vaultScopeA).applyCommit(
+      plan,
+      [sent],
+      outgoing.outgoingBatchId,
+    );
+
+    await expect(notes.loadCards()).resolves.toEqual([
+      expect.objectContaining({
+        title: continued.title,
+        serverRevision: 3,
+      }),
+    ]);
+    await expect(notes.loadPendingMutations()).resolves.toEqual([
+      expect.objectContaining({
+        mutationId: successor.mutationId,
+        baseServerRevision: 2,
+      }),
+    ]);
+  });
+
+  it('serializes concurrent captures to one outgoing batch and never clears it for a mismatched batch ID', async () => {
+    const fixture = createCompatibilityFixture();
+    const card = fixture.cards[0];
+    invariant(card, 'Card fixture is missing');
+    const notesA = createIndexedDbNotesRepository(
+      vaultScopeA,
+      browserIdGenerator,
+    );
+    const notesB = createIndexedDbNotesRepository(
+      vaultScopeA,
+      browserIdGenerator,
+    );
+    await notesA.persistCardAndMutation(card);
+    const [first, second] = await Promise.all([
+      notesA.loadSyncRequestSnapshot({
+        kind: 'v2',
+        deviceId: compatibilityIds.device,
+      }),
+      notesB.loadSyncRequestSnapshot({
+        kind: 'v2',
+        deviceId: compatibilityIds.device,
+      }),
+    ]);
+    expect(second.sentMutations).toEqual(first.sentMutations);
+    expect(second.outgoingBatchId).toBe(first.outgoingBatchId);
+    const sent = first.sentMutations[0];
+    invariant(sent, 'Outgoing mutation is missing');
+    const otherBatchId = outgoingBatchIdFromMutation(
+      parseMutationId('01991f20-61d2-7000-8000-000000000099'),
+    );
+
+    await createIndexedDbSyncV2ReplicaRepository(vaultScopeA).applyCommit(
+      commitPlan({ sentMutation: sent }),
+      [sent],
+      otherBatchId,
+    );
+
+    const retry = await notesA.loadSyncRequestSnapshot({
+      kind: 'v2',
+      deviceId: compatibilityIds.device,
+    });
+    expect(retry.outgoingBatchId).toBe(first.outgoingBatchId);
+    expect(retry.sentMutations).toEqual(first.sentMutations);
+  });
+
+  it('keeps ordinary conflicted drafts out of outgoing batches', async () => {
+    const fixture = createCompatibilityFixture();
+    const card = fixture.cards[0];
+    invariant(card, 'Card fixture is missing');
+    const notes = createIndexedDbNotesRepository(
+      vaultScopeA,
+      browserIdGenerator,
+    );
+    const pending = await notes.persistCardAndMutation(card);
+    await putRaw('conflicts', encodeStoredConflict(fixture.conflict));
+
+    const snapshot = await notes.loadSyncRequestSnapshot({
+      kind: 'v2',
+      deviceId: compatibilityIds.device,
+    });
+
+    expect(snapshot.sentMutations).toEqual([]);
+    expect(snapshot.outgoingBatchId).toBeNull();
+    await expect(notes.loadPendingMutations()).resolves.toEqual([pending]);
   });
 
   it('rolls back every replica write when the checkpoint write fails', async () => {
@@ -304,7 +571,7 @@ describe('Sync v2 IndexedDB replica repository', () => {
 
     try {
       await expect(
-        replica.applyCommit(commitPlan({ sentMutation: sent }), [sent]),
+        replica.applyCommit(commitPlan({ sentMutation: sent }), [sent], null),
       ).rejects.toThrow('injected checkpoint failure');
     } finally {
       putSpy.mockRestore();
@@ -341,7 +608,7 @@ describe('Sync v2 IndexedDB replica repository', () => {
     const replicaB = createIndexedDbSyncV2ReplicaRepository(vaultScopeB);
 
     const plan = commitPlan({ sentMutation: sentA });
-    await replicaA.applyCommit(plan, [sentA]);
+    await replicaA.applyCommit(plan, [sentA], null);
 
     await expect(replicaA.loadCheckpoint()).resolves.toEqual(
       plan.nextCheckpoint,
@@ -378,7 +645,7 @@ describe('Sync v2 IndexedDB replica repository', () => {
       'IndexedDB Sync v2 checkpoint',
     );
     await expect(
-      replica.applyCommit(commitPlan({ sentMutation: sent }), [sent]),
+      replica.applyCommit(commitPlan({ sentMutation: sent }), [sent], null),
     ).rejects.toThrow('IndexedDB Sync v2 checkpoint');
     await expect(notes.loadCards()).resolves.toEqual(cardsBefore);
     await expect(notes.loadPendingMutations()).resolves.toEqual(

@@ -209,6 +209,7 @@ function createRuntime(): VaultNotesRuntimePorts {
       loadSyncRequestSnapshot: async () => ({
         sentMutations: [],
         revisionsAtRequest: new Map(),
+        outgoingBatchId: null,
       }),
       persistLocalCard: async () => {},
       persistCardAndMutation: async (card) => {
@@ -224,6 +225,7 @@ function createRuntime(): VaultNotesRuntimePorts {
           kind: 'completed',
           cards: [],
           conflicts: [],
+          hasEligiblePendingMutations: false,
         }),
       },
     },

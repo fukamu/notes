@@ -6,7 +6,13 @@ import type {
   PendingMutation,
 } from '../domain/types';
 import { assertNever } from '../shared/invariant';
-import { rebasePendingMutationAfterSync } from './pending-mutation';
+import {
+  rebaseCausalSuccessor,
+  selectEligibleMutationDrafts,
+  type LocalMutationDraft,
+  type OutgoingBatch,
+  type OutgoingBatchId,
+} from './outgoing-batch';
 import type { ServerCard } from './protocol';
 import type { SyncV2Checkpoint, SyncV2CommitPlan } from './v2-page-application';
 import { parseSyncSequence } from './v2-protocol';
@@ -15,7 +21,7 @@ export type SyncV2ReplicaStorageOperation =
   | { readonly type: 'delete-card'; readonly cardId: CardId }
   | { readonly type: 'put-card'; readonly card: CardRecord }
   | { readonly type: 'delete-mutation'; readonly cardId: CardId }
-  | { readonly type: 'put-mutation'; readonly mutation: PendingMutation }
+  | { readonly type: 'put-mutation'; readonly draft: LocalMutationDraft }
   | { readonly type: 'delete-conflict'; readonly conflictId: ConflictId }
   | { readonly type: 'put-conflict'; readonly conflict: ConflictRecord };
 
@@ -26,12 +32,15 @@ export type SyncV2ReplicaCommitDecision =
       readonly cards: readonly CardRecord[];
       readonly conflicts: readonly ConflictRecord[];
       readonly operations: readonly SyncV2ReplicaStorageOperation[];
+      readonly clearOutgoingBatch: boolean;
+      readonly hasEligiblePendingMutations: boolean;
     }
   | {
       readonly kind: 'already-applied';
       readonly checkpoint: SyncV2Checkpoint;
       readonly cards: readonly CardRecord[];
       readonly conflicts: readonly ConflictRecord[];
+      readonly hasEligiblePendingMutations: boolean;
     }
   | {
       readonly kind: 'rejected';
@@ -45,6 +54,7 @@ export type SyncV2ReplicaCommitResult =
       readonly checkpoint: SyncV2Checkpoint;
       readonly cards: readonly CardRecord[];
       readonly conflicts: readonly ConflictRecord[];
+      readonly hasEligiblePendingMutations: boolean;
     }
   | Extract<SyncV2ReplicaCommitDecision, { readonly kind: 'rejected' }>;
 
@@ -54,6 +64,7 @@ export type SyncV2ReplicaRepository<TScope> = {
   applyCommit: (
     plan: SyncV2CommitPlan,
     sentMutations: readonly PendingMutation[],
+    outgoingBatchId: OutgoingBatchId | null,
   ) => Promise<SyncV2ReplicaCommitResult>;
 };
 
@@ -108,6 +119,40 @@ function validReceipts(
   return true;
 }
 
+function samePendingMutation(
+  left: PendingMutation,
+  right: PendingMutation,
+): boolean {
+  if (
+    left.mutationId !== right.mutationId ||
+    left.cardId !== right.cardId ||
+    left.kind !== right.kind ||
+    left.baseServerRevision !== right.baseServerRevision ||
+    left.title !== right.title ||
+    left.createdAt !== right.createdAt ||
+    left.updatedAt !== right.updatedAt ||
+    left.body.length !== right.body.length ||
+    left.conflictIds.length !== right.conflictIds.length
+  ) {
+    return false;
+  }
+  for (const [index, segment] of left.body.entries()) {
+    const other = right.body[index];
+    if (other === undefined || segment.type !== other.type) return false;
+    if (segment.type === 'text') {
+      if (other.type !== 'text' || segment.text !== other.text) return false;
+    } else if (
+      other.type !== 'link' ||
+      segment.targetCardId !== other.targetCardId
+    ) {
+      return false;
+    }
+  }
+  return left.conflictIds.every(
+    (conflictId, index) => conflictId === right.conflictIds[index],
+  );
+}
+
 function changedOperations<TKey, TValue>(input: {
   readonly before: ReadonlyMap<TKey, TValue>;
   readonly after: ReadonlyMap<TKey, TValue>;
@@ -132,9 +177,11 @@ export function planSyncV2ReplicaCommit(input: {
   readonly plan: SyncV2CommitPlan;
   readonly currentCheckpoint: SyncV2Checkpoint;
   readonly localCards: readonly CardRecord[];
-  readonly currentMutations: readonly PendingMutation[];
+  readonly currentDrafts: readonly LocalMutationDraft[];
   readonly localConflicts: readonly ConflictRecord[];
   readonly sentMutations: readonly PendingMutation[];
+  readonly outgoingBatch: OutgoingBatch | undefined;
+  readonly outgoingBatchId: OutgoingBatchId | null;
 }): SyncV2ReplicaCommitDecision {
   if (!validReceipts(input.plan, input.sentMutations)) {
     return {
@@ -145,11 +192,18 @@ export function planSyncV2ReplicaCommit(input: {
   }
   if (!sameCheckpoint(input.currentCheckpoint, input.plan.previousCheckpoint)) {
     if (sameCheckpoint(input.currentCheckpoint, input.plan.nextCheckpoint)) {
+      const hasEligiblePendingMutations =
+        selectEligibleMutationDrafts({
+          drafts: input.currentDrafts,
+          conflicts: input.localConflicts,
+          limit: 1,
+        }).length > 0;
       return {
         kind: 'already-applied',
         checkpoint: input.currentCheckpoint,
         cards: [...input.localCards],
         conflicts: [...input.localConflicts],
+        hasEligiblePendingMutations,
       };
     }
     return {
@@ -161,10 +215,10 @@ export function planSyncV2ReplicaCommit(input: {
 
   const cardsBefore = new Map(input.localCards.map((card) => [card.id, card]));
   const cards = new Map(cardsBefore);
-  const mutationsBefore = new Map(
-    input.currentMutations.map((mutation) => [mutation.cardId, mutation]),
+  const draftsBefore = new Map(
+    input.currentDrafts.map((draft) => [draft.mutation.cardId, draft]),
   );
-  const mutations = new Map(mutationsBefore);
+  const drafts = new Map(draftsBefore);
   const conflictsBefore = new Map(
     input.localConflicts.map((conflict) => [conflict.id, conflict]),
   );
@@ -175,36 +229,21 @@ export function planSyncV2ReplicaCommit(input: {
   const receiptsByMutation = new Map(
     input.plan.receipts.map((receipt) => [receipt.mutationId, receipt]),
   );
-
-  for (const receipt of input.plan.receipts) {
-    const current = mutations.get(receipt.cardId);
-    if (current?.mutationId === receipt.mutationId) {
-      mutations.delete(receipt.cardId);
-    }
-  }
+  const outgoingMatches =
+    input.outgoingBatchId !== null &&
+    input.outgoingBatch?.batchId === input.outgoingBatchId &&
+    input.outgoingBatch.mutations.length === input.sentMutations.length &&
+    input.outgoingBatch.mutations.every((mutation, index) => {
+      const sent = input.sentMutations[index];
+      return sent !== undefined && samePendingMutation(mutation, sent);
+    });
 
   for (const change of input.plan.changes) {
     switch (change.kind) {
       case 'card-upsert': {
         const cardId = change.card.id;
         const local = cards.get(cardId);
-        let pending = mutations.get(cardId);
-        const sent = sentByCard.get(cardId);
-        const pendingWasNotInThisRequest =
-          pending !== undefined && sent === undefined;
-        const newerEditWasSaved =
-          pending !== undefined &&
-          sent !== undefined &&
-          pending.mutationId !== sent.mutationId &&
-          receiptsByMutation.has(sent.mutationId);
-        if (pending && (pendingWasNotInThisRequest || newerEditWasSaved)) {
-          pending = rebasePendingMutationAfterSync({
-            mutation: pending,
-            serverRevision: change.card.revision,
-            acknowledgedMutation: newerEditWasSaved ? sent : undefined,
-          });
-          mutations.set(cardId, pending);
-        }
+        const pending = drafts.get(cardId);
         if (local && pending) {
           cards.set(cardId, {
             ...local,
@@ -220,7 +259,7 @@ export function planSyncV2ReplicaCommit(input: {
         break;
       }
       case 'card-tombstone':
-        if (!mutations.has(change.cardId)) cards.delete(change.cardId);
+        if (!drafts.has(change.cardId)) cards.delete(change.cardId);
         break;
       case 'conflict-upsert':
         conflicts.set(change.conflict.id, change.conflict);
@@ -233,15 +272,38 @@ export function planSyncV2ReplicaCommit(input: {
     }
   }
 
+  for (const [cardId, draft] of drafts) {
+    if (!outgoingMatches) break;
+    const sent = sentByCard.get(cardId);
+    if (sent === undefined) continue;
+    const receipt = receiptsByMutation.get(sent.mutationId);
+    if (receipt === undefined) continue;
+    const appliedCard = input.plan.changes.find(
+      (change) =>
+        change.kind === 'card-upsert' &&
+        change.card.id === cardId &&
+        change.card.revision === receipt.appliedRevision,
+    );
+    const rebased = rebaseCausalSuccessor({
+      draft,
+      acknowledgedMutation: sent,
+      receipt,
+      appliedCard:
+        appliedCard?.kind === 'card-upsert' ? appliedCard.card : undefined,
+      conflicts: [...conflicts.values()],
+    });
+    if (rebased !== draft) drafts.set(cardId, rebased);
+  }
+
   const reconciledCards = reconcileProvisionalDisplayIds([...cards.values()]);
   const reconciledById = new Map(
     reconciledCards.map((card) => [card.id, card]),
   );
   const mutationOperations = changedOperations({
-    before: mutationsBefore,
-    after: mutations,
+    before: draftsBefore,
+    after: drafts,
     remove: (cardId) => ({ type: 'delete-mutation', cardId }),
-    put: (mutation) => ({ type: 'put-mutation', mutation }),
+    put: (draft) => ({ type: 'put-mutation', draft }),
   });
   const cardOperations = changedOperations({
     before: cardsBefore,
@@ -261,11 +323,26 @@ export function planSyncV2ReplicaCommit(input: {
     }
   }
 
+  const allOutgoingMutationsAcknowledged =
+    outgoingMatches &&
+    input.outgoingBatch !== undefined &&
+    input.outgoingBatch.mutations.every((mutation) =>
+      receiptsByMutation.has(mutation.mutationId),
+    );
+  const hasEligiblePendingMutations =
+    selectEligibleMutationDrafts({
+      drafts: [...drafts.values()],
+      conflicts: [...conflicts.values()],
+      limit: 1,
+    }).length > 0;
+
   return {
     kind: 'apply',
     checkpoint: input.plan.nextCheckpoint,
     cards: reconciledCards,
     conflicts: [...conflicts.values()],
+    clearOutgoingBatch: allOutgoingMutationsAcknowledged,
+    hasEligiblePendingMutations,
     operations: [
       ...mutationOperations,
       ...cardOperations,

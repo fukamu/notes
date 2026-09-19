@@ -21,6 +21,7 @@ import {
   createCompatibilityFixture,
 } from '@/tests/fixtures/compatibility';
 import { sessionFixtureIds } from '@/tests/fixtures/session';
+import { outgoingBatchIdFromMutation } from '@/lib/sync/outgoing-batch';
 
 const scope: VaultNotesScope = {
   kind: 'vault',
@@ -104,6 +105,7 @@ function createReplica(input?: {
         checkpoint: plan.nextCheckpoint,
         cards: fixture.cards,
         conflicts: [fixture.conflict],
+        hasEligiblePendingMutations: false,
       })),
   );
   const replica: SyncV2ReplicaRepository<VaultNotesScope> = {
@@ -126,11 +128,15 @@ describe('Sync v2 client page orchestration', () => {
     const transport: SyncV2Transport<VaultNotesScope> = { scope, send };
     const { replica, applyCommit } = createReplica();
     const client = createSyncV2Client({ scope, transport, replica });
+    const outgoingBatchId = outgoingBatchIdFromMutation(
+      fixture.mutation.mutationId,
+    );
 
     await expect(
       client.synchronize({
         deviceId: compatibilityIds.device,
         sentMutations: [fixture.mutation],
+        outgoingBatchId,
         isCurrent: () => true,
         executeCommit,
       }),
@@ -158,6 +164,7 @@ describe('Sync v2 client page orchestration', () => {
       },
       changes: [{ kind: 'card-upsert' }, { kind: 'conflict-upsert' }],
     });
+    expect(applyCommit.mock.calls[0]?.[2]).toBe(outgoingBatchId);
   });
 
   it('collects more than one 500-change page before committing the complete replica', async () => {
@@ -203,6 +210,7 @@ describe('Sync v2 client page orchestration', () => {
       client.synchronize({
         deviceId: compatibilityIds.device,
         sentMutations: [],
+        outgoingBatchId: null,
         isCurrent: () => true,
         executeCommit,
       }),
@@ -229,6 +237,7 @@ describe('Sync v2 client page orchestration', () => {
       client.synchronize({
         deviceId: compatibilityIds.device,
         sentMutations: [fixture.mutation],
+        outgoingBatchId: null,
         isCurrent: () => true,
         executeCommit,
       }),
@@ -253,6 +262,7 @@ describe('Sync v2 client page orchestration', () => {
       firstClient.synchronize({
         deviceId: compatibilityIds.device,
         sentMutations: [fixture.mutation],
+        outgoingBatchId: null,
         isCurrent: () => true,
         executeCommit,
       }),
@@ -274,6 +284,7 @@ describe('Sync v2 client page orchestration', () => {
       retryClient.synchronize({
         deviceId: compatibilityIds.device,
         sentMutations: [fixture.mutation],
+        outgoingBatchId: null,
         isCurrent: () => true,
         executeCommit,
       }),
@@ -299,6 +310,7 @@ describe('Sync v2 client page orchestration', () => {
       client.synchronize({
         deviceId: compatibilityIds.device,
         sentMutations: [fixture.mutation],
+        outgoingBatchId: null,
         isCurrent: () => current,
         executeCommit,
       }),
@@ -325,6 +337,7 @@ describe('Sync v2 client page orchestration', () => {
       client.synchronize({
         deviceId: compatibilityIds.device,
         sentMutations: [fixture.mutation],
+        outgoingBatchId: null,
         isCurrent: () => true,
         executeCommit: cancelCommit,
       }),
@@ -358,6 +371,7 @@ describe('Sync v2 client page orchestration', () => {
       client.synchronize({
         deviceId: compatibilityIds.device,
         sentMutations: [fixture.mutation],
+        outgoingBatchId: null,
         isCurrent: () => true,
         executeCommit,
       }),

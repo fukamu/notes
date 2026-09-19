@@ -12,9 +12,10 @@ VaultId in individual reads or writes. Tenant identity is not stored in card
 content. Each Vault continues to use its existing, distinct database name.
 
 The pure `planSyncV2ReplicaCommit` function decides how an already decoded
-terminal page collection changes cards, pending mutations, conflicts, and the
-checkpoint. IndexedDB requests, transactions, upgrades, and stored-record
-decoding remain in `lib/storage/indexed-db.ts` and `lib/storage/records.ts`.
+terminal page collection changes cards, draft mutations, conflicts, the
+outgoing batch, and the checkpoint. IndexedDB requests, transactions, upgrades,
+and stored-record decoding remain in `lib/storage/indexed-db.ts` and
+`lib/storage/records.ts`.
 
 ## Schema upgrade
 
@@ -24,8 +25,12 @@ The notes database schema version advances from 1 to 2. The upgrade adds one
 the initial `{ cursor: null, highWatermark: 0 }` state. Stored cursors and
 sequences are decoded before use.
 
-The database-name namespace remains unchanged so existing per-Vault offline
-content is upgraded in place. If the browser aborts the version-change
+The `sync-v2` store also holds at most one versioned outgoing batch. New
+mutation records use a versioned wrapper with causal-origin metadata while the
+decoder continues to accept the original flat mutation records and maps them to
+a conservative origin with no predecessor. The database-name namespace remains
+unchanged so existing per-Vault offline content is upgraded in place without a
+destructive migration. If the browser aborts the version-change
 transaction, IndexedDB retains the previous database version. The open promise
 is removed from the connection registry after an error, so a later attempt can
 retry normally.
@@ -36,17 +41,21 @@ Only a `SyncV2CommitPlan` produced after the final valid page reaches this port.
 The adapter reads the current replica and applies these effects in one
 read-write transaction spanning all four stores:
 
-- acknowledge only a receipt whose mutation ID and card match the sent request;
-- never delete a newer pending mutation that replaced the sent mutation;
-- rebase a newer or previously unsent edit onto the received server revision;
+- acknowledge only a receipt whose mutation ID and card match the immutable
+  outgoing request;
+- clear only the expected outgoing batch and only after all of its receipts;
+- keep edits made during the request as separate drafts;
+- rebase only a causally linked successor onto the exact applied receipt
+  revision when the matching server-card content is present;
+- never rebase an independent draft or use an unrelated later remote revision;
 - apply card and conflict upserts/tombstones in journal order;
 - retain a card covered by a pending local edit when a remote tombstone arrives;
 - advance the cursor and high-watermark together with those data changes.
 
-A transaction failure leaves the old cards, pending mutations, conflicts, and
-checkpoint intact. A plan based on an unrelated checkpoint is rejected. A plan
-whose next checkpoint is already stored is reported as already applied without
-repeating its writes.
+A transaction failure leaves the old cards, draft mutations, conflicts,
+outgoing batch, and checkpoint intact. A plan based on an unrelated checkpoint
+is rejected. A plan whose next checkpoint is already stored is reported as
+already applied without repeating its writes.
 
 ## Logout and rollback
 

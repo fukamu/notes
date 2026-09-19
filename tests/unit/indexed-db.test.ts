@@ -136,7 +136,7 @@ describe('local persistence', () => {
     const pending = await persistCardAndMutation(editedFirst);
     await persistLocalCard(localSecond);
 
-    const snapshot = await loadSyncRequestSnapshot();
+    const snapshot = await loadSyncRequestSnapshot({ kind: 'v1' });
 
     expect(snapshot.sentMutations).toEqual([pending]);
     expect(snapshot.revisionsAtRequest).toEqual(
