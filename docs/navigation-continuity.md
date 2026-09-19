@@ -19,10 +19,46 @@ different-runtime, or URL-mismatched state is never trusted: the visible URL is
 parsed, adopted, canonicalized, and becomes a new one-entry managed segment.
 Known pop events validate both entry ID and URL. Every successful traversal gets
 a new activation ID even when the URL and semantic location are unchanged.
+Record-valued state and legacy `null` state can be claimed by the runtime;
+non-record state is preserved and remains unmanaged.
 
 `NotesNavigationSnapshot` is referentially stable until entry, activation,
 location, cause, or pending state changes. React subscribes to that snapshot,
 while `getLocation()` remains available to the application controller.
+
+## Tab history and immediate source reuse
+
+The typed core decides one of four history effects independently of browser
+state: noop, push, replace, or return to the immediate previous entry. Opening a
+different card pushes, except for the first card opened from the empty root.
+Initialization, reconciliation, the card tab, and ordinary history/connections
+tab changes replace the current entry. Re-selecting the same semantic location
+is a noop apart from URL canonicalization.
+
+History and connections tabs reuse only the immediately previous managed entry
+when it has the same view kind. The adapter first validates the current entry,
+sets a synchronous pending guard, and requests exactly one history move. The
+expected pop is replaced with the target card context and published once as a
+tab activation; the old context is never rendered in between. Forward remains
+available. No distant ancestor is searched, and a new card opened after Back
+prunes the unreachable forward branch and its camera snapshots.
+
+An early client popstate bridge claims only that validated app-owned return so
+the framework router cannot reinterpret its transient source URL. Ordinary,
+unexpected, external, Back, and Forward events pass through unchanged.
+
+While that one move is pending, additional tab, card, and create actions are
+rejected and the related controls are disabled. Browser Back and Forward remain
+unblocked. An unexpected pop cancels the target and adopts the actual URL.
+Reconciliation may replace a changed current location while retaining the guard
+until the already-issued pop arrives. There is no timeout, retry, or queued
+navigation.
+
+Card creation captures its starting location and activation. A result created
+after another navigation, a pending return, or runtime shutdown remains saved
+but does not take over the screen or request title focus. The empty-root case
+still permits focus when initialization has already selected that newly created
+card.
 
 ## Entry-scoped camera session
 

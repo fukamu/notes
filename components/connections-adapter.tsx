@@ -16,6 +16,7 @@ type Props = {
   presentation: ConnectionsPresentationAdapter;
   Renderer: ComponentType<ConnectionsRendererProps>;
   cameraPosition: NotesViewStatePorts['connections'];
+  navigationPending: boolean;
 };
 
 export function ConnectionsAdapter({
@@ -24,6 +25,7 @@ export function ConnectionsAdapter({
   presentation,
   Renderer,
   cameraPosition,
+  navigationPending,
 }: Props) {
   const model = useConnectionsController(input, presentation);
   return (
@@ -34,6 +36,7 @@ export function ConnectionsAdapter({
       actions={actions}
       presentation={presentation}
       cameraPosition={cameraPosition}
+      navigationPending={navigationPending}
     />
   );
 }

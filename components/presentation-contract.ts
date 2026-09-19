@@ -27,11 +27,13 @@ export type ConnectionsRendererProps = {
   actions: ConnectionsSelectionActions;
   presentation: ConnectionsPresentationAdapter;
   cameraPosition: NotesViewStatePorts['connections'];
+  navigationPending: boolean;
 };
 
 export type ConnectionsFeatureProps = {
   input: ConnectionsViewModel;
   actions: Pick<NotesPresentationActions, 'openCard'>;
+  navigationPending: boolean;
 };
 
 export type NotesPresentationFeatures = {

@@ -129,7 +129,14 @@ describe('history windowing adapter', () => {
 
     const position = createNotesViewStatePorts(model.currentCardId).history;
     act(() =>
-      root?.render(createElement(HistoryView, { model, onOpenCard, position })),
+      root?.render(
+        createElement(HistoryView, {
+          model,
+          onOpenCard,
+          position,
+          navigationPending: false,
+        }),
+      ),
     );
 
     const list = historyList();

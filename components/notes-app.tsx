@@ -226,13 +226,18 @@ function NotesConnector({
   const features = useMemo<NotesPresentationFeatures>(
     () => ({
       renderCardEditor: () => editorFeature,
-      renderConnections: ({ input, actions: connectionsActions }) => (
+      renderConnections: ({
+        input,
+        actions: connectionsActions,
+        navigationPending,
+      }) => (
         <ConnectionsAdapter
           input={input}
           actions={connectionsActions}
           presentation={configuration.connectionsPresentation}
           Renderer={configuration.ConnectionsRenderer}
           cameraPosition={viewState.connections}
+          navigationPending={navigationPending}
         />
       ),
       viewState: {

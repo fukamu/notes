@@ -88,6 +88,7 @@ export type ConnectionsViewModel = ConnectionsInputModel;
 
 type NotesPresentationModelBase = {
   initialized: boolean;
+  navigationPending: boolean;
   location: NotesLocation;
   availableViews: Record<NotesViewName, boolean>;
   currentCard: CardRecord | null;

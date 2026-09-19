@@ -40,6 +40,25 @@ type OwnedEditorFocusIntent = Readonly<{
   intent: EditorFocusIntent | null;
 }>;
 
+type NotesApplicationLifetime = Readonly<{
+  start: () => void;
+  stop: () => void;
+  isActive: () => boolean;
+}>;
+
+function createNotesApplicationLifetime(): NotesApplicationLifetime {
+  let active = false;
+  return {
+    start: () => {
+      active = true;
+    },
+    stop: () => {
+      active = false;
+    },
+    isActive: () => active,
+  };
+}
+
 export function useNotesApplication(store: NotesDataStore): {
   model: NotesPresentationModel;
   actions: NotesPresentationActions;
@@ -48,6 +67,7 @@ export function useNotesApplication(store: NotesDataStore): {
   connectionsCameraPosition: NotesCameraPosition | null;
 } {
   const [navigator] = useState(createBrowserNotesNavigator);
+  const [lifetime] = useState(createNotesApplicationLifetime);
   const [cardEditorIndexCache] = useState(createCardEditorIndexCache);
   const [connectionsGraphCache] = useState(createConnectionsGraphCache);
   const [ownedEditorFocusIntent, setOwnedEditorFocusIntent] =
@@ -93,8 +113,9 @@ export function useNotesApplication(store: NotesDataStore): {
     () =>
       createNotesApplicationController(store, navigator, {
         onCardCreated: publishEditorFocusIntent,
+        isActive: lifetime.isActive,
       }),
-    [navigator, publishEditorFocusIntent, store],
+    [lifetime.isActive, navigator, publishEditorFocusIntent, store],
   );
   const locationCardId = notesLocationCardId(location);
   const initialized = isNotesInitialized(store.initialization);
@@ -150,6 +171,11 @@ export function useNotesApplication(store: NotesDataStore): {
     store.createCard,
   ]);
 
+  useEffect(() => {
+    lifetime.start();
+    return lifetime.stop;
+  }, [lifetime]);
+
   useEffect(
     () => () => {
       cardEditorIndexCache.clear();
@@ -203,8 +229,16 @@ export function useNotesApplication(store: NotesDataStore): {
         cardEditorIndex,
         connectionsGraph: { kind: 'precomputed', graph: connectionsGraph },
         history,
+        navigationPending: navigation.pending,
       }),
-    [cardEditorIndex, connectionsGraph, history, location, store],
+    [
+      cardEditorIndex,
+      connectionsGraph,
+      history,
+      location,
+      navigation.pending,
+      store,
+    ],
   );
 
   return {

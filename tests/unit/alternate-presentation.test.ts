@@ -63,6 +63,7 @@ function model(
   const activeView = location.kind === 'empty' ? 'card' : location.kind;
   const common = {
     initialized: true,
+    navigationPending: false,
     location,
     availableViews: { card: true, history: true, connections: true },
     currentCard,
@@ -394,6 +395,7 @@ describe('alternate presentation contract', () => {
         },
         presentation: alternateNotesAppConfiguration.connectionsPresentation,
         cameraPosition,
+        navigationPending: false,
       };
       const probe = createAlternateConnectionsProbe(props);
       expect(probe.summary).toContain(status);
