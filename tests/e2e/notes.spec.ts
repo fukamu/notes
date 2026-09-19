@@ -819,6 +819,7 @@ test('an abandoned new-card focus intent cannot steal focus after returning', as
 
 test('the current card keeps one inactive editor session across view tabs', async ({
   page,
+  context,
 }, testInfo) => {
   const titleA = unique('常駐編集A', testInfo.project.name);
   const titleB = unique('常駐編集B', testInfo.project.name);
@@ -834,10 +835,14 @@ test('the current card keeps one inactive editor session across view tabs', asyn
   await expect(title).toHaveValue(titleA);
   await expect(editor).toContainText('selection body');
   await expect(page.getByTestId('undo')).toBeDisabled();
+  await page.locator('html[data-offline-ready=true]').waitFor({
+    state: 'attached',
+    timeout: 15_000,
+  });
+  await context.setOffline(true);
   await title.fill(titleB);
-  await editor.focus();
-  await editor.press('End');
-  await editor.press('Shift+ArrowLeft');
+  await editor.selectText();
+  await expect(editor).toBeFocused();
   await expect(page.locator('[data-selection-empty]')).toHaveAttribute(
     'data-selection-empty',
     'false',
@@ -4012,10 +4017,25 @@ test('the first card replaces the empty root history entry', async ({
 test('invalid and unresolved card URLs normalize without a history loop', async ({
   page,
 }) => {
+  const syncGate = Promise.withResolvers<void>();
+  let gateSync = false;
+  const emptySyncResponse = JSON.stringify({
+    cards: [],
+    conflicts: [],
+    acknowledgedMutationIds: [],
+  });
+  await page.route('**/api/sync', async (route) => {
+    if (gateSync) await syncGate.promise;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: emptySyncResponse,
+    });
+  });
+
   const unknown = await page.goto('/not-an-app-route');
   expect(unknown?.status()).toBe(404);
 
-  await serveSyncCards(page, []);
   const invalid = await page.goto('/cards/not-a-uuid');
   expect(invalid?.status()).toBe(200);
   await expectPathname(page, '/');
@@ -4023,20 +4043,7 @@ test('invalid and unresolved card URLs normalize without a history loop', async 
     page.getByRole('heading', { name: '最初の一枚から始めましょう' }),
   ).toBeVisible();
 
-  await page.unroute('**/api/sync');
-  const syncGate = Promise.withResolvers<void>();
-  await page.route('**/api/sync', async (route) => {
-    await syncGate.promise;
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        cards: [],
-        conflicts: [],
-        acknowledgedMutationIds: [],
-      }),
-    });
-  });
+  gateSync = true;
   const missingId = '01991f20-61d2-7000-8000-000000000699';
   const missing = await page.goto(`/cards/${missingId}`);
   expect(missing?.status()).toBe(200);
