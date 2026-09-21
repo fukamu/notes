@@ -2737,6 +2737,7 @@ test('navigation geometry stays aligned across views and clear of a scrolling ca
 
   await expect(cardNavigation).toHaveAttribute('aria-current', 'page');
   const cardGeometry = await navigationGeometry();
+  const cardScrollY = await page.evaluate(() => window.scrollY);
 
   await historyNavigation.click();
   await expect(page.getByTestId('history-list')).toBeVisible();
@@ -2764,16 +2765,46 @@ test('navigation geometry stays aligned across views and clear of a scrolling ca
   await expect
     .poll(() =>
       page.evaluate(
-        () => document.documentElement.scrollHeight - window.innerHeight,
+        (expectedScrollY) => Math.abs(window.scrollY - expectedScrollY),
+        cardScrollY,
       ),
     )
-    .toBeGreaterThan(0);
-  await page.evaluate(() =>
-    window.scrollTo(0, document.documentElement.scrollHeight),
+    .toBeLessThanOrEqual(1);
+  // The card view restores its captured position in requestAnimationFrame.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
   );
   await expect
-    .poll(() => page.evaluate(() => window.scrollY))
+    .poll(() =>
+      page.evaluate(() => {
+        const scrollingElement = document.scrollingElement;
+        if (!scrollingElement) return 0;
+        return scrollingElement.scrollHeight - scrollingElement.clientHeight;
+      }),
+    )
     .toBeGreaterThan(0);
+  await page.evaluate(() => {
+    const scrollingElement = document.scrollingElement;
+    if (!scrollingElement) throw new Error('Missing scrolling element');
+    window.scrollTo({
+      top: scrollingElement.scrollHeight - scrollingElement.clientHeight,
+      behavior: 'auto',
+    });
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const scrollingElement = document.scrollingElement;
+        if (!scrollingElement) return Number.POSITIVE_INFINITY;
+        const maximum = Math.max(
+          0,
+          scrollingElement.scrollHeight - scrollingElement.clientHeight,
+        );
+        return Math.abs(scrollingElement.scrollTop - maximum);
+      }),
+    )
+    .toBeLessThanOrEqual(1);
 
   const scrolledLayout = await page.evaluate(() => {
     const header = document.querySelector('header');
