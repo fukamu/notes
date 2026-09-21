@@ -1,11 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const integrationBranch = 'integration/385-edit-conflict-resolution';
-const currentParent = '#385';
-const currentBranchPoint = '2313fd5be659023652443e417ff2373d597e05a2';
-const upstreamParent = '#376';
-const upstreamIntegrationBranch = 'integration/376-navigation-continuity';
+const integrationBranch = 'integration/391-shared-design-tokens';
+const currentParent = '#391';
+const currentBranchPoint = 'ceefec936ea0c30143153069f3b7f170bc358ae1';
+const upstreamParent = '#385';
+const upstreamIntegrationBranch = 'integration/385-edit-conflict-resolution';
 
 function normalizeWhitespace(source: string): string {
   return source.replace(/\s+/g, ' ');
@@ -63,12 +63,24 @@ describe('issue-based delivery contract', () => {
       new RegExp(`- ${integrationBranch.replaceAll('/', '\\/')}`, 'g'),
     );
     const mainBranchFilters = quality.match(/- main/g);
+    const upstreamBranchFilters = quality.match(
+      new RegExp(`- ${upstreamIntegrationBranch.replaceAll('/', '\\/')}`, 'g'),
+    );
 
     expect(branchFilters).toHaveLength(2);
     expect(mainBranchFilters).toHaveLength(2);
+    expect(upstreamBranchFilters).toHaveLength(2);
     expect(quality).toContain("- 'work/**'");
     expect(quality).not.toContain('- integration/376-navigation-continuity');
     expect(quality).toContain('permissions:\n  contents: read');
+    expect(quality).toContain('timeout-minutes: 30');
+    expect(quality).toContain('uses: actions/checkout@v7');
+    expect(quality).toContain('uses: actions/setup-node@v7');
+    expect(quality).toContain('node-version: 22.13.0');
+    expect(quality).toContain('run: npm ci');
+    expect(quality).toContain(
+      'run: npx playwright install --with-deps chromium',
+    );
     expect(quality).toContain('run: npm run verify');
     expect(quality).not.toContain('codex/integration-type-safety-ui');
     expect(quality).not.toContain('refactor/type-safe-functional');

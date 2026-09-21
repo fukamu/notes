@@ -4,10 +4,12 @@ on:
   pull_request:
     branches:
       - main
+      - integration/391-shared-design-tokens
       - integration/385-edit-conflict-resolution
   push:
     branches:
       - main
+      - integration/391-shared-design-tokens
       - integration/385-edit-conflict-resolution
       - 'work/**'
 
