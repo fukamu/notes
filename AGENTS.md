@@ -64,6 +64,8 @@ code, tests, configuration, or documentation.
 
 ## Verification gates
 
+- Shared design-token provenance, ownership, update, and rollback steps are in
+  [`docs/design-tokens.md`](docs/design-tokens.md).
 - Include compatibility tests and required documentation in the same
   implementation Issue. Do not split an implementation from the tests that
   protect it.
