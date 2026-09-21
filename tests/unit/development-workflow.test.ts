@@ -1,11 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const integrationBranch = 'integration/391-shared-design-tokens';
-const currentParent = '#391';
-const currentBranchPoint = 'ceefec936ea0c30143153069f3b7f170bc358ae1';
-const upstreamParent = '#385';
-const upstreamIntegrationBranch = 'integration/385-edit-conflict-resolution';
+const completedTokenParent = '#391';
+const completedTokenMainPr = '#396';
+const retiredTokenIntegrationBranch = 'integration/391-shared-design-tokens';
+const staleTokenBranchPoint = 'ceefec936ea0c30143153069f3b7f170bc358ae1';
 
 function normalizeWhitespace(source: string): string {
   return source.replace(/\s+/g, ' ');
@@ -28,16 +27,17 @@ describe('issue-based delivery contract', () => {
     expect(normalizeWhitespace(workflow)).toContain(
       '原則1 Issue / 1 work branch / 1 PR',
     );
-    expect(workflow).toContain(integrationBranch);
-    expect(agents).toContain(currentParent);
-    expect(workflow).toContain(currentParent);
-    expect(agents).toContain(currentBranchPoint);
-    expect(workflow).toContain(currentBranchPoint);
-    expect(agents).toContain(upstreamParent);
-    expect(workflow).toContain(upstreamParent);
-    expect(agents).toContain(upstreamIntegrationBranch);
-    expect(workflow).toContain(upstreamIntegrationBranch);
-    expect(workflow).toContain('完了済み親 #106');
+    expect(agents).toContain(completedTokenParent);
+    expect(workflow).toContain(completedTokenParent);
+    expect(agents).toContain(completedTokenMainPr);
+    expect(workflow).toContain(completedTokenMainPr);
+    expect(agents).toContain(retiredTokenIntegrationBranch);
+    expect(workflow).toContain(retiredTokenIntegrationBranch);
+    expect(agents).not.toContain(staleTokenBranchPoint);
+    expect(workflow).not.toContain(staleTokenBranchPoint);
+    expect(workflow).toContain('最新 `main`');
+    expect(workflow).toContain('`integration/<parent>-<slug>`');
+    expect(workflow).toContain('固定しません');
   });
 
   it('requires direct user permission before any main update', async () => {
@@ -57,21 +57,16 @@ describe('issue-based delivery contract', () => {
     }
   });
 
-  it('runs read-only verification for main and the integration branch without deployment', async () => {
+  it('runs read-only verification for main and every delivery branch without deployment', async () => {
     const quality = await readFile('.github/workflows/quality.yml', 'utf8');
-    const branchFilters = quality.match(
-      new RegExp(`- ${integrationBranch.replaceAll('/', '\\/')}`, 'g'),
-    );
+    const integrationBranchFilters = quality.match(/- 'integration\/\*\*'/g);
     const mainBranchFilters = quality.match(/- main/g);
-    const upstreamBranchFilters = quality.match(
-      new RegExp(`- ${upstreamIntegrationBranch.replaceAll('/', '\\/')}`, 'g'),
-    );
 
-    expect(branchFilters).toHaveLength(2);
+    expect(integrationBranchFilters).toHaveLength(2);
     expect(mainBranchFilters).toHaveLength(2);
-    expect(upstreamBranchFilters).toHaveLength(2);
     expect(quality).toContain("- 'work/**'");
-    expect(quality).not.toContain('- integration/376-navigation-continuity');
+    expect(quality).not.toContain('- integration/391-shared-design-tokens');
+    expect(quality).not.toContain('- integration/385-edit-conflict-resolution');
     expect(quality).toContain('permissions:\n  contents: read');
     expect(quality).toContain('timeout-minutes: 30');
     expect(quality).toContain('uses: actions/checkout@v7');
@@ -89,15 +84,15 @@ describe('issue-based delivery contract', () => {
     );
   });
 
-  it('records the approved self-bootstrap without weakening its CI gate', async () => {
+  it('records the narrow bootstrap transition without weakening its CI gate', async () => {
     const [agents, workflow] = await Promise.all([
       readFile('AGENTS.md', 'utf8'),
       readFile('docs/development-workflow.md', 'utf8'),
     ]);
 
-    expect(agents).toContain('self-bootstrap CI');
-    expect(agents).toContain('exact head commit');
-    expect(workflow).toContain('self-bootstrap方式');
+    expect(agents).toContain('bootstrap exception');
+    expect(agents).toContain('exact work-branch head commit');
+    expect(workflow).toContain('bootstrap移行');
     expect(workflow).toContain('CI省略ではなく');
   });
 

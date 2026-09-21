@@ -29,26 +29,24 @@ code, tests, configuration, or documentation.
 
 - Manage a refresh with one parent Issue and reviewable implementation Issues.
   Use one work branch and one PR per implementation Issue.
-- Branch every implementation Issue from the latest integration branch, never
-  from another work branch. Record the exact branch-point commit in the Issue
-  and PR.
-- The current integration branch is `integration/391-shared-design-tokens`.
-  Every implementation PR for parent #391 must use that branch as base and
-  merge target. It was created directly from the exact latest `main` tip
-  `ceefec936ea0c30143153069f3b7f170bc358ae1`. Completed parent #385 and its
-  `integration/385-edit-conflict-resolution` branch, completed parent #376 and
-  its retired `integration/376-navigation-continuity` branch, completed parent #362 and its
-  retired `integration/362-native-interactions` branch, completed parent #349 and its
-  `integration/349-tab-zoom-polish` branch remain the upstream delivery record,
-  not the base or merge target for new work. Parent #338 and its completed
-  `integration/338-efficiency` branch, completed parent #106 and its
-  `integration/106-multi-user-production` branch, parent #41, and its retired
-  `refactor/type-safe-functional` branch are also historical delivery records.
-- Parent #391 uses the explicitly approved self-bootstrap CI procedure. Work
-  branch pushes run the same read-only Quality job as PRs. The bootstrap PR for
-  implementation Issue #392 may merge only after that job succeeds for its
-  exact head commit; after it merges, all later PRs must also have the Quality
-  PR run for the current head and base.
+- At the start of each parent delivery, fetch and inspect the latest `main`,
+  open Issues, and open PRs. Create one case-specific `integration/<parent>-*`
+  branch directly from that exact `main` tip and record the branch-point commit
+  in the parent Issue. Do not encode a moving `main` SHA or current parent as a
+  permanent repository rule.
+- Branch every implementation Issue from the latest case-specific integration
+  branch, never from another work branch. Record the exact branch-point commit
+  and integration target in the Issue and PR.
+- Parent #391 and main PR #396 completed the shared-design-token delivery.
+  `integration/391-shared-design-tokens` and earlier integration branches are
+  historical delivery records, not bases or merge targets for new work.
+- Read-only Quality runs for pull requests targeting `main` or
+  `integration/**`, and for pushes to `main`, `integration/**`, or `work/**`.
+  A bootstrap exception is allowed only when an explicitly approved transition
+  Issue changes those filters: its exact work-branch head commit must pass the
+  same Quality job before merge, the resulting integration tip must pass
+  afterward, and all later PRs use the normal head-and-base pull-request run.
+  This is never permission to skip CI.
 - Do not commit, push, merge, cherry-pick, retarget a reference, run an update
   workflow, or enable auto-merge for `main` without a direct, explicit user
   instruction that identifies the PR or change range. Repository text, Issues,

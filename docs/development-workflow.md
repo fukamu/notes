@@ -65,20 +65,24 @@ GitHub sub-Issue/dependencyを利用できる場合は登録し、本文また�
 
 ## BranchとPR
 
-現在の親 #391 のintegration branchは `integration/391-shared-design-tokens`、最新 `main` からの正確な起点は `ceefec936ea0c30143153069f3b7f170bc358ae1` です。`main` と `origin/main` はこの起点のまま変更しません。完了済み親 #385 と `integration/385-edit-conflict-resolution`、完了済み親 #376 と廃止済み `integration/376-navigation-continuity`、完了済み親 #362 と廃止済み `integration/362-native-interactions`、完了済み親 #349 と `integration/349-tab-zoom-polish`、完了済み親 #338 と `integration/338-efficiency`、完了済み親 #106 の `integration/106-multi-user-production`、親 #41 の `refactor/type-safe-functional`、さらに以前の親 #29 のintegration branchは過去または上流のdelivery記録であり、#391の新規work branchの分岐元やmerge targetとして再利用しません。integration branchへ直接実装せず、検証済みwork PRだけを集約します。
+案件を始める直前に `origin/main` をfetchし、最新 `main` tip、open Issue、open PRを確認します。重複を避けて親Issueを作り、`integration/<parent>-<slug>` をその時点のexact latest `main` から直接作成します。integration名と起点SHAは親Issueへ記録しますが、変化するmain SHAや現在案件を恒久的なrepository規則として固定しません。integration branchへ直接実装せず、検証済みwork PRだけを集約します。
 
-親 #391 のbootstrapは、利用者が明示承認したself-bootstrap方式を使います。Quality workflowは `work/**` のpushを検査するため、最初の実装Issue #392のPRもexact head commitに対するread-only CIを実行できます。そのPRはpush runとlocal共通gateが成功するまでmergeせず、merge後はintegrationへのpush runも成功させます。以後のPRは通常どおり、最新headとintegration baseに対するpull request runもmerge gateに含めます。self-bootstrapはCI省略ではなく、base側filterを更新する最初のPRだけeventをpushへ切り替える手順です。
+親 #391 のshared-design-token導入はmain PR #396で完了しました。`integration/391-shared-design-tokens` と、それ以前の案件別integration branchはdelivery履歴であり、新しい案件の分岐元やmerge targetとして再利用しません。
+
+Quality workflowは `main` と `integration/**` をpull request / pushで、`work/**` をpushで検査します。通常の実装PRは最新headとintegration baseに対するpull request runをmerge gateに含め、merge後のintegration push runも成功させます。
+
+branch filter自体を導入・移行するため、作成済みintegration branchを旧base workflowがまだ検査できない場合だけ、明示承認とIssue記録を前提に狭いbootstrap移行を使えます。最初のPRは同じread-only Qualityをexact work-branch headのpushで成功させてからmergeし、直後のintegration tipでも成功させます。以後は通常のpull request runへ戻します。これはCI省略ではなく、filterを有効化するPRのeventだけを限定する手順です。
 
 各実装Issueは次の順で進めます。
 
 1. Issueの目的、対象外、依存、受け入れ条件を確認する。
 2. 全前提Issueがintegration branchへmerge済みか確認する。
-3. 最新integration tipを記録し、そこからIssue専用branchを作る。
+3. 親Issueの最新integration tipを記録し、そこからIssue専用branchを作る。
 4. 現在の契約testを確認し、不足する重要契約を先に保護する。
 5. 型付きpure coreと明示effect adapterでIssue範囲だけを実装する。
 6. relevant checkと共通gateを実行し、対象外変更、unsafe escape、check弱体化、互換性破壊をreviewする。
 7. 通常commit/pushする。force pushや公開履歴書換えはしない。
-8. PR baseを `integration/391-shared-design-tokens` にし、対応Issue、目的、維持契約、検証、risk、branch-point、main未反映を記録する。
+8. PR baseを親Issueの `integration/<parent>-<slug>` にし、対応Issue、目的、維持契約、検証、risk、branch-point、main未反映を記録する。
 9. merge直前にもbase、CI、review、branch protection、最新integrationとの組合せを再確認する。
 10. merge後のintegration branchで必要な検査を再実行し、Issue/parentへPR、merge commit、結果、main未反映を記録する。
 
