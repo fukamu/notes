@@ -1,3 +1,4 @@
+@import '../vendor/fukamu-design-tokens/0.1.0/css/tokens.css';
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
@@ -12,6 +13,7 @@
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -26,44 +28,63 @@
   --font-sans: var(--font-body);
   --font-heading: var(--font-heading);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
+  --font-weight-normal: var(--fukamu-font-weight-regular);
+  --font-weight-medium: var(--fukamu-font-weight-medium);
+  --font-weight-semibold: var(--fukamu-font-weight-semibold);
+  --font-weight-bold: var(--fukamu-font-weight-bold);
+  --text-sm: var(--fukamu-font-size-small);
+  --text-base: var(--fukamu-font-size-body);
+  --spacing: var(--fukamu-spacing-1);
+  --default-border-width: var(--fukamu-border-width-default);
+  --radius-sm: var(--fukamu-radius-sm);
+  --radius-md: var(--fukamu-radius-md);
+  --radius-lg: var(--fukamu-radius-lg);
+  --radius-xl: var(--fukamu-radius-xl);
+  --radius-2xl: var(--fukamu-radius-xl);
+  --radius-full: var(--fukamu-radius-pill);
 }
 
 :root {
-  --font-body: 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+  --font-body: var(--fukamu-font-family-body-ja);
   --font-heading: 'Yu Mincho', 'Hiragino Mincho ProN', serif;
   --background: oklch(0.968 0.013 82);
-  --foreground: oklch(0.25 0.02 55);
-  --card: oklch(0.993 0.007 84);
-  --card-foreground: oklch(0.25 0.02 55);
-  --popover: oklch(0.995 0.006 84);
-  --popover-foreground: oklch(0.25 0.02 55);
-  --primary: oklch(0.39 0.08 255);
-  --primary-foreground: oklch(0.985 0.006 84);
+  --foreground: var(--fukamu-color-text-primary);
+  --card: var(--fukamu-color-surface-default);
+  --card-foreground: var(--fukamu-color-text-primary);
+  --popover: var(--fukamu-color-surface-default);
+  --popover-foreground: var(--fukamu-color-text-primary);
+  --primary: var(--fukamu-color-action-primary);
+  --primary-hover: var(--fukamu-color-action-primary-hover);
+  --primary-foreground: var(--fukamu-color-action-on-primary);
   --secondary: oklch(0.925 0.025 78);
   --secondary-foreground: oklch(0.31 0.025 55);
   --muted: oklch(0.93 0.014 78);
-  --muted-foreground: oklch(0.51 0.025 55);
+  --muted-foreground: var(--fukamu-color-text-secondary);
   --accent: oklch(0.9 0.035 71);
   --accent-foreground: oklch(0.38 0.05 53);
-  --destructive: oklch(0.56 0.19 28);
-  --border: oklch(0.85 0.025 77);
-  --input: oklch(0.85 0.025 77);
-  --ring: oklch(0.55 0.1 255);
+  --destructive: var(--fukamu-color-status-danger-foreground);
+  --border: var(--fukamu-color-border-default);
+  --input: var(--fukamu-color-border-default);
+  --ring: var(--fukamu-color-focus-ring);
   --link-bg: oklch(0.92 0.035 252);
   --link-border: oklch(0.73 0.075 253);
   --link-foreground: oklch(0.37 0.09 256);
-  --warning-bg: oklch(0.987 0.022 95.277 / 80%);
+  --warning-bg: var(--fukamu-color-status-warning-surface);
   --warning-surface: oklch(1 0 0 / 70%);
-  --warning-border: oklch(0.769 0.188 70.08 / 35%);
-  --warning-foreground: oklch(0.279 0.077 45.635);
-  --warning-muted-foreground: oklch(0.414 0.112 45.904 / 75%);
-  --warning-preview-foreground: oklch(0.279 0.077 45.635 / 70%);
-  --warning-icon: oklch(0.555 0.163 48.998);
-  --radius: 0.75rem;
+  --warning-border: var(--fukamu-color-status-warning-border);
+  --warning-foreground: var(--fukamu-color-status-warning-foreground);
+  --warning-muted-foreground: color-mix(
+    in oklch,
+    var(--warning-foreground) 75%,
+    transparent
+  );
+  --warning-preview-foreground: color-mix(
+    in oklch,
+    var(--warning-foreground) 70%,
+    transparent
+  );
+  --warning-icon: var(--fukamu-color-status-warning-foreground);
+  --radius: var(--fukamu-radius-lg);
 }
 
 .dark {
@@ -74,6 +95,7 @@
   --popover: oklch(0.24 0.018 58);
   --popover-foreground: oklch(0.92 0.015 80);
   --primary: oklch(0.72 0.09 252);
+  --primary-hover: color-mix(in oklch, var(--primary) 80%, transparent);
   --primary-foreground: oklch(0.18 0.02 58);
   --secondary: oklch(0.29 0.02 58);
   --secondary-foreground: oklch(0.9 0.015 80);
@@ -250,6 +272,7 @@
 }
 
 .connections-viewport {
+  --primary: var(--fukamu-color-accent);
   @apply rounded-2xl border bg-card/55 shadow-sm focus-visible:ring-2 focus-visible:ring-ring;
   background-image:
     linear-gradient(
