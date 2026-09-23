@@ -345,12 +345,7 @@ export type SubscriptionCancellationCommand = BillingOwnerScope & {
   readonly requestedAt: number;
 };
 
-export type SubscriptionCancellationResult =
-  | {
-      readonly kind: 'confirmed';
-      readonly outcome: 'cancelled' | 'already-cancelled';
-      readonly confirmedAt: number;
-    }
+type SubscriptionCancellationFailure =
   | {
       readonly kind: 'retryable-failure';
       readonly reason:
@@ -362,13 +357,39 @@ export type SubscriptionCancellationResult =
       readonly kind: 'terminal-failure';
       readonly reason:
         | 'invalid-command'
+        | 'invalid-subscription-state'
         | 'owner-mismatch'
         | 'subscription-not-found'
         | 'provider-not-linked'
         | 'provider-terminal';
     };
 
+export type PeriodEndSubscriptionCancellationResult =
+  | {
+      readonly kind: 'confirmed';
+      readonly outcome: 'scheduled' | 'already-cancelled';
+      readonly confirmedAt: number;
+      readonly accessEndsAt: number;
+    }
+  | SubscriptionCancellationFailure;
+
+export type ImmediateSubscriptionCancellationResult =
+  | {
+      readonly kind: 'confirmed';
+      readonly outcome: 'cancelled' | 'already-cancelled';
+      readonly confirmedAt: number;
+      readonly accessEndsAt: number;
+    }
+  | SubscriptionCancellationFailure;
+
+export const MAXIMUM_JAVASCRIPT_DATE_TIMESTAMP_MS =
+  8_640_000_000_000_000 as const;
+
 const timestampDecoder = safeIntegerDecoder({ minimum: 0 });
+const displayTimestampDecoder = safeIntegerDecoder({
+  minimum: 0,
+  maximum: MAXIMUM_JAVASCRIPT_DATE_TIMESTAMP_MS,
+});
 
 export const subscriptionCancellationCommandDecoder: Decoder<SubscriptionCancellationCommand> =
   objectDecoder({
@@ -378,16 +399,8 @@ export const subscriptionCancellationCommandDecoder: Decoder<SubscriptionCancell
     requestedAt: timestampDecoder,
   });
 
-export const subscriptionCancellationResultDecoder: Decoder<SubscriptionCancellationResult> =
+const subscriptionCancellationFailureDecoder: Decoder<SubscriptionCancellationFailure> =
   unionDecoder(
-    objectDecoder({
-      kind: literalDecoder('confirmed'),
-      outcome: unionDecoder(
-        literalDecoder('cancelled'),
-        literalDecoder('already-cancelled'),
-      ),
-      confirmedAt: timestampDecoder,
-    }),
     objectDecoder({
       kind: literalDecoder('retryable-failure'),
       reason: unionDecoder(
@@ -400,6 +413,7 @@ export const subscriptionCancellationResultDecoder: Decoder<SubscriptionCancella
       kind: literalDecoder('terminal-failure'),
       reason: unionDecoder(
         literalDecoder('invalid-command'),
+        literalDecoder('invalid-subscription-state'),
         literalDecoder('owner-mismatch'),
         literalDecoder('subscription-not-found'),
         literalDecoder('provider-not-linked'),
@@ -408,11 +422,48 @@ export const subscriptionCancellationResultDecoder: Decoder<SubscriptionCancella
     }),
   );
 
-export type SubscriptionCancellationPort = {
-  cancelSubscription(
+export const periodEndSubscriptionCancellationResultDecoder: Decoder<PeriodEndSubscriptionCancellationResult> =
+  unionDecoder(
+    objectDecoder({
+      kind: literalDecoder('confirmed'),
+      outcome: unionDecoder(
+        literalDecoder('scheduled'),
+        literalDecoder('already-cancelled'),
+      ),
+      confirmedAt: timestampDecoder,
+      accessEndsAt: displayTimestampDecoder,
+    }),
+    subscriptionCancellationFailureDecoder,
+  );
+
+export const immediateSubscriptionCancellationResultDecoder: Decoder<ImmediateSubscriptionCancellationResult> =
+  unionDecoder(
+    objectDecoder({
+      kind: literalDecoder('confirmed'),
+      outcome: unionDecoder(
+        literalDecoder('cancelled'),
+        literalDecoder('already-cancelled'),
+      ),
+      confirmedAt: timestampDecoder,
+      accessEndsAt: displayTimestampDecoder,
+    }),
+    subscriptionCancellationFailureDecoder,
+  );
+
+export type PeriodEndSubscriptionCancellationPort = {
+  scheduleSubscriptionCancellation(
     command: SubscriptionCancellationCommand,
-  ): Promise<SubscriptionCancellationResult>;
+  ): Promise<PeriodEndSubscriptionCancellationResult>;
 };
+
+export type ImmediateSubscriptionCancellationPort = {
+  cancelSubscriptionImmediately(
+    command: SubscriptionCancellationCommand,
+  ): Promise<ImmediateSubscriptionCancellationResult>;
+};
+
+export type SubscriptionCancellationPort =
+  PeriodEndSubscriptionCancellationPort & ImmediateSubscriptionCancellationPort;
 
 export type BillingApi = {
   beginCheckout(

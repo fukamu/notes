@@ -32,9 +32,13 @@ return proof of an active entitlement. Provider webhooks and verified
 `/account/billing` exposes cancellation through an accessible confirmation
 dialog. Closing the dialog returns focus to its trigger. Retryable provider
 failures remain visible and reuse one idempotency key. The UI only displays a
-real completion after the server cancellation port returns `confirmed`; a 409,
-malformed response, or dependency failure never becomes a success. The endpoint
-has no Notes entitlement gate, so it remains reachable during a payment lock.
+real completion after the server period-end cancellation port returns
+`confirmed`. It displays the provider-confirmed access end and says that the
+next renewal is stopped; an immediate `cancelled` result is rejected on this
+ordinary-cancellation path. A 409, malformed response, or dependency failure
+never becomes a success. Account deletion uses a distinct immediate port and
+does not accept a future schedule. The endpoint has no Notes entitlement gate,
+so it remains reachable during a payment lock.
 
 ## Local and production composition
 

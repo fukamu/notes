@@ -102,6 +102,10 @@ describe('account deletion to Billing cancellation integration', () => {
     );
     expect(provider.commands()[0]?.requestedAt).toBe(1_100);
     expect(provider.commands()[1]?.requestedAt).toBe(1_100);
+    expect(provider.commands()).toMatchObject([
+      { effect: 'immediate' },
+      { effect: 'immediate' },
+    ]);
     await expect(
       billing.api.readSubscription(billingContext()),
     ).resolves.toMatchObject({ lifecycle: { kind: 'trialing' } });

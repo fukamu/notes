@@ -9,12 +9,38 @@ import {
 import {
   beginCheckoutCommand,
   billingContext,
+  invoicePaidFact,
   subscriptionCancelledFact,
   trialStartedFact,
 } from '@/tests/fixtures/billing';
 
 describe('subscription cancellation service', () => {
-  it('confirms an immediate provider cancellation without exposing its reference', async () => {
+  it('schedules trial and paid subscriptions at the provider-confirmed period end', async () => {
+    for (const phase of ['trial', 'paid'] as const) {
+      const billing = await mappedBilling(phase);
+      const accessEndsAt = phase === 'trial' ? 20_000 : 30_000;
+      const provider = createFakeSubscriptionCancellationProvider({
+        actions: ['scheduled'],
+        scheduledAccessEndsAt: accessEndsAt,
+      });
+      const port = createSubscriptionCancellationPort({
+        repository: billing.repository,
+        provider,
+      });
+      await expect(
+        port.scheduleSubscriptionCancellation(command()),
+      ).resolves.toEqual({
+        kind: 'confirmed',
+        outcome: 'scheduled',
+        confirmedAt: 10_000,
+        accessEndsAt,
+      });
+      expect(provider.commands()).toMatchObject([{ effect: 'period-end' }]);
+      expect(provider.cancellationSideEffectCount()).toBe(1);
+    }
+  });
+
+  it('uses a separate immediate provider effect for account deletion', async () => {
     const billing = await mappedBilling();
     const provider = createFakeSubscriptionCancellationProvider({
       actions: ['cancelled'],
@@ -23,35 +49,43 @@ describe('subscription cancellation service', () => {
       repository: billing.repository,
       provider,
     });
-    await expect(port.cancelSubscription(command())).resolves.toEqual({
+    await expect(
+      port.cancelSubscriptionImmediately(command()),
+    ).resolves.toEqual({
       kind: 'confirmed',
       outcome: 'cancelled',
       confirmedAt: 10_000,
+      accessEndsAt: 10_000,
     });
-    expect(provider.commands()).toHaveLength(1);
-    expect(provider.cancellationSideEffectCount()).toBe(1);
-    expect(Object.keys(await port.cancelSubscription(command()))).not.toContain(
-      'providerSubscriptionReference',
-    );
+    expect(provider.commands()).toMatchObject([{ effect: 'immediate' }]);
   });
 
-  it('retries a lost response with one idempotency key and one provider side effect', async () => {
+  it('retries a lost period-end response with one idempotency key and one provider side effect', async () => {
     const billing = await mappedBilling();
     const provider = createFakeSubscriptionCancellationProvider({
-      actions: ['cancelled-response-lost'],
+      actions: ['scheduled-response-lost'],
+      scheduledAccessEndsAt: 20_000,
     });
     const port = createSubscriptionCancellationPort({
       repository: billing.repository,
       provider,
     });
-    await expect(port.cancelSubscription(command())).resolves.toEqual({
+    await expect(
+      port.scheduleSubscriptionCancellation(command()),
+    ).resolves.toEqual({
       kind: 'retryable-failure',
       reason: 'provider-unavailable',
     });
-    await expect(port.cancelSubscription(command())).resolves.toEqual({
+    await expect(
+      port.scheduleSubscriptionCancellation({
+        ...command(),
+        requestedAt: 11_000,
+      }),
+    ).resolves.toEqual({
       kind: 'confirmed',
-      outcome: 'already-cancelled',
+      outcome: 'scheduled',
       confirmedAt: 10_000,
+      accessEndsAt: 20_000,
     });
     expect(provider.cancellationSideEffectCount()).toBe(1);
     expect(
@@ -59,53 +93,50 @@ describe('subscription cancellation service', () => {
     ).toEqual([command().idempotencyKey, command().idempotencyKey]);
   });
 
-  it('recovers from a retryable result but does not accept malformed or out-of-order results', async () => {
+  it('does not treat an immediate result as normal period-end completion or a schedule as deletion completion', async () => {
     const billing = await mappedBilling();
-    const provider = createFakeSubscriptionCancellationProvider({
-      actions: ['retryable-failure', 'cancelled'],
-    });
-    const port = createSubscriptionCancellationPort({
-      repository: billing.repository,
-      provider,
-    });
-    await expect(port.cancelSubscription(command())).resolves.toEqual({
-      kind: 'retryable-failure',
-      reason: 'provider-unavailable',
-    });
-    await expect(port.cancelSubscription(command())).resolves.toMatchObject({
-      kind: 'confirmed',
-      outcome: 'cancelled',
-    });
-
-    const malformed = createFakeSubscriptionCancellationProvider({
-      actions: ['malformed'],
+    const immediateProvider = createFakeSubscriptionCancellationProvider({
+      actions: ['cancelled'],
     });
     await expect(
       createSubscriptionCancellationPort({
         repository: billing.repository,
-        provider: malformed,
-      }).cancelSubscription(command()),
+        provider: immediateProvider,
+      }).scheduleSubscriptionCancellation(command()),
     ).resolves.toEqual({
       kind: 'retryable-failure',
-      reason: 'malformed-provider-response',
+      reason: 'provider-result-mismatch',
     });
 
-    const outOfOrder = createFakeSubscriptionCancellationProvider({
-      actions: ['out-of-order'],
+    const scheduledProvider = createFakeSubscriptionCancellationProvider({
+      actions: ['scheduled'],
+      scheduledAccessEndsAt: 20_000,
     });
     await expect(
       createSubscriptionCancellationPort({
         repository: billing.repository,
-        provider: outOfOrder,
-      }).cancelSubscription(command()),
+        provider: scheduledProvider,
+      }).cancelSubscriptionImmediately(command()),
     ).resolves.toEqual({
       kind: 'retryable-failure',
       reason: 'provider-result-mismatch',
     });
   });
 
-  it('keeps provider terminal and unavailability distinct from confirmation', async () => {
+  it('keeps retryable, malformed, out-of-order, terminal, and unavailable provider results distinct', async () => {
     for (const [action, expected] of [
+      [
+        'retryable-failure',
+        { kind: 'retryable-failure', reason: 'provider-unavailable' },
+      ],
+      [
+        'malformed',
+        { kind: 'retryable-failure', reason: 'malformed-provider-response' },
+      ],
+      [
+        'out-of-order',
+        { kind: 'retryable-failure', reason: 'provider-result-mismatch' },
+      ],
       [
         'terminal-failure',
         { kind: 'terminal-failure', reason: 'provider-terminal' },
@@ -123,13 +154,12 @@ describe('subscription cancellation service', () => {
         createSubscriptionCancellationPort({
           repository: billing.repository,
           provider,
-        }).cancelSubscription(command()),
+        }).cancelSubscriptionImmediately(command()),
       ).resolves.toEqual(expected);
-      expect(provider.cancellationSideEffectCount()).toBe(0);
     }
   });
 
-  it('confirms an already-cancelled aggregate and rejects another Account before the provider', async () => {
+  it('confirms an already-cancelled aggregate without another provider effect', async () => {
     const billing = await mappedBilling();
     await billing.api.ingestVerifiedProviderFact(subscriptionCancelledFact());
     const provider = createFakeSubscriptionCancellationProvider({
@@ -139,20 +169,21 @@ describe('subscription cancellation service', () => {
       repository: billing.repository,
       provider,
     });
-    await expect(port.cancelSubscription(command())).resolves.toEqual({
+    await expect(
+      port.scheduleSubscriptionCancellation(command()),
+    ).resolves.toEqual({
       kind: 'confirmed',
       outcome: 'already-cancelled',
       confirmedAt: 9_000,
+      accessEndsAt: 9_000,
     });
     await expect(
-      port.cancelSubscription({
-        ...command(),
-        accountId: billingContext('b').accountId,
-        vaultId: billingContext('b').vaultId,
-      }),
+      port.cancelSubscriptionImmediately(command()),
     ).resolves.toEqual({
-      kind: 'terminal-failure',
-      reason: 'subscription-not-found',
+      kind: 'confirmed',
+      outcome: 'already-cancelled',
+      confirmedAt: 9_000,
+      accessEndsAt: 9_000,
     });
     expect(provider.commands()).toEqual([]);
   });
@@ -169,12 +200,15 @@ function command(): SubscriptionCancellationCommand {
   };
 }
 
-async function mappedBilling() {
+async function mappedBilling(phase: 'trial' | 'paid' = 'trial') {
   const billing = createFakeBillingModule([
     billingContext(),
     billingContext('b'),
   ]);
   await billing.api.beginCheckout(billingContext(), beginCheckoutCommand());
   await billing.api.ingestVerifiedProviderFact(trialStartedFact());
+  if (phase === 'paid') {
+    await billing.api.ingestVerifiedProviderFact(invoicePaidFact());
+  }
   return billing;
 }

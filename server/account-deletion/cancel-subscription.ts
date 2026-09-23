@@ -1,6 +1,6 @@
-import type { SubscriptionCancellationPort } from '../billing/public';
+import type { ImmediateSubscriptionCancellationPort } from '../billing/public';
 import { subscriptionCancellationIdempotencyKeyDecoder } from '../billing/public';
-import type { SubscriptionCancellationResult } from '../billing/public';
+import type { ImmediateSubscriptionCancellationResult } from '../billing/public';
 import {
   isValidAccountDeletionSnapshot,
   type AccountDeletionStepResult,
@@ -28,7 +28,7 @@ export type CancelSubscriptionStepPlan =
   | {
       readonly kind: 'accepted';
       readonly command: Parameters<
-        SubscriptionCancellationPort['cancelSubscription']
+        ImmediateSubscriptionCancellationPort['cancelSubscriptionImmediately']
       >[0];
       readonly attempt: AccountDeletionAttempt;
       readonly finishedAt: number;
@@ -99,7 +99,7 @@ export function planCancelSubscriptionStep(input: {
 export function mapCancelSubscriptionStepResult(
   plan: Extract<CancelSubscriptionStepPlan, { kind: 'accepted' }>,
   cancellation:
-    | SubscriptionCancellationResult
+    | ImmediateSubscriptionCancellationResult
     | { readonly kind: 'unavailable' },
 ): AccountDeletionStepResult {
   if (cancellation.kind === 'confirmed') {
@@ -131,16 +131,18 @@ export function mapCancelSubscriptionStepResult(
 export async function executeCancelSubscriptionStep(input: {
   readonly snapshot: AccountDeletionSnapshot;
   readonly executedAt: number;
-  readonly billing: SubscriptionCancellationPort;
+  readonly billing: ImmediateSubscriptionCancellationPort;
 }): Promise<CancelSubscriptionExecutionResult> {
   const plan = planCancelSubscriptionStep(input);
   if (plan.kind === 'rejected') return plan;
 
   let cancellation:
-    | SubscriptionCancellationResult
+    | ImmediateSubscriptionCancellationResult
     | { readonly kind: 'unavailable' };
   try {
-    cancellation = await input.billing.cancelSubscription(plan.command);
+    cancellation = await input.billing.cancelSubscriptionImmediately(
+      plan.command,
+    );
   } catch {
     cancellation = { kind: 'unavailable' };
   }

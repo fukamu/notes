@@ -144,10 +144,22 @@ describe('billing cancellation UI pure state', () => {
     expect(
       billingCancellationUiReducer(submitting, {
         type: 'confirmed',
-        source: 'server',
-        confirmedAt: 2_000,
+        confirmation: {
+          source: 'server',
+          outcome: 'scheduled',
+          confirmedAt: 2_000,
+          accessEndsAt: 3_000,
+        },
       }),
-    ).toEqual({ kind: 'confirmed', source: 'server', confirmedAt: 2_000 });
+    ).toEqual({
+      kind: 'confirmed',
+      confirmation: {
+        source: 'server',
+        outcome: 'scheduled',
+        confirmedAt: 2_000,
+        accessEndsAt: 3_000,
+      },
+    });
   });
 });
 

@@ -197,8 +197,14 @@ export type BillingCancellationUiState =
   | { readonly kind: 'submitting' }
   | {
       readonly kind: 'confirmed';
-      readonly source: 'server' | 'local-fixture';
-      readonly confirmedAt: number | null;
+      readonly confirmation:
+        | {
+            readonly source: 'server';
+            readonly outcome: 'scheduled' | 'already-cancelled';
+            readonly confirmedAt: number;
+            readonly accessEndsAt: number;
+          }
+        | { readonly source: 'local-fixture' };
     };
 
 export type BillingCancellationUiAction =
@@ -211,8 +217,14 @@ export type BillingCancellationUiAction =
     }
   | {
       readonly type: 'confirmed';
-      readonly source: 'server' | 'local-fixture';
-      readonly confirmedAt: number | null;
+      readonly confirmation:
+        | {
+            readonly source: 'server';
+            readonly outcome: 'scheduled' | 'already-cancelled';
+            readonly confirmedAt: number;
+            readonly accessEndsAt: number;
+          }
+        | { readonly source: 'local-fixture' };
     };
 
 export const initialBillingCancellationUiState: BillingCancellationUiState = {
@@ -240,8 +252,7 @@ export function billingCancellationUiReducer(
       return state.kind === 'submitting'
         ? {
             kind: 'confirmed',
-            source: action.source,
-            confirmedAt: action.confirmedAt,
+            confirmation: action.confirmation,
           }
         : state;
   }

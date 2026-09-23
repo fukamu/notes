@@ -15,8 +15,8 @@ import type {
   AccountDeletionTransition,
 } from '@/server/account-deletion/public';
 import type {
-  SubscriptionCancellationPort,
-  SubscriptionCancellationResult,
+  ImmediateSubscriptionCancellationPort,
+  ImmediateSubscriptionCancellationResult,
 } from '@/server/billing/public';
 import {
   accountDeletionFixtureIds,
@@ -69,17 +69,32 @@ describe('account deletion subscription cancellation step', () => {
     });
     if (plan.kind !== 'accepted') throw new Error('invalid plan fixture');
     const cases: readonly [
-      SubscriptionCancellationResult | { readonly kind: 'unavailable' },
+      (
+        | ImmediateSubscriptionCancellationResult
+        | {
+            readonly kind: 'unavailable';
+          }
+      ),
       string,
       string | undefined,
     ][] = [
       [
-        { kind: 'confirmed', outcome: 'cancelled', confirmedAt: 1_100 },
+        {
+          kind: 'confirmed',
+          outcome: 'cancelled',
+          confirmedAt: 1_100,
+          accessEndsAt: 1_100,
+        },
         'succeeded',
         undefined,
       ],
       [
-        { kind: 'confirmed', outcome: 'already-cancelled', confirmedAt: 1_100 },
+        {
+          kind: 'confirmed',
+          outcome: 'already-cancelled',
+          confirmedAt: 1_100,
+          accessEndsAt: 1_100,
+        },
         'succeeded',
         undefined,
       ],
@@ -119,17 +134,18 @@ describe('account deletion subscription cancellation step', () => {
 
   it('executes through Billing public API and produces a saga receipt input', async () => {
     const snapshot = cancelRunningSnapshot();
-    const cancelSubscription = vi.fn(async () => ({
+    const cancelSubscriptionImmediately = vi.fn(async () => ({
       kind: 'confirmed' as const,
       outcome: 'cancelled' as const,
       confirmedAt: 1_100,
+      accessEndsAt: 1_100,
     }));
     const execution = await executeCancelSubscriptionStep({
       snapshot,
       executedAt: 1_200,
-      billing: { cancelSubscription },
+      billing: { cancelSubscriptionImmediately },
     });
-    expect(cancelSubscription).toHaveBeenCalledWith({
+    expect(cancelSubscriptionImmediately).toHaveBeenCalledWith({
       ...accountDeletionScopeFixture(),
       idempotencyKey: accountDeletionFixtureIds.operationA,
       requestedAt: 1_100,
@@ -152,8 +168,8 @@ describe('account deletion subscription cancellation step', () => {
   });
 
   it('turns an unexpected port exception into retryable failure and skips invalid snapshots', async () => {
-    const unavailable: SubscriptionCancellationPort = {
-      cancelSubscription: async () => {
+    const unavailable: ImmediateSubscriptionCancellationPort = {
+      cancelSubscriptionImmediately: async () => {
         throw new Error('fixture unavailable');
       },
     };
@@ -171,20 +187,21 @@ describe('account deletion subscription cancellation step', () => {
       },
     });
 
-    const cancelSubscription = vi.fn(async () => ({
+    const cancelSubscriptionImmediately = vi.fn(async () => ({
       kind: 'confirmed' as const,
       outcome: 'cancelled' as const,
       confirmedAt: 1_200,
+      accessEndsAt: 1_200,
     }));
     const snapshot = cancelRunningSnapshot();
     await expect(
       executeCancelSubscriptionStep({
         snapshot: { ...snapshot, receipts: [] },
         executedAt: 1_200,
-        billing: { cancelSubscription },
+        billing: { cancelSubscriptionImmediately },
       }),
     ).resolves.toEqual({ kind: 'rejected', reason: 'invalid-snapshot' });
-    expect(cancelSubscription).not.toHaveBeenCalled();
+    expect(cancelSubscriptionImmediately).not.toHaveBeenCalled();
   });
 });
 

@@ -5,6 +5,7 @@ import type {
 import type { SubscriptionCancellationProviderPort } from './ports';
 
 export type FakeCancellationAction =
+  | 'scheduled'
   | 'cancelled'
   | 'already-cancelled'
   | 'retryable-failure'
@@ -12,6 +13,7 @@ export type FakeCancellationAction =
   | 'malformed'
   | 'out-of-order'
   | 'unavailable'
+  | 'scheduled-response-lost'
   | 'cancelled-response-lost';
 
 export type FakeSubscriptionCancellationProvider =
@@ -22,6 +24,7 @@ export type FakeSubscriptionCancellationProvider =
 
 export function createFakeSubscriptionCancellationProvider(input: {
   readonly actions: readonly FakeCancellationAction[];
+  readonly scheduledAccessEndsAt?: number;
 }): FakeSubscriptionCancellationProvider {
   const actions = [...input.actions];
   const commands: ProviderSubscriptionCancellationCommand[] = [];
@@ -36,16 +39,40 @@ export function createFakeSubscriptionCancellationProvider(input: {
       commands.push(command);
       const replay = confirmed.get(command.idempotencyKey);
       if (replay !== undefined) {
-        return { ...replay, kind: 'already-cancelled' };
+        return replay.kind === 'scheduled'
+          ? replay
+          : { ...replay, kind: 'already-cancelled' };
       }
 
       const action = actions.shift() ?? 'unavailable';
       switch (action) {
+        case 'scheduled': {
+          const observation = providerObservation(
+            command,
+            'scheduled',
+            input.scheduledAccessEndsAt,
+          );
+          confirmed.set(command.idempotencyKey, observation);
+          cancellationSideEffectCount += 1;
+          return observation;
+        }
         case 'cancelled': {
           const observation = providerObservation(command, 'cancelled');
           confirmed.set(command.idempotencyKey, observation);
           cancellationSideEffectCount += 1;
           return observation;
+        }
+        case 'scheduled-response-lost': {
+          confirmed.set(
+            command.idempotencyKey,
+            providerObservation(
+              command,
+              'scheduled',
+              input.scheduledAccessEndsAt,
+            ),
+          );
+          cancellationSideEffectCount += 1;
+          throw new Error('simulated cancellation response loss');
         }
         case 'cancelled-response-lost': {
           confirmed.set(
@@ -82,12 +109,27 @@ export function createFakeSubscriptionCancellationProvider(input: {
 function providerObservation(
   command: ProviderSubscriptionCancellationCommand,
   kind: ProviderSubscriptionCancellationObservation['kind'],
+  scheduledAccessEndsAt?: number,
 ): ProviderSubscriptionCancellationObservation {
-  return {
+  const base = {
     kind,
     provider: command.provider,
     providerSubscriptionReference: command.providerSubscriptionReference,
     idempotencyKey: command.idempotencyKey,
     observedAt: command.requestedAt,
-  };
+  } as const;
+  switch (kind) {
+    case 'scheduled':
+      return {
+        ...base,
+        kind,
+        accessEndsAt: scheduledAccessEndsAt ?? command.requestedAt + 1,
+      };
+    case 'cancelled':
+    case 'already-cancelled':
+      return { ...base, kind, accessEndsAt: command.requestedAt };
+    case 'retryable-failure':
+    case 'terminal-failure':
+      return { ...base, kind };
+  }
 }

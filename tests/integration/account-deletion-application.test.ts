@@ -182,7 +182,7 @@ describe('account deletion application', () => {
       retryPolicy: { delaysMs: [100] },
       ...effects.ports,
       billing: {
-        cancelSubscription: async () => {
+        cancelSubscriptionImmediately: async () => {
           cancellationCalls += 1;
           if (cancellationCalls === 1) {
             throw new Error('injected provider outage');
@@ -191,6 +191,7 @@ describe('account deletion application', () => {
             kind: 'confirmed',
             outcome: 'cancelled',
             confirmedAt: 1_301,
+            accessEndsAt: 1_301,
           };
         },
       },
@@ -277,12 +278,13 @@ function successfulEffects() {
         }),
       },
       billing: {
-        cancelSubscription: vi.fn(async () => {
+        cancelSubscriptionImmediately: vi.fn(async () => {
           calls.push('billing');
           return {
             kind: 'confirmed' as const,
             outcome: 'cancelled' as const,
             confirmedAt: 1_200,
+            accessEndsAt: 1_200,
           };
         }),
       },

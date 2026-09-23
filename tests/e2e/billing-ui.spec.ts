@@ -406,9 +406,10 @@ test('account billing cancellation uses an accessible dialog, focus return, and 
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        status: 'cancelled',
-        outcome: 'cancelled',
+        status: 'cancellation-scheduled',
+        outcome: 'scheduled',
         confirmedAt: 2_000,
+        accessEndsAt: 1_893_456_000_000,
       }),
     });
   });
@@ -433,7 +434,12 @@ test('account billing cancellation uses an accessible dialog, focus return, and 
     '解約済みにはしていません',
   );
   await dialog.getByRole('button', { name: '同じ内容で再試行' }).click();
-  await expect(page.getByTestId('cancellation-confirmed')).toBeVisible();
+  await expect(page.getByTestId('cancellation-confirmed')).toContainText(
+    '次回以降の自動更新を停止しました',
+  );
+  await expect(page.getByTestId('cancellation-confirmed')).toContainText(
+    '2030年1月1日',
+  );
   expect(cancellationKeys).toHaveLength(2);
   expect(cancellationKeys[1]).toBe(cancellationKeys[0]);
 });

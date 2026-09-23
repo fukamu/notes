@@ -10,7 +10,7 @@ import {
 } from '@/app/api/billing/cancel/handler';
 import {
   parseSubscriptionCancellationIdempotencyKey,
-  type SubscriptionCancellationPort,
+  type PeriodEndSubscriptionCancellationPort,
 } from '@/server/billing/public';
 import type { ContractCheckoutApplication } from '@/server/legal-checkout/public';
 import { fixtureActiveSession, cookieHeader } from '@/tests/fixtures/session';
@@ -199,14 +199,15 @@ describe('contract checkout HTTP handlers', () => {
 
 describe('subscription cancellation HTTP handler', () => {
   it('uses only session ownership and remains callable without an entitlement gate', async () => {
-    const cancelSubscription = vi.fn(async () => ({
+    const scheduleSubscriptionCancellation = vi.fn(async () => ({
       kind: 'confirmed' as const,
-      outcome: 'cancelled' as const,
+      outcome: 'scheduled' as const,
       confirmedAt: 1_600,
+      accessEndsAt: 2_600,
     }));
     const response = await createSubscriptionCancellationHandler(
       cancellationDependencies({
-        cancellation: { cancelSubscription },
+        cancellation: { scheduleSubscriptionCancellation },
       }),
     )(
       request('/api/billing/cancel', {
@@ -218,11 +219,12 @@ describe('subscription cancellation HTTP handler', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
     await expect(response.json()).resolves.toEqual({
-      status: 'cancelled',
-      outcome: 'cancelled',
+      status: 'cancellation-scheduled',
+      outcome: 'scheduled',
       confirmedAt: 1_600,
+      accessEndsAt: 2_600,
     });
-    expect(cancelSubscription).toHaveBeenCalledWith({
+    expect(scheduleSubscriptionCancellation).toHaveBeenCalledWith({
       accountId: fixtureActiveSession().accountId,
       vaultId: fixtureActiveSession().vaultId,
       idempotencyKey: cancellationKey,
@@ -231,9 +233,11 @@ describe('subscription cancellation HTTP handler', () => {
   });
 
   it('rejects cross-site and owner-injected cancellation before the port', async () => {
-    const cancelSubscription = vi.fn();
+    const scheduleSubscriptionCancellation = vi.fn();
     const handler = createSubscriptionCancellationHandler(
-      cancellationDependencies({ cancellation: { cancelSubscription } }),
+      cancellationDependencies({
+        cancellation: { scheduleSubscriptionCancellation },
+      }),
     );
     expect(
       (
@@ -262,7 +266,7 @@ describe('subscription cancellation HTTP handler', () => {
         )
       ).status,
     ).toBe(400);
-    expect(cancelSubscription).not.toHaveBeenCalled();
+    expect(scheduleSubscriptionCancellation).not.toHaveBeenCalled();
   });
 
   it('distinguishes retryable, owner, and terminal cancellation results', async () => {
@@ -282,10 +286,17 @@ describe('subscription cancellation HTTP handler', () => {
         409,
         'cancellation-unavailable',
       ],
+      [
+        { kind: 'terminal-failure', reason: 'invalid-subscription-state' },
+        409,
+        'cancellation-unavailable',
+      ],
     ] as const) {
       const response = await createSubscriptionCancellationHandler(
         cancellationDependencies({
-          cancellation: { cancelSubscription: async () => result },
+          cancellation: {
+            scheduleSubscriptionCancellation: async () => result,
+          },
         }),
       )(
         request('/api/billing/cancel', {
@@ -348,12 +359,13 @@ function cancellationDependencies(
   };
 }
 
-function cancellationPort(): SubscriptionCancellationPort {
+function cancellationPort(): PeriodEndSubscriptionCancellationPort {
   return {
-    cancelSubscription: async () => ({
+    scheduleSubscriptionCancellation: async () => ({
       kind: 'confirmed',
-      outcome: 'cancelled',
+      outcome: 'scheduled',
       confirmedAt: 1_600,
+      accessEndsAt: 2_600,
     }),
   };
 }

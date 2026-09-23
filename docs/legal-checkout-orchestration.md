@@ -25,8 +25,13 @@ contract, or provider values.
 POST `/api/billing/cancel` accepts only a bounded non-sensitive idempotency key.
 It constructs the cancellation command from the authenticated Vault context and
 server clock. It intentionally has no Entitlement dependency, so payment-locked
-customers retain the cancellation recovery path. Confirmed, retryable, and
-terminal results remain distinct while provider references stay server-side.
+customers retain the cancellation recovery path. This ordinary cancellation
+uses the period-end port: only a provider-confirmed future schedule, or a
+subscription already ended before the request, is successful. The response
+includes the provider-confirmed access end so contract management can show the
+actual usable deadline. The immediate port remains exclusive to account
+deletion. Confirmed, retryable, and terminal results remain distinct while
+provider references stay server-side.
 
 The checked-in route files return 404 in `legacy-test` and 503 otherwise until a
 separately approved production composition supplies the session store, D1

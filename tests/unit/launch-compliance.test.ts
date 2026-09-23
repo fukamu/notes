@@ -62,6 +62,22 @@ describe('production launch compliance manifest', () => {
           reason: 'missing-evidence',
         },
         { id: 'psp-merchant-contract-review', reason: 'missing-evidence' },
+        {
+          id: 'stripe-product-price-trial-tax-evidence',
+          reason: 'missing-evidence',
+        },
+        {
+          id: 'production-billing-runtime-and-isolated-flow-evidence',
+          reason: 'missing-evidence',
+        },
+        {
+          id: 'subscription-notification-and-cancellation-settings',
+          reason: 'missing-evidence',
+        },
+        {
+          id: 'contract-formation-and-free-trial-liability-review',
+          reason: 'missing-evidence',
+        },
         { id: 'pci-saq-confirmation', reason: 'missing-evidence' },
         { id: 'production-3ds-evidence', reason: 'missing-evidence' },
         {

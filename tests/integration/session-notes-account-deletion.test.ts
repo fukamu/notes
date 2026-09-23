@@ -100,6 +100,12 @@ describe('SessionNotesApp account deletion boundary', () => {
     expect(
       document.querySelector('[role="alertdialog"]')?.textContent,
     ).toContain('元に戻すことはできません');
+    expect(
+      document.querySelector('[role="alertdialog"]')?.textContent,
+    ).toContain('通常の期間末解約とは異なり即時解約');
+    expect(
+      document.querySelector('[role="alertdialog"]')?.textContent,
+    ).toContain('バックアップ等には個人情報保護方針に記載した期間');
     expect(begin).not.toHaveBeenCalled();
 
     clickButton('削除を開始');

@@ -12,6 +12,7 @@ import type {
   BillingUiOffer,
 } from '@/lib/application/billing-ui';
 import {
+  MAXIMUM_JAVASCRIPT_DATE_TIMESTAMP_MS,
   parseSubscriptionCancellationIdempotencyKey,
   type SubscriptionCancellationIdempotencyKey,
 } from '@/server/billing/public';
@@ -54,7 +55,9 @@ export type BillingCheckoutSubmitResult =
 export type BillingCancellationResult =
   | {
       readonly kind: 'confirmed';
+      readonly outcome: 'scheduled' | 'already-cancelled';
       readonly confirmedAt: number;
+      readonly accessEndsAt: number;
     }
   | { readonly kind: 'authentication-required' }
   | { readonly kind: 'cancellation-unavailable' }
@@ -92,14 +95,26 @@ const checkoutResponseDecoder = objectDecoder({
   ),
 });
 
-const cancellationResponseDecoder = objectDecoder({
-  status: literalDecoder('cancelled'),
-  outcome: unionDecoder(
-    literalDecoder('cancelled'),
-    literalDecoder('already-cancelled'),
-  ),
-  confirmedAt: safeIntegerDecoder({ minimum: 0 }),
-});
+const cancellationResponseDecoder = unionDecoder(
+  objectDecoder({
+    status: literalDecoder('cancellation-scheduled'),
+    outcome: literalDecoder('scheduled'),
+    confirmedAt: safeIntegerDecoder({ minimum: 0 }),
+    accessEndsAt: safeIntegerDecoder({
+      minimum: 0,
+      maximum: MAXIMUM_JAVASCRIPT_DATE_TIMESTAMP_MS,
+    }),
+  }),
+  objectDecoder({
+    status: literalDecoder('cancelled'),
+    outcome: literalDecoder('already-cancelled'),
+    confirmedAt: safeIntegerDecoder({ minimum: 0 }),
+    accessEndsAt: safeIntegerDecoder({
+      minimum: 0,
+      maximum: MAXIMUM_JAVASCRIPT_DATE_TIMESTAMP_MS,
+    }),
+  }),
+);
 
 const errorResponseDecoder = objectDecoder({
   error: unionDecoder(
@@ -180,7 +195,12 @@ export function createBillingUiHttpTransport(
       }
       const decoded = cancellationResponseDecoder.decode(await body(response));
       return decoded.ok
-        ? { kind: 'confirmed', confirmedAt: decoded.value.confirmedAt }
+        ? {
+            kind: 'confirmed',
+            outcome: decoded.value.outcome,
+            confirmedAt: decoded.value.confirmedAt,
+            accessEndsAt: decoded.value.accessEndsAt,
+          }
         : { kind: 'unavailable' };
     },
   };

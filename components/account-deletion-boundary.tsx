@@ -98,7 +98,7 @@ export function AccountDeletionBoundary({
     case 'terminal':
       return state.status === 'completed' ? (
         <StatusPanel>
-          退会手続きが完了し、この端末内のノートを削除しました。
+          退会手続きが完了しました。契約があった場合は即時解約し、サーバーの稼働系データとこの端末内のノートを削除しました。バックアップ等には個人情報保護方針に記載した期間、残存する場合があります。
         </StatusPanel>
       ) : (
         <StatusPanel>
@@ -140,7 +140,7 @@ export function AccountDeletionBoundary({
                       アカウントを削除しますか？
                     </AlertDialog.Title>
                     <AlertDialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">
-                      退会処理を開始するとセッションを無効化し、この端末のノートを削除します。元に戻すことはできません。
+                      退会処理を開始するとセッションを無効化し、契約がある場合は通常の期間末解約とは異なり即時解約します。その後、サーバーの稼働系データとこの端末のノートを削除します。開始後はノートを取り出せず、元に戻すことはできません。バックアップ等には個人情報保護方針に記載した期間、残存する場合があります。
                     </AlertDialog.Description>
                     <div className="mt-5 flex justify-end gap-2">
                       <AlertDialog.Close

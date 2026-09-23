@@ -7,11 +7,13 @@ change entitlement, expose an account-deletion endpoint, or deploy anything.
 
 ## Boundary and sequence
 
-`SubscriptionCancellationPort` is the provider-neutral Billing contract used
-outside the Billing module. Its command contains only the stored Account/Vault
-scope, a non-sensitive idempotency key, and a caller-supplied timestamp. The
-provider subscription reference remains in Billing's private record and
-provider port; callers cannot supply or observe it.
+`ImmediateSubscriptionCancellationPort` is the provider-neutral Billing
+contract used by account deletion. It is intentionally separate from the
+`PeriodEndSubscriptionCancellationPort` used by ordinary contract management.
+Both commands contain only the stored Account/Vault scope, a non-sensitive
+idempotency key, and a caller-supplied timestamp. The provider subscription
+reference and the explicit provider effect (`immediate` or `period-end`) remain
+inside Billing; callers cannot supply or observe the reference.
 
 The account-deletion step is accepted only while the saga is running
 `cancel-subscription` and has a valid preceding `revoke-sessions` receipt. The
@@ -24,9 +26,12 @@ externally supplied execution time is used only for the saga transition.
 
 The pure Billing core first verifies the Account/Vault owner and the persisted
 provider mapping. It confirms only an immediate `cancelled` or
-`already-cancelled` observation matching the provider, subscription reference,
-idempotency key, and request ordering. A scheduled future cancellation is not
-part of the accepted result contract and cannot advance deletion.
+`already-cancelled` observation with an effective access end no later than the
+provider observation, matching the provider, subscription reference,
+and idempotency key. An idempotent retry may receive the original, earlier
+provider observation after the request clock advances; its outcome timeline
+must still be internally consistent. A scheduled future cancellation is a valid
+result only for the separate period-end port and cannot advance deletion.
 
 - Provider unavailability, malformed output, a lost response, or mismatched
   output is retryable.
