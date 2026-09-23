@@ -8,63 +8,178 @@ import {
 import type { BillingSubscriptionRecord } from './core';
 import {
   billingProviderDecoder,
+  MAXIMUM_JAVASCRIPT_DATE_TIMESTAMP_MS,
   providerSubscriptionReferenceDecoder,
   subscriptionCancellationCommandDecoder,
   subscriptionCancellationIdempotencyKeyDecoder,
   type BillingProvider,
+  type ImmediateSubscriptionCancellationResult,
+  type PeriodEndSubscriptionCancellationResult,
   type ProviderSubscriptionReference,
   type SubscriptionCancellationCommand,
   type SubscriptionCancellationIdempotencyKey,
-  type SubscriptionCancellationResult,
 } from './public';
 
-export type ProviderSubscriptionCancellationCommand = {
+type ProviderSubscriptionCancellationCommandBase = {
   readonly provider: BillingProvider;
   readonly providerSubscriptionReference: ProviderSubscriptionReference;
   readonly idempotencyKey: SubscriptionCancellationIdempotencyKey;
   readonly requestedAt: number;
 };
 
-export type ProviderSubscriptionCancellationObservation = {
-  readonly kind:
-    | 'cancelled'
-    | 'already-cancelled'
-    | 'retryable-failure'
-    | 'terminal-failure';
+export type ProviderSubscriptionCancellationCommand =
+  ProviderSubscriptionCancellationCommandBase & {
+    readonly effect: 'period-end' | 'immediate';
+  };
+
+type ProviderSubscriptionCancellationObservationBase = {
   readonly provider: BillingProvider;
   readonly providerSubscriptionReference: ProviderSubscriptionReference;
   readonly idempotencyKey: SubscriptionCancellationIdempotencyKey;
   readonly observedAt: number;
 };
 
-export type SubscriptionCancellationPlan =
+export type ProviderSubscriptionCancellationObservation =
+  | (ProviderSubscriptionCancellationObservationBase & {
+      readonly kind: 'scheduled';
+      readonly accessEndsAt: number;
+    })
+  | (ProviderSubscriptionCancellationObservationBase & {
+      readonly kind: 'cancelled' | 'already-cancelled';
+      readonly accessEndsAt: number;
+    })
+  | (ProviderSubscriptionCancellationObservationBase & {
+      readonly kind: 'retryable-failure' | 'terminal-failure';
+    });
+
+export type PeriodEndSubscriptionCancellationPlan =
   | {
       readonly kind: 'request-provider';
-      readonly command: ProviderSubscriptionCancellationCommand;
+      readonly command: ProviderSubscriptionCancellationCommand & {
+        readonly effect: 'period-end';
+      };
     }
   | {
       readonly kind: 'complete';
-      readonly result: SubscriptionCancellationResult;
+      readonly result: PeriodEndSubscriptionCancellationResult;
     };
 
-const providerObservationDecoder: Decoder<ProviderSubscriptionCancellationObservation> =
-  objectDecoder({
-    kind: unionDecoder(
-      literalDecoder('cancelled'),
-      literalDecoder('already-cancelled'),
-      literalDecoder('retryable-failure'),
-      literalDecoder('terminal-failure'),
-    ),
-    provider: billingProviderDecoder,
-    providerSubscriptionReference: providerSubscriptionReferenceDecoder,
-    idempotencyKey: subscriptionCancellationIdempotencyKeyDecoder,
-    observedAt: safeIntegerDecoder({ minimum: 0 }),
-  });
+export type ImmediateSubscriptionCancellationPlan =
+  | {
+      readonly kind: 'request-provider';
+      readonly command: ProviderSubscriptionCancellationCommand & {
+        readonly effect: 'immediate';
+      };
+    }
+  | {
+      readonly kind: 'complete';
+      readonly result: ImmediateSubscriptionCancellationResult;
+    };
 
-export function planSubscriptionCancellation(input: {
+type SharedSubscriptionCancellationResult =
+  | {
+      readonly kind: 'confirmed';
+      readonly outcome: 'already-cancelled';
+      readonly confirmedAt: number;
+      readonly accessEndsAt: number;
+    }
+  | Exclude<
+      PeriodEndSubscriptionCancellationResult,
+      { readonly kind: 'confirmed' }
+    >;
+
+const providerObservationDecoder: Decoder<ProviderSubscriptionCancellationObservation> =
+  unionDecoder(
+    objectDecoder({
+      kind: literalDecoder('scheduled'),
+      provider: billingProviderDecoder,
+      providerSubscriptionReference: providerSubscriptionReferenceDecoder,
+      idempotencyKey: subscriptionCancellationIdempotencyKeyDecoder,
+      observedAt: safeIntegerDecoder({ minimum: 0 }),
+      accessEndsAt: safeIntegerDecoder({
+        minimum: 0,
+        maximum: MAXIMUM_JAVASCRIPT_DATE_TIMESTAMP_MS,
+      }),
+    }),
+    objectDecoder({
+      kind: unionDecoder(
+        literalDecoder('cancelled'),
+        literalDecoder('already-cancelled'),
+      ),
+      provider: billingProviderDecoder,
+      providerSubscriptionReference: providerSubscriptionReferenceDecoder,
+      idempotencyKey: subscriptionCancellationIdempotencyKeyDecoder,
+      observedAt: safeIntegerDecoder({ minimum: 0 }),
+      accessEndsAt: safeIntegerDecoder({
+        minimum: 0,
+        maximum: MAXIMUM_JAVASCRIPT_DATE_TIMESTAMP_MS,
+      }),
+    }),
+    objectDecoder({
+      kind: unionDecoder(
+        literalDecoder('retryable-failure'),
+        literalDecoder('terminal-failure'),
+      ),
+      provider: billingProviderDecoder,
+      providerSubscriptionReference: providerSubscriptionReferenceDecoder,
+      idempotencyKey: subscriptionCancellationIdempotencyKeyDecoder,
+      observedAt: safeIntegerDecoder({ minimum: 0 }),
+    }),
+  );
+
+export function planPeriodEndSubscriptionCancellation(input: {
   readonly command: SubscriptionCancellationCommand;
   readonly current: BillingSubscriptionRecord | undefined;
-}): SubscriptionCancellationPlan {
+}): PeriodEndSubscriptionCancellationPlan {
+  const prerequisite = cancellationPrerequisite(input);
+  if (prerequisite.kind === 'complete') return prerequisite;
+  if (
+    input.current?.cancelAt !== null &&
+    input.current?.cancelAt !== undefined &&
+    input.current.cancelAt <= MAXIMUM_JAVASCRIPT_DATE_TIMESTAMP_MS &&
+    input.current.cancelAt >= input.command.requestedAt
+  ) {
+    return {
+      kind: 'complete',
+      result: {
+        kind: 'confirmed',
+        outcome: 'scheduled',
+        confirmedAt:
+          input.current.cancellationUpdatedAt ?? input.current.updatedAt,
+        accessEndsAt: input.current.cancelAt,
+      },
+    };
+  }
+  return {
+    kind: 'request-provider',
+    command: { ...prerequisite.command, effect: 'period-end' },
+  };
+}
+
+export function planImmediateSubscriptionCancellation(input: {
+  readonly command: SubscriptionCancellationCommand;
+  readonly current: BillingSubscriptionRecord | undefined;
+}): ImmediateSubscriptionCancellationPlan {
+  const prerequisite = cancellationPrerequisite(input);
+  if (prerequisite.kind === 'complete') return prerequisite;
+  return {
+    kind: 'request-provider',
+    command: { ...prerequisite.command, effect: 'immediate' },
+  };
+}
+
+function cancellationPrerequisite(input: {
+  readonly command: SubscriptionCancellationCommand;
+  readonly current: BillingSubscriptionRecord | undefined;
+}):
+  | {
+      readonly kind: 'complete';
+      readonly result: SharedSubscriptionCancellationResult;
+    }
+  | {
+      readonly kind: 'request-provider';
+      readonly command: ProviderSubscriptionCancellationCommandBase;
+    } {
   if (!subscriptionCancellationCommandDecoder.decode(input.command).ok) {
     return {
       kind: 'complete',
@@ -88,12 +203,26 @@ export function planSubscriptionCancellation(input: {
     };
   }
   if (current.lifecycle.kind === 'cancelled') {
+    if (
+      current.lifecycle.cancelledAt > MAXIMUM_JAVASCRIPT_DATE_TIMESTAMP_MS ||
+      current.lifecycle.cancelledAt > input.command.requestedAt
+    ) {
+      return {
+        kind: 'complete',
+        result: {
+          kind: 'terminal-failure',
+          reason: 'invalid-subscription-state',
+        },
+      };
+    }
     return {
       kind: 'complete',
       result: {
         kind: 'confirmed',
         outcome: 'already-cancelled',
-        confirmedAt: current.lifecycle.cancelledAt,
+        confirmedAt:
+          current.cancellationUpdatedAt ?? current.lifecycle.cancelledAt,
+        accessEndsAt: current.lifecycle.cancelledAt,
       },
     };
   }
@@ -121,30 +250,84 @@ export function decodeProviderSubscriptionCancellationObservation(
   return decoded.ok ? decoded.value : undefined;
 }
 
-export function evaluateProviderSubscriptionCancellation(input: {
-  readonly command: ProviderSubscriptionCancellationCommand;
+export function evaluatePeriodEndProviderSubscriptionCancellation(input: {
+  readonly command: ProviderSubscriptionCancellationCommand & {
+    readonly effect: 'period-end';
+  };
   readonly observation: ProviderSubscriptionCancellationObservation;
-}): SubscriptionCancellationResult {
-  if (
-    input.observation.provider !== input.command.provider ||
-    input.observation.providerSubscriptionReference !==
-      input.command.providerSubscriptionReference ||
-    input.observation.idempotencyKey !== input.command.idempotencyKey ||
-    input.observation.observedAt < input.command.requestedAt
-  ) {
-    return { kind: 'retryable-failure', reason: 'provider-result-mismatch' };
-  }
+}): PeriodEndSubscriptionCancellationResult {
+  if (!providerResultMatches(input)) return providerResultMismatch();
   switch (input.observation.kind) {
-    case 'cancelled':
+    case 'scheduled':
+      return input.observation.accessEndsAt >= input.observation.observedAt &&
+        input.observation.accessEndsAt >= input.command.requestedAt
+        ? {
+            kind: 'confirmed',
+            outcome: 'scheduled',
+            confirmedAt: input.observation.observedAt,
+            accessEndsAt: input.observation.accessEndsAt,
+          }
+        : providerResultMismatch();
     case 'already-cancelled':
-      return {
-        kind: 'confirmed',
-        outcome: input.observation.kind,
-        confirmedAt: input.observation.observedAt,
-      };
+      return input.observation.accessEndsAt <= input.observation.observedAt
+        ? {
+            kind: 'confirmed',
+            outcome: 'already-cancelled',
+            confirmedAt: input.observation.observedAt,
+            accessEndsAt: input.observation.accessEndsAt,
+          }
+        : providerResultMismatch();
+    case 'cancelled':
+      return providerResultMismatch();
     case 'retryable-failure':
       return { kind: 'retryable-failure', reason: 'provider-unavailable' };
     case 'terminal-failure':
       return { kind: 'terminal-failure', reason: 'provider-terminal' };
   }
+}
+
+export function evaluateImmediateProviderSubscriptionCancellation(input: {
+  readonly command: ProviderSubscriptionCancellationCommand & {
+    readonly effect: 'immediate';
+  };
+  readonly observation: ProviderSubscriptionCancellationObservation;
+}): ImmediateSubscriptionCancellationResult {
+  if (!providerResultMatches(input)) return providerResultMismatch();
+  switch (input.observation.kind) {
+    case 'cancelled':
+    case 'already-cancelled':
+      return input.observation.accessEndsAt <= input.observation.observedAt
+        ? {
+            kind: 'confirmed',
+            outcome: input.observation.kind,
+            confirmedAt: input.observation.observedAt,
+            accessEndsAt: input.observation.accessEndsAt,
+          }
+        : providerResultMismatch();
+    case 'scheduled':
+      return providerResultMismatch();
+    case 'retryable-failure':
+      return { kind: 'retryable-failure', reason: 'provider-unavailable' };
+    case 'terminal-failure':
+      return { kind: 'terminal-failure', reason: 'provider-terminal' };
+  }
+}
+
+function providerResultMatches(input: {
+  readonly command: ProviderSubscriptionCancellationCommand;
+  readonly observation: ProviderSubscriptionCancellationObservation;
+}): boolean {
+  return (
+    input.observation.provider === input.command.provider &&
+    input.observation.providerSubscriptionReference ===
+      input.command.providerSubscriptionReference &&
+    input.observation.idempotencyKey === input.command.idempotencyKey
+  );
+}
+
+function providerResultMismatch(): {
+  readonly kind: 'retryable-failure';
+  readonly reason: 'provider-result-mismatch';
+} {
+  return { kind: 'retryable-failure', reason: 'provider-result-mismatch' };
 }

@@ -45,10 +45,22 @@ review of the actual artifact; changing the word to `verified` is not evidence.
 The current manifest intentionally blocks public production launch for real
 operator/contact values, version archives, Japanese legal and tax review,
 telecommunications assessment, Email OTP provider selection, approved GCP Cloud
-KMS production configuration, Stripe merchant/PCI/3DS evidence, dependency
-vulnerability disposition, incident contacts/drill, and provider-backed
-marketing consent operations. The five high-severity production dependency
-findings recorded under Issue #134 remain unresolved and are not suppressed.
+KMS production configuration, Stripe merchant/PCI/3DS evidence, the exact
+Product/Price/trial/tax match, production billing composition and an authorized
+isolated end-to-end billing run, subscription notification/cancellation
+settings, limited legal approval of contract formation and the zero-payment
+free-trial liability cap, dependency vulnerability disposition, incident
+contacts/drill, and provider-backed marketing consent operations. The five
+high-severity production dependency findings recorded under Issue #134 remain
+unresolved and are not suppressed.
+
+The isolated billing evidence must cover Checkout, signed webhook processing,
+trial-to-renewal, payment failure or additional authentication, ordinary
+period-end cancellation, and immediate cancellation before account deletion.
+It is not permission to create a live Checkout Session, charge, subscription,
+email, or production configuration change. The ordinary cancellation evidence
+must include the provider-confirmed access end shown to the user; account
+deletion must reject a future cancellation schedule.
 
 ## Policy archive and display boundary
 

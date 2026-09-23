@@ -23,6 +23,10 @@ export const launchComplianceRequirementIds = [
   'email-delivery-provider',
   'gcp-kms-production-configuration',
   'psp-merchant-contract-review',
+  'stripe-product-price-trial-tax-evidence',
+  'production-billing-runtime-and-isolated-flow-evidence',
+  'subscription-notification-and-cancellation-settings',
+  'contract-formation-and-free-trial-liability-review',
   'pci-saq-confirmation',
   'production-3ds-evidence',
   'vulnerability-management-evidence',
@@ -189,8 +193,8 @@ const manifestDecoder: Decoder<LaunchComplianceManifest> = transformDecoder(
 
 export const launchComplianceManifest: LaunchComplianceManifest = {
   schemaVersion: LAUNCH_COMPLIANCE_SCHEMA_VERSION,
-  manifestVersion: 'launch-compliance-v1:2026-09-15',
-  reviewedOn: '2026-09-15',
+  manifestVersion: 'launch-compliance-v1:2026-09-23',
+  reviewedOn: '2026-09-23',
   service: {
     monthlyPriceYen: 980,
     taxIncluded: true,
@@ -275,6 +279,38 @@ export const launchComplianceManifest: LaunchComplianceManifest = {
         kind: 'pending',
         reason:
           'Confirm the operating company merchant role and Stripe PSP/acquirer contract responsibilities.',
+      },
+    },
+    {
+      id: 'stripe-product-price-trial-tax-evidence',
+      evidence: {
+        kind: 'pending',
+        reason:
+          'Read and record approved Stripe test/live configuration evidence that the selected FUKAMU Notes Product and Price use JPY 980 per month, quantity one, tax-inclusive presentation, the adopted tax treatment and a 14-day trial without an unintended second price or interval.',
+      },
+    },
+    {
+      id: 'production-billing-runtime-and-isolated-flow-evidence',
+      evidence: {
+        kind: 'pending',
+        reason:
+          'Complete the production runtime composition without fake fallbacks, then record an authorized isolated-environment flow covering Checkout, signed webhook ingestion, trial-to-renewal, payment failure or additional authentication, period-end cancellation and immediate cancellation before account deletion; do not create a live Session, charge or contract for verification.',
+      },
+    },
+    {
+      id: 'subscription-notification-and-cancellation-settings',
+      evidence: {
+        kind: 'pending',
+        reason:
+          'Read and record the adopted Stripe notification and cancellation configuration, including contract confirmation, trial ending, payment failure or additional authentication, the ordinary period-end cancellation path and any Customer Portal scope and return URL.',
+      },
+    },
+    {
+      id: 'contract-formation-and-free-trial-liability-review',
+      evidence: {
+        kind: 'pending',
+        reason:
+          'Obtain limited qualified Japanese legal approval for the contract-formation and service-start events, confirmation notice, terms-change conditions and the liability cap when the preceding 12-month payment total is zero during the free trial.',
       },
     },
     {

@@ -45,8 +45,12 @@ export function BillingAccountBoundary({
       case 'confirmed':
         dispatch({
           type: 'confirmed',
-          source: 'server',
-          confirmedAt: result.confirmedAt,
+          confirmation: {
+            source: 'server',
+            outcome: result.outcome,
+            confirmedAt: result.confirmedAt,
+            accessEndsAt: result.accessEndsAt,
+          },
         });
         return;
       case 'not-found':
@@ -54,8 +58,7 @@ export function BillingAccountBoundary({
           source === 'local-fixture'
             ? {
                 type: 'confirmed',
-                source: 'local-fixture',
-                confirmedAt: null,
+                confirmation: { source: 'local-fixture' },
               }
             : { type: 'submit-failed', failure: 'unavailable' },
         );
@@ -123,9 +126,33 @@ export function BillingAccountBoundary({
             className="mt-6 block rounded-2xl border border-primary/25 bg-background px-4 py-4 text-sm leading-7"
             data-testid="cancellation-confirmed"
           >
-            {state.source === 'local-fixture'
-              ? '開発用サンプルの解約確認が完了しました。実際の契約状態は変更されていません。'
-              : 'providerによる解約確認が完了しました。契約終了時期は上記の解約条件に従います。'}
+            {state.confirmation.source === 'local-fixture' ? (
+              '開発用サンプルの解約確認が完了しました。実際の契約状態は変更されていません。'
+            ) : state.confirmation.outcome === 'scheduled' ? (
+              <>
+                次回以降の自動更新を停止しました。利用権停止事由がない限り、
+                <time
+                  dateTime={new Date(
+                    state.confirmation.accessEndsAt,
+                  ).toISOString()}
+                >
+                  {formatAccessEnd(state.confirmation.accessEndsAt)}
+                </time>
+                まで利用できます。
+              </>
+            ) : (
+              <>
+                サブスクリプションはすでに終了しています。終了日時は
+                <time
+                  dateTime={new Date(
+                    state.confirmation.accessEndsAt,
+                  ).toISOString()}
+                >
+                  {formatAccessEnd(state.confirmation.accessEndsAt)}
+                </time>
+                です。
+              </>
+            )}
           </output>
         ) : (
           <CancellationDialog
@@ -216,7 +243,7 @@ function CancellationDialog({
               サブスクリプションを解約しますか？
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">
-              解約はアカウント退会とは別の手続きです。providerの確認が取れた場合だけ、この画面で完了として表示します。
+              解約はアカウント退会とは別の手続きです。次回の自動更新を停止し、無料期間または支払済み期間の終了時までは利用できます。providerが利用終了日時を確認した場合だけ、この画面で完了として表示します。
             </AlertDialog.Description>
             {state.kind === 'confirming' && state.failure ? (
               <p
@@ -264,4 +291,12 @@ function cancellationFailureMessage(failure: BillingCancellationFailure) {
     case 'unavailable':
       return '解約確認を完了できませんでした。解約済みにはしていません。同じ識別子で安全に再試行できます。';
   }
+}
+
+function formatAccessEnd(timestamp: number): string {
+  return new Intl.DateTimeFormat('ja-JP', {
+    dateStyle: 'long',
+    timeStyle: 'short',
+    timeZone: 'Asia/Tokyo',
+  }).format(new Date(timestamp));
 }

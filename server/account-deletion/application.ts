@@ -1,5 +1,5 @@
 import { decodeOrThrow } from '../../lib/codec/core';
-import type { SubscriptionCancellationPort } from '../billing/public';
+import type { ImmediateSubscriptionCancellationPort } from '../billing/public';
 import type {
   AccountLiveStateFinalizationPort,
   AccountSessionRevocationPort,
@@ -57,7 +57,7 @@ export type AccountDeletionApplicationDependencies = {
   readonly leaseDurationMs: number;
   readonly retryPolicy: AccountDeletionRetryPolicy;
   readonly sessions: AccountSessionRevocationPort;
-  readonly billing: SubscriptionCancellationPort;
+  readonly billing: ImmediateSubscriptionCancellationPort;
   readonly encryptedObjects: AccountDeletionEncryptedObjectPorts;
   readonly vaultContent: VaultLiveDataPurgePort;
   readonly wrappedKeys: VaultWrappedKeyFinalizationPort;

@@ -2,8 +2,8 @@ import { objectDecoder } from '@/lib/codec/core';
 import { sessionMetadataFromRequest } from '@/server/adapters/web-session';
 import {
   subscriptionCancellationIdempotencyKeyDecoder,
-  type SubscriptionCancellationPort,
-  type SubscriptionCancellationResult,
+  type PeriodEndSubscriptionCancellationPort,
+  type PeriodEndSubscriptionCancellationResult,
 } from '@/server/billing/public';
 import {
   deriveVaultContext,
@@ -25,7 +25,7 @@ export type SubscriptionCancellationHttpDependencies = {
   readonly expectedOrigin: unknown;
   readonly clock: { now(): unknown };
   readonly sessions: SessionCredentialResolver;
-  readonly cancellation: SubscriptionCancellationPort;
+  readonly cancellation: PeriodEndSubscriptionCancellationPort;
 };
 
 export function createSubscriptionCancellationHandler(
@@ -66,14 +66,16 @@ export function createSubscriptionCancellationHandler(
     const decoded = cancellationRequestDecoder.decode(body.value);
     if (!decoded.ok) return billingErrorResponse(400, 'invalid-request');
 
-    let result: SubscriptionCancellationResult;
+    let result: PeriodEndSubscriptionCancellationResult;
     try {
-      result = await dependencies.cancellation.cancelSubscription({
-        accountId: session.context.accountId,
-        vaultId: session.context.vaultId,
-        idempotencyKey: decoded.value.idempotencyKey,
-        requestedAt: now,
-      });
+      result = await dependencies.cancellation.scheduleSubscriptionCancellation(
+        {
+          accountId: session.context.accountId,
+          vaultId: session.context.vaultId,
+          idempotencyKey: decoded.value.idempotencyKey,
+          requestedAt: now,
+        },
+      );
     } catch {
       return unexpectedBillingFailure('cancellation');
     }
@@ -82,15 +84,19 @@ export function createSubscriptionCancellationHandler(
 }
 
 function cancellationResponse(
-  result: SubscriptionCancellationResult,
+  result: PeriodEndSubscriptionCancellationResult,
 ): Response {
   switch (result.kind) {
     case 'confirmed':
       return Response.json(
         {
-          status: 'cancelled',
+          status:
+            result.outcome === 'scheduled'
+              ? 'cancellation-scheduled'
+              : 'cancelled',
           outcome: result.outcome,
           confirmedAt: result.confirmedAt,
+          accessEndsAt: result.accessEndsAt,
         },
         { headers: billingNoStoreHeaders },
       );
@@ -103,6 +109,7 @@ function cancellationResponse(
         case 'owner-mismatch':
           return billingErrorResponse(403, 'forbidden');
         case 'subscription-not-found':
+        case 'invalid-subscription-state':
         case 'provider-not-linked':
         case 'provider-terminal':
           return billingErrorResponse(409, 'cancellation-unavailable');

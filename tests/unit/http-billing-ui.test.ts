@@ -88,14 +88,46 @@ describe('billing UI HTTP adapter', () => {
   it('keeps cancellation confirmation, retry, and local not-found distinct', async () => {
     const confirmed = createBillingUiHttpTransport(async () =>
       Response.json({
-        status: 'cancelled',
-        outcome: 'already-cancelled',
+        status: 'cancellation-scheduled',
+        outcome: 'scheduled',
         confirmedAt: 2_000,
+        accessEndsAt: 3_000,
       }),
     );
     await expect(
       confirmed.cancelSubscription(createBillingCancellationIdempotencyKey()),
-    ).resolves.toEqual({ kind: 'confirmed', confirmedAt: 2_000 });
+    ).resolves.toEqual({
+      kind: 'confirmed',
+      outcome: 'scheduled',
+      confirmedAt: 2_000,
+      accessEndsAt: 3_000,
+    });
+
+    const immediate = createBillingUiHttpTransport(async () =>
+      Response.json({
+        status: 'cancelled',
+        outcome: 'cancelled',
+        confirmedAt: 2_000,
+        accessEndsAt: 2_000,
+      }),
+    );
+    await expect(
+      immediate.cancelSubscription(createBillingCancellationIdempotencyKey()),
+    ).resolves.toEqual({ kind: 'unavailable' });
+
+    const unrenderableDate = createBillingUiHttpTransport(async () =>
+      Response.json({
+        status: 'cancellation-scheduled',
+        outcome: 'scheduled',
+        confirmedAt: 2_000,
+        accessEndsAt: 8_640_000_000_000_001,
+      }),
+    );
+    await expect(
+      unrenderableDate.cancelSubscription(
+        createBillingCancellationIdempotencyKey(),
+      ),
+    ).resolves.toEqual({ kind: 'unavailable' });
 
     const unavailable = createBillingUiHttpTransport(async () =>
       Response.json({ error: 'unavailable' }, { status: 503 }),

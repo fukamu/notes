@@ -26,7 +26,8 @@ describe('locked subscription cancellation HTTP integration', () => {
     });
 
     const provider = createFakeSubscriptionCancellationProvider({
-      actions: ['cancelled'],
+      actions: ['scheduled'],
+      scheduledAccessEndsAt: 20_000,
     });
     const handler = createSubscriptionCancellationHandler({
       expectedOrigin: 'https://notes.example',
@@ -56,11 +57,72 @@ describe('locked subscription cancellation HTTP integration', () => {
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      status: 'cancelled',
-      outcome: 'cancelled',
+      status: 'cancellation-scheduled',
+      outcome: 'scheduled',
       confirmedAt: 10_000,
+      accessEndsAt: 20_000,
     });
     expect(provider.cancellationSideEffectCount()).toBe(1);
+    expect(provider.commands()).toMatchObject([{ effect: 'period-end' }]);
+  });
+
+  it('recovers a lost provider response with the same key after the server clock advances', async () => {
+    const billing = createFakeBillingModule([billingContext()]);
+    await billing.api.beginCheckout(billingContext(), beginCheckoutCommand());
+    await billing.api.ingestVerifiedProviderFact(trialStartedFact());
+
+    const provider = createFakeSubscriptionCancellationProvider({
+      actions: ['scheduled-response-lost'],
+      scheduledAccessEndsAt: 20_000,
+    });
+    let now = 10_000;
+    const handler = createSubscriptionCancellationHandler({
+      expectedOrigin: 'https://notes.example',
+      clock: {
+        now: () => {
+          const result = now;
+          now += 1_000;
+          return result;
+        },
+      },
+      sessions: {
+        findSessionByToken: async () => lockedSession(),
+      },
+      cancellation: createSubscriptionCancellationPort({
+        repository: billing.repository,
+        provider,
+      }),
+    });
+    const cancellationRequest = () =>
+      new Request('https://notes.example/api/billing/cancel', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          cookie: cookieHeader(),
+          origin: 'https://notes.example',
+          'sec-fetch-site': 'same-origin',
+        },
+        body: JSON.stringify({
+          idempotencyKey:
+            parseSubscriptionCancellationIdempotencyKey('cancel_retry_A'),
+        }),
+      });
+
+    const first = await handler(cancellationRequest());
+    expect(first.status).toBe(503);
+
+    const second = await handler(cancellationRequest());
+    expect(second.status).toBe(200);
+    await expect(second.json()).resolves.toEqual({
+      status: 'cancellation-scheduled',
+      outcome: 'scheduled',
+      confirmedAt: 10_000,
+      accessEndsAt: 20_000,
+    });
+    expect(provider.cancellationSideEffectCount()).toBe(1);
+    expect(provider.commands().map((command) => command.requestedAt)).toEqual([
+      10_000, 11_000,
+    ]);
   });
 });
 

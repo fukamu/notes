@@ -1075,15 +1075,25 @@ describe('Billing module ownership', () => {
     expect(core).not.toMatch(
       /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise/,
     );
-    expect(cancellationCore).toContain('planSubscriptionCancellation');
+    expect(cancellationCore).toContain('planPeriodEndSubscriptionCancellation');
+    expect(cancellationCore).toContain('planImmediateSubscriptionCancellation');
     expect(cancellationCore).toContain(
-      'evaluateProviderSubscriptionCancellation',
+      'evaluatePeriodEndProviderSubscriptionCancellation',
+    );
+    expect(cancellationCore).toContain(
+      'evaluateImmediateProviderSubscriptionCancellation',
     );
     expect(cancellationCore).not.toMatch(
       /D1Database|\.prepare\(|Date\.now|crypto\.|fetch\(|Promise|Stripe/,
     );
     expect(publicContract).toContain('type BillingApi');
     expect(publicContract).toContain('type SubscriptionCancellationPort');
+    expect(publicContract).toContain(
+      'type PeriodEndSubscriptionCancellationPort',
+    );
+    expect(publicContract).toContain(
+      'type ImmediateSubscriptionCancellationPort',
+    );
     expect(publicContract).toContain('invoice-payment-action-required');
     expect(publicContract).not.toMatch(
       /Stripe|D1Database|BillingSubscriptionRow/,

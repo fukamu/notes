@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   decodeProviderSubscriptionCancellationObservation,
-  evaluateProviderSubscriptionCancellation,
-  planSubscriptionCancellation,
+  evaluateImmediateProviderSubscriptionCancellation,
+  evaluatePeriodEndProviderSubscriptionCancellation,
+  planImmediateSubscriptionCancellation,
+  planPeriodEndSubscriptionCancellation,
   type ProviderSubscriptionCancellationCommand,
 } from '@/server/billing/cancellation-core';
 import {
@@ -11,15 +13,18 @@ import {
   type BillingSubscriptionRecord,
 } from '@/server/billing/core';
 import {
+  immediateSubscriptionCancellationResultDecoder,
+  MAXIMUM_JAVASCRIPT_DATE_TIMESTAMP_MS,
   parseSubscriptionCancellationIdempotencyKey,
+  periodEndSubscriptionCancellationResultDecoder,
   subscriptionCancellationCommandDecoder,
-  subscriptionCancellationResultDecoder,
   type SubscriptionCancellationCommand,
 } from '@/server/billing/public';
 import {
   beginCheckoutCommand,
   billingContext,
   billingIds,
+  cancellationScheduledFact,
   invoicePaidFact,
   paymentFailedFact,
   subscriptionCancelledFact,
@@ -34,7 +39,7 @@ const otherIdempotencyKey = parseSubscriptionCancellationIdempotencyKey(
 );
 
 describe('subscription cancellation core', () => {
-  it('decodes only bounded provider-neutral commands and results', () => {
+  it('decodes bounded commands and keeps period-end and immediate results distinct', () => {
     expect(subscriptionCancellationCommandDecoder.decode(command()).ok).toBe(
       true,
     );
@@ -45,67 +50,159 @@ describe('subscription cancellation core', () => {
       }).ok,
     ).toBe(false);
     expect(
-      subscriptionCancellationResultDecoder.decode({
+      periodEndSubscriptionCancellationResultDecoder.decode({
         kind: 'confirmed',
-        outcome: 'cancelled',
+        outcome: 'scheduled',
         confirmedAt: 10_000,
+        accessEndsAt: 20_000,
       }).ok,
     ).toBe(true);
     expect(
-      subscriptionCancellationResultDecoder.decode({
+      periodEndSubscriptionCancellationResultDecoder.decode({
         kind: 'confirmed',
-        outcome: 'scheduled',
+        outcome: 'cancelled',
+        confirmedAt: 10_000,
+        accessEndsAt: 10_000,
       }).ok,
     ).toBe(false);
+    expect(
+      immediateSubscriptionCancellationResultDecoder.decode({
+        kind: 'confirmed',
+        outcome: 'cancelled',
+        confirmedAt: 10_000,
+        accessEndsAt: 10_000,
+      }).ok,
+    ).toBe(true);
     expect(() =>
       parseSubscriptionCancellationIdempotencyKey('contains secret space'),
     ).toThrow();
   });
 
-  it('plans mapped trialing, active, and delinquent subscriptions without exposing provider references publicly', () => {
+  it('plans explicit period-end and immediate provider effects for live subscriptions', () => {
     for (const current of [
       trialingRecord(),
       activeRecord(),
       delinquentRecord(),
     ]) {
-      const plan = planSubscriptionCancellation({
-        command: command(),
-        current,
-      });
-      expect(plan).toMatchObject({
+      expect(
+        planPeriodEndSubscriptionCancellation({
+          command: command(),
+          current,
+        }),
+      ).toMatchObject({
         kind: 'request-provider',
         command: {
+          effect: 'period-end',
           provider: current.provider,
           providerSubscriptionReference: current.providerSubscriptionReference,
           idempotencyKey,
           requestedAt: 10_000,
         },
       });
+      expect(
+        planImmediateSubscriptionCancellation({
+          command: command(),
+          current,
+        }),
+      ).toMatchObject({
+        kind: 'request-provider',
+        command: { effect: 'immediate' },
+      });
     }
   });
 
-  it('treats a local cancelled fact as idempotent and rejects unsafe ownership or mapping states', () => {
+  it('reuses a verified period-end date but still requires an immediate effect for deletion', () => {
+    const current = scheduledRecord();
     expect(
-      planSubscriptionCancellation({
-        command: command(),
-        current: cancelledRecord(),
-      }),
+      planPeriodEndSubscriptionCancellation({ command: command(), current }),
     ).toEqual({
       kind: 'complete',
       result: {
         kind: 'confirmed',
-        outcome: 'already-cancelled',
-        confirmedAt: 9_000,
+        outcome: 'scheduled',
+        confirmedAt: cancellationScheduledFact().occurredAt,
+        accessEndsAt: cancellationScheduledFact().cancelAt,
       },
     });
     expect(
-      planSubscriptionCancellation({ command: command(), current: undefined }),
+      planImmediateSubscriptionCancellation({ command: command(), current }),
+    ).toMatchObject({
+      kind: 'request-provider',
+      command: { effect: 'immediate' },
+    });
+  });
+
+  it('treats a cancelled aggregate as idempotent and rejects unsafe ownership or mapping states', () => {
+    for (const plan of [
+      planPeriodEndSubscriptionCancellation({
+        command: command(),
+        current: cancelledRecord(),
+      }),
+      planImmediateSubscriptionCancellation({
+        command: command(),
+        current: cancelledRecord(),
+      }),
+    ]) {
+      expect(plan).toEqual({
+        kind: 'complete',
+        result: {
+          kind: 'confirmed',
+          outcome: 'already-cancelled',
+          confirmedAt: 9_000,
+          accessEndsAt: 9_000,
+        },
+      });
+    }
+    expect(
+      planPeriodEndSubscriptionCancellation({
+        command: command(),
+        current: {
+          ...cancelledRecord(),
+          lifecycle: {
+            kind: 'cancelled',
+            cancelledAt: command().requestedAt + 1,
+          },
+        },
+      }),
+    ).toMatchObject({
+      kind: 'complete',
+      result: {
+        kind: 'terminal-failure',
+        reason: 'invalid-subscription-state',
+      },
+    });
+    expect(
+      planImmediateSubscriptionCancellation({
+        command: {
+          ...command(),
+          requestedAt: MAXIMUM_JAVASCRIPT_DATE_TIMESTAMP_MS,
+        },
+        current: {
+          ...cancelledRecord(),
+          lifecycle: {
+            kind: 'cancelled',
+            cancelledAt: MAXIMUM_JAVASCRIPT_DATE_TIMESTAMP_MS + 1,
+          },
+        },
+      }),
+    ).toMatchObject({
+      kind: 'complete',
+      result: {
+        kind: 'terminal-failure',
+        reason: 'invalid-subscription-state',
+      },
+    });
+    expect(
+      planPeriodEndSubscriptionCancellation({
+        command: command(),
+        current: undefined,
+      }),
     ).toMatchObject({
       kind: 'complete',
       result: { kind: 'terminal-failure', reason: 'subscription-not-found' },
     });
     expect(
-      planSubscriptionCancellation({
+      planPeriodEndSubscriptionCancellation({
         command: {
           ...command(),
           accountId: billingContext('b').accountId,
@@ -118,7 +215,7 @@ describe('subscription cancellation core', () => {
       result: { kind: 'terminal-failure', reason: 'owner-mismatch' },
     });
     expect(
-      planSubscriptionCancellation({
+      planPeriodEndSubscriptionCancellation({
         command: command(),
         current: checkoutRecord(),
       }),
@@ -127,7 +224,7 @@ describe('subscription cancellation core', () => {
       result: { kind: 'terminal-failure', reason: 'provider-not-linked' },
     });
     expect(
-      planSubscriptionCancellation({
+      planPeriodEndSubscriptionCancellation({
         command: { ...command(), requestedAt: Number.NaN },
         current: trialingRecord(),
       }),
@@ -137,42 +234,88 @@ describe('subscription cancellation core', () => {
     });
   });
 
-  it('confirms only a matching immediate provider observation', () => {
-    const providerCommand = requiredProviderCommand(trialingRecord());
-    const base = observation(providerCommand, 'cancelled');
+  it('confirms a matching period-end schedule and rejects immediate cancellation for that request', () => {
+    const providerCommand = requiredProviderCommand('period-end');
+    const scheduled = {
+      ...observationBase(providerCommand),
+      kind: 'scheduled' as const,
+      accessEndsAt: 20_000,
+    };
     expect(
-      evaluateProviderSubscriptionCancellation({
+      evaluatePeriodEndProviderSubscriptionCancellation({
         command: providerCommand,
-        observation: base,
+        observation: scheduled,
+      }),
+    ).toEqual({
+      kind: 'confirmed',
+      outcome: 'scheduled',
+      confirmedAt: 10_000,
+      accessEndsAt: 20_000,
+    });
+    expect(
+      evaluatePeriodEndProviderSubscriptionCancellation({
+        command: providerCommand,
+        observation: {
+          ...observationBase(providerCommand),
+          kind: 'cancelled',
+          accessEndsAt: 10_000,
+        },
+      }),
+    ).toEqual({
+      kind: 'retryable-failure',
+      reason: 'provider-result-mismatch',
+    });
+    expect(
+      evaluatePeriodEndProviderSubscriptionCancellation({
+        command: { ...providerCommand, requestedAt: 30_000 },
+        observation: scheduled,
+      }),
+    ).toEqual({
+      kind: 'retryable-failure',
+      reason: 'provider-result-mismatch',
+    });
+  });
+
+  it('confirms only an immediate effect for account deletion', () => {
+    const providerCommand = requiredProviderCommand('immediate');
+    const cancelled = {
+      ...observationBase(providerCommand),
+      kind: 'cancelled' as const,
+      accessEndsAt: 10_000,
+    };
+    expect(
+      evaluateImmediateProviderSubscriptionCancellation({
+        command: providerCommand,
+        observation: cancelled,
       }),
     ).toEqual({
       kind: 'confirmed',
       outcome: 'cancelled',
       confirmedAt: 10_000,
+      accessEndsAt: 10_000,
     });
     expect(
-      evaluateProviderSubscriptionCancellation({
+      evaluateImmediateProviderSubscriptionCancellation({
         command: providerCommand,
-        observation: { ...base, kind: 'already-cancelled' },
+        observation: {
+          ...observationBase(providerCommand),
+          kind: 'scheduled',
+          accessEndsAt: 20_000,
+        },
       }),
-    ).toMatchObject({ kind: 'confirmed', outcome: 'already-cancelled' });
-    expect(
-      evaluateProviderSubscriptionCancellation({
-        command: providerCommand,
-        observation: { ...base, kind: 'retryable-failure' },
-      }),
-    ).toEqual({ kind: 'retryable-failure', reason: 'provider-unavailable' });
-    expect(
-      evaluateProviderSubscriptionCancellation({
-        command: providerCommand,
-        observation: { ...base, kind: 'terminal-failure' },
-      }),
-    ).toEqual({ kind: 'terminal-failure', reason: 'provider-terminal' });
+    ).toEqual({
+      kind: 'retryable-failure',
+      reason: 'provider-result-mismatch',
+    });
   });
 
   it('rejects malformed, mismatched, and out-of-order provider observations', () => {
-    const providerCommand = requiredProviderCommand(trialingRecord());
-    const base = observation(providerCommand, 'cancelled');
+    const providerCommand = requiredProviderCommand('immediate');
+    const base = {
+      ...observationBase(providerCommand),
+      kind: 'cancelled' as const,
+      accessEndsAt: 10_000,
+    };
     expect(
       decodeProviderSubscriptionCancellationObservation({ kind: 'cancelled' }),
     ).toBeUndefined();
@@ -186,9 +329,10 @@ describe('subscription cancellation core', () => {
         ...base,
         providerSubscriptionReference: billingIds.providerSubscriptionB,
       },
+      { ...base, accessEndsAt: providerCommand.requestedAt + 1 },
     ]) {
       expect(
-        evaluateProviderSubscriptionCancellation({
+        evaluateImmediateProviderSubscriptionCancellation({
           command: providerCommand,
           observation: candidate,
         }),
@@ -236,34 +380,44 @@ function delinquentRecord(): BillingSubscriptionRecord {
   return apply(trialingRecord(), paymentFailedFact(8_000));
 }
 
+function scheduledRecord(): BillingSubscriptionRecord {
+  return apply(trialingRecord(), cancellationScheduledFact());
+}
+
 function cancelledRecord(): BillingSubscriptionRecord {
   return apply(trialingRecord(), subscriptionCancelledFact(9_000));
 }
 
 function requiredProviderCommand(
-  current: BillingSubscriptionRecord,
+  effect: 'period-end',
+): ProviderSubscriptionCancellationCommand & { readonly effect: 'period-end' };
+function requiredProviderCommand(
+  effect: 'immediate',
+): ProviderSubscriptionCancellationCommand & { readonly effect: 'immediate' };
+function requiredProviderCommand(
+  effect: 'period-end' | 'immediate',
 ): ProviderSubscriptionCancellationCommand {
-  const plan = planSubscriptionCancellation({ command: command(), current });
+  const plan =
+    effect === 'period-end'
+      ? planPeriodEndSubscriptionCancellation({
+          command: command(),
+          current: trialingRecord(),
+        })
+      : planImmediateSubscriptionCancellation({
+          command: command(),
+          current: trialingRecord(),
+        });
   if (plan.kind !== 'request-provider') {
     throw new Error('provider command fixture missing');
   }
   return plan.command;
 }
 
-function observation(
-  providerCommand: ProviderSubscriptionCancellationCommand,
-  kind:
-    | 'cancelled'
-    | 'already-cancelled'
-    | 'retryable-failure'
-    | 'terminal-failure',
-) {
+function observationBase(command: ProviderSubscriptionCancellationCommand) {
   return {
-    kind,
-    provider: providerCommand.provider,
-    providerSubscriptionReference:
-      providerCommand.providerSubscriptionReference,
-    idempotencyKey: providerCommand.idempotencyKey,
-    observedAt: providerCommand.requestedAt,
+    provider: command.provider,
+    providerSubscriptionReference: command.providerSubscriptionReference,
+    idempotencyKey: command.idempotencyKey,
+    observedAt: command.requestedAt,
   } as const;
 }
