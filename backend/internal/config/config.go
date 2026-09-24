@@ -32,6 +32,11 @@ type Config struct {
 	LogLevel        slog.Level
 }
 
+type DatabaseConfig struct {
+	Environment Environment
+	URL         string
+}
+
 type Error struct {
 	Key    string
 	Reason string
@@ -56,6 +61,35 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		}
 	}
 	return Parse(values)
+}
+
+func LoadDatabase(lookup func(string) (string, bool)) (DatabaseConfig, error) {
+	values := make(map[string]string)
+	for _, key := range []string{"NOTES_ENVIRONMENT", "NOTES_DATABASE_URL"} {
+		if value, ok := lookup(key); ok {
+			values[key] = value
+		}
+	}
+	return ParseDatabase(values)
+}
+
+func ParseDatabase(values map[string]string) (DatabaseConfig, error) {
+	environmentValue, err := required(values, "NOTES_ENVIRONMENT")
+	if err != nil {
+		return DatabaseConfig{}, err
+	}
+	environment, err := parseEnvironment(environmentValue)
+	if err != nil {
+		return DatabaseConfig{}, err
+	}
+	databaseURL, err := required(values, "NOTES_DATABASE_URL")
+	if err != nil {
+		return DatabaseConfig{}, err
+	}
+	if strings.ContainsAny(databaseURL, "\r\n\x00") {
+		return DatabaseConfig{}, invalid("NOTES_DATABASE_URL", "contains invalid control characters")
+	}
+	return DatabaseConfig{Environment: environment, URL: databaseURL}, nil
 }
 
 func Parse(values map[string]string) (Config, error) {

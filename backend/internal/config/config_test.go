@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -132,6 +133,33 @@ func TestLoadReadsOnlyKnownConfigurationKeys(t *testing.T) {
 	}
 	if requested["UNRELATED_SECRET"] {
 		t.Fatal("Load requested an unrelated environment value")
+	}
+}
+
+func TestParseDatabaseKeepsTheSecretOpaque(t *testing.T) {
+	t.Parallel()
+	got, err := config.ParseDatabase(map[string]string{
+		"NOTES_ENVIRONMENT":  "test",
+		"NOTES_DATABASE_URL": "postgres://notes:secret@localhost/fukamu_notes_go_test",
+	})
+	if err != nil {
+		t.Fatalf("ParseDatabase() error = %v", err)
+	}
+	if got.Environment != config.EnvironmentTest || got.URL == "" {
+		t.Fatalf("database configuration = %#v", got)
+	}
+}
+
+func TestParseDatabaseRejectsInvalidInputWithoutEchoingIt(t *testing.T) {
+	t.Parallel()
+	value := "postgres://notes:secret@localhost/fukamu_notes_go_test\nleak"
+	_, err := config.ParseDatabase(map[string]string{
+		"NOTES_ENVIRONMENT":  "test",
+		"NOTES_DATABASE_URL": value,
+	})
+	assertConfigError(t, err, "NOTES_DATABASE_URL")
+	if err != nil && strings.Contains(err.Error(), "secret") {
+		t.Fatal("database error disclosed credentials")
 	}
 }
 

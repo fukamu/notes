@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +17,56 @@ func TestRunRejectsUnknownCommand(t *testing.T) {
 	}
 	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "usage:") {
 		t.Fatalf("stdout = %q, stderr = %q", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunMigratesOnlyTheExplicitAllowlistedEnvironment(t *testing.T) {
+	t.Parallel()
+	values := map[string]string{
+		"NOTES_ENVIRONMENT":  "test",
+		"NOTES_DATABASE_URL": "postgres://notes:secret@127.0.0.1:5432/fukamu_notes_go_test",
+	}
+	called := false
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithDependencies(
+		[]string{"migrate", "--environment=test"},
+		&stdout,
+		&stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(_ context.Context, databaseURL string) error {
+			called = true
+			if !strings.Contains(databaseURL, "secret") {
+				t.Fatal("migration did not receive the configured URL")
+			}
+			return nil
+		},
+	)
+	if code != 0 || !called || stdout.String() != "migration complete\n" || stderr.Len() != 0 {
+		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunRefusesMigrationEnvironmentMismatchWithoutDisclosingURL(t *testing.T) {
+	t.Parallel()
+	values := map[string]string{
+		"NOTES_ENVIRONMENT":  "test",
+		"NOTES_DATABASE_URL": "postgres://notes:secret@127.0.0.1:5432/fukamu_notes_go_test",
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithDependencies(
+		[]string{"migrate", "--environment=local"},
+		&stdout,
+		&stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+	)
+	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "refused") {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stderr.String(), "secret") {
+		t.Fatal("migration refusal disclosed credentials")
 	}
 }
 
