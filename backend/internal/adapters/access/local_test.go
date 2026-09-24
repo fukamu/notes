@@ -86,20 +86,26 @@ func TestLocalAssertionRoundTripAndFailures(t *testing.T) {
 	}
 }
 
-func TestLocalAssertionRejectsDuplicateAndUnknownClaims(t *testing.T) {
+func TestLocalAssertionRejectsNonCanonicalClaims(t *testing.T) {
 	t.Parallel()
 	publicKey, privateKey, _ := ed25519.GenerateKey(nil)
 	verifier, _ := accessadapter.NewLocalVerifier(publicKey, "https://issuer.test", "notes-local")
 	now := time.Unix(1_800_000_000, 0)
 	header, _ := json.Marshal(map[string]string{"alg": "EdDSA", "typ": "JWT"})
-	claims := []string{
-		`{"iss":"https://issuer.test","aud":"notes-local","sub":"owner","iat":1799999999,"exp":1800000060,"sub":"attacker"}`,
-		`{"iss":"https://issuer.test","aud":"notes-local","sub":"owner","iat":1799999999,"exp":1800000060,"extra":true}`,
-		`{"iss":"https://issuer.test","aud":"notes-local","sub":"owner","iat":1799999999,"exp":1800000060} trailing`,
+	invalidUTF8 := append(
+		[]byte(`{"iss":"https://issuer.test","aud":"notes-local","sub":"owner`),
+		0xff,
+	)
+	invalidUTF8 = append(invalidUTF8, []byte(`","iat":1799999999,"exp":1800000060}`)...)
+	claims := [][]byte{
+		[]byte(`{"iss":"https://issuer.test","aud":"notes-local","sub":"owner","iat":1799999999,"exp":1800000060,"sub":"attacker"}`),
+		[]byte(`{"iss":"https://issuer.test","aud":"notes-local","sub":"owner","iat":1799999999,"exp":1800000060,"extra":true}`),
+		[]byte(`{"iss":"https://issuer.test","aud":"notes-local","sub":"owner","iat":1799999999,"exp":1800000060} trailing`),
+		invalidUTF8,
 	}
 	for _, payload := range claims {
 		unsigned := base64.RawURLEncoding.EncodeToString(header) + "." +
-			base64.RawURLEncoding.EncodeToString([]byte(payload))
+			base64.RawURLEncoding.EncodeToString(payload)
 		signature := ed25519.Sign(privateKey, []byte(unsigned))
 		assertion := unsigned + "." + base64.RawURLEncoding.EncodeToString(signature)
 		if _, err := verifier.Verify(assertion, now); !errors.Is(err, accessadapter.ErrInvalidAssertion) {

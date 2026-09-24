@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	accesscore "github.com/fukamu/notes/backend/internal/access"
 )
@@ -145,6 +146,9 @@ func decodeSegment(value string) ([]byte, error) {
 }
 
 func decodeExactObject(content []byte, expectedKeys []string, destination any) error {
+	if !utf8.Valid(content) {
+		return ErrInvalidAssertion
+	}
 	decoder := json.NewDecoder(strings.NewReader(string(content)))
 	opening, err := decoder.Token()
 	if err != nil || opening != json.Delim('{') {
