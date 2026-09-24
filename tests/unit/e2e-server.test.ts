@@ -24,6 +24,7 @@ afterEach(async () => {
 async function createHarness(options: {
   prebuilt: boolean;
   existingBuild: boolean;
+  failStart?: boolean;
 }) {
   const root = await mkdtemp(path.join(tmpdir(), 'fukamu-e2e-server-'));
   temporaryDirectories.push(root);
@@ -33,7 +34,7 @@ async function createHarness(options: {
   await mkdir(bin);
   await writeFile(
     path.join(bin, 'npm'),
-    `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "${log}"\nif [[ "$1 $2" == 'run build' ]]; then\n  mkdir -p dist/server\n  printf '{}' > dist/server/wrangler.json\nfi\nif [[ "$1" == 'start' ]]; then\n  printf 'WRANGLER_WRITE_LOGS=%s\\nWRANGLER_LOG_PATH=%s\\nMINIFLARE_REGISTRY_PATH=%s\\n' "$WRANGLER_WRITE_LOGS" "$WRANGLER_LOG_PATH" "$MINIFLARE_REGISTRY_PATH" > "${environmentLog}"\nfi\n`,
+    `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "${log}"\nif [[ "$1 $2" == 'run build' ]]; then\n  mkdir -p dist/server\n  printf '{}' > dist/server/wrangler.json\nfi\nif [[ "$1" == 'start' ]]; then\n  printf 'WRANGLER_WRITE_LOGS=%s\\nWRANGLER_LOG_PATH=%s\\nMINIFLARE_REGISTRY_PATH=%s\\n' "$WRANGLER_WRITE_LOGS" "$WRANGLER_LOG_PATH" "$MINIFLARE_REGISTRY_PATH" > "${environmentLog}"\n  if [[ '${options.failStart ? '1' : '0'}' == '1' ]]; then\n    mkdir -p "$WRANGLER_LOG_PATH"\n    for line_number in $(seq 1 260); do\n      printf 'diagnostic-line-%03d\\n' "$line_number"\n    done > "$WRANGLER_LOG_PATH/wrangler.log"\n    exit 1\n  fi\nfi\n`,
   );
   await chmod(path.join(bin, 'npm'), 0o755);
   if (options.existingBuild) {
@@ -119,6 +120,18 @@ describe('E2E server build reuse', () => {
     expect(path.dirname(logPath)).toBe(path.dirname(registryPath));
     expect(path.basename(logPath)).toBe('wrangler-logs');
     expect(path.basename(registryPath)).toBe('miniflare-registry');
+  });
+
+  it('reports the bounded tail of Wrangler diagnostics when startup fails', async () => {
+    const result = await createHarness({
+      prebuilt: true,
+      existingBuild: true,
+      failStart: true,
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('diagnostic-line-260');
+    expect(result.stderr).not.toContain('diagnostic-line-020');
   });
 
   it('fails before database setup when requested build output is missing', async () => {

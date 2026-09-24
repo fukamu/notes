@@ -13,7 +13,7 @@ cleanup_e2e_state() {
     for log_file in "$e2e_wrangler_logs"/*.log; do
       [[ -f "$log_file" ]] || continue
       echo "--- $log_file" >&2
-      sed -n '1,240p' "$log_file" >&2
+      tail -n 240 "$log_file" >&2
     done
   fi
 
