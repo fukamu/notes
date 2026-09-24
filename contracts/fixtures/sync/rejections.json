@@ -1,0 +1,51 @@
+{
+  "profile": "legacy-sync-v1-rejections",
+  "cases": [
+    {
+      "name": "unknown-field",
+      "input": {
+        "deviceId": "01991f20-61d2-7000-8000-000000000004",
+        "mutations": [],
+        "vaultId": "01991f20-61d2-7000-8000-000000000099"
+      }
+    },
+    {
+      "name": "unsafe-integer",
+      "input": {
+        "deviceId": "01991f20-61d2-7000-8000-000000000004",
+        "mutations": [
+          {
+            "mutationId": "01991f20-61d2-7000-8000-000000000005",
+            "cardId": "01991f20-61d2-7000-8000-000000000001",
+            "baseServerRevision": null,
+            "title": "unsafe",
+            "body": [],
+            "createdAt": 9007199254740992,
+            "updatedAt": 9007199254740992,
+            "kind": "upsert",
+            "conflictIds": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "resolve-null-revision",
+      "input": {
+        "deviceId": "01991f20-61d2-7000-8000-000000000004",
+        "mutations": [
+          {
+            "mutationId": "01991f20-61d2-7000-8000-000000000005",
+            "cardId": "01991f20-61d2-7000-8000-000000000001",
+            "baseServerRevision": null,
+            "title": "resolve",
+            "body": [],
+            "createdAt": 1000,
+            "updatedAt": 1000,
+            "kind": "resolve",
+            "conflictIds": ["01991f20-61d2-7000-8000-000000000003"]
+          }
+        ]
+      }
+    }
+  ]
+}

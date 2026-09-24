@@ -1,0 +1,31 @@
+{
+  "profile": "session-core",
+  "active": {
+    "kind": "active",
+    "sessionId": "01991f20-61d2-7000-8000-000000000301",
+    "accountId": "01991f20-61d2-7000-8000-000000000101",
+    "vaultId": "01991f20-61d2-7000-8000-000000000201",
+    "sessionEpoch": 1,
+    "issuedAt": 1000,
+    "expiresAt": 2000
+  },
+  "accessCases": [
+    { "now": 1500, "expected": "authenticated" },
+    { "now": 2000, "expected": "expired" },
+    { "now": -1, "expected": "invalid-clock" }
+  ],
+  "csrf": {
+    "allowed": {
+      "method": "POST",
+      "expectedOrigin": "https://notes.example",
+      "originHeader": "https://notes.example",
+      "secFetchSiteHeader": "same-origin"
+    },
+    "denied": {
+      "method": "POST",
+      "expectedOrigin": "https://notes.example",
+      "originHeader": "https://evil.example",
+      "secFetchSiteHeader": "cross-site"
+    }
+  }
+}

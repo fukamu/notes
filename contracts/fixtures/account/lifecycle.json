@@ -1,0 +1,45 @@
+{
+  "profile": "account-handler-contracts",
+  "deletion": {
+    "inProgress": {
+      "status": "in-progress",
+      "continuationToken": "ad1.SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS.0"
+    },
+    "terminal": { "status": "completed" },
+    "invalidTerminal": {
+      "status": "completed",
+      "continuationToken": "ad1.SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS.0"
+    }
+  },
+  "privacy": {
+    "pending": {
+      "requestId": "01991f20-61d2-7000-8000-000000002001",
+      "requestKind": "disclosure",
+      "requestedAt": 1000,
+      "updatedAt": 1000,
+      "status": "verification-pending"
+    },
+    "invalid": {
+      "requestId": "01991f20-61d2-7000-8000-000000002001",
+      "requestKind": "disclosure",
+      "requestedAt": 1000,
+      "updatedAt": 1000,
+      "status": "verification-pending",
+      "vaultId": "01991f20-61d2-7000-8000-000000000201"
+    }
+  },
+  "terms": {
+    "status": {
+      "outcome": "status",
+      "status": {
+        "kind": "current",
+        "acceptanceRequired": true,
+        "current": {
+          "termsVersion": "terms-v1:2026-09-15",
+          "termsHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "effectiveDate": "2026-09-15"
+        }
+      }
+    }
+  }
+}

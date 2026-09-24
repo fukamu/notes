@@ -1,0 +1,58 @@
+{
+  "profile": "legacy-sync-v1",
+  "request": {
+    "deviceId": "01991f20-61d2-7000-8000-000000000004",
+    "mutations": [
+      {
+        "mutationId": "01991f20-61d2-7000-8000-000000000005",
+        "cardId": "01991f20-61d2-7000-8000-000000000001",
+        "baseServerRevision": 1,
+        "title": "固定カードA <>&  😀",
+        "body": [
+          { "type": "text", "text": "固定本文から " },
+          {
+            "type": "link",
+            "targetCardId": "01991f20-61d2-7000-8000-000000000002"
+          },
+          { "type": "text", "text": " へつなぐ。" }
+        ],
+        "createdAt": 1789000000000,
+        "updatedAt": 1789000000100,
+        "kind": "upsert",
+        "conflictIds": []
+      }
+    ]
+  },
+  "canonicalRequestJson": "{\"deviceId\":\"01991f20-61d2-7000-8000-000000000004\",\"mutations\":[{\"mutationId\":\"01991f20-61d2-7000-8000-000000000005\",\"cardId\":\"01991f20-61d2-7000-8000-000000000001\",\"baseServerRevision\":1,\"title\":\"固定カードA <>&  😀\",\"body\":[{\"type\":\"text\",\"text\":\"固定本文から \"},{\"type\":\"link\",\"targetCardId\":\"01991f20-61d2-7000-8000-000000000002\"},{\"type\":\"text\",\"text\":\" へつなぐ。\"}],\"createdAt\":1789000000000,\"updatedAt\":1789000000100,\"kind\":\"upsert\",\"conflictIds\":[]}]}",
+  "response": {
+    "cards": [
+      {
+        "id": "01991f20-61d2-7000-8000-000000000001",
+        "officialDisplayId": 1,
+        "title": "固定カードA <>&  😀",
+        "body": [
+          { "type": "text", "text": "固定本文から " },
+          {
+            "type": "link",
+            "targetCardId": "01991f20-61d2-7000-8000-000000000002"
+          },
+          { "type": "text", "text": " へつなぐ。" }
+        ],
+        "createdAt": 1789000000000,
+        "updatedAt": 1789000000100,
+        "revision": 2
+      },
+      {
+        "id": "01991f20-61d2-7000-8000-000000000002",
+        "officialDisplayId": 2,
+        "title": "固定カードB",
+        "body": [],
+        "createdAt": 1789000000200,
+        "updatedAt": 1789000000200,
+        "revision": 1
+      }
+    ],
+    "conflicts": [],
+    "acknowledgedMutationIds": ["01991f20-61d2-7000-8000-000000000005"]
+  }
+}

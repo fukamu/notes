@@ -1,0 +1,19 @@
+{
+  "profile": "sync-v2-handler",
+  "request": {
+    "version": "sync/v2",
+    "deviceId": "01991f20-61d2-7000-8000-000000000004",
+    "cursor": null,
+    "mutations": []
+  },
+  "response": {
+    "version": "sync/v2",
+    "highWatermark": 0,
+    "changes": [],
+    "receipts": [],
+    "page": {
+      "kind": "complete",
+      "nextCursor": "cursor_0123456789ABCDEFGHI"
+    }
+  }
+}
