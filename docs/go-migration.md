@@ -14,13 +14,13 @@ delete existing resources.
 - Open overlapping work: #403 / Draft PR #404. T09 cancellation and the
   corresponding T12 deletion contract remain dependent on its resolution.
 - T01 completed in #410 / PR #411, T02 in #412 / PR #413, T03 in #414 /
-  PR #415, T04 part 1 in #416 / PR #417, and T04 part 2 in #418 / PR #419.
-  The current integration tip before T05 is
-  `0c5469cb920f6581e36978e1350ad22e75586cb2`.
-- T05 is Issue #420 on `work/420-static-frontend-go`, branched from that exact
-  integration commit. It builds the existing React UI as static assets and
-  serves the browser and API from one Go process. It does not select a
-  production identity provider or hosting service.
+  PR #415, T04 part 1 in #416 / PR #417, T04 part 2 in #418 / PR #419, and
+  T05 in #420 / PR #421. The current integration tip before T06 is
+  `62da18763c92fc339aebc33cd61612bfb7ac883e`.
+- T06 session/CSRF work is Issue #422 on
+  `work/422-go-session-control-plane`, branched from that exact integration
+  commit. It does not expose an authentication route or select a production
+  identity provider.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -40,13 +40,13 @@ the same contract as its closed route.
 
 | ID  | State | Capability                                  | Go evidence                     | Verification | Status                                       |
 | --- | ----- | ------------------------------------------- | ------------------------------- | ------------ | -------------------------------------------- |
-| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10      | implemented on #420; integration pending     |
+| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10      | integrated by #420 / PR #421                 |
 | F02 | B     | launch gate / private owner                 | T04                             | V02,V03      | signed gate #416; owner/origin enforced #418 |
-| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10  | Go/Postgres #418; Go-served UI on #420       |
-| F04 | B     | session / CSRF                              | T06                             | V02,V03      | contract captured in #410                    |
+| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10  | Go/Postgres #418; Go-served UI #420          |
+| F04 | B     | session / CSRF                              | T06                             | V02,V03,V04  | Go core/Postgres #422; integration pending   |
 | F05 | B     | Google OIDC                                 | T06                             | V03          | pending                                      |
 | F06 | B     | email OTP                                   | T06                             | V03          | pending                                      |
-| F07 | B     | identity / vault context                    | T06                             | V03,V04      | pending                                      |
+| F07 | B     | identity / vault context                    | T06                             | V03,V04      | session-derived context #422; auth pending   |
 | F08 | B     | signup admission                            | T06,T10                         | V03,V07      | pending                                      |
 | F09 | B     | vault content                               | T11                             | V04,V05      | pending                                      |
 | F10 | B     | sync v2                                     | T11                             | V01,V04,V05  | contract captured in #410                    |
@@ -75,7 +75,7 @@ the same contract as its closed route.
 | --- | ------------------------------------------------------- | ------------------------------------------------------------- |
 | V01 | shared JSON, strict decoding, black-box HTTP            | same fixture through TS #410 and Go unit/DB/HTTP #418         |
 | V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests  |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | T01 session/CSRF baseline; full T06 pending                   |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC/OTP T06 slices pending                |
 | V04 | empty Postgres, transactions, concurrency, rollback     | #414 empty DB; #418 serial retry/concurrency/rollback/release |
 | V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                   |
 | V06 | crypto vectors, tamper/AAD/KMS failures                 | T01 format/AAD baseline; full T07+ pending                    |
@@ -259,6 +259,41 @@ body. Local/test returns the existing fixture-compatible 404; production mode
 returns a fixed 503 and performs no business effect. T05 neither publishes nor
 starts charging for those capabilities.
 
+PR #421 merged this slice into the migration integration branch at
+`62da18763c92fc339aebc33cd61612bfb7ac883e`. Its post-merge verification passed
+the complete repository gate. `main` and production remained unchanged.
+
+## T06 session and CSRF slice
+
+Issue #422 ports the provider-neutral session lifecycle before OIDC or OTP is
+connected. `backend/internal/identity` now owns UUIDv7 identity values,
+bounded epochs and timestamps, fixed-shape 256-bit session tokens, pure
+create/authorize/rotate/revoke decisions, VaultContext checks, strict host
+cookie serialization/parsing, and the exact same-origin CSRF decision. Clock,
+session IDs, and token entropy remain injected values. Cross-site requests and
+ambiguous cookies are rejected before a resolver lookup.
+
+The PostgreSQL session adapter hashes a presented token with SHA-256 and stores
+or queries only the canonical unpadded base64url digest. Creation is constrained
+to an existing account/vault owner. Rotation revokes the exact predecessor and
+inserts its successor in one serializable transaction; a stale token, changed
+epoch, duplicate ID/hash, zero-row update, or losing concurrent rotation rolls
+back. Single-session revocation distinguishes an applied write from an already
+identical revoked record. Account-wide revocation verifies the owner and rolls
+back if any active session cannot be covered by the supplied revocation time.
+
+The shared T01 session/CSRF fixture is decoded by both TypeScript and Go tests.
+Go unit and disposable-PostgreSQL integration tests cover expiry, scope denial,
+cookie ambiguity, CSRF-before-lookup, raw-token non-persistence, duplicate
+constraints, rotation rollback, idempotent revoke, concurrent one-winner
+rotation, and all-or-nothing account revocation.
+
+This is an implemented but disconnected capability. No sign-in, callback,
+OTP, signup, logout, or session-management HTTP route is enabled. Provider
+selection, external resources, production data, deployment, and `main` remain
+outside this Issue. OIDC and OTP/signup are later T06 slices; the whole-flow
+race between account deletion and session issuance remains T12.
+
 ## Build, cutover, and rollback status
 
 A local-only Go bootstrap, PostgreSQL schema and legacy sync route, signed test
@@ -270,5 +305,8 @@ unit must bind one frontend hash, Go image digest, schema version, public
 configuration, secret version references, and identity mapping. Rollback
 restores the matching old Sites artifact, configuration, D1, and identity entry
 together; it never points the old TypeScript backend at the new PostgreSQL
-database or copies writes in both directions. Before integration, T05 rollback
-is a normal revert of PR #420; it has no persistent schema or data effect.
+database or copies writes in both directions. T05 rollback now requires
+reverting the PR #421 merge as a reviewed integration change; it has no
+persistent schema or data effect. T06 #422 reuses the T03 session schema and is
+still disconnected, so its rollback removes Go code without migrating or
+deleting stored data.
