@@ -1,10 +1,11 @@
 # Notes Go backend
 
 This directory contains the replacement server tracked by parent Issue #409.
-The current T04 foundation does not replace production routing or the existing
-TypeScript server. It exposes a fixed local index, process health, database
-readiness, and the private launch-status path. Legacy sync and all other API
-routes remain closed.
+The current T04 implementation does not replace production routing or the
+existing TypeScript server. It exposes a fixed local index, process health,
+database readiness, the private launch-status path, and the legacy sync path
+when the complete local private runtime is configured. All other API routes
+remain closed.
 
 Go 1.27.1 is pinned in `go.mod`, CI, and the container build stage. PostgreSQL
 access uses pinned pgx and goose versions; no ORM is used.
@@ -26,7 +27,8 @@ missing configuration stops the process before it listens.
 
 `/healthz` reports process health. With private mode disabled, `/readyz` and
 `/api/launch-status` fail closed. `/api` and API routes other than
-`/api/launch-status` remain closed.
+`/api/launch-status` and the conditionally configured `/api/sync` remain
+closed.
 
 ## Local signed identity and launch gate
 
@@ -55,10 +57,16 @@ not trusted.
 With this mode configured, `/readyz` succeeds only when the PostgreSQL schema
 is at the embedded migration version and the default-closed launch row exists.
 `/api/launch-status` verifies the signed identity before reading the allowlist
-and returns a private, non-cacheable response. T04 part 2 will connect the
-legacy sync route, enforce the configured single owner and same-origin mutation
-checks, and add the browser vertical path. A public launch flag never grants
-legacy data access by itself.
+and returns a private, non-cacheable response.
+
+`POST /api/sync` additionally requires the signed subject to equal
+`NOTES_LEGACY_OWNER_SUBJECT`, a successful gate decision, the exact
+`NOTES_PUBLIC_ORIGIN`, and an `application/json` body. These checks run before
+the body is read. The request remains capped at 4,000,000 bytes even if the
+general body limit is configured higher. The PostgreSQL adapter applies the
+legacy mutations in one serializable transaction with bounded retries for
+serialization failures and deadlocks. A public launch flag never grants legacy
+data access by itself. The browser is not pointed at this Go route until T05.
 
 ## Local PostgreSQL migration
 

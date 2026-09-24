@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	accessadapter "github.com/fukamu/notes/backend/internal/adapters/access"
 	"github.com/fukamu/notes/backend/internal/httpapi"
 	"github.com/fukamu/notes/backend/internal/launchgate"
+	"github.com/fukamu/notes/backend/internal/synclegacy"
 	"github.com/fukamu/notes/backend/internal/telemetry"
 )
 
@@ -66,6 +68,28 @@ type readinessFunction func(context.Context) error
 
 func (check readinessFunction) Check(ctx context.Context) error {
 	return check(ctx)
+}
+
+type legacySyncFunction func(context.Context, synclegacy.Request) (synclegacy.Response, error)
+
+func (synchronize legacySyncFunction) Sync(
+	ctx context.Context,
+	request synclegacy.Request,
+) (synclegacy.Response, error) {
+	return synchronize(ctx, request)
+}
+
+type trackingReadCloser struct {
+	reads int
+}
+
+func (body *trackingReadCloser) Read([]byte) (int, error) {
+	body.reads++
+	return 0, errors.New("request body must not be read")
+}
+
+func (*trackingReadCloser) Close() error {
+	return nil
 }
 
 func TestPrivateLaunchStatusUsesSignedIdentityAndFailsClosed(t *testing.T) {
@@ -151,10 +175,294 @@ func TestPrivateLaunchStatusUsesSignedIdentityAndFailsClosed(t *testing.T) {
 	}
 }
 
+func TestLegacySyncRequiresSignedAllowedOwnerAndSameOrigin(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier, err := accessadapter.NewLocalVerifier(publicKey, "https://issuer.test", "notes-local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_800_000_000, 0)
+	owner, _ := access.ParseSubject("private-owner")
+	other, _ := access.ParseSubject("allowed-non-owner")
+	ownerAssertion := signedAssertion(t, privateKey, owner, now)
+	otherAssertion := signedAssertion(t, privateKey, other, now)
+	publicOrigin, _ := url.Parse("https://notes.example")
+	syncCalls := 0
+	synchronize := legacySyncFunction(func(_ context.Context, request synclegacy.Request) (synclegacy.Response, error) {
+		syncCalls++
+		if request.DeviceID != "01991f20-61d2-7000-8000-000000001000" {
+			t.Fatalf("sync request = %#v", request)
+		}
+		return emptyLegacySyncResponse(), nil
+	})
+	runtime := &httpapi.PrivateRuntime{
+		Verifier: verifier,
+		Gate: gateReaderFunction(func(_ context.Context, subject *access.Subject) (launchgate.Facts, error) {
+			return launchgate.Facts{PublicAccessEnabled: true, UserAllowed: subject != nil}, nil
+		}),
+		Readiness:    readinessFunction(func(context.Context) error { return nil }),
+		LegacySync:   synchronize,
+		LegacyOwner:  owner,
+		PublicOrigin: publicOrigin,
+		Clock:        func() time.Time { return now },
+	}
+	handler, _ := testHandlerWithRuntime(t, 4_000_000, runtime)
+
+	approved := legacySyncRequest(ownerAssertion, "https://notes.example", validEmptySyncBody())
+	approvedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(approvedResponse, approved)
+	if approvedResponse.Code != http.StatusOK || approvedResponse.Body.String() !=
+		"{\"cards\":[],\"conflicts\":[],\"acknowledgedMutationIds\":[]}\n" || syncCalls != 1 {
+		t.Fatalf("approved sync = %d %s, calls = %d", approvedResponse.Code, approvedResponse.Body.String(), syncCalls)
+	}
+
+	wrongMethod := httptest.NewRequest(http.MethodGet, "/api/sync", nil)
+	wrongMethodResponse := httptest.NewRecorder()
+	handler.ServeHTTP(wrongMethodResponse, wrongMethod)
+	if wrongMethodResponse.Code != http.StatusMethodNotAllowed ||
+		wrongMethodResponse.Header().Get("Allow") != "POST" || syncCalls != 1 {
+		t.Fatalf(
+			"wrong method sync = %d %s, allow = %q, calls = %d",
+			wrongMethodResponse.Code,
+			wrongMethodResponse.Body.String(),
+			wrongMethodResponse.Header().Get("Allow"),
+			syncCalls,
+		)
+	}
+
+	deniedCases := map[string]func(*http.Request){
+		"missing assertion": func(request *http.Request) {
+			request.Header.Del(accessadapter.LocalAssertionHeader)
+		},
+		"unsigned assertion": func(request *http.Request) {
+			request.Header.Set(accessadapter.LocalAssertionHeader, "private-owner")
+		},
+		"duplicate assertion": func(request *http.Request) {
+			request.Header.Add(accessadapter.LocalAssertionHeader, ownerAssertion)
+		},
+		"old Sites header": func(request *http.Request) {
+			request.Header.Set(accessadapter.LegacySitesHeader, string(owner))
+		},
+		"allowed non-owner": func(request *http.Request) {
+			request.Header.Set(accessadapter.LocalAssertionHeader, otherAssertion)
+		},
+		"missing origin": func(request *http.Request) {
+			request.Header.Del("Origin")
+		},
+		"cross-site origin": func(request *http.Request) {
+			request.Header.Set("Origin", "https://evil.example")
+		},
+	}
+	for name, mutate := range deniedCases {
+		name, mutate := name, mutate
+		t.Run(name, func(t *testing.T) {
+			request := legacySyncRequest(ownerAssertion, "https://notes.example", validEmptySyncBody())
+			mutate(request)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusForbidden ||
+				response.Body.String() != "{\"error\":\"launch-access-denied\"}\n" {
+				t.Fatalf("denied sync = %d %s", response.Code, response.Body.String())
+			}
+			if syncCalls != 1 {
+				t.Fatalf("denied request reached sync store: %d calls", syncCalls)
+			}
+		})
+	}
+
+	unreadBody := &trackingReadCloser{}
+	unauthenticated := legacySyncRequest("", "https://notes.example", "")
+	unauthenticated.Body = unreadBody
+	unauthenticated.ContentLength = -1
+	unauthenticatedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(unauthenticatedResponse, unauthenticated)
+	if unauthenticatedResponse.Code != http.StatusForbidden || unreadBody.reads != 0 {
+		t.Fatalf(
+			"unauthenticated sync = %d %s, body reads = %d",
+			unauthenticatedResponse.Code,
+			unauthenticatedResponse.Body.String(),
+			unreadBody.reads,
+		)
+	}
+
+	invalid := legacySyncRequest(ownerAssertion, "https://notes.example", "{")
+	invalidResponse := httptest.NewRecorder()
+	handler.ServeHTTP(invalidResponse, invalid)
+	if invalidResponse.Code != http.StatusBadRequest ||
+		invalidResponse.Body.String() != "{\"error\":\"同期データが正しくありません。\"}\n" ||
+		syncCalls != 1 {
+		t.Fatalf("invalid sync = %d %s, calls = %d", invalidResponse.Code, invalidResponse.Body.String(), syncCalls)
+	}
+
+	wrongContentType := legacySyncRequest(ownerAssertion, "https://notes.example", validEmptySyncBody())
+	wrongContentType.Header.Set("Content-Type", "text/plain")
+	wrongContentResponse := httptest.NewRecorder()
+	handler.ServeHTTP(wrongContentResponse, wrongContentType)
+	if wrongContentResponse.Code != http.StatusBadRequest || syncCalls != 1 {
+		t.Fatalf("wrong content type = %d %s, calls = %d", wrongContentResponse.Code, wrongContentResponse.Body.String(), syncCalls)
+	}
+
+	contractLimitHandler, _ := testHandlerWithRuntime(
+		t,
+		int64(synclegacy.MaximumPayloadBytes)+1,
+		runtime,
+	)
+	contractOversized := legacySyncRequest(ownerAssertion, "https://notes.example", validEmptySyncBody())
+	contractOversized.ContentLength = int64(synclegacy.MaximumPayloadBytes) + 1
+	contractOversizedResponse := httptest.NewRecorder()
+	contractLimitHandler.ServeHTTP(contractOversizedResponse, contractOversized)
+	if contractOversizedResponse.Code != http.StatusRequestEntityTooLarge || syncCalls != 1 {
+		t.Fatalf(
+			"contract oversized sync = %d %s, calls = %d",
+			contractOversizedResponse.Code,
+			contractOversizedResponse.Body.String(),
+			syncCalls,
+		)
+	}
+
+	smallHandler, _ := testHandlerWithRuntime(t, 8, runtime)
+	oversized := legacySyncRequest(ownerAssertion, "https://notes.example", validEmptySyncBody())
+	oversized.ContentLength = -1
+	oversizedResponse := httptest.NewRecorder()
+	smallHandler.ServeHTTP(oversizedResponse, oversized)
+	if oversizedResponse.Code != http.StatusRequestEntityTooLarge ||
+		oversizedResponse.Body.String() != "{\"error\":\"同期データが正しくありません。\"}\n" ||
+		syncCalls != 1 {
+		t.Fatalf("oversized sync = %d %s, calls = %d", oversizedResponse.Code, oversizedResponse.Body.String(), syncCalls)
+	}
+}
+
+func TestLegacySyncSanitizesGateAndStoreFailures(t *testing.T) {
+	publicKey, privateKey, _ := ed25519.GenerateKey(nil)
+	verifier, _ := accessadapter.NewLocalVerifier(publicKey, "https://issuer.test", "notes-local")
+	now := time.Unix(1_800_000_000, 0)
+	owner, _ := access.ParseSubject("private-owner")
+	assertion := signedAssertion(t, privateKey, owner, now)
+	publicOrigin, _ := url.Parse("https://notes.example")
+	rawFailure := errors.New("raw private database detail")
+
+	for name, test := range map[string]struct {
+		gate        gateReaderFunction
+		synchronize legacySyncFunction
+		status      int
+	}{
+		"gate denial": {
+			gate: func(context.Context, *access.Subject) (launchgate.Facts, error) {
+				return launchgate.Facts{}, nil
+			},
+			synchronize: func(context.Context, synclegacy.Request) (synclegacy.Response, error) {
+				t.Fatal("gate denial reached sync store")
+				return synclegacy.Response{}, nil
+			},
+			status: http.StatusForbidden,
+		},
+		"gate failure": {
+			gate: func(context.Context, *access.Subject) (launchgate.Facts, error) {
+				return launchgate.Facts{}, rawFailure
+			},
+			synchronize: func(context.Context, synclegacy.Request) (synclegacy.Response, error) {
+				t.Fatal("gate failure reached sync store")
+				return synclegacy.Response{}, nil
+			},
+			status: http.StatusServiceUnavailable,
+		},
+		"store failure": {
+			gate: func(context.Context, *access.Subject) (launchgate.Facts, error) {
+				return launchgate.Facts{UserAllowed: true}, nil
+			},
+			synchronize: func(context.Context, synclegacy.Request) (synclegacy.Response, error) {
+				return synclegacy.Response{}, rawFailure
+			},
+			status: http.StatusInternalServerError,
+		},
+		"invalid store response": {
+			gate: func(context.Context, *access.Subject) (launchgate.Facts, error) {
+				return launchgate.Facts{UserAllowed: true}, nil
+			},
+			synchronize: func(context.Context, synclegacy.Request) (synclegacy.Response, error) {
+				return synclegacy.Response{}, nil
+			},
+			status: http.StatusInternalServerError,
+		},
+	} {
+		name, test := name, test
+		t.Run(name, func(t *testing.T) {
+			runtime := &httpapi.PrivateRuntime{
+				Verifier:     verifier,
+				Gate:         test.gate,
+				Readiness:    readinessFunction(func(context.Context) error { return nil }),
+				LegacySync:   test.synchronize,
+				LegacyOwner:  owner,
+				PublicOrigin: publicOrigin,
+				Clock:        func() time.Time { return now },
+			}
+			handler, logs := testHandlerWithRuntime(t, 4_000_000, runtime)
+			request := legacySyncRequest(assertion, "https://notes.example", validEmptySyncBody())
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.status || strings.Contains(response.Body.String(), rawFailure.Error()) ||
+				strings.Contains(logs.String(), rawFailure.Error()) {
+				t.Fatalf("failure response = %d %s; logs = %s", response.Code, response.Body.String(), logs.String())
+			}
+		})
+	}
+}
+
+func signedAssertion(
+	t *testing.T,
+	privateKey ed25519.PrivateKey,
+	subject access.Subject,
+	now time.Time,
+) string {
+	t.Helper()
+	assertion, err := accessadapter.SignLocalAssertion(
+		privateKey,
+		"https://issuer.test",
+		"notes-local",
+		subject,
+		now.Add(-time.Minute),
+		now.Add(time.Minute),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return assertion
+}
+
+func legacySyncRequest(assertion string, origin string, body string) *http.Request {
+	request := httptest.NewRequest(http.MethodPost, "/api/sync", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set(accessadapter.LocalAssertionHeader, assertion)
+	request.Header.Set("Origin", origin)
+	return request
+}
+
+func validEmptySyncBody() string {
+	return `{"deviceId":"01991f20-61d2-7000-8000-000000001000","mutations":[]}`
+}
+
+func emptyLegacySyncResponse() synclegacy.Response {
+	return synclegacy.Response{
+		Cards:                   []synclegacy.Card{},
+		Conflicts:               []synclegacy.Conflict{},
+		AcknowledgedMutationIDs: []synclegacy.MutationID{},
+	}
+}
+
 func TestPrivateReadinessRequiresAllDependenciesAndDatabase(t *testing.T) {
 	t.Parallel()
 	publicKey, _, _ := ed25519.GenerateKey(nil)
 	verifier, _ := accessadapter.NewLocalVerifier(publicKey, "https://issuer.test", "notes-local")
+	publicOrigin, _ := url.Parse("https://notes.example")
+	legacySync := legacySyncFunction(func(context.Context, synclegacy.Request) (synclegacy.Response, error) {
+		return synclegacy.Response{
+			Cards: []synclegacy.Card{}, Conflicts: []synclegacy.Conflict{},
+			AcknowledgedMutationIDs: []synclegacy.MutationID{},
+		}, nil
+	})
 	gate := gateReaderFunction(func(context.Context, *access.Subject) (launchgate.Facts, error) {
 		return launchgate.Facts{}, nil
 	})
@@ -171,17 +479,23 @@ func TestPrivateReadinessRequiresAllDependenciesAndDatabase(t *testing.T) {
 				Readiness: readinessFunction(func(context.Context) error {
 					return errors.New("raw database failure")
 				}),
-				Clock: time.Now,
+				LegacySync:   legacySync,
+				LegacyOwner:  "owner",
+				PublicOrigin: publicOrigin,
+				Clock:        time.Now,
 			},
 			status: http.StatusServiceUnavailable,
 			body:   "not_ready",
 		},
 		"ready": {
 			runtime: &httpapi.PrivateRuntime{
-				Verifier:  verifier,
-				Gate:      gate,
-				Readiness: readinessFunction(func(context.Context) error { return nil }),
-				Clock:     time.Now,
+				Verifier:     verifier,
+				Gate:         gate,
+				Readiness:    readinessFunction(func(context.Context) error { return nil }),
+				LegacySync:   legacySync,
+				LegacyOwner:  "owner",
+				PublicOrigin: publicOrigin,
+				Clock:        time.Now,
 			},
 			status: http.StatusOK,
 			body:   "ready",

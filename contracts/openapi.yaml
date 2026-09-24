@@ -30,6 +30,10 @@ paths:
     post:
       operationId: legacySync
       x-fukamu-state: connected-in-legacy-test
+      x-go-migration-state: connected-local-private-runtime
+      description: >-
+        The Go migration path additionally requires a verified configured
+        legacy owner and exact same-origin request before reading the body.
       requestBody:
         required: true
         content:
@@ -159,13 +163,13 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
-          example: { error: リクエストの形式が正しくありません。 }
+          example: { error: 同期データが正しくありません。 }
     SyncPayloadTooLarge:
       description: More than 4,000,000 request bytes.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
-          example: { error: リクエストが大きすぎます。 }
+          example: { error: 同期データが正しくありません。 }
     SyncFailed:
       description: Legacy storage or synchronization failed.
       content:

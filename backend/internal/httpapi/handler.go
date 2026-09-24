@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +19,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/access"
 	accessadapter "github.com/fukamu/notes/backend/internal/adapters/access"
 	"github.com/fukamu/notes/backend/internal/launchgate"
+	"github.com/fukamu/notes/backend/internal/synclegacy"
 )
 
 const maximumIndexBytes = 1_000_000
@@ -36,11 +39,18 @@ type ReadinessChecker interface {
 	Check(context.Context) error
 }
 
+type LegacySynchronizer interface {
+	Sync(context.Context, synclegacy.Request) (synclegacy.Response, error)
+}
+
 type PrivateRuntime struct {
-	Verifier  AssertionVerifier
-	Gate      launchgate.Reader
-	Readiness ReadinessChecker
-	Clock     func() time.Time
+	Verifier     AssertionVerifier
+	Gate         launchgate.Reader
+	Readiness    ReadinessChecker
+	LegacySync   LegacySynchronizer
+	LegacyOwner  access.Subject
+	PublicOrigin *url.URL
+	Clock        func() time.Time
 }
 
 type statusResponseWriter struct {
@@ -75,6 +85,10 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 	mux.HandleFunc(
 		"/api/launch-status",
 		exact("/api/launch-status", launchStatus(options.PrivateRuntime)),
+	)
+	mux.HandleFunc(
+		"/api/sync",
+		exact("/api/sync", legacySync(options.PrivateRuntime, options.BodyLimit)),
 	)
 	mux.HandleFunc("/api", closedAPI)
 	mux.HandleFunc("/api/", closedAPI)
@@ -130,8 +144,7 @@ func readiness(runtime *PrivateRuntime) http.HandlerFunc {
 		if !allowRead(response, request) {
 			return
 		}
-		if runtime == nil || runtime.Readiness == nil || runtime.Verifier == nil ||
-			runtime.Gate == nil || runtime.Clock == nil {
+		if !privateRuntimeComplete(runtime) {
 			writeJSON(
 				response,
 				request,
@@ -165,24 +178,10 @@ func launchStatus(runtime *PrivateRuntime) http.HandlerFunc {
 			writeLaunchUnavailable(response, request)
 			return
 		}
-		if len(request.Header.Values(accessadapter.LegacySitesHeader)) != 0 {
+		subject, valid := resolvePrivateIdentity(request, runtime)
+		if !valid {
 			writeLaunchUnavailable(response, request)
 			return
-		}
-
-		var subject *access.Subject
-		assertions := request.Header.Values(accessadapter.LocalAssertionHeader)
-		if len(assertions) > 1 || (len(assertions) == 1 && strings.Contains(assertions[0], ",")) {
-			writeLaunchUnavailable(response, request)
-			return
-		}
-		if len(assertions) == 1 {
-			verified, err := runtime.Verifier.Verify(assertions[0], runtime.Clock())
-			if err != nil {
-				writeLaunchUnavailable(response, request)
-				return
-			}
-			subject = &verified
 		}
 		decision, err := launchgate.Resolve(request.Context(), runtime.Gate, subject)
 		if err != nil {
@@ -198,6 +197,103 @@ func launchStatus(runtime *PrivateRuntime) http.HandlerFunc {
 	}
 }
 
+func legacySync(runtime *PrivateRuntime, bodyLimit int64) http.HandlerFunc {
+	if bodyLimit > int64(synclegacy.MaximumPayloadBytes) {
+		bodyLimit = int64(synclegacy.MaximumPayloadBytes)
+	}
+	return func(response http.ResponseWriter, request *http.Request) {
+		if !privateRuntimeComplete(runtime) {
+			writeError(response, request, http.StatusNotFound, "not_found")
+			return
+		}
+		setLaunchPrivateHeaders(response)
+		if request.Method != http.MethodPost {
+			response.Header().Set("Allow", "POST")
+			writeError(response, request, http.StatusMethodNotAllowed, "method_not_allowed")
+			return
+		}
+		subject, valid := resolvePrivateIdentity(request, runtime)
+		if !valid || subject == nil {
+			writeLaunchDenied(response, request)
+			return
+		}
+		decision, err := launchgate.Resolve(request.Context(), runtime.Gate, subject)
+		if err != nil {
+			writeLaunchUnavailable(response, request)
+			return
+		}
+		if !decision.CanAccess || !access.IsLegacyOwner(*subject, runtime.LegacyOwner) ||
+			access.RequireSameOrigin(request.Header.Get("Origin"), runtime.PublicOrigin) != nil {
+			writeLaunchDenied(response, request)
+			return
+		}
+		mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+		if err != nil || mediaType != "application/json" {
+			writeInvalidSync(response, request, http.StatusBadRequest)
+			return
+		}
+		if request.ContentLength > bodyLimit {
+			writeInvalidSync(response, request, http.StatusRequestEntityTooLarge)
+			return
+		}
+		limited := http.MaxBytesReader(response, request.Body, bodyLimit)
+		content, err := io.ReadAll(limited)
+		if err != nil {
+			var maximumBytesError *http.MaxBytesError
+			if errors.As(err, &maximumBytesError) {
+				writeInvalidSync(response, request, http.StatusRequestEntityTooLarge)
+				return
+			}
+			writeInvalidSync(response, request, http.StatusBadRequest)
+			return
+		}
+		input, err := synclegacy.DecodeRequest(content)
+		if err != nil {
+			writeInvalidSync(response, request, http.StatusBadRequest)
+			return
+		}
+		result, err := runtime.LegacySync.Sync(request.Context(), input)
+		if err != nil || synclegacy.ValidateResponse(result, input.Mutations) != nil {
+			writeJSON(
+				response,
+				request,
+				http.StatusInternalServerError,
+				map[string]string{"error": "同期に失敗しました。入力内容は端末に残っています。"},
+			)
+			return
+		}
+		writeJSON(response, request, http.StatusOK, result)
+	}
+}
+
+func privateRuntimeComplete(runtime *PrivateRuntime) bool {
+	return runtime != nil && runtime.Readiness != nil && runtime.Verifier != nil &&
+		runtime.Gate != nil && runtime.LegacySync != nil && runtime.LegacyOwner != "" &&
+		runtime.PublicOrigin != nil && runtime.Clock != nil
+}
+
+func resolvePrivateIdentity(
+	request *http.Request,
+	runtime *PrivateRuntime,
+) (*access.Subject, bool) {
+	if runtime == nil || runtime.Verifier == nil || runtime.Clock == nil ||
+		len(request.Header.Values(accessadapter.LegacySitesHeader)) != 0 {
+		return nil, false
+	}
+	assertions := request.Header.Values(accessadapter.LocalAssertionHeader)
+	if len(assertions) > 1 || (len(assertions) == 1 && strings.Contains(assertions[0], ",")) {
+		return nil, false
+	}
+	if len(assertions) == 0 {
+		return nil, true
+	}
+	verified, err := runtime.Verifier.Verify(assertions[0], runtime.Clock())
+	if err != nil {
+		return nil, false
+	}
+	return &verified, true
+}
+
 func setLaunchPrivateHeaders(response http.ResponseWriter) {
 	response.Header().Set("Cache-Control", "private, no-store")
 	response.Header().Set("Vary", "Cookie, "+accessadapter.LocalAssertionHeader)
@@ -209,6 +305,24 @@ func writeLaunchUnavailable(response http.ResponseWriter, request *http.Request)
 		request,
 		http.StatusServiceUnavailable,
 		map[string]string{"error": "launch-gate-unavailable"},
+	)
+}
+
+func writeLaunchDenied(response http.ResponseWriter, request *http.Request) {
+	writeJSON(
+		response,
+		request,
+		http.StatusForbidden,
+		map[string]string{"error": "launch-access-denied"},
+	)
+}
+
+func writeInvalidSync(response http.ResponseWriter, request *http.Request, status int) {
+	writeJSON(
+		response,
+		request,
+		status,
+		map[string]string{"error": "同期データが正しくありません。"},
 	)
 }
 
@@ -247,13 +361,12 @@ func allowRead(response http.ResponseWriter, request *http.Request) bool {
 
 func limitBody(limit int64, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/api/sync" {
+			next.ServeHTTP(response, request)
+			return
+		}
 		if request.ContentLength > limit {
-			writeError(
-				response,
-				request,
-				http.StatusRequestEntityTooLarge,
-				"body_too_large",
-			)
+			writeBodyTooLarge(response, request)
 			return
 		}
 		limited := http.MaxBytesReader(response, request.Body, limit)
@@ -261,12 +374,7 @@ func limitBody(limit int64, next http.Handler) http.Handler {
 		if err != nil {
 			var maximumBytesError *http.MaxBytesError
 			if errors.As(err, &maximumBytesError) {
-				writeError(
-					response,
-					request,
-					http.StatusRequestEntityTooLarge,
-					"body_too_large",
-				)
+				writeBodyTooLarge(response, request)
 				return
 			}
 			writeError(response, request, http.StatusBadRequest, "invalid_body")
@@ -275,6 +383,10 @@ func limitBody(limit int64, next http.Handler) http.Handler {
 		request.Body = io.NopCloser(bytes.NewReader(body))
 		next.ServeHTTP(response, request)
 	})
+}
+
+func writeBodyTooLarge(response http.ResponseWriter, request *http.Request) {
+	writeError(response, request, http.StatusRequestEntityTooLarge, "body_too_large")
 }
 
 func recoverPanics(logger *slog.Logger, next http.Handler) http.Handler {
