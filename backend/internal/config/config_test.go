@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"errors"
 	"log/slog"
 	"path/filepath"
@@ -65,6 +67,82 @@ func TestParseAppliesOnlyBoundedNonSecretDefaults(t *testing.T) {
 	}
 	if got.LogLevel != slog.LevelInfo {
 		t.Fatalf("LogLevel = %s", got.LogLevel)
+	}
+	if got.PrivateRuntime != nil {
+		t.Fatalf("private runtime enabled by default: %#v", got.PrivateRuntime)
+	}
+}
+
+func TestParseAcceptsLocalSignedPrivateRuntime(t *testing.T) {
+	t.Parallel()
+	publicKey, _, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := validValues(t)
+	values["NOTES_PRIVATE_AUTH_MODE"] = "local-signed"
+	values["NOTES_DATABASE_URL"] = "postgres://notes:secret@127.0.0.1/notes"
+	values["NOTES_DATABASE_MAX_CONNECTIONS"] = "7"
+	values["NOTES_PUBLIC_ORIGIN"] = "http://127.0.0.1:8080"
+	values["NOTES_LOCAL_AUTH_ISSUER"] = "https://issuer.test/local"
+	values["NOTES_LOCAL_AUTH_AUDIENCE"] = "notes-local"
+	values["NOTES_LOCAL_AUTH_PUBLIC_KEY"] = base64.RawURLEncoding.EncodeToString(publicKey)
+	values["NOTES_LEGACY_OWNER_SUBJECT"] = "opaque-owner"
+	got, err := config.Parse(values)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	privateRuntime := got.PrivateRuntime
+	if privateRuntime == nil || privateRuntime.MaximumConnections != 7 ||
+		privateRuntime.PublicOrigin.String() != "http://127.0.0.1:8080" ||
+		privateRuntime.LegacyOwner != "opaque-owner" ||
+		!strings.HasPrefix(privateRuntime.DatabaseURL, "postgres://") {
+		t.Fatalf("private runtime = %#v", privateRuntime)
+	}
+}
+
+func TestParseRejectsLocalSignedProductionAndUnsafePrivateValues(t *testing.T) {
+	t.Parallel()
+	publicKey, _, _ := ed25519.GenerateKey(nil)
+	base := validValues(t)
+	base["NOTES_PRIVATE_AUTH_MODE"] = "local-signed"
+	base["NOTES_DATABASE_URL"] = "postgres://notes:secret@127.0.0.1/notes"
+	base["NOTES_PUBLIC_ORIGIN"] = "http://127.0.0.1:8080"
+	base["NOTES_LOCAL_AUTH_ISSUER"] = "https://issuer.test"
+	base["NOTES_LOCAL_AUTH_AUDIENCE"] = "notes-local"
+	base["NOTES_LOCAL_AUTH_PUBLIC_KEY"] = base64.RawURLEncoding.EncodeToString(publicKey)
+	base["NOTES_LEGACY_OWNER_SUBJECT"] = "opaque-owner"
+
+	tests := []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{name: "production local mode", key: "NOTES_ENVIRONMENT", value: "production"},
+		{name: "remote insecure origin", key: "NOTES_PUBLIC_ORIGIN", value: "http://notes.example"},
+		{name: "origin path", key: "NOTES_PUBLIC_ORIGIN", value: "https://notes.example/path"},
+		{name: "issuer query", key: "NOTES_LOCAL_AUTH_ISSUER", value: "https://issuer.test?secret=1"},
+		{name: "invalid public key", key: "NOTES_LOCAL_AUTH_PUBLIC_KEY", value: "secret-key"},
+		{name: "invalid owner", key: "NOTES_LEGACY_OWNER_SUBJECT", value: " owner"},
+		{name: "too many connections", key: "NOTES_DATABASE_MAX_CONNECTIONS", value: "33"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			values := make(map[string]string, len(base))
+			for key, value := range base {
+				values[key] = value
+			}
+			values[test.key] = test.value
+			_, err := config.Parse(values)
+			if err == nil {
+				t.Fatal("Parse() accepted unsafe private configuration")
+			}
+			if strings.Contains(err.Error(), "secret-key") || strings.Contains(err.Error(), "?secret=1") {
+				t.Fatalf("error disclosed rejected input: %v", err)
+			}
+		})
 	}
 }
 
@@ -133,6 +211,16 @@ func TestLoadReadsOnlyKnownConfigurationKeys(t *testing.T) {
 	}
 	if requested["UNRELATED_SECRET"] {
 		t.Fatal("Load requested an unrelated environment value")
+	}
+	for _, key := range []string{
+		"NOTES_PRIVATE_AUTH_MODE",
+		"NOTES_DATABASE_URL",
+		"NOTES_PUBLIC_ORIGIN",
+		"NOTES_LOCAL_AUTH_PUBLIC_KEY",
+	} {
+		if !requested[key] {
+			t.Fatalf("Load did not request known key %s", key)
+		}
 	}
 }
 

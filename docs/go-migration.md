@@ -13,9 +13,12 @@ delete existing resources.
 - Integration branch: `integration/409-go-backend-migration`
 - Open overlapping work: #403 / Draft PR #404. T09 cancellation and the
   corresponding T12 deletion contract remain dependent on its resolution.
-- T01 completed in #410 / PR #411 and T02 completed in #412 / PR #413. T03
-  branch `work/414-postgres-foundation` starts at integration commit
-  `4c400441eec78fbb047bf0ec233f8b536f7078bc`.
+- T01 completed in #410 / PR #411, T02 in #412 / PR #413, and T03 in #414 /
+  PR #415. T03 is integrated at
+  `b00013d7e94b76578c8435d21dfc39917493c42c`.
+- T04 part 1 is Issue #416 on `work/416-private-auth-launch-gate`, branched
+  from that exact integration commit. It does not select a production identity
+  provider.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -33,43 +36,43 @@ State `A` means connected now, `B` means implemented/tested but disconnected,
 and `C` means absent or only a fake/provider gap. A disconnected handler is not
 the same contract as its closed route.
 
-| ID  | State | Capability                                  | Go evidence                     | Verification | Status                                  |
-| --- | ----- | ------------------------------------------- | ------------------------------- | ------------ | --------------------------------------- |
-| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10      | pending                                 |
-| F02 | A     | launch gate / private owner                 | T04                             | V02,V03      | pending                                 |
-| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10  | contract captured in #410               |
-| F04 | B     | session / CSRF                              | T06                             | V02,V03      | contract captured in #410               |
-| F05 | B     | Google OIDC                                 | T06                             | V03          | pending                                 |
-| F06 | B     | email OTP                                   | T06                             | V03          | pending                                 |
-| F07 | B     | identity / vault context                    | T06                             | V03,V04      | pending                                 |
-| F08 | B     | signup admission                            | T06,T10                         | V03,V07      | pending                                 |
-| F09 | B     | vault content                               | T11                             | V04,V05      | pending                                 |
-| F10 | B     | sync v2                                     | T11                             | V01,V04,V05  | contract captured in #410               |
-| F11 | B     | envelope encryption                         | T07                             | V06          | format/AAD captured in #410             |
-| F12 | B     | KMS / DEK                                   | T07                             | V06,V09      | pending                                 |
-| F13 | B     | key rotation                                | T08                             | V04,V06,V08  | pending                                 |
-| F14 | B     | immutable encrypted object                  | T08                             | V04,V06,V08  | pending                                 |
-| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08      | pending                                 |
-| F16 | B     | quota                                       | T11                             | V04,V05      | pending                                 |
-| F17 | B     | billing projection                          | T09                             | V04,V07      | blocked on #404 where applicable        |
-| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | pending, remains closed                 |
-| F19 | B     | entitlement / offline lease                 | T09                             | V05,V07      | pending                                 |
-| F20 | B     | legal checkout evidence                     | T10                             | V01,V07      | contract captured in #410               |
-| F21 | B     | terms consent                               | T10                             | V01,V07      | contract captured in #410               |
-| F22 | B     | normal cancellation                         | T09                             | V07          | blocked on #404                         |
-| F23 | B     | account deletion                            | T12                             | V03,V04,V08  | contract captured; #404 overlap pending |
-| F24 | B     | privacy request journal                     | T12                             | V01,V03,V08  | contract captured in #410               |
-| F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11      | core PostgreSQL schema implemented #414 |
-| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09      | pending                                 |
-| F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10      | executable baseline in #410             |
-| F28 | C     | scheduler / realtime services               | none unless separately approved | V08          | intentionally not added                 |
+| ID  | State | Capability                                  | Go evidence                     | Verification | Status                                       |
+| --- | ----- | ------------------------------------------- | ------------------------------- | ------------ | -------------------------------------------- |
+| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10      | pending                                      |
+| F02 | B     | launch gate / private owner                 | T04                             | V02,V03      | signed gate path in #416; owner sync pending |
+| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10  | contract captured in #410                    |
+| F04 | B     | session / CSRF                              | T06                             | V02,V03      | contract captured in #410                    |
+| F05 | B     | Google OIDC                                 | T06                             | V03          | pending                                      |
+| F06 | B     | email OTP                                   | T06                             | V03          | pending                                      |
+| F07 | B     | identity / vault context                    | T06                             | V03,V04      | pending                                      |
+| F08 | B     | signup admission                            | T06,T10                         | V03,V07      | pending                                      |
+| F09 | B     | vault content                               | T11                             | V04,V05      | pending                                      |
+| F10 | B     | sync v2                                     | T11                             | V01,V04,V05  | contract captured in #410                    |
+| F11 | B     | envelope encryption                         | T07                             | V06          | format/AAD captured in #410                  |
+| F12 | B     | KMS / DEK                                   | T07                             | V06,V09      | pending                                      |
+| F13 | B     | key rotation                                | T08                             | V04,V06,V08  | pending                                      |
+| F14 | B     | immutable encrypted object                  | T08                             | V04,V06,V08  | pending                                      |
+| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08      | pending                                      |
+| F16 | B     | quota                                       | T11                             | V04,V05      | pending                                      |
+| F17 | B     | billing projection                          | T09                             | V04,V07      | blocked on #404 where applicable             |
+| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | pending, remains closed                      |
+| F19 | B     | entitlement / offline lease                 | T09                             | V05,V07      | pending                                      |
+| F20 | B     | legal checkout evidence                     | T10                             | V01,V07      | contract captured in #410                    |
+| F21 | B     | terms consent                               | T10                             | V01,V07      | contract captured in #410                    |
+| F22 | B     | normal cancellation                         | T09                             | V07          | blocked on #404                              |
+| F23 | B     | account deletion                            | T12                             | V03,V04,V08  | contract captured; #404 overlap pending      |
+| F24 | B     | privacy request journal                     | T12                             | V01,V03,V08  | contract captured in #410                    |
+| F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11      | core PostgreSQL schema implemented #414      |
+| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09      | pending                                      |
+| F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10      | executable baseline in #410                  |
+| F28 | C     | scheduler / realtime services               | none unless separately approved | V08          | intentionally not added                      |
 
 ## Verification matrix
 
 | ID  | Required evidence                                       | Current evidence                                              |
 | --- | ------------------------------------------------------- | ------------------------------------------------------------- |
 | V01 | shared JSON, strict decoding, black-box HTTP            | T01 fixtures / current TS decoder                             |
-| V02 | signed identity, gate DB, spoof/direct-origin rejection | pending T04                                                   |
+| V02 | signed identity, gate DB, spoof/direct-origin rejection | signed identity/gate/spoof in #416; mutation origin pending   |
 | V03 | session/OIDC/OTP/owner/CSRF failures                    | T01 session/CSRF baseline; full T06 pending                   |
 | V04 | empty Postgres, transactions, concurrency, rollback     | T03 empty DB/constraints/rollback; domain concurrency pending |
 | V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                   |
@@ -146,15 +149,44 @@ go -C backend run ./cmd/notesctl migrate --environment=test
 npm run go:test:integration
 ```
 
-The schema and adapter are implemented but not connected to an HTTP feature;
-`/readyz` remains closed until T04 composes DB readiness with the private
-identity/gate/sync path. No production database, migration, or credential was
-created.
+The schema foundation was merged by PR #415. T04 part 1 connects its readiness
+and launch-gate reads to HTTP; legacy sync remains disconnected. No production
+database, migration, or credential was created.
+
+## T04 part 1: private identity and launch gate
+
+Issue #416 adds the provider-independent identity contract, default-closed
+launch decision, PostgreSQL reader, and HTTP composition. It deliberately does
+not choose Cloudflare Access or another production provider. The concrete
+`local-signed` Ed25519 adapter is available only in local/test environments and
+is rejected by production configuration. The server is configured with a
+public key only; test code generates the private key.
+
+Signed assertions use exact `alg`, type, issuer, audience, opaque subject,
+issued-at, and expiry fields. Canonical base64url, duplicate or unknown JSON
+members, trailing content, invalid signatures, future/expired timestamps, and
+lifetimes beyond ten minutes are rejected with a fixed error. The former Sites
+identity header is rejected rather than treated as authenticated input.
+
+`/api/launch-status` is connected when the private runtime is configured. It
+verifies identity before querying the launch configuration and allowlist and
+sets `Cache-Control: private, no-store`. Missing identity remains an anonymous
+gate check for compatibility; malformed or spoofed identity fails closed with 503. `/readyz` reports ready only when all private dependencies exist, the
+embedded Goose version is applied, and the singleton launch row exists.
+
+This is a partial vertical slice, not a claim that legacy data access is live.
+T04 part 2 must add the legacy sync adapter and route, configured-owner check,
+same-origin mutation check, conflict/idempotency tests, and frontend path. The
+public launch flag may expose the shell in the eventual design but must never
+authorize the shared legacy collection. Production provider, domain, and
+recurring-cost choices remain pending in
+[`go-migration-decisions.md`](go-migration-decisions.md).
 
 ## Build, cutover, and rollback status
 
-A local-only Go bootstrap, PostgreSQL schema, and reviewable Dockerfile now
-exist; current frontend routing is unchanged. No managed PostgreSQL instance,
+A local-only Go bootstrap, PostgreSQL schema, signed test identity boundary,
+launch-status route, and reviewable Dockerfile now exist; current frontend
+routing is unchanged. No managed PostgreSQL instance,
 pushed image, staging environment, cutover rehearsal, or production operation
 exists yet. The eventual release
 unit must bind one frontend hash, Go image digest, schema version, public

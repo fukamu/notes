@@ -1,13 +1,18 @@
 package config
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/fukamu/notes/backend/internal/access"
 )
 
 const (
@@ -30,6 +35,17 @@ type Config struct {
 	BodyLimit       int64
 	ShutdownTimeout time.Duration
 	LogLevel        slog.Level
+	PrivateRuntime  *PrivateRuntimeConfig
+}
+
+type PrivateRuntimeConfig struct {
+	DatabaseURL        string
+	MaximumConnections int32
+	PublicOrigin       *url.URL
+	Issuer             string
+	Audience           string
+	PublicKey          ed25519.PublicKey
+	LegacyOwner        access.Subject
 }
 
 type DatabaseConfig struct {
@@ -55,6 +71,14 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		"NOTES_BODY_LIMIT_BYTES",
 		"NOTES_SHUTDOWN_TIMEOUT",
 		"NOTES_LOG_LEVEL",
+		"NOTES_PRIVATE_AUTH_MODE",
+		"NOTES_DATABASE_URL",
+		"NOTES_DATABASE_MAX_CONNECTIONS",
+		"NOTES_PUBLIC_ORIGIN",
+		"NOTES_LOCAL_AUTH_ISSUER",
+		"NOTES_LOCAL_AUTH_AUDIENCE",
+		"NOTES_LOCAL_AUTH_PUBLIC_KEY",
+		"NOTES_LEGACY_OWNER_SUBJECT",
 	} {
 		if value, ok := lookup(key); ok {
 			values[key] = value
@@ -141,6 +165,10 @@ func Parse(values map[string]string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	privateRuntime, err := parsePrivateRuntime(values, environment)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
 		Environment:     environment,
@@ -149,7 +177,115 @@ func Parse(values map[string]string) (Config, error) {
 		BodyLimit:       bodyLimit,
 		ShutdownTimeout: shutdownTimeout,
 		LogLevel:        logLevel,
+		PrivateRuntime:  privateRuntime,
 	}, nil
+}
+
+func parsePrivateRuntime(
+	values map[string]string,
+	environment Environment,
+) (*PrivateRuntimeConfig, error) {
+	mode := values["NOTES_PRIVATE_AUTH_MODE"]
+	if mode == "" || mode == "disabled" {
+		return nil, nil
+	}
+	if mode != "local-signed" {
+		return nil, invalid("NOTES_PRIVATE_AUTH_MODE", "must be disabled or local-signed")
+	}
+	if environment == EnvironmentProduction {
+		return nil, invalid("NOTES_PRIVATE_AUTH_MODE", "local-signed is unavailable in production")
+	}
+	databaseURL, err := required(values, "NOTES_DATABASE_URL")
+	if err != nil {
+		return nil, err
+	}
+	if strings.ContainsAny(databaseURL, "\r\n\x00") {
+		return nil, invalid("NOTES_DATABASE_URL", "contains invalid control characters")
+	}
+	maximumConnections, err := optionalPositiveInt(
+		values,
+		"NOTES_DATABASE_MAX_CONNECTIONS",
+		4,
+		32,
+	)
+	if err != nil {
+		return nil, err
+	}
+	publicOriginValue, err := required(values, "NOTES_PUBLIC_ORIGIN")
+	if err != nil {
+		return nil, err
+	}
+	publicOrigin, err := parsePublicOrigin(publicOriginValue, environment)
+	if err != nil {
+		return nil, err
+	}
+	issuer, err := required(values, "NOTES_LOCAL_AUTH_ISSUER")
+	if err != nil {
+		return nil, err
+	}
+	if err := validateIssuer(issuer); err != nil {
+		return nil, err
+	}
+	audience, err := required(values, "NOTES_LOCAL_AUTH_AUDIENCE")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := access.ParseSubject(audience); err != nil {
+		return nil, invalid("NOTES_LOCAL_AUTH_AUDIENCE", "must be a bounded opaque value")
+	}
+	publicKeyValue, err := required(values, "NOTES_LOCAL_AUTH_PUBLIC_KEY")
+	if err != nil {
+		return nil, err
+	}
+	publicKey, err := base64.RawURLEncoding.DecodeString(publicKeyValue)
+	if err != nil || len(publicKey) != ed25519.PublicKeySize ||
+		base64.RawURLEncoding.EncodeToString(publicKey) != publicKeyValue {
+		return nil, invalid("NOTES_LOCAL_AUTH_PUBLIC_KEY", "must be a canonical Ed25519 public key")
+	}
+	ownerValue, err := required(values, "NOTES_LEGACY_OWNER_SUBJECT")
+	if err != nil {
+		return nil, err
+	}
+	owner, err := access.ParseSubject(ownerValue)
+	if err != nil {
+		return nil, invalid("NOTES_LEGACY_OWNER_SUBJECT", "must be a bounded opaque value")
+	}
+	return &PrivateRuntimeConfig{
+		DatabaseURL:        databaseURL,
+		MaximumConnections: int32(maximumConnections),
+		PublicOrigin:       publicOrigin,
+		Issuer:             issuer,
+		Audience:           audience,
+		PublicKey:          append(ed25519.PublicKey(nil), publicKey...),
+		LegacyOwner:        owner,
+	}, nil
+}
+
+func parsePublicOrigin(value string, environment Environment) (*url.URL, error) {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" || parsed.User != nil ||
+		(parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return nil, invalid("NOTES_PUBLIC_ORIGIN", "must be an absolute origin")
+	}
+	if parsed.Scheme == "https" {
+		parsed.Path = ""
+		return parsed, nil
+	}
+	loopback := parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "::1"
+	if parsed.Scheme != "http" || !loopback || environment == EnvironmentProduction {
+		return nil, invalid("NOTES_PUBLIC_ORIGIN", "must use HTTPS or local loopback HTTP")
+	}
+	parsed.Path = ""
+	return parsed, nil
+}
+
+func validateIssuer(value string) error {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil ||
+		parsed.RawQuery != "" || parsed.Fragment != "" {
+		return invalid("NOTES_LOCAL_AUTH_ISSUER", "must be an absolute HTTPS issuer")
+	}
+	return nil
 }
 
 func required(values map[string]string, key string) (string, error) {
