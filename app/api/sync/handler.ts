@@ -4,6 +4,8 @@ import { BoundaryDecodeError } from '@/lib/codec/core';
 import { CONTRACT_LIMITS } from '@/lib/domain/types';
 import { decodeSyncRequest, decodeSyncResponse } from '@/lib/sync/protocol';
 import { legacySyncIsEnabled } from '@/server/runtime-mode';
+import { enforceLaunchGate } from '@/server/launch-gate/http';
+import { buildRuntimeMode } from '@/server/launch-gate/runtime';
 
 class PayloadTooLargeError extends Error {}
 
@@ -31,7 +33,15 @@ function inputError(status = 400): Response {
 export async function handleSyncRequest(
   request: Request,
   environment: unknown,
+  nodeEnvironment: unknown = buildRuntimeMode(),
 ): Promise<Response> {
+  const launchGateResponse = await enforceLaunchGate(
+    request,
+    environment,
+    nodeEnvironment,
+  );
+  if (launchGateResponse) return launchGateResponse;
+
   if (!legacySyncIsEnabled(environment)) {
     return Response.json(
       { error: 'この同期経路は利用できません。' },

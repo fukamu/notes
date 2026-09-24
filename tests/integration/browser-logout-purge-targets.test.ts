@@ -4,6 +4,10 @@ import type { VaultNotesScope } from '@/lib/application/notes-access';
 import { createBrowserLogoutPurgeTargets } from '@/lib/client/browser-logout-purge';
 import { browserIdGenerator } from '@/lib/client/id-generator';
 import {
+  hasOfflineLaunchAdmission,
+  rememberOfflineLaunchAdmission,
+} from '@/lib/client/production-launch-admission';
+import {
   clearNotesDatabaseForTests,
   createIndexedDbNotesRepository,
   verifyNotesDatabaseDeleted,
@@ -37,6 +41,9 @@ describe('browser logout purge target adapters', () => {
     if (!card) throw new Error('missing compatibility card');
     await repository.persistCardAndMutation(card);
     vi.stubGlobal('caches', { keys: async () => [] });
+    const admissionStorage = memoryStorage();
+    vi.stubGlobal('sessionStorage', admissionStorage);
+    rememberOfflineLaunchAdmission();
     const targets = createBrowserLogoutPurgeTargets(100);
 
     await expect(targets.closeLocalRuntime(generation)).resolves.toEqual({
@@ -45,6 +52,7 @@ describe('browser logout purge target adapters', () => {
     await expect(targets.resetGraphWorker()).resolves.toEqual({
       kind: 'completed',
     });
+    expect(hasOfflineLaunchAdmission()).toBe(false);
     await expect(targets.deleteVaultDatabase(generation)).resolves.toEqual({
       kind: 'completed',
     });
@@ -65,3 +73,18 @@ describe('browser logout purge target adapters', () => {
     });
   });
 });
+
+function memoryStorage() {
+  const values = new Map<string, string>();
+  return {
+    getItem(key: string) {
+      return values.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      values.set(key, value);
+    },
+    removeItem(key: string) {
+      values.delete(key);
+    },
+  };
+}

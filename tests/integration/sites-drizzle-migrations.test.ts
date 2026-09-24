@@ -87,7 +87,9 @@ describe('ChatGPT Sites Drizzle migration compatibility', () => {
            'idx_privacy_requests_state',
            'terms_consent_evidence',
            'idx_terms_consent_submission',
-           'idx_terms_consent_latest'
+           'idx_terms_consent_latest',
+           'launch_config',
+           'launch_allowed_users'
          )
          ORDER BY name`,
       )
@@ -100,6 +102,8 @@ describe('ChatGPT Sites Drizzle migration compatibility', () => {
       { name: 'idx_privacy_requests_submission', type: 'index' },
       { name: 'idx_terms_consent_latest', type: 'index' },
       { name: 'idx_terms_consent_submission', type: 'index' },
+      { name: 'launch_allowed_users', type: 'table' },
+      { name: 'launch_config', type: 'table' },
       { name: 'privacy_requests', type: 'table' },
       { name: 'terms_consent_evidence', type: 'table' },
       { name: 'vault_quota_finalization_assertions', type: 'table' },
