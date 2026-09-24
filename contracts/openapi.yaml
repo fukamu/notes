@@ -1,0 +1,315 @@
+openapi: 3.0.3
+info:
+  title: FUKAMU Notes HTTP contract
+  version: 0.1.0-go-migration
+  description: >-
+    External wire contract captured from main at
+    f423da9932163980485ecc5bc2055b7c8c3b3d8b. Route availability describes
+    the current production entry point; x-handler-contract records an
+    implemented but currently disconnected handler and does not publish it.
+servers:
+  - url: /
+paths:
+  /api/launch-status:
+    get:
+      operationId: getLaunchStatus
+      x-fukamu-state: connected
+      responses:
+        '200':
+          description: Current fail-closed launch admission decision.
+          headers:
+            Cache-Control:
+              { schema: { type: string, enum: [private, no-store] } }
+            X-Content-Type-Options:
+              { schema: { type: string, enum: [nosniff] } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LaunchStatus' }
+        '503': { $ref: '#/components/responses/LaunchGateUnavailable' }
+  /api/sync:
+    post:
+      operationId: legacySync
+      x-fukamu-state: connected-in-legacy-test
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncRequest' }
+      responses:
+        '200':
+          description: Full legacy synchronization result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncResponse' }
+        '400': { $ref: '#/components/responses/InvalidSyncRequest' }
+        '403': { $ref: '#/components/responses/LaunchForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/SyncPayloadTooLarge' }
+        '500': { $ref: '#/components/responses/SyncFailed' }
+        '503': { $ref: '#/components/responses/LaunchGateUnavailable' }
+  /api/v2/sync:
+    post:
+      operationId: syncV2Route
+      x-fukamu-state: disconnected
+      x-handler-contract: sync-v2
+      description: >-
+        The current route remains closed (404 in legacy-test, otherwise 503).
+        The 200/400/401/402/403/409/413 handler contract is tested separately.
+      responses:
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/billing/checkout:
+    get:
+      operationId: billingCheckoutOfferRoute
+      x-fukamu-state: disconnected
+      x-handler-contract: billing-checkout-offer
+      responses:
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      operationId: billingCheckoutRoute
+      x-fukamu-state: disconnected
+      x-handler-contract: billing-checkout-submit
+      responses:
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/billing/cancel:
+    post:
+      operationId: billingCancellationRoute
+      x-fukamu-state: disconnected
+      x-handler-contract: billing-cancellation-current-main
+      x-dependency: issue-403-pr-404
+      responses:
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/account/deletion:
+    post:
+      operationId: accountDeletionStartRoute
+      x-fukamu-state: disconnected
+      x-handler-contract: account-deletion-start
+      responses:
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/account/deletion/status:
+    post:
+      operationId: accountDeletionResumeRoute
+      x-fukamu-state: disconnected
+      x-handler-contract: account-deletion-resume-one-step
+      responses:
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/account/privacy-requests:
+    post:
+      operationId: privacyRequestSubmitRoute
+      x-fukamu-state: disconnected
+      x-handler-contract: privacy-request-submit
+      responses:
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/account/privacy-requests/status:
+    post:
+      operationId: privacyRequestStatusRoute
+      x-fukamu-state: disconnected
+      x-handler-contract: privacy-request-status
+      responses:
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/account/terms-consent:
+    get:
+      operationId: termsConsentStatusRoute
+      x-fukamu-state: disconnected
+      x-handler-contract: terms-consent-status
+      responses:
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      operationId: termsConsentSubmitRoute
+      x-fukamu-state: disconnected
+      x-handler-contract: terms-consent-submit
+      responses:
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+components:
+  responses:
+    LaunchGateUnavailable:
+      description: Launch admission could not be established.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: launch-gate-unavailable }
+    LaunchForbidden:
+      description: The authenticated subject is not admitted.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Closed or unavailable in the current service mode.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: not-found }
+    Unavailable:
+      description: Closed or unavailable in the current service mode.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: unavailable }
+    InvalidSyncRequest:
+      description: Legacy request JSON or invariants are invalid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: リクエストの形式が正しくありません。 }
+    SyncPayloadTooLarge:
+      description: More than 4,000,000 request bytes.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: リクエストが大きすぎます。 }
+    SyncFailed:
+      description: Legacy storage or synchronization failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string }
+    LaunchStatus:
+      type: object
+      additionalProperties: false
+      required: [publicAccessEnabled, userAllowed, canAccess, authenticated]
+      properties:
+        publicAccessEnabled: { type: boolean }
+        userAllowed: { type: boolean }
+        canAccess: { type: boolean }
+        authenticated: { type: boolean }
+    UuidV7:
+      type: string
+      minLength: 36
+      maxLength: 36
+      pattern: '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-7[0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$'
+    SafeInteger:
+      type: integer
+      minimum: 0
+      maximum: 9007199254740991
+    BodySegment:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [type, text]
+          properties:
+            type: { type: string, enum: [text] }
+            text: { type: string, maxLength: 100000 }
+        - type: object
+          additionalProperties: false
+          required: [type, targetCardId]
+          properties:
+            type: { type: string, enum: [link] }
+            targetCardId: { $ref: '#/components/schemas/UuidV7' }
+    Mutation:
+      type: object
+      additionalProperties: false
+      required:
+        - mutationId
+        - cardId
+        - baseServerRevision
+        - title
+        - body
+        - createdAt
+        - updatedAt
+        - kind
+        - conflictIds
+      properties:
+        mutationId: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        baseServerRevision:
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+        title: { type: string, maxLength: 10000 }
+        body:
+          type: array
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        kind: { type: string, enum: [upsert, resolve] }
+        conflictIds:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/UuidV7' }
+    SyncRequest:
+      type: object
+      additionalProperties: false
+      required: [deviceId, mutations]
+      properties:
+        deviceId: { $ref: '#/components/schemas/UuidV7' }
+        mutations:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/Mutation' }
+    ServerCard:
+      type: object
+      additionalProperties: false
+      required:
+        [id, officialDisplayId, title, body, createdAt, updatedAt, revision]
+      properties:
+        id: { $ref: '#/components/schemas/UuidV7' }
+        officialDisplayId:
+          { type: integer, minimum: 1, maximum: 9007199254740991 }
+        title: { type: string, maxLength: 10000 }
+        body:
+          type: array
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        revision: { type: integer, minimum: 1, maximum: 9007199254740991 }
+    Conflict:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          cardId,
+          serverRevision,
+          localTitle,
+          localBody,
+          serverTitle,
+          serverBody,
+          createdAt,
+        ]
+      properties:
+        id: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        serverRevision: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        localTitle: { type: string, maxLength: 10000 }
+        localBody:
+          type: array
+          items: { $ref: '#/components/schemas/BodySegment' }
+        serverTitle: { type: string, maxLength: 10000 }
+        serverBody:
+          type: array
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+    SyncResponse:
+      type: object
+      additionalProperties: false
+      required: [cards, conflicts, acknowledgedMutationIds]
+      properties:
+        cards:
+          type: array
+          maxItems: 100000
+          items: { $ref: '#/components/schemas/ServerCard' }
+        conflicts:
+          type: array
+          maxItems: 100000
+          items: { $ref: '#/components/schemas/Conflict' }
+        acknowledgedMutationIds:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/UuidV7' }

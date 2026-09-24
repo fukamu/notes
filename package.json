@@ -37,6 +37,8 @@
     "benchmark:client:link-index": "vitest run tests/benchmarks/client-link-candidate-index.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
     "benchmark:client:history-index": "vitest run tests/benchmarks/client-history-preview-index.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
     "benchmark:server-load": "vitest run --config vitest.server-load.config.ts --disableConsoleIntercept",
+    "benchmark:migration": "node scripts/benchmark-migration.mjs",
+    "contracts:check": "node scripts/check-contracts.mjs && vitest run tests/contracts",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build",
     "check:environment": "node scripts/verify-environment.mjs",
     "check:legal-commerce": "node --experimental-strip-types scripts/verify-legal-commerce.mjs",
@@ -47,7 +49,7 @@
     "check:card-payment-security": "node --experimental-strip-types scripts/verify-card-payment-security.mjs",
     "check:launch-compliance": "node --experimental-strip-types scripts/verify-launch-compliance.mjs",
     "check:production-launch": "node --experimental-strip-types scripts/verify-launch-compliance.mjs --production-release",
-    "verify": "npm run format:check && npm run check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e",
+    "verify": "npm run contracts:check && npm run format:check && npm run check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

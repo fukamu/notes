@@ -1,0 +1,42 @@
+{
+  "profile": "billing-handler-current-main",
+  "offerHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "offer": {
+    "schemaVersion": 1,
+    "offerVersion": "legal-commerce-v1:2026-09-15",
+    "disclosureVersion": "2026-09-15",
+    "serviceName": "FUKAMU Notes",
+    "quantity": "one-personal-vault",
+    "planName": "FUKAMU Notes 月額プラン",
+    "priceYen": 980,
+    "billingPeriod": "monthly",
+    "taxIncluded": true,
+    "trialDays": 14,
+    "trialPriceYen": 0,
+    "firstChargeDay": 15,
+    "renewalChargeYen": 980,
+    "annualEstimateYen": 11760,
+    "automaticRenewal": true,
+    "paymentMethod": "credit-card",
+    "serviceStart": "after-registration-and-payment-method-confirmation",
+    "servicePeriod": "indefinite-until-cancelled",
+    "cancellationPolicy": "次回更新前に解約できます。",
+    "refundPolicy": "提供済み期間の返金はありません。",
+    "additionalFees": "通信費は利用者負担です。",
+    "onlineLockPolicy": "immediate-on-payment-failure-or-action-required",
+    "cancellationSeparateFromAccountDeletion": true
+  },
+  "redirect": {
+    "kind": "redirect",
+    "evidenceOutcome": "recorded",
+    "evidenceId": "01991f20-61d2-7000-8000-000000001801",
+    "offerHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "offerVersion": "legal-commerce-v1:2026-09-15",
+    "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_test_fukamu"
+  },
+  "closedRoute": {
+    "legacyStatus": 404,
+    "configuredStatus": 503
+  },
+  "dependency": "issue-403-pr-404"
+}
