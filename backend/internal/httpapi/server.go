@@ -14,6 +14,7 @@ type ServerOptions struct {
 	BodyLimit       int64
 	ShutdownTimeout time.Duration
 	Logger          *slog.Logger
+	PrivateRuntime  *PrivateRuntime
 }
 
 func Run(ctx context.Context, options ServerOptions) error {
@@ -21,6 +22,7 @@ func Run(ctx context.Context, options ServerOptions) error {
 		StaticDirectory: options.StaticDirectory,
 		BodyLimit:       options.BodyLimit,
 		Logger:          options.Logger,
+		PrivateRuntime:  options.PrivateRuntime,
 	})
 	if err != nil {
 		return err

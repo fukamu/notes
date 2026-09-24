@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,7 +11,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/fukamu/notes/backend/internal/access"
+	accessadapter "github.com/fukamu/notes/backend/internal/adapters/access"
+	"github.com/fukamu/notes/backend/internal/launchgate"
 )
 
 const maximumIndexBytes = 1_000_000
@@ -19,6 +25,22 @@ type HandlerOptions struct {
 	StaticDirectory string
 	BodyLimit       int64
 	Logger          *slog.Logger
+	PrivateRuntime  *PrivateRuntime
+}
+
+type AssertionVerifier interface {
+	Verify(string, time.Time) (access.Subject, error)
+}
+
+type ReadinessChecker interface {
+	Check(context.Context) error
+}
+
+type PrivateRuntime struct {
+	Verifier  AssertionVerifier
+	Gate      launchgate.Reader
+	Readiness ReadinessChecker
+	Clock     func() time.Time
 }
 
 type statusResponseWriter struct {
@@ -49,7 +71,11 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", exact("/healthz", processHealth))
-	mux.HandleFunc("/readyz", exact("/readyz", readiness))
+	mux.HandleFunc("/readyz", exact("/readyz", readiness(options.PrivateRuntime)))
+	mux.HandleFunc(
+		"/api/launch-status",
+		exact("/api/launch-status", launchStatus(options.PrivateRuntime)),
+	)
 	mux.HandleFunc("/api", closedAPI)
 	mux.HandleFunc("/api/", closedAPI)
 	mux.HandleFunc("/", indexHandler(index))
@@ -99,15 +125,90 @@ func processHealth(response http.ResponseWriter, request *http.Request) {
 	writeJSON(response, request, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func readiness(response http.ResponseWriter, request *http.Request) {
-	if !allowRead(response, request) {
-		return
+func readiness(runtime *PrivateRuntime) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		if !allowRead(response, request) {
+			return
+		}
+		if runtime == nil || runtime.Readiness == nil || runtime.Verifier == nil ||
+			runtime.Gate == nil || runtime.Clock == nil {
+			writeJSON(
+				response,
+				request,
+				http.StatusServiceUnavailable,
+				map[string]string{"status": "not_ready"},
+			)
+			return
+		}
+		ctx, cancel := context.WithTimeout(request.Context(), time.Second)
+		defer cancel()
+		if err := runtime.Readiness.Check(ctx); err != nil {
+			writeJSON(
+				response,
+				request,
+				http.StatusServiceUnavailable,
+				map[string]string{"status": "not_ready"},
+			)
+			return
+		}
+		writeJSON(response, request, http.StatusOK, map[string]string{"status": "ready"})
 	}
+}
+
+func launchStatus(runtime *PrivateRuntime) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		setLaunchPrivateHeaders(response)
+		if !allowRead(response, request) {
+			return
+		}
+		if runtime == nil || runtime.Verifier == nil || runtime.Gate == nil || runtime.Clock == nil {
+			writeLaunchUnavailable(response, request)
+			return
+		}
+		if len(request.Header.Values(accessadapter.LegacySitesHeader)) != 0 {
+			writeLaunchUnavailable(response, request)
+			return
+		}
+
+		var subject *access.Subject
+		assertions := request.Header.Values(accessadapter.LocalAssertionHeader)
+		if len(assertions) > 1 || (len(assertions) == 1 && strings.Contains(assertions[0], ",")) {
+			writeLaunchUnavailable(response, request)
+			return
+		}
+		if len(assertions) == 1 {
+			verified, err := runtime.Verifier.Verify(assertions[0], runtime.Clock())
+			if err != nil {
+				writeLaunchUnavailable(response, request)
+				return
+			}
+			subject = &verified
+		}
+		decision, err := launchgate.Resolve(request.Context(), runtime.Gate, subject)
+		if err != nil {
+			writeLaunchUnavailable(response, request)
+			return
+		}
+		writeJSON(response, request, http.StatusOK, map[string]bool{
+			"publicAccessEnabled": decision.PublicAccessEnabled,
+			"userAllowed":         decision.UserAllowed,
+			"canAccess":           decision.CanAccess,
+			"authenticated":       subject != nil,
+		})
+	}
+}
+
+func setLaunchPrivateHeaders(response http.ResponseWriter) {
+	response.Header().Set("Cache-Control", "private, no-store")
+	response.Header().Set("Vary", "Cookie, "+accessadapter.LocalAssertionHeader)
+}
+
+func writeLaunchUnavailable(response http.ResponseWriter, request *http.Request) {
 	writeJSON(
 		response,
 		request,
 		http.StatusServiceUnavailable,
-		map[string]string{"status": "not_ready"},
+		map[string]string{"error": "launch-gate-unavailable"},
 	)
 }
 
@@ -221,9 +322,11 @@ func writeJSON(
 	response http.ResponseWriter,
 	request *http.Request,
 	status int,
-	payload map[string]string,
+	payload any,
 ) {
-	response.Header().Set("Cache-Control", "no-store")
+	if response.Header().Get("Cache-Control") == "" {
+		response.Header().Set("Cache-Control", "no-store")
+	}
 	response.Header().Set("Content-Type", "application/json; charset=utf-8")
 	response.Header().Set("X-Content-Type-Options", "nosniff")
 	response.WriteHeader(status)

@@ -4,12 +4,22 @@ package integration_test
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/fukamu/notes/backend/internal/access"
+	accessadapter "github.com/fukamu/notes/backend/internal/adapters/access"
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
+	"github.com/fukamu/notes/backend/internal/httpapi"
 	"github.com/fukamu/notes/backend/migrations"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -60,6 +70,9 @@ func TestPostgresFoundation(t *testing.T) {
 	assertCoreTables(t, ctx, pool)
 	assertConstraints(t, ctx, pool)
 	assertZeroRowRollback(t, ctx, pool)
+	assertLaunchGate(t, ctx, pool)
+	assertReadiness(t, ctx, pool)
+	assertPrivateHTTPVertical(t, ctx, pool)
 
 	var originalChecksum string
 	if err := pool.QueryRow(ctx, "SELECT checksum FROM notes_goose_checksums WHERE version_id = 1").Scan(&originalChecksum); err != nil {
@@ -84,6 +97,116 @@ func TestPostgresFoundation(t *testing.T) {
 	}
 	if err := migrator.Up(ctx); err != nil {
 		t.Fatalf("Up() after checksum restoration error = %v", err)
+	}
+}
+
+func assertPrivateHTTPVertical(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate local identity key: %v", err)
+	}
+	verifier, err := accessadapter.NewLocalVerifier(publicKey, "https://issuer.test", "notes-local")
+	if err != nil {
+		t.Fatalf("NewLocalVerifier() error = %v", err)
+	}
+	gate, err := postgresadapter.NewLaunchGateReader(pool)
+	if err != nil {
+		t.Fatalf("NewLaunchGateReader() error = %v", err)
+	}
+	readiness, err := postgresadapter.NewSchemaReadiness(pool, migrations.LatestVersion)
+	if err != nil {
+		t.Fatalf("NewSchemaReadiness() error = %v", err)
+	}
+	staticDirectory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(staticDirectory, "index.html"), []byte("test"), 0o600); err != nil {
+		t.Fatalf("write static index: %v", err)
+	}
+	now := time.Unix(1_800_000_000, 0)
+	handler, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory: staticDirectory,
+		BodyLimit:       4_000_000,
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PrivateRuntime: &httpapi.PrivateRuntime{
+			Verifier:  verifier,
+			Gate:      gate,
+			Readiness: readiness,
+			Clock:     func() time.Time { return now },
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+
+	ready := httptest.NewRecorder()
+	handler.ServeHTTP(ready, httptest.NewRequestWithContext(ctx, http.MethodGet, "/readyz", nil))
+	if ready.Code != http.StatusOK || !strings.Contains(ready.Body.String(), `"ready"`) {
+		t.Fatalf("readiness response = %d %s", ready.Code, ready.Body.String())
+	}
+
+	owner, _ := access.ParseSubject("private-owner")
+	assertion, err := accessadapter.SignLocalAssertion(
+		privateKey,
+		"https://issuer.test",
+		"notes-local",
+		owner,
+		now.Add(-time.Minute),
+		now.Add(time.Minute),
+	)
+	if err != nil {
+		t.Fatalf("SignLocalAssertion() error = %v", err)
+	}
+	approvedRequest := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/launch-status", nil)
+	approvedRequest.Header.Set(accessadapter.LocalAssertionHeader, assertion)
+	approved := httptest.NewRecorder()
+	handler.ServeHTTP(approved, approvedRequest)
+	if approved.Code != http.StatusOK || !strings.Contains(approved.Body.String(), `"canAccess":true`) ||
+		!strings.Contains(approved.Body.String(), `"authenticated":true`) {
+		t.Fatalf("approved launch response = %d %s", approved.Code, approved.Body.String())
+	}
+
+	spoofedRequest := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/launch-status", nil)
+	spoofedRequest.Header.Set(accessadapter.LegacySitesHeader, string(owner))
+	spoofed := httptest.NewRecorder()
+	handler.ServeHTTP(spoofed, spoofedRequest)
+	if spoofed.Code != http.StatusServiceUnavailable || strings.Contains(spoofed.Body.String(), string(owner)) {
+		t.Fatalf("spoofed launch response = %d %s", spoofed.Code, spoofed.Body.String())
+	}
+}
+
+func assertReadiness(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	readiness, err := postgresadapter.NewSchemaReadiness(pool, migrations.LatestVersion)
+	if err != nil {
+		t.Fatalf("NewSchemaReadiness() error = %v", err)
+	}
+	if err := readiness.Check(ctx); err != nil {
+		t.Fatalf("schema readiness error = %v", err)
+	}
+}
+
+func assertLaunchGate(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	reader, err := postgresadapter.NewLaunchGateReader(pool)
+	if err != nil {
+		t.Fatalf("NewLaunchGateReader() error = %v", err)
+	}
+	owner, _ := access.ParseSubject("private-owner")
+	facts, err := reader.Read(ctx, &owner)
+	if err != nil || facts.PublicAccessEnabled || facts.UserAllowed {
+		t.Fatalf("closed launch facts = %#v, error = %v", facts, err)
+	}
+	if _, err := pool.Exec(ctx, "INSERT INTO launch_allowed_users(user_id, created_at) VALUES ($1, 0)", string(owner)); err != nil {
+		t.Fatalf("allow owner: %v", err)
+	}
+	facts, err = reader.Read(ctx, &owner)
+	if err != nil || facts.PublicAccessEnabled || !facts.UserAllowed {
+		t.Fatalf("allowed owner facts = %#v, error = %v", facts, err)
+	}
+	other, _ := access.ParseSubject("other-user")
+	facts, err = reader.Read(ctx, &other)
+	if err != nil || facts.UserAllowed {
+		t.Fatalf("other user facts = %#v, error = %v", facts, err)
 	}
 }
 
