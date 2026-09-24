@@ -2,6 +2,7 @@ import {
   resolveLegalCommerceDisclosure,
   type LegalCommerceResolution,
 } from '@/lib/application/legal-commerce';
+import { currentPublicBuildEnvironment } from './public-build';
 
 export class LegalCommerceConfigurationError extends Error {
   readonly reason: Extract<
@@ -19,7 +20,9 @@ export class LegalCommerceConfigurationError extends Error {
 }
 
 export function commercialDisclosureForCurrentEnvironment() {
-  const resolution = resolveLegalCommerceDisclosure(process.env);
+  const resolution = resolveLegalCommerceDisclosure(
+    currentPublicBuildEnvironment(),
+  );
   if (resolution.kind === 'blocked') {
     throw new LegalCommerceConfigurationError(resolution);
   }

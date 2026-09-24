@@ -1,8 +1,7 @@
-import type { Metadata } from 'next';
 import { BillingAccountBoundary } from '@/components/billing-account-boundary';
 import { commercialDisclosureForCurrentEnvironment } from '@/lib/environment/legal-commerce';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: '契約管理 | FUKAMU Notes',
 };
 

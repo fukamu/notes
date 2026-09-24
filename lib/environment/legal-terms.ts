@@ -2,6 +2,7 @@ import {
   resolveLegalTermsDisclosure,
   type LegalTermsResolution,
 } from '@/lib/application/legal-terms';
+import { currentPublicBuildEnvironment } from './public-build';
 
 export class LegalTermsConfigurationError extends Error {
   readonly reason: Extract<
@@ -19,7 +20,9 @@ export class LegalTermsConfigurationError extends Error {
 }
 
 export function legalTermsForCurrentEnvironment() {
-  const resolution = resolveLegalTermsDisclosure(process.env);
+  const resolution = resolveLegalTermsDisclosure(
+    currentPublicBuildEnvironment(),
+  );
   if (resolution.kind === 'blocked') {
     throw new LegalTermsConfigurationError(resolution);
   }

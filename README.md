@@ -11,7 +11,7 @@
 - 本文中の原子的なリンクカプセル、Backspace削除、Undo / Redo
 - displayIdの数値順でカード束をめくる「過去のカード」
 - 端末内の全カードと全ての明示的な一方向リンクを俯瞰する「つながり」
-- Cloudflare D1を使った冪等同期と、競合内容を両方残す明示的な解決UI
+- Go／PostgreSQLを使った冪等同期と、競合内容を両方残す明示的な解決UI
 - Service Workerによる初期設定後のオフライン動作
 - canonical pathnameとブラウザの戻る／進むに連動するカード・ビュー遷移
 
@@ -20,30 +20,23 @@ Undo / Redoの目的と受け入れ条件は [GitHub Issue #1](https://github.co
 ## 必要な環境
 
 - Node.js 22.13以降
+- Go 1.27.1
 - npm
+- Docker（隔離したPostgreSQLテストDB用）
 - Chromium（E2Eテスト用。`npx playwright install chromium` で導入可能）
 
 ## セットアップと起動
 
 ```bash
-npm install
-npm run dev
-```
-
-開発サーバーが表示したURLをブラウザで開きます。ローカル実行ではWrangler / Miniflareがプロジェクト内の `.wrangler/` にD1データを保持します。同期APIは最初の要求時に必要なテーブルと採番カウンターを作成します。スキーマのSQLを生成し直す場合は次を実行します。
-
-```bash
-npm run db:generate
-```
-
-本番ビルド相当で確認する場合は、別々のターミナルで次を実行します。
-
-```bash
+npm ci
+docker compose -f deploy/compose.test.yaml up -d postgres
 npm run build
-npm start -- --port 3100
+npm run test:e2e
 ```
 
-ChatGPT Site版は [fukamu-notes-cards.matoruru.chatgpt.site](https://fukamu-notes-cards.matoruru.chatgpt.site) へ配置されています。Cloudflare D1は `DB` というバインディング名で接続します。Productionへの配置と一般公開は [Production Launch Gate](docs/production-launch-gate.md) で分離し、初期値は非公開です。Siteの認証範囲とD1のallowlistを両方確認してから段階公開します。
+`npm run build:frontend` は既存React UIと公開ページを `dist/frontend` へ静的生成します。公開ページはbuild時に事前描画され、Notesの既知deep linkは同じ非個人化app shellを使います。`npm run test:e2e` は一時Ed25519鍵、loopback限定の専用PostgreSQLテストDB、Goサーバーを自動構成します。実provider、実課金、本番dataには接続しません。手動のGo起動設定は [backend/README.md](backend/README.md) を参照してください。
+
+`npm run dev` はfrontend表示だけを確認するVite開発サーバーです。認証・同期を含む縦断確認には上記E2Eを使ってください。既存ChatGPT Site／D1本番経路はこのintegration作業では変更も削除もされません。Go版のhosting、database、identity、domain、production切替は未承認であり、[Go migration decisions](docs/go-migration-decisions.md) と [Go backend migration](docs/go-migration.md) で別管理します。
 
 ## テスト
 
@@ -58,7 +51,7 @@ npm run test:e2e
 npm run verify
 ```
 
-`npm run test:e2e` は本番ビルド相当のローカルサーバーを自動起動し、デスクトップChromeとPixel 7相当のChromiumで検証します。対象はオフライン作成、自動保存、再読み込み、再接続、別端末同期、仮番号から正式番号への変更、重複仮番号と遅延到着、本文リンク、Undo / Redo、一覧、全カードの一方向リンク可視化、現在カードの初期表示、キーボード／タッチ操作、循環・自己リンク・相互リンク、競合保持、deep link、戻る／進むです。
+`npm run test:e2e` は静的frontendを配信するGoローカルサーバーを自動起動し、デスクトップChromeとPixel 7相当のChromiumで検証します。対象はオフライン作成、自動保存、再読み込み、再接続、別端末同期、仮番号から正式番号への変更、重複仮番号と遅延到着、本文リンク、Undo / Redo、一覧、全カードの一方向リンク可視化、現在カードの初期表示、キーボード／タッチ操作、循環・自己リンク・相互リンク、競合保持、deep link、戻る／進むです。
 
 `npm run check` では全runtimeの型検査、静的検査、単体テスト、本番ビルドをまとめて実行します。`npm run verify` はCIと共通の入口で、format check、`check`、Desktop Chrome／Pixel 7相当のE2Eを実行します。型検査のruntime分離、trust boundary、assertion方針、段階的なunsafe lint／codec導入は [型安全の境界と検査](docs/type-safety.md)、データストア・ナビゲーション・描画の依存方向と交換契約は [Application / presentation contracts](docs/application-presentation.md)、認証済みsessionからのVaultContext導出と未認証runtime停止契約は [Identity, session, and VaultContext boundary](docs/session-boundary.md)、Google認証のstate・nonce・PKCE・issuer+subject・明示linking契約は [Google OIDC boundary](docs/google-oidc-boundary.md)、Email OTPの一回限り・試行／再送／濫用制限・明示linking・NIST上の制約は [Email OTP boundary](docs/email-otp-boundary.md)、本文editorのheadless操作・Tiptap adapter・renderer・structural DOM契約は [Card editor contracts](docs/card-editor.md)、全UI境界・raw interaction・親 #8 要件1–29の対応は [Presentation boundary audit](docs/presentation-boundary-audit.md) を参照してください。検証はlocal fixture／emulatorのみを使い、本番D1や本番データへ接続しません。
 
@@ -68,11 +61,11 @@ Issue、統合／作業ブランチ、PR、merge後検証、型付き純粋ロ�
 
 初回だけはオンラインでアプリを開き、画面と実行資源をService Workerへ保存してください。以後は通信がなくても、カードの作成・編集・自動保存・リンク・一覧・つながりを、この端末のIndexedDBだけで利用できます。
 
-Service Workerが保存するのは非個人化された `/` のapp shell、manifest、favicon、`/_next/static/` 配下のbuild assetだけです。カードURLのonline response、query付きnavigation、API、認証/OAuth callback、課金・account経路、allowlist外resourceはCacheStorageへ保存しません。offlineのcanonical card/history/connections navigationは、個別responseではなく共通app shellから起動してIndexedDBを読みます。logout cache purgeは対象cacheの消去を再確認したackが返るまで完了扱いにしません。
+Service Workerが保存するのは非個人化された `/` のapp shell、manifest、favicon、`/assets/` 配下のcontent-hash付きbuild assetだけです。カードURLのonline response、query付きnavigation、API、認証/OAuth callback、課金・account経路、allowlist外resourceはCacheStorageへ保存しません。offlineのcanonical card/history/connections navigationは、個別responseではなく共通app shellから起動してIndexedDBを読みます。logout cache purgeは対象cacheの消去を再確認したackが返るまで完了扱いにしません。
 
 詳しいcache境界、migration、rollback方針は [`docs/service-worker-cache.md`](docs/service-worker-cache.md) を参照してください。
 
-開発サーバーは差し替え用の仮想モジュールを使うため、オフライン再読み込みの確認には `npm run build` と `npm start -- --port 3100`、または `npm run test:e2e` を使ってください。ブラウザのサイトデータを消すと、その端末の未同期データとオフライン用キャッシュも消えます。
+オフライン再読み込みの確認には `npm run test:e2e` を使ってください。ブラウザのサイトデータを消すと、その端末の未同期データとオフライン用キャッシュも消えます。
 
 ## URLとブラウザ履歴
 
@@ -104,7 +97,7 @@ Service Workerが保存するのは非個人化された `/` のapp shell、mani
 
 端末はオフライン作成時に、端末内で使われている最大の正式番号・仮番号より大きな仮番号を割り当てます。仮番号はIndexedDBに残るため再読み込み後も維持されます。別端末同士で仮番号が重複しても構いません。
 
-新しいカードを同期先が初めて受理すると、D1の単一カウンターをカード作成と同じバッチ内で進め、単調増加する正の整数を正式番号として確定します。同時に受理したカードはUUIDv7で安定して並べてから採番します。再送しても同じカードや番号を増やしません。
+新しいカードを同期先が初めて受理すると、PostgreSQLの単一カウンターをカード作成と同じtransaction内で進め、単調増加する正の整数を正式番号として確定します。同時に受理したカードはUUIDv7で安定して並べてから採番します。再送しても同じカードや番号を増やしません。
 
 確定済みの正式番号は変更・再利用しません。古いカードが後から届いても、その時点の次番号になります。端末内の仮番号と他端末から届いた正式番号が衝突した場合は、正式番号を維持し、未確定カードだけを作成順のまま未使用番号へ振り直します。採番前後で内部IDは変わらないため、本文中のリンク先も変わりません。
 
@@ -130,9 +123,9 @@ type BodySegment =
 - 1人・1コレクション専用で、公開登録、権限管理、複数ユーザー分離はありません。
 - 初回のアプリ資源取得には通信が必要です。
 - UUIDv7は端末時計が正確である前提です。時計ずれ補正は行いません。
-- 同期先は本文を読めます。エンドツーエンド暗号化はありません。
+- 現在接続済みのlegacy同期先は本文を読めます。Goの暗号化経路は後続taskで接続します。
 - 競合は自動マージせず、双方を保持して利用者へ選択を求めます。
-- 旧版とのデータ、API、DB、仕様の互換性・移行機能はありません。
+- legacy APIのwire互換は維持していますが、既存D1からPostgreSQLへの本番data移行と切替は未実施です。
 - 画像、添付、検索、タグ、推薦、AI整理、リアルタイム共同編集は対象外です。
 - 大量カード向けの高度な一覧仮想化やグラフ集約は行いません。
 - 任意の有向グラフでは交差を常にゼロにできません。ELKで不要な交差と重なりを減らし、残る交差はhaloで判別しやすくしますが、密グラフでは線が多くなります。

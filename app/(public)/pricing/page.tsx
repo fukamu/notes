@@ -1,4 +1,3 @@
-import type { Metadata } from 'next';
 import { LegalDocument } from '@/components/legal-document';
 import { PublicRouteLink } from '@/components/public-route-link';
 import { buttonVariants } from '@/components/ui/button';
@@ -8,7 +7,7 @@ import {
 } from '@/lib/application/legal-commerce';
 import { commercialDisclosureForCurrentEnvironment } from '@/lib/environment/legal-commerce';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: '料金 | FUKAMU Notes',
 };
 

@@ -94,7 +94,13 @@ describe('issue-based delivery contract', () => {
       /golang:1\.27\.1-alpine@sha256:[a-f0-9]{64} AS go-build/,
     );
     expect(dockerfile).toContain('COPY backend/go.mod backend/go.sum ./');
-    expect(dockerfile).toContain('FROM scratch AS static-assets');
+    expect(dockerfile).toMatch(
+      /node:22\.13\.0-alpine@sha256:[a-f0-9]{64} AS frontend-build/,
+    );
+    expect(dockerfile).toContain('RUN npm run build:frontend');
+    expect(dockerfile).toContain(
+      'COPY --from=frontend-build --chown=65532:65532 /source/dist/frontend/ /app/static/',
+    );
     expect(dockerfile).toMatch(/\nFROM scratch\n/);
     expect(quality).toContain('NOTES_TEST_DATABASE_URL');
     expect(quality).toContain(

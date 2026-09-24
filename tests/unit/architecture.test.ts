@@ -2,7 +2,15 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const roots = ['app', 'components', 'db', 'lib', 'server', 'service-worker'];
+const roots = [
+  'app',
+  'components',
+  'db',
+  'frontend',
+  'lib',
+  'server',
+  'service-worker',
+];
 
 async function sourceFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -27,6 +35,48 @@ describe('one-way link architecture', () => {
     expect(violations).toEqual([]);
   });
 });
+
+describe('static frontend delivery architecture', () => {
+  it('keeps request-time page delivery on Go and legacy RSC runtimes out of the build', async () => {
+    const [packageSource, dockerfile, frontendConfig, goStatic] =
+      await Promise.all([
+        readFile('package.json', 'utf8'),
+        readFile('deploy/Dockerfile', 'utf8'),
+        readFile('vite.frontend.config.ts', 'utf8'),
+        readFile('backend/internal/httpapi/static.go', 'utf8'),
+      ]);
+    const packageJson: unknown = JSON.parse(packageSource);
+    if (!isRecord(packageJson) || !isRecord(packageJson.scripts)) {
+      throw new Error('package.json scripts are invalid');
+    }
+    expect(packageJson.scripts.build).toContain('build:frontend');
+    expect(packageJson.scripts.start).toBe('go -C backend run ./cmd/notes');
+    for (const dependenciesKey of ['dependencies', 'devDependencies']) {
+      const dependencies = Reflect.get(packageJson, dependenciesKey);
+      if (!isRecord(dependencies)) continue;
+      for (const removed of [
+        'vinext',
+        'react-server-dom-webpack',
+        '@vitejs/plugin-rsc',
+        '@openai/sites-vite-plugin',
+        '@cloudflare/vite-plugin',
+        'wrangler',
+      ]) {
+        expect(dependencies).not.toHaveProperty(removed);
+      }
+    }
+    expect(frontendConfig).toContain("outDir: '../dist/frontend'");
+    expect(dockerfile).toContain('/source/dist/frontend/ /app/static/');
+    expect(goStatic).toContain('notesCardRoute');
+    expect(`${packageSource}\n${dockerfile}\n${frontendConfig}`).not.toContain(
+      '/_next/',
+    );
+  });
+});
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 
 describe('trust-boundary architecture', () => {
   it('does not reintroduce unchecked boundary casts or blanket escapes', async () => {
@@ -2186,7 +2236,8 @@ describe('legal commerce disclosure architecture', () => {
     expect(core).not.toMatch(
       /process\.env|fetch\(|indexedDB|window\.|document\.|localStorage|console\./,
     );
-    expect(adapter).toContain('process.env');
+    expect(adapter).toContain('currentPublicBuildEnvironment()');
+    expect(adapter).not.toContain('process.env');
     expect(script).toContain('resolveLegalCommerceDisclosure(process.env)');
     expect(packageSource).toContain('npm run check:legal-commerce');
     expect(packageSource).toContain("'app/(public)'");
@@ -2216,7 +2267,8 @@ describe('legal terms disclosure architecture', () => {
     expect(core).not.toMatch(
       /process\.env|fetch\(|indexedDB|window\.|document\.|localStorage|console\.|Promise/,
     );
-    expect(adapter).toContain('process.env');
+    expect(adapter).toContain('currentPublicBuildEnvironment()');
+    expect(adapter).not.toContain('process.env');
     expect(script).toContain('evaluateLegalTermsConsistency');
     expect(packageSource).toContain('npm run check:legal-terms');
     expect(coverage).toContain("'lib/application/legal-terms.ts'");
@@ -2380,7 +2432,8 @@ describe('privacy disclosure architecture', () => {
     expect(core).not.toMatch(
       /process\.env|fetch\(|indexedDB|window\.|document\.|localStorage|console\./,
     );
-    expect(adapter).toContain('process.env');
+    expect(adapter).toContain('currentPublicBuildEnvironment()');
+    expect(adapter).not.toContain('process.env');
     expect(script).toContain('resolvePrivacyDisclosure(process.env)');
     expect(packageSource).toContain('npm run check:privacy-disclosure');
     expect(packageSource).toContain("'app/(public)'");
@@ -2471,7 +2524,8 @@ describe('privacy processing registry architecture', () => {
     expect(core).not.toMatch(
       /process\.env|fetch\(|indexedDB|window\.|document\.|localStorage|console\./,
     );
-    expect(adapter).toContain('process.env');
+    expect(adapter).toContain('currentPublicBuildEnvironment()');
+    expect(adapter).not.toContain('process.env');
     expect(script).toContain('evaluatePrivacyProcessingConsistency');
     expect(packageSource).toContain(
       'npm run check:privacy-processing-registry',

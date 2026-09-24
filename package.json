@@ -6,15 +6,16 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
-    "build": "npm run check:legal-commerce && npm run check:privacy-disclosure && npm run check:privacy-processing-registry && npm run check:legal-terms && npm run check:external-transmission && npm run check:card-payment-security && npm run check:launch-compliance && npm run build:service-worker && vinext build && node scripts/verify-service-worker.mjs && node scripts/verify-environment.mjs",
+    "dev": "vite --config vite.frontend.config.ts",
+    "build": "npm run check:legal-commerce && npm run check:privacy-disclosure && npm run check:privacy-processing-registry && npm run check:legal-terms && npm run check:external-transmission && npm run check:card-payment-security && npm run check:launch-compliance && npm run build:frontend && node scripts/verify-service-worker.mjs && node --experimental-strip-types scripts/verify-environment.mts",
+    "build:frontend": "npm run build:service-worker && vite build --config vite.frontend.config.ts && vite build --config vite.frontend.ssr.config.ts && node --experimental-strip-types scripts/prerender-public.mts",
     "build:service-worker": "node scripts/build-service-worker.mjs",
-    "start": "wrangler dev --config dist/server/wrangler.json",
+    "start": "go -C backend run ./cmd/notes",
     "lint": "npm run lint:app && npm run lint:api && npm run lint:service-worker && npm run lint:tooling && npm run lint:test",
     "lint:app": "oxlint --tsconfig=tsconfig.json app/layout.tsx 'app/(notes)' 'app/(public)' components hooks lib",
     "lint:api": "oxlint --tsconfig=tsconfig.api.json app/api db server",
     "lint:service-worker": "oxlint --tsconfig=tsconfig.service-worker.json service-worker",
-    "lint:tooling": "oxlint --tsconfig=tsconfig.tooling.json drizzle.config.ts next.config.ts playwright.config.ts scripts vite.config.ts vitest.config.ts vitest.benchmark.config.ts vitest.client-benchmark.config.ts vitest.server-load.config.ts",
+    "lint:tooling": "oxlint --tsconfig=tsconfig.tooling.json drizzle.config.ts playwright.config.ts scripts vite.config.ts vite.frontend.config.ts vite.frontend.ssr.config.ts vitest.config.ts vitest.benchmark.config.ts vitest.client-benchmark.config.ts vitest.server-load.config.ts",
     "lint:test": "oxlint --tsconfig=tsconfig.test.json tests",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
@@ -43,7 +44,7 @@
     "go:test:integration": "NOTES_TEST_DATABASE_URL=${NOTES_TEST_DATABASE_URL:-postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable} go -C backend test -tags=integration ./tests/integration/...",
     "go:check": "npm run go:format:check && go -C backend vet ./... && go -C backend test ./... && npm run go:test:integration && go -C backend test -race ./... && go -C backend build ./cmd/...",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build",
-    "check:environment": "node scripts/verify-environment.mjs",
+    "check:environment": "node --experimental-strip-types scripts/verify-environment.mts",
     "check:legal-commerce": "node --experimental-strip-types scripts/verify-legal-commerce.mjs",
     "check:privacy-disclosure": "node --experimental-strip-types scripts/verify-privacy-disclosure.mjs",
     "check:privacy-processing-registry": "node --experimental-strip-types scripts/verify-privacy-processing-registry.mjs",
@@ -68,38 +69,38 @@
     "lucide-react": "1.31.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "react-server-dom-webpack": "19.2.6",
-    "shadcn": "4.18.0",
     "tailwind-merge": "3.6.0",
     "tw-animate-css": "1.4.0",
-    "uuid": "^14.0.2",
-    "vinext": "1.0.0-beta.5"
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.37.1",
     "@cloudflare/workers-types": "4.20260515.1",
-    "@openai/sites-vite-plugin": "0.2.0",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
-    "@vitejs/plugin-rsc": "0.5.26",
     "@vitest/coverage-v8": "^5.0.0",
     "drizzle-kit": "0.31.10",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.14.5",
-    "miniflare": "4.20260515.0",
+    "miniflare": "4.20260730.0",
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "7.0.2001",
     "playwright": "^1.63.0",
+    "shadcn": "4.18.0",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
-    "vite": "8.0.13",
-    "vitest": "^5.0.0",
-    "wrangler": "4.92.0"
+    "vite": "8.3.1",
+    "vitest": "^5.0.0"
+  },
+  "overrides": {
+    "miniflare": {
+      "sharp": "0.35.4",
+      "undici": "7.29.1"
+    }
   },
   "type": "module"
 }

@@ -5,14 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,13 +19,12 @@ import (
 	"github.com/fukamu/notes/backend/internal/synclegacy"
 )
 
-const maximumIndexBytes = 1_000_000
-
 type HandlerOptions struct {
-	StaticDirectory string
-	BodyLimit       int64
-	Logger          *slog.Logger
-	PrivateRuntime  *PrivateRuntime
+	StaticDirectory     string
+	BodyLimit           int64
+	Logger              *slog.Logger
+	PrivateRuntime      *PrivateRuntime
+	EnableLocalFixtures bool
 }
 
 type AssertionVerifier interface {
@@ -74,7 +70,7 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 	if options.BodyLimit < 1 {
 		return nil, errors.New("body limit must be positive")
 	}
-	index, err := loadIndex(options.StaticDirectory)
+	staticSite, err := loadStaticSite(options.StaticDirectory)
 	if err != nil {
 		return nil, err
 	}
@@ -90,36 +86,35 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 		"/api/sync",
 		exact("/api/sync", legacySync(options.PrivateRuntime, options.BodyLimit)),
 	)
+	mux.HandleFunc(
+		"/api/v2/sync",
+		exact("/api/v2/sync", disconnectedProtectedAPI(options.PrivateRuntime, options.EnableLocalFixtures, http.MethodPost)),
+	)
+	mux.HandleFunc(
+		"/api/billing/checkout",
+		exact("/api/billing/checkout", disconnectedProtectedAPI(options.PrivateRuntime, options.EnableLocalFixtures, http.MethodGet, http.MethodPost)),
+	)
+	mux.HandleFunc(
+		"/api/account/terms-consent",
+		exact("/api/account/terms-consent", disconnectedProtectedAPI(options.PrivateRuntime, options.EnableLocalFixtures, http.MethodGet, http.MethodPost)),
+	)
+	for _, path := range []string{
+		"/api/account/deletion",
+		"/api/account/deletion/status",
+		"/api/account/privacy-requests",
+		"/api/account/privacy-requests/status",
+		"/api/billing/cancel",
+	} {
+		mux.HandleFunc(path, exact(path, disconnectedPublicAPI(options.EnableLocalFixtures, http.MethodGet, http.MethodPost)))
+	}
 	mux.HandleFunc("/api", closedAPI)
 	mux.HandleFunc("/api/", closedAPI)
-	mux.HandleFunc("/", indexHandler(index))
+	mux.HandleFunc("/", staticSite.handler())
 
 	handler := limitBody(options.BodyLimit, mux)
 	handler = recoverPanics(options.Logger, handler)
 	handler = logRequests(options.Logger, handler)
 	return handler, nil
-}
-
-func loadIndex(staticDirectory string) ([]byte, error) {
-	path := filepath.Join(staticDirectory, "index.html")
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open static index: %w", err)
-	}
-	defer file.Close()
-
-	info, err := file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("inspect static index: %w", err)
-	}
-	if !info.Mode().IsRegular() || info.Size() > maximumIndexBytes {
-		return nil, errors.New("static index must be a regular file no larger than 1000000 bytes")
-	}
-	content, err := io.ReadAll(io.LimitReader(file, maximumIndexBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("read static index: %w", err)
-	}
-	return content, nil
 }
 
 func exact(path string, handler http.HandlerFunc) http.HandlerFunc {
@@ -330,24 +325,66 @@ func closedAPI(response http.ResponseWriter, request *http.Request) {
 	writeError(response, request, http.StatusNotFound, "not_found")
 }
 
-func indexHandler(index []byte) http.HandlerFunc {
+func disconnectedProtectedAPI(
+	runtime *PrivateRuntime,
+	fixtures bool,
+	methods ...string,
+) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/" {
-			writeError(response, request, http.StatusNotFound, "not_found")
+		setLaunchPrivateHeaders(response)
+		if !allowMethods(response, request, methods...) {
 			return
 		}
-		if !allowRead(response, request) {
+		if runtime == nil || runtime.Verifier == nil || runtime.Gate == nil || runtime.Clock == nil {
+			writeLaunchUnavailable(response, request)
 			return
 		}
-		response.Header().Set("Cache-Control", "no-store")
-		response.Header().Set("Content-Type", "text/html; charset=utf-8")
-		response.Header().Set("X-Content-Type-Options", "nosniff")
-		response.WriteHeader(http.StatusOK)
-		if request.Method == http.MethodHead {
+		subject, valid := resolvePrivateIdentity(request, runtime)
+		if !valid {
+			writeLaunchUnavailable(response, request)
 			return
 		}
-		_, _ = response.Write(index)
+		decision, err := launchgate.Resolve(request.Context(), runtime.Gate, subject)
+		if err != nil {
+			writeLaunchUnavailable(response, request)
+			return
+		}
+		if !decision.CanAccess {
+			writeLaunchDenied(response, request)
+			return
+		}
+		writeDisconnected(response, request, fixtures)
 	}
+}
+
+func disconnectedPublicAPI(fixtures bool, methods ...string) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		if !allowMethods(response, request, methods...) {
+			return
+		}
+		writeDisconnected(response, request, fixtures)
+	}
+}
+
+func allowMethods(response http.ResponseWriter, request *http.Request, methods ...string) bool {
+	for _, method := range methods {
+		if request.Method == method {
+			return true
+		}
+	}
+	response.Header().Set("Allow", strings.Join(methods, ", "))
+	writeError(response, request, http.StatusMethodNotAllowed, "method_not_allowed")
+	return false
+}
+
+func writeDisconnected(response http.ResponseWriter, request *http.Request, fixtures bool) {
+	status := http.StatusServiceUnavailable
+	errorCode := "unavailable"
+	if fixtures {
+		status = http.StatusNotFound
+		errorCode = "not-found"
+	}
+	writeJSON(response, request, status, map[string]string{"error": errorCode})
 }
 
 func allowRead(response http.ResponseWriter, request *http.Request) bool {
@@ -361,7 +398,7 @@ func allowRead(response http.ResponseWriter, request *http.Request) bool {
 
 func limitBody(limit int64, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.URL.Path == "/api/sync" {
+		if authorizesBeforeBody(request.URL.Path) {
 			next.ServeHTTP(response, request)
 			return
 		}
@@ -383,6 +420,15 @@ func limitBody(limit int64, next http.Handler) http.Handler {
 		request.Body = io.NopCloser(bytes.NewReader(body))
 		next.ServeHTTP(response, request)
 	})
+}
+
+func authorizesBeforeBody(path string) bool {
+	switch path {
+	case "/api/sync", "/api/v2/sync", "/api/billing/checkout", "/api/account/terms-consent":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeBodyTooLarge(response http.ResponseWriter, request *http.Request) {

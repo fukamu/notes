@@ -1,4 +1,3 @@
-import type { Metadata } from 'next';
 import {
   LegalDefinitionList,
   LegalDocument,
@@ -7,7 +6,7 @@ import { PublicRouteLink } from '@/components/public-route-link';
 import { privacyRequestKindLabel } from '@/lib/application/privacy-disclosure';
 import { privacyDisclosureForCurrentEnvironment } from '@/lib/environment/privacy-disclosure';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: '個人情報保護方針 | FUKAMU Notes',
 };
 

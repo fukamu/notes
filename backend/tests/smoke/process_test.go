@@ -23,13 +23,7 @@ func TestNotesProcessHealthClosedRoutesAndSIGTERM(t *testing.T) {
 
 	address := availableAddress(t)
 	staticDirectory := t.TempDir()
-	if err := os.WriteFile(
-		filepath.Join(staticDirectory, "index.html"),
-		[]byte("<!doctype html><title>process smoke</title>"),
-		0o600,
-	); err != nil {
-		t.Fatalf("write index: %v", err)
-	}
+	writeStaticSite(t, staticDirectory)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -79,6 +73,26 @@ func TestNotesProcessHealthClosedRoutesAndSIGTERM(t *testing.T) {
 	}
 	if !strings.Contains(logs, `"reason":"shutdown"`) {
 		t.Fatalf("process did not record graceful shutdown: %s", logs)
+	}
+}
+
+func writeStaticSite(t *testing.T, directory string) {
+	t.Helper()
+	files := []string{
+		"index.html", "favicon.svg", "manifest.webmanifest", "og.png", "sw.js",
+		"account/billing/index.html", "account/privacy/index.html", "account/terms/index.html",
+		"checkout/index.html", "company/index.html", "legal/commercial-transactions/index.html",
+		"legal/external-transmission/index.html", "legal/privacy/index.html", "legal/terms/index.html",
+		"pricing/index.html", "assets/app-Ab12.js",
+	}
+	for _, filename := range files {
+		path := filepath.Join(directory, filepath.FromSlash(filename))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatalf("mkdir static fixture: %v", err)
+		}
+		if err := os.WriteFile(path, []byte("<!doctype html><title>process smoke</title>"), 0o600); err != nil {
+			t.Fatalf("write static fixture: %v", err)
+		}
 	}
 }
 

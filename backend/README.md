@@ -1,11 +1,11 @@
 # Notes Go backend
 
 This directory contains the replacement server tracked by parent Issue #409.
-The current T04 implementation does not replace production routing or the
-existing TypeScript server. It exposes a fixed local index, process health,
-database readiness, the private launch-status path, and the legacy sync path
-when the complete local private runtime is configured. All other API routes
-remain closed.
+The T05 implementation serves the statically built TypeScript/React frontend,
+process health, database readiness, the private launch-status path, and the
+legacy sync path from one Go process. It has no request-time Node, Workers,
+RSC, or SSR dependency. Disconnected APIs remain closed; local/test mode keeps
+their explicit 404 fixture contract without connecting provider operations.
 
 Go 1.27.1 is pinned in `go.mod`, CI, and the container build stage. PostgreSQL
 access uses pinned pgx and goose versions; no ORM is used.
@@ -13,9 +13,11 @@ access uses pinned pgx and goose versions; no ORM is used.
 ## Local start
 
 ```bash
+repo_root="$PWD"
+npm run build:frontend
 NOTES_ENVIRONMENT=local \
 NOTES_HTTP_ADDR=127.0.0.1:8080 \
-NOTES_STATIC_DIR="$PWD/backend/static" \
+NOTES_STATIC_DIR="$repo_root/dist/frontend" \
 go -C backend run ./cmd/notes
 ```
 
@@ -28,7 +30,9 @@ missing configuration stops the process before it listens.
 `/healthz` reports process health. With private mode disabled, `/readyz` and
 `/api/launch-status` fail closed. `/api` and API routes other than
 `/api/launch-status` and the conditionally configured `/api/sync` remain
-closed.
+closed. Known disconnected routes return the legacy local/test fixture
+response only in non-production environments and a 503 in production; they
+never execute billing, deletion, privacy, terms, or Sync v2 business effects.
 
 ## Local signed identity and launch gate
 
@@ -52,7 +56,9 @@ The server receives only the public verification key. Test code owns the
 ephemeral private signing key. Assertions have an exact issuer, audience,
 subject, issued-at, and expiry contract and a maximum ten-minute lifetime.
 Unsigned identity values and the former `Oai-Authenticated-User-Id` header are
-not trusted.
+not trusted. The frontend sign-in link is omitted unless
+`FUKAMU_AUTH_ENTRY_URL` is supplied at build time as a same-origin absolute
+path. No production identity entry is selected by T05.
 
 With this mode configured, `/readyz` succeeds only when the PostgreSQL schema
 is at the embedded migration version and the default-closed launch row exists.
@@ -66,7 +72,11 @@ the body is read. The request remains capped at 4,000,000 bytes even if the
 general body limit is configured higher. The PostgreSQL adapter applies the
 legacy mutations in one serializable transaction with bounded retries for
 serialization failures and deadlocks. A public launch flag never grants legacy
-data access by itself. The browser is not pointed at this Go route until T05.
+data access by itself. T05 Playwright points the browser at this Go route with
+an ephemeral private key owned by the test runner. `notesctl prepare-e2e` is
+test-only: it requires the `test` environment plus the loopback/exact-database
+allowlist, resets only that disposable schema, applies migrations, and inserts
+one opaque allowlisted fixture subject.
 
 ## Local PostgreSQL migration
 
@@ -88,4 +98,5 @@ does not match `NOTES_ENVIRONMENT`. It does not print connection values.
 
 With the Compose database running, run `npm run go:check` from the repository
 root. It verifies formatting, vet, unit/process/integration tests, the race
-detector, and both commands. The same gate is part of `npm run verify`.
+detector, both commands, and Go-served desktop/mobile browser behavior. The
+same gate is part of `npm run verify`.

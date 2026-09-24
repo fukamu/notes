@@ -21,6 +21,7 @@ const vaultB = {
 const sharedCardId = fixtureCardId('logout-e2e-shared-card');
 
 let harnessSource: Promise<string> | undefined;
+const harnessPath = '/__e2e/logout-purge-harness.js';
 
 test('logout purge drains tabs and prevents browser content resurrection', async ({
   page,
@@ -303,7 +304,15 @@ async function ready(page: Page): Promise<void> {
 
 async function installHarness(page: Page): Promise<void> {
   harnessSource ??= buildHarness();
-  await page.addScriptTag({ content: await harnessSource });
+  const source = await harnessSource;
+  await page.route(`**${harnessPath}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/javascript',
+      body: source,
+    });
+  });
+  await page.addScriptTag({ url: harnessPath });
 }
 
 async function buildHarness(): Promise<string> {

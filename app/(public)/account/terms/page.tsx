@@ -1,11 +1,10 @@
-import type { Metadata } from 'next';
 import {
   TermsConsentBoundary,
   type TermsConsentSource,
 } from '@/components/terms-consent-boundary';
 import { legalTermsForCurrentEnvironment } from '@/lib/environment/legal-terms';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: '利用規約の確認 | FUKAMU Notes',
 };
 

@@ -1,5 +1,5 @@
 const CACHE_NAMESPACE = 'fukamu-notes-';
-const CACHE_NAME = 'fukamu-notes-static-v3';
+const CACHE_NAME = 'fukamu-notes-static-v4';
 const APP_SHELL_PATH = '/';
 const APP_SHELL_RESOURCES = [
   APP_SHELL_PATH,
@@ -69,9 +69,7 @@ function cachePolicyForRequest(input, origin) {
   return { kind: 'network-only' };
 }
 function isStaticResourcePath(pathname) {
-  return (
-    STATIC_RESOURCE_PATHS.has(pathname) || pathname.startsWith('/_next/static/')
-  );
+  return STATIC_RESOURCE_PATHS.has(pathname) || pathname.startsWith('/assets/');
 }
 function isAppShellNavigationPath(pathname) {
   if (pathname === '/' || pathname === '/history') return true;
@@ -134,7 +132,7 @@ async function handleWorkerCommand(command, replyPort) {
       const cache = await caches.open(CACHE_NAME);
       const cached = await Promise.all(
         command.urls.map((url) =>
-          url.startsWith('/_next/static/')
+          url.startsWith('/assets/')
             ? cache.match(url).then((response) => Boolean(response))
             : Promise.resolve(false),
         ),

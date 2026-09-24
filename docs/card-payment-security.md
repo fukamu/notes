@@ -91,14 +91,17 @@ as provider/acquirer confirmation.
 
 ### Dependency audit result
 
-On 2026-09-15, `npm audit --omit=dev --audit-level=high` exited with status 1
-and reported five high-severity findings involving `image-size` through
-`vinext`, `react-server-dom-webpack`, `undici`, and `vite`. The suggested full
-remediation changes framework/runtime versions outside their current declared
-ranges, so this Issue does not apply an unreviewed forced upgrade. These results
-are unresolved production-launch blockers and require applicability triage,
-safe version selection, regression verification, and recorded ownership before
-the launch checklist may pass.
+T05 rechecked the dependency graph on 2026-09-25 after removing vinext, RSC,
+Wrangler, and the Sites runtime. `shadcn` is a build-only dependency, Vite was
+updated to 8.3.1, and Miniflare's vulnerable pinned `sharp` and `undici` patch
+versions are overridden and covered by the complete legacy D1 compatibility
+suite. `npm audit --omit=dev --audit-level=high` reports zero vulnerabilities;
+the full development graph reports four moderate findings in the obsolete
+esbuild bundled through `drizzle-kit`. That CLI is not included in the scratch
+Go runtime image and no esbuild development server is exposed. Replacing or
+removing the legacy D1 generation tool belongs to T14; a forced downgrade to
+the audit tool's suggested old drizzle-kit is not accepted without migration
+regression evidence.
 
 ## EC merchant controls
 

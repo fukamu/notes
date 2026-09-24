@@ -52,12 +52,13 @@ func run() int {
 		"address", configuration.HTTPAddress,
 	)
 	if err := httpapi.Run(ctx, httpapi.ServerOptions{
-		Address:         configuration.HTTPAddress,
-		StaticDirectory: configuration.StaticDirectory,
-		BodyLimit:       configuration.BodyLimit,
-		ShutdownTimeout: configuration.ShutdownTimeout,
-		Logger:          logger,
-		PrivateRuntime:  privateRuntime,
+		Address:             configuration.HTTPAddress,
+		StaticDirectory:     configuration.StaticDirectory,
+		BodyLimit:           configuration.BodyLimit,
+		ShutdownTimeout:     configuration.ShutdownTimeout,
+		Logger:              logger,
+		PrivateRuntime:      privateRuntime,
+		EnableLocalFixtures: configuration.Environment != config.EnvironmentProduction,
 	}); err != nil {
 		logger.Error("server stopped", "error_code", "server_failure")
 		return 1
