@@ -20,6 +20,13 @@ import {
 import { authorizeSession, sessionRecordDecoder } from '@/server/core/session';
 import { evaluateCsrfRequest } from '@/server/core/csrf';
 import {
+  oidcProviderConfigurationDecoder,
+  pendingOidcTransactionDecoder,
+  validateOidcClaims,
+  validateOidcTransaction,
+  verifiedOidcClaimsDecoder,
+} from '@/server/core/oidc';
+import {
   decodeEnvelopeCiphertext,
   parseCryptoObjectRevision,
   parseDekVersion,
@@ -104,6 +111,45 @@ describe('Go migration shared contract fixtures', () => {
       kind: 'denied',
       reason: 'origin-mismatch',
     });
+  });
+
+  it('keeps OIDC transaction and verified-claim policy executable', async () => {
+    const fixtureValue = record(await fixture('identity/oidc.json'));
+    const configuration = decodeOrThrow(
+      oidcProviderConfigurationDecoder,
+      field(fixtureValue, 'configuration'),
+      'shared OIDC configuration fixture',
+    );
+    const transaction = decodeOrThrow(
+      pendingOidcTransactionDecoder,
+      field(fixtureValue, 'transaction'),
+      'shared OIDC transaction fixture',
+    );
+    const claims = decodeOrThrow(
+      verifiedOidcClaimsDecoder,
+      field(fixtureValue, 'claims'),
+      'shared OIDC claims fixture',
+    );
+    const now = number(field(fixtureValue, 'nowEpochSeconds'));
+    expect(
+      validateOidcTransaction(
+        transaction,
+        transaction.state,
+        configuration,
+        now,
+      ),
+    ).toEqual({ kind: 'valid' });
+    const expected = record(field(fixtureValue, 'expected'));
+    expect(validateOidcClaims(claims, transaction, configuration, now)).toEqual(
+      {
+        kind: 'valid',
+        identityKey: {
+          issuer: string(field(expected, 'issuer')),
+          subject: string(field(expected, 'subject')),
+        },
+        email: string(field(expected, 'email')),
+      },
+    );
   });
 
   it('fixes the envelope format and canonical AAD byte source', async () => {
@@ -237,6 +283,13 @@ function field(value: Record<string, unknown>, name: string): unknown {
 
 function string(value: unknown): string {
   if (typeof value !== 'string') throw new Error('expected fixture string');
+  return value;
+}
+
+function number(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
+    throw new Error('expected fixture safe integer');
+  }
   return value;
 }
 
