@@ -58,7 +58,11 @@ describe('issue-based delivery contract', () => {
   });
 
   it('runs read-only verification for main and every delivery branch without deployment', async () => {
-    const quality = await readFile('.github/workflows/quality.yml', 'utf8');
+    const [quality, goModule, dockerfile] = await Promise.all([
+      readFile('.github/workflows/quality.yml', 'utf8'),
+      readFile('backend/go.mod', 'utf8'),
+      readFile('deploy/Dockerfile', 'utf8'),
+    ]);
     const integrationBranchFilters = quality.match(/- 'integration\/\*\*'/g);
     const mainBranchFilters = quality.match(/- main/g);
 
@@ -72,11 +76,23 @@ describe('issue-based delivery contract', () => {
     expect(quality).toContain('uses: actions/checkout@v7');
     expect(quality).toContain('uses: actions/setup-node@v7');
     expect(quality).toContain('node-version: 22.13.0');
+    expect(quality).toContain('uses: actions/setup-go@v6');
+    expect(quality).toContain('go-version: 1.27.1');
+    expect(quality).toContain('cache: false');
     expect(quality).toContain('run: npm ci');
     expect(quality).toContain(
       'run: npx playwright install --with-deps chromium',
     );
     expect(quality).toContain('run: npm run verify');
+    const packageSource = await readFile('package.json', 'utf8');
+    expect(packageSource).toContain('"go:check"');
+    expect(packageSource).toContain('go -C backend test -race ./...');
+    expect(goModule).toContain('go 1.27.1');
+    expect(dockerfile).toMatch(
+      /golang:1\.27\.1-alpine@sha256:[a-f0-9]{64} AS go-build/,
+    );
+    expect(dockerfile).toContain('FROM scratch AS static-assets');
+    expect(dockerfile).toMatch(/\nFROM scratch\n/);
     expect(quality).not.toContain('codex/integration-type-safety-ui');
     expect(quality).not.toContain('refactor/type-safe-functional');
     expect(quality).not.toMatch(

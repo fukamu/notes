@@ -13,6 +13,8 @@ delete existing resources.
 - Integration branch: `integration/409-go-backend-migration`
 - Open overlapping work: #403 / Draft PR #404. T09 cancellation and the
   corresponding T12 deletion contract remain dependent on its resolution.
+- T01 completed in #410 / PR #411. The current integration tip for T02 is
+  `726668c39c70ed9e8b843c515ef7e68093ef329b`.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -90,12 +92,34 @@ the same contract as its closed route.
 - These protections are recorded as intentional boundary hardening rather than
   accidental wire compatibility changes.
 
+## T02 runtime foundation
+
+Issue #412 adds the provider-independent Go process without changing current
+routing. Go 1.27.1 was rechecked against the official release history on
+2026-09-25 and is pinned in `backend/go.mod`, Quality, and the container build
+stage. T02 uses the standard library only.
+
+The bootstrap requires an explicit environment, listen address, and absolute
+static directory. Invalid configuration exits before listening. It serves a
+fixed local index and `/healthz`; `/readyz` returns 503 until T03 supplies
+database and migration readiness, and `/api/*` remains closed. Request bodies
+are bounded before routing. Logs include method, path, status, and duration but
+exclude query strings, headers, bodies, and configuration paths; sensitive
+structured attributes are redacted.
+
+`npm run go:check` runs format verification, vet, unit/process smoke tests,
+the race detector, and command builds. It is part of the existing read-only
+`npm run verify` Quality entry point. The Dockerfile separates the Go build
+and static-asset stages and produces a non-root scratch image, but no image is
+pushed or deployed by Quality.
+
 ## Build, cutover, and rollback status
 
-No Go artifact, PostgreSQL schema, staging environment, cutover rehearsal, or
-production operation exists yet. The eventual release unit must bind one
-frontend hash, Go image digest, schema version, public configuration, secret
-version references, and identity mapping. Rollback restores the matching old
-Sites artifact, configuration, D1, and identity entry together; it never points
-the old TypeScript backend at the new PostgreSQL database or copies writes in
-both directions.
+A local-only Go bootstrap and reviewable Dockerfile now exist; current frontend
+routing is unchanged. No PostgreSQL schema, pushed image, staging environment,
+cutover rehearsal, or production operation exists yet. The eventual release
+unit must bind one frontend hash, Go image digest, schema version, public
+configuration, secret version references, and identity mapping. Rollback
+restores the matching old Sites artifact, configuration, D1, and identity entry
+together; it never points the old TypeScript backend at the new PostgreSQL
+database or copies writes in both directions.
