@@ -13,12 +13,14 @@ delete existing resources.
 - Integration branch: `integration/409-go-backend-migration`
 - Open overlapping work: #403 / Draft PR #404. T09 cancellation and the
   corresponding T12 deletion contract remain dependent on its resolution.
-- T01 completed in #410 / PR #411, T02 in #412 / PR #413, and T03 in #414 /
-  PR #415. T03 is integrated at
-  `b00013d7e94b76578c8435d21dfc39917493c42c`.
-- T04 part 1 is Issue #416 on `work/416-private-auth-launch-gate`, branched
-  from that exact integration commit. It does not select a production identity
-  provider.
+- T01 completed in #410 / PR #411, T02 in #412 / PR #413, T03 in #414 /
+  PR #415, and T04 part 1 in #416 / PR #417. T04 part 1 is integrated at
+  `389b362d79df0f4328280d2bf7ad52e1b6165677` and does not select a
+  production identity provider.
+- T04 part 2 is Issue #418 on `work/418-legacy-sync-postgres`, branched from
+  that exact integration commit. It connects the Go legacy HTTP and PostgreSQL
+  path locally; the existing browser remains on the TypeScript route until
+  T05.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -39,8 +41,8 @@ the same contract as its closed route.
 | ID  | State | Capability                                  | Go evidence                     | Verification | Status                                       |
 | --- | ----- | ------------------------------------------- | ------------------------------- | ------------ | -------------------------------------------- |
 | F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10      | pending                                      |
-| F02 | B     | launch gate / private owner                 | T04                             | V02,V03      | signed gate path in #416; owner sync pending |
-| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10  | contract captured in #410                    |
+| F02 | B     | launch gate / private owner                 | T04                             | V02,V03      | signed gate #416; owner/origin enforced #418 |
+| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10  | local Go HTTP/Postgres path #418; UI T05     |
 | F04 | B     | session / CSRF                              | T06                             | V02,V03      | contract captured in #410                    |
 | F05 | B     | Google OIDC                                 | T06                             | V03          | pending                                      |
 | F06 | B     | email OTP                                   | T06                             | V03          | pending                                      |
@@ -62,7 +64,7 @@ the same contract as its closed route.
 | F22 | B     | normal cancellation                         | T09                             | V07          | blocked on #404                              |
 | F23 | B     | account deletion                            | T12                             | V03,V04,V08  | contract captured; #404 overlap pending      |
 | F24 | B     | privacy request journal                     | T12                             | V01,V03,V08  | contract captured in #410                    |
-| F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11      | core PostgreSQL schema implemented #414      |
+| F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11      | core #414; legacy singleton seed #418        |
 | F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09      | pending                                      |
 | F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10      | executable baseline in #410                  |
 | F28 | C     | scheduler / realtime services               | none unless separately approved | V08          | intentionally not added                      |
@@ -71,10 +73,10 @@ the same contract as its closed route.
 
 | ID  | Required evidence                                       | Current evidence                                              |
 | --- | ------------------------------------------------------- | ------------------------------------------------------------- |
-| V01 | shared JSON, strict decoding, black-box HTTP            | T01 fixtures / current TS decoder                             |
-| V02 | signed identity, gate DB, spoof/direct-origin rejection | signed identity/gate/spoof in #416; mutation origin pending   |
+| V01 | shared JSON, strict decoding, black-box HTTP            | same fixture through TS #410 and Go unit/DB/HTTP #418         |
+| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests  |
 | V03 | session/OIDC/OTP/owner/CSRF failures                    | T01 session/CSRF baseline; full T06 pending                   |
-| V04 | empty Postgres, transactions, concurrency, rollback     | T03 empty DB/constraints/rollback; domain concurrency pending |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414 empty DB; #418 serial retry/concurrency/rollback/release |
 | V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                   |
 | V06 | crypto vectors, tamper/AAD/KMS failures                 | T01 format/AAD baseline; full T07+ pending                    |
 | V07 | billing/evidence duplicate/order/failure                | T01 browser decoder baseline; T09 pending                     |
@@ -92,7 +94,14 @@ the same contract as its closed route.
 - The legacy shared table will not become multi-user merely because a public
   flag is enabled.
 - Unknown JSON fields, unsafe integers, invalid UTF-8 at the HTTP boundary,
-  forged ownership fields, and malformed terminal responses remain rejected.
+  unpaired escaped UTF-16 surrogates that Go would otherwise replace, forged
+  ownership fields, and malformed terminal responses remain rejected.
+- Go rejects a resolve mutation for a nonexistent card instead of reproducing
+  the D1 path that can create a card from such a mutation. PostgreSQL also
+  preserves the stored card timeline invariant when an update timestamp is
+  older than that card's creation timestamp.
+- The Go mutation route requires the JSON media type and a same-origin header,
+  and it completes signed owner authorization before reading the request body.
 - These protections are recorded as intentional boundary hardening rather than
   accidental wire compatibility changes.
 
@@ -174,19 +183,53 @@ sets `Cache-Control: private, no-store`. Missing identity remains an anonymous
 gate check for compatibility; malformed or spoofed identity fails closed with 503. `/readyz` reports ready only when all private dependencies exist, the
 embedded Goose version is applied, and the singleton launch row exists.
 
-This is a partial vertical slice, not a claim that legacy data access is live.
-T04 part 2 must add the legacy sync adapter and route, configured-owner check,
-same-origin mutation check, conflict/idempotency tests, and frontend path. The
-public launch flag may expose the shell in the eventual design but must never
-authorize the shared legacy collection. Production provider, domain, and
-recurring-cost choices remain pending in
+This first part was a partial vertical slice, not a claim that legacy data
+access was live. T04 part 2 adds the legacy sync adapter and route,
+configured-owner check, same-origin mutation check, and conflict/idempotency
+tests. The browser path remains T05 work. The public launch flag may expose the
+shell in the eventual design but must never authorize the shared legacy
+collection. Production provider, domain, and recurring-cost choices remain
+pending in
 [`go-migration-decisions.md`](go-migration-decisions.md).
+
+## T04 part 2: legacy synchronization on PostgreSQL
+
+Issue #418 adds the strict legacy request decoder, serializable PostgreSQL
+adapter, exact `POST /api/sync` route, and the second migration that seeds the
+legacy display-ID singleton. It preserves sorted mutation application,
+idempotent mutation receipts, official display-ID allocation, content-equal
+retry behavior, conflict creation, explicit conflict resolution, full-state
+response ordering, and the existing fixed Japanese 400/413/500 messages.
+
+The HTTP route is available only when the complete private runtime is
+configured. It requires a valid signed subject, a successful launch-gate
+decision, exact equality with `NOTES_LEGACY_OWNER_SUBJECT`, the configured
+same origin, and `application/json`. Authorization occurs before the bounded
+body read. Public launch access alone cannot reach the shared legacy
+collection. Responses are private and non-cacheable, and adapter or response
+validation failures expose only the fixed error.
+
+Every sync uses one serializable transaction and locks the singleton allocator.
+Serialization failures and deadlocks retry at most three total attempts;
+cancellation and other database errors stop retrying. Preflight validation
+occurs before mutations, all mutation and response validation occurs before
+commit, and failed batches roll back. Integration tests cover an empty
+database, two-device stale edits, duplicate delivery, concurrent display-ID
+allocation, competing conflict resolution, partial-batch rollback, corrupted
+stored data, and pool connection return. The shared `legacy-v1.json` fixture is
+decoded by the TypeScript contract test and produces the same semantic response
+through Go and PostgreSQL.
+
+This completes the server portion of T04, not the browser portion. T05 must
+build and serve the existing frontend from Go and point its `/api` traffic to
+this route before Go-browser Playwright evidence can be claimed. No D1 data was
+copied, no production database was created, and no route was switched.
 
 ## Build, cutover, and rollback status
 
-A local-only Go bootstrap, PostgreSQL schema, signed test identity boundary,
-launch-status route, and reviewable Dockerfile now exist; current frontend
-routing is unchanged. No managed PostgreSQL instance,
+A local-only Go bootstrap, PostgreSQL schema and legacy sync route, signed test
+identity boundary, launch-status route, and reviewable Dockerfile now exist;
+current frontend routing is unchanged. No managed PostgreSQL instance,
 pushed image, staging environment, cutover rehearsal, or production operation
 exists yet. The eventual release
 unit must bind one frontend hash, Go image digest, schema version, public

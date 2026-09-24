@@ -104,10 +104,18 @@ func composePrivateRuntime(
 		closeRuntime()
 		return nil, func() {}, errors.New("configure database readiness")
 	}
+	legacySync, err := postgresadapter.NewLegacySyncStore(pool)
+	if err != nil {
+		closeRuntime()
+		return nil, func() {}, errors.New("configure legacy sync")
+	}
 	return &httpapi.PrivateRuntime{
-		Verifier:  verifier,
-		Gate:      gate,
-		Readiness: readiness,
-		Clock:     time.Now,
+		Verifier:     verifier,
+		Gate:         gate,
+		Readiness:    readiness,
+		LegacySync:   legacySync,
+		LegacyOwner:  settings.LegacyOwner,
+		PublicOrigin: settings.PublicOrigin,
+		Clock:        time.Now,
 	}, closeRuntime, nil
 }

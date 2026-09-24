@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -118,6 +119,12 @@ func assertPrivateHTTPVertical(t *testing.T, ctx context.Context, pool *pgxpool.
 	if err != nil {
 		t.Fatalf("NewSchemaReadiness() error = %v", err)
 	}
+	legacySync, err := postgresadapter.NewLegacySyncStore(pool)
+	if err != nil {
+		t.Fatalf("NewLegacySyncStore() error = %v", err)
+	}
+	publicOrigin, _ := url.Parse("https://notes.example")
+	owner, _ := access.ParseSubject("private-owner")
 	staticDirectory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(staticDirectory, "index.html"), []byte("test"), 0o600); err != nil {
 		t.Fatalf("write static index: %v", err)
@@ -128,10 +135,13 @@ func assertPrivateHTTPVertical(t *testing.T, ctx context.Context, pool *pgxpool.
 		BodyLimit:       4_000_000,
 		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
 		PrivateRuntime: &httpapi.PrivateRuntime{
-			Verifier:  verifier,
-			Gate:      gate,
-			Readiness: readiness,
-			Clock:     func() time.Time { return now },
+			Verifier:     verifier,
+			Gate:         gate,
+			Readiness:    readiness,
+			LegacySync:   legacySync,
+			LegacyOwner:  owner,
+			PublicOrigin: publicOrigin,
+			Clock:        func() time.Time { return now },
 		},
 	})
 	if err != nil {
@@ -144,7 +154,6 @@ func assertPrivateHTTPVertical(t *testing.T, ctx context.Context, pool *pgxpool.
 		t.Fatalf("readiness response = %d %s", ready.Code, ready.Body.String())
 	}
 
-	owner, _ := access.ParseSubject("private-owner")
 	assertion, err := accessadapter.SignLocalAssertion(
 		privateKey,
 		"https://issuer.test",
@@ -163,6 +172,23 @@ func assertPrivateHTTPVertical(t *testing.T, ctx context.Context, pool *pgxpool.
 	if approved.Code != http.StatusOK || !strings.Contains(approved.Body.String(), `"canAccess":true`) ||
 		!strings.Contains(approved.Body.String(), `"authenticated":true`) {
 		t.Fatalf("approved launch response = %d %s", approved.Code, approved.Body.String())
+	}
+
+	syncRequest := httptest.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		"/api/sync",
+		strings.NewReader(`{"deviceId":"01991f20-61d2-7000-8000-000000001000","mutations":[{"mutationId":"01991f20-61d2-7000-8000-000000001010","cardId":"01991f20-61d2-7000-8000-000000001001","baseServerRevision":null,"title":"Go縦断","body":[],"createdAt":1789000000000,"updatedAt":1789000000100,"kind":"upsert","conflictIds":[]}]}`),
+	)
+	syncRequest.Header.Set("Content-Type", "application/json")
+	syncRequest.Header.Set("Origin", "https://notes.example")
+	syncRequest.Header.Set(accessadapter.LocalAssertionHeader, assertion)
+	syncResponse := httptest.NewRecorder()
+	handler.ServeHTTP(syncResponse, syncRequest)
+	if syncResponse.Code != http.StatusOK ||
+		!strings.Contains(syncResponse.Body.String(), `"title":"Go縦断"`) ||
+		!strings.Contains(syncResponse.Body.String(), `"officialDisplayId":1`) {
+		t.Fatalf("sync response = %d %s", syncResponse.Code, syncResponse.Body.String())
 	}
 
 	spoofedRequest := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/launch-status", nil)
