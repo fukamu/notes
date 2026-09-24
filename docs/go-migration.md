@@ -14,13 +14,13 @@ delete existing resources.
 - Open overlapping work: #403 / Draft PR #404. T09 cancellation and the
   corresponding T12 deletion contract remain dependent on its resolution.
 - T01 completed in #410 / PR #411, T02 in #412 / PR #413, T03 in #414 /
-  PR #415, and T04 part 1 in #416 / PR #417. T04 part 1 is integrated at
-  `389b362d79df0f4328280d2bf7ad52e1b6165677` and does not select a
-  production identity provider.
-- T04 part 2 is Issue #418 on `work/418-legacy-sync-postgres`, branched from
-  that exact integration commit. It connects the Go legacy HTTP and PostgreSQL
-  path locally; the existing browser remains on the TypeScript route until
-  T05.
+  PR #415, T04 part 1 in #416 / PR #417, and T04 part 2 in #418 / PR #419.
+  The current integration tip before T05 is
+  `0c5469cb920f6581e36978e1350ad22e75586cb2`.
+- T05 is Issue #420 on `work/420-static-frontend-go`, branched from that exact
+  integration commit. It builds the existing React UI as static assets and
+  serves the browser and API from one Go process. It does not select a
+  production identity provider or hosting service.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -40,9 +40,9 @@ the same contract as its closed route.
 
 | ID  | State | Capability                                  | Go evidence                     | Verification | Status                                       |
 | --- | ----- | ------------------------------------------- | ------------------------------- | ------------ | -------------------------------------------- |
-| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10      | pending                                      |
+| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10      | implemented on #420; integration pending     |
 | F02 | B     | launch gate / private owner                 | T04                             | V02,V03      | signed gate #416; owner/origin enforced #418 |
-| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10  | local Go HTTP/Postgres path #418; UI T05     |
+| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10  | Go/Postgres #418; Go-served UI on #420       |
 | F04 | B     | session / CSRF                              | T06                             | V02,V03      | contract captured in #410                    |
 | F05 | B     | Google OIDC                                 | T06                             | V03          | pending                                      |
 | F06 | B     | email OTP                                   | T06                             | V03          | pending                                      |
@@ -66,7 +66,7 @@ the same contract as its closed route.
 | F24 | B     | privacy request journal                     | T12                             | V01,V03,V08  | contract captured in #410                    |
 | F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11      | core #414; legacy singleton seed #418        |
 | F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09      | pending                                      |
-| F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10      | executable baseline in #410                  |
+| F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10      | static runtime #420; legacy removal T14      |
 | F28 | C     | scheduler / realtime services               | none unless separately approved | V08          | intentionally not added                      |
 
 ## Verification matrix
@@ -82,7 +82,7 @@ the same contract as its closed route.
 | V07 | billing/evidence duplicate/order/failure                | T01 browser decoder baseline; T09 pending                     |
 | V08 | resumable jobs/deletion fault injection                 | T12/T13 pending                                               |
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                     |
-| V10 | browser UI/offline/SW/deep links                        | T04/T05 pending                                               |
+| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips |
 | V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                               |
 | V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                     |
 
@@ -184,10 +184,10 @@ gate check for compatibility; malformed or spoofed identity fails closed with 50
 embedded Goose version is applied, and the singleton launch row exists.
 
 This first part was a partial vertical slice, not a claim that legacy data
-access was live. T04 part 2 adds the legacy sync adapter and route,
+access was live. T04 part 2 added the legacy sync adapter and route,
 configured-owner check, same-origin mutation check, and conflict/idempotency
-tests. The browser path remains T05 work. The public launch flag may expose the
-shell in the eventual design but must never authorize the shared legacy
+tests; T05 connects the browser path locally. The public launch flag may expose
+the shell in the eventual design but must never authorize the shared legacy
 collection. Production provider, domain, and recurring-cost choices remain
 pending in
 [`go-migration-decisions.md`](go-migration-decisions.md).
@@ -220,20 +220,55 @@ stored data, and pool connection return. The shared `legacy-v1.json` fixture is
 decoded by the TypeScript contract test and produces the same semantic response
 through Go and PostgreSQL.
 
-This completes the server portion of T04, not the browser portion. T05 must
-build and serve the existing frontend from Go and point its `/api` traffic to
-this route before Go-browser Playwright evidence can be claimed. No D1 data was
-copied, no production database was created, and no route was switched.
+This completes the server portion of T04. T05 connects the browser portion.
+No D1 data was copied, no production database was created, and no production
+route was switched.
+
+## T05: static frontend served by Go
+
+Issue #420 replaces the request-time vinext/RSC server with a Vite browser
+bundle plus build-time prerendering. The Go process preloads the bounded static
+artifact, serves exact public routes and Notes deep links, and returns 404 for
+unknown pages and API routes instead of applying an unrestricted SPA fallback.
+HTML is `no-store`, content-hashed assets are immutable, and the service worker
+and manifest are revalidated. CSP permits only same-origin scripts and does not
+use inline-script exceptions.
+
+The existing TypeScript/React UI remains the frontend implementation. Browser
+API calls are relative and therefore reach the same Go origin. Public build
+configuration has an exact allowlist and is compiled into the artifact; server
+environment and secrets are not serialized. `FUKAMU_AUTH_ENTRY_URL` remains
+unset until the production identity entry is approved, so the limited-release
+screen does not invent or expose an unsupported sign-in URL.
+
+Playwright starts the Go server against a disposable loopback PostgreSQL test
+database. It generates a fresh Ed25519 test identity per run, gives the server
+only the public key, seeds only the explicit test owner, and sends the signed
+assertion from the browser fixture. The test preparation command refuses any
+non-loopback or non-test database. Chromium evidence covers the main Notes
+flows, deep links, unknown-route denial, offline behavior, conflicts, service
+worker behavior, logout purge, public legal pages, and disconnected local
+fixtures. The complete desktop and mobile Quality run passed 110 tests; four
+existing opt-in feasibility-recording tests remained explicitly skipped in both
+projects.
+
+Sync v2, checkout, terms consent, cancellation, privacy requests, and account
+deletion remain deliberately disconnected. Protected disconnected routes still
+perform signed identity and launch-gate authorization before reading a request
+body. Local/test returns the existing fixture-compatible 404; production mode
+returns a fixed 503 and performs no business effect. T05 neither publishes nor
+starts charging for those capabilities.
 
 ## Build, cutover, and rollback status
 
 A local-only Go bootstrap, PostgreSQL schema and legacy sync route, signed test
-identity boundary, launch-status route, and reviewable Dockerfile now exist;
-current frontend routing is unchanged. No managed PostgreSQL instance,
-pushed image, staging environment, cutover rehearsal, or production operation
-exists yet. The eventual release
+identity boundary, launch-status route, static frontend artifact, and
+reviewable Dockerfile now exist. The old production routing is unchanged. No
+managed PostgreSQL instance, pushed image, staging environment, cutover
+rehearsal, or production operation exists yet. The eventual release
 unit must bind one frontend hash, Go image digest, schema version, public
 configuration, secret version references, and identity mapping. Rollback
 restores the matching old Sites artifact, configuration, D1, and identity entry
 together; it never points the old TypeScript backend at the new PostgreSQL
-database or copies writes in both directions.
+database or copies writes in both directions. Before integration, T05 rollback
+is a normal revert of PR #420; it has no persistent schema or data effect.

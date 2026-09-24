@@ -17,7 +17,7 @@ global typeの混在を避けるため、`npm run typecheck` は次の独立し�
 | 設定                           | 対象runtime                       | 主な対象                                         |
 | ------------------------------ | --------------------------------- | ------------------------------------------------ |
 | `tsconfig.json`                | browser / React                   | `app`（API以外）、`components`、`hooks`、`lib`   |
-| `tsconfig.api.json`            | Cloudflare Worker / D1            | `app/api`、`db`、`server`、domain、sync protocol |
+| `tsconfig.api.json`            | legacy API compatibility          | `app/api`、`db`、`server`、domain、sync protocol |
 | `tsconfig.service-worker.json` | Service Worker                    | `public/sw.js`（`checkJs`）                      |
 | `tsconfig.tooling.json`        | Node.js                           | Vite、Vitest、Playwright、Drizzle等の設定        |
 | `tsconfig.test.json`           | Node.js + 明示したbrowser fixture | unit / integration / E2E test                    |
@@ -73,7 +73,7 @@ D1の `.first()`／`.all()` はgeneric指定をruntime保証にせず `unknown` 
 
 Drizzle schema、checked-in migration、feature-owned manifestはschema testがtable、column、CHECK、foreign key、unique／indexとchecksumを照合します。migration ledgerの未知ID、非prefix履歴、checksum不一致はschema driftとして適用前に拒否します。D1 effectは明示runnerに限定し、各migrationのDDLとledger insertを単一batchでrollback可能にします。既存v1 schemaはcompatibility fixtureだけが明示migrationし、runtime初期化DDLは持ちません。詳細は [Identity / Vault control plane and migrations](server-control-plane.md) を参照してください。
 
-Cloudflare bindingは `getD1Binding(unknown)` だけが `DB` をD1互換objectへ昇格させます。`.openai/hosting.json`、Cloudflare型宣言、runtime accessor、build後のWrangler設定のbinding名は `npm run check:environment` が照合します。欠落・不正bindingはconfiguration errorとなり、同期APIは安全な500を返します。
+T05のrequest-time runtimeはGoとPostgreSQLです。TypeScript/D1 adapterは移行後機能のcompatibility contractを保護するtest対象として残り、T14までrequest handlerの意味論を比較するために検査します。Goはenvironmentを起動時にdecodeし、PostgreSQL rowをscan後に検査し、欠落・不正設定や未migration schemaをfail closedにします。`npm run check:environment` は静的frontend route、public build allowlist、Go起動、container assetの整合を照合します。
 
 `NEXT_PUBLIC_SITE_URL` は未設定または空なら公開既定URLを使います。設定時はabsolute HTTP(S) URLだけを受理し、不正値はmetadata moduleの初期化／buildを明示的に失敗させます。相対URL、HTTP(S)以外、非文字列をassertionで通しません。
 
@@ -89,7 +89,7 @@ Cloudflare bindingは `getD1Binding(unknown)` だけが `DB` をD1互換object�
 | IndexedDB record              | 全storeをunknownからdecodeし、明示encodeでv1形式を維持                | Phase 2 (#11) |
 | APIのsync request             | byte上限後、Request JSONをunknownから共通codecでdecode、400／413分類  | Phase 3 (#12) |
 | D1 row / JSON column          | first／allとJSON parseをunknownからrow／Body codecでdecode            | Phase 3 (#12) |
-| Cloudflare environment        | DB bindingをvalidated accessorで取得し、Sites／型／Wranglerを照合     | Phase 3 (#12) |
+| runtime environment           | public build allowlistとGo起動設定を分離し、静的成果物まで照合        | T05 (#420)    |
 | public URL environment        | absolute HTTP(S) URLとしてparse、未設定時の既定値を明文化             | Phase 3 (#12) |
 | Email OTP challenge／adapter  | branded ID・8桁code・digest・CAS state・rate keyをunknownからdecode   | Issue #112    |
 | Vault別IndexedDB namespace    | session由来scopeから純粋導出し、DB別connection・削除結果を分離        | Issue #113    |
@@ -106,7 +106,7 @@ Phase 1〜3でcompiler、codec／brand、client／IndexedDB、API／D1／environ
 - malformed値、欠損値、正しい値を境界testで確認したか。
 - adapterからapplication/domainへ渡す型に第三者固有の曖昧さが漏れていないか。
 - API／database境界なら、検証失敗前後のstorage snapshotが同一か。
-- 新しいenvironment bindingなら、型宣言、hosting、Wrangler、runtime accessorの照合を追加したか。
+- 新しいenvironment値なら、public allowlist、Go起動decode、成果物への非漏えいを照合したか。
 - schema変更なら、Drizzle、migration、runtime DDLのdrift testを更新したか。
 
 ## invalid dataの回復方針
@@ -115,7 +115,7 @@ Phase 1〜3でcompiler、codec／brand、client／IndexedDB、API／D1／environ
 
 ## 共通の検証入口
 
-`npm run verify` がlocalとCIの共通入口です。format check、全runtime typecheck、全面unsafe lint、unit／Miniflare D1 integration／architecture test、production build、Desktop ChromeとPixel 7相当のE2Eを順に実行します。production build後は `dist/client/sw.js` のmessage guardと、Sites／型宣言／runtime／WranglerのD1 binding一致も検査します。
+`npm run verify` がlocalとCIの共通入口です。format check、全runtime typecheck、全面unsafe lint、unit／D1互換integration／Go PostgreSQL integration／architecture test、production build、Desktop ChromeとPixel 7相当のE2Eを順に実行します。production build後は `dist/frontend/sw.js` のmessage guardと、静的frontend route／Go runtime設定の整合も検査します。
 
 個別調査には `npm run test:integration`、`npm run test:architecture`、`npm run check:environment` を使えます。CIとtestはlocal fixture／Miniflareだけを使い、本番D1、本番データ、デプロイを使用しません。
 
@@ -133,7 +133,7 @@ logout purge coreは `logout-purge/v1` markerをAccountId/VaultId/SessionId/Sess
 
 server content repositoryは認証済み`VaultContext`からAccount/Vault ownershipをcontrol-plane public APIで確認し、生成時のVaultId・PartitionId・routing revisionへ固定します。公開repositoryのcard/mutation/conflict操作はVaultIdを引数に取らず、D1の全read/list/write/CAS/deleteが固定VaultIdとcurrent routeをpredicateへ含めます。同じ識別子を別Vaultで独立保持し、cross-tenantまたはstale routeはopaqueな`not-found`/`not-applied`としてfail closedになります。routingとcard CAS判断はpure core、D1 rowは`unknown`からcodecでdecodeします。詳細は [Vault-scoped server repository and tenant routing](vault-content-repository.md) を参照してください。
 
-Service Workerのcache policyはmethod、origin、query、request mode、明示pathname allowlistだけから決まるpure predicateです。CacheStorageへ入るのは非個人化app shellとmanifest/favicon、`/_next/static/` build assetだけで、API、auth/OAuth、billing/account、query付きまたはallowlist外requestはnetwork-onlyです。canonical deep navigationは個別HTMLを保存せず共通shellへfallbackします。logout purge commandは外部messageをdecodeし、全FUKAMU cacheが消えたことを再確認してからだけtyped ackを返します。
+Service Workerのcache policyはmethod、origin、query、request mode、明示pathname allowlistだけから決まるpure predicateです。CacheStorageへ入るのは非個人化app shellとmanifest/favicon、`/assets/` build assetだけで、API、auth/OAuth、billing/account、query付きまたはallowlist外requestはnetwork-onlyです。canonical deep navigationは個別HTMLを保存せず共通shellへfallbackします。logout purge commandは外部messageをdecodeし、全FUKAMU cacheが消えたことを再確認してからだけtyped ackを返します。
 
 Identity/session境界はAccount/Vault/Session/Identity IDとSessionEpochを別brandで表し、storage/cookie/headerを`unknown`からdecodeします。pure session coreはactive/revoked、expiry、rotation、revocation、operation epochを判定し、clock・token/UUID生成・cookie/storage accessを行いません。server requestからの`VaultContext`はverified sessionだけから導出し、request bodyのtenant fieldを読みません。unsafe methodはexact Originと`Sec-Fetch-Site: same-origin`を必須とし、`__Host-fukamu_session`はSecure/HttpOnly/SameSite=Strict/Path=/を固定します。clientのauthenticated composition gateはanonymous時にruntime factory、NotesProvider、IndexedDB、sync、Service Worker preparationを起動しません。
 

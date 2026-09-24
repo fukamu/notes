@@ -1,9 +1,11 @@
-import type { Metadata } from 'next';
 import { resolveSiteUrl } from '@/lib/environment/site-url';
+import { publicBuildEnvironmentValue } from '@/lib/environment/public-build';
 import './globals.css';
 
-export const metadata: Metadata = {
-  metadataBase: resolveSiteUrl(process.env.NEXT_PUBLIC_SITE_URL),
+export const metadata = {
+  metadataBase: resolveSiteUrl(
+    publicBuildEnvironmentValue('NEXT_PUBLIC_SITE_URL'),
+  ),
   title: 'FUKAMU Notes',
   description:
     '紙のカードをめくるように、考えを書き、つなげるローカルファーストWebアプリ',

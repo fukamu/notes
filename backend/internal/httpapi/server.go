@@ -9,20 +9,22 @@ import (
 )
 
 type ServerOptions struct {
-	Address         string
-	StaticDirectory string
-	BodyLimit       int64
-	ShutdownTimeout time.Duration
-	Logger          *slog.Logger
-	PrivateRuntime  *PrivateRuntime
+	Address             string
+	StaticDirectory     string
+	BodyLimit           int64
+	ShutdownTimeout     time.Duration
+	Logger              *slog.Logger
+	PrivateRuntime      *PrivateRuntime
+	EnableLocalFixtures bool
 }
 
 func Run(ctx context.Context, options ServerOptions) error {
 	handler, err := NewHandler(HandlerOptions{
-		StaticDirectory: options.StaticDirectory,
-		BodyLimit:       options.BodyLimit,
-		Logger:          options.Logger,
-		PrivateRuntime:  options.PrivateRuntime,
+		StaticDirectory:     options.StaticDirectory,
+		BodyLimit:           options.BodyLimit,
+		Logger:              options.Logger,
+		PrivateRuntime:      options.PrivateRuntime,
+		EnableLocalFixtures: options.EnableLocalFixtures,
 	})
 	if err != nil {
 		return err

@@ -1,17 +1,21 @@
-import type { Metadata } from 'next';
 import { LegalDocument } from '@/components/legal-document';
 import {
   browserExternalDestination,
   externalTransmissionManifest,
 } from '@/lib/application/external-transmission';
 import { PublicRouteLink } from '@/components/public-route-link';
+import { currentPublicBuildEnvironment } from '@/lib/environment/public-build';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: '外部送信について | FUKAMU Notes',
 };
 
 export default function ExternalTransmissionPage() {
-  const fixture = process.env.FUKAMU_SERVICE_MODE !== 'public-paid';
+  const environment = currentPublicBuildEnvironment();
+  const fixture =
+    environment === null ||
+    typeof environment !== 'object' ||
+    Reflect.get(environment, 'FUKAMU_SERVICE_MODE') !== 'public-paid';
 
   return (
     <LegalDocument

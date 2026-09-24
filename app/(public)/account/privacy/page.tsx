@@ -1,8 +1,7 @@
-import type { Metadata } from 'next';
 import { PrivacyRequestBoundary } from '@/components/privacy-request-boundary';
 import { privacyDisclosureForCurrentEnvironment } from '@/lib/environment/privacy-disclosure';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: '個人情報に関する請求 | FUKAMU Notes',
 };
 

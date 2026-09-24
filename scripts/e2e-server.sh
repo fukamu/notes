@@ -1,66 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-e2e_d1_state="$(mktemp -d)"
-e2e_wrangler_logs="$e2e_d1_state/wrangler-logs"
-
-cleanup_e2e_state() {
-  local exit_code="$1"
-  trap - EXIT
-
-  if [[ "$exit_code" -ne 0 && -d "$e2e_wrangler_logs" ]]; then
-    echo 'E2E server exited unexpectedly; Wrangler diagnostics follow.' >&2
-    for log_file in "$e2e_wrangler_logs"/*.log; do
-      [[ -f "$log_file" ]] || continue
-      echo "--- $log_file" >&2
-      tail -n 240 "$log_file" >&2
-    done
-  fi
-
-  rm -rf -- "$e2e_d1_state"
-  exit "$exit_code"
-}
-
-trap 'cleanup_e2e_state "$?"' EXIT
-
-# Wrangler otherwise shares user-level diagnostics and Miniflare registry state.
-# Keep both inside this test run so parallel CI events cannot influence each
-# other, and emit bounded diagnostics if the server process exits early.
-export WRANGLER_WRITE_LOGS=true
-export WRANGLER_LOG_PATH="$e2e_wrangler_logs"
-export MINIFLARE_REGISTRY_PATH="$e2e_d1_state/miniflare-registry"
+repository_root="$(pwd -P)"
+static_directory="$repository_root/dist/frontend"
 
 if [[ "${FUKAMU_E2E_USE_PREBUILT:-0}" == "1" ]]; then
-  if [[ ! -f dist/server/wrangler.json ]]; then
-    echo 'Prebuilt E2E requested, but dist/server/wrangler.json is missing.' >&2
+  if [[ ! -f "$static_directory/index.html" ]]; then
+    echo 'Prebuilt E2E requested, but dist/frontend/index.html is missing.' >&2
     exit 1
   fi
 else
   npm run build
 fi
-npm exec -- wrangler d1 execute DB \
-  --local \
-  --persist-to "$e2e_d1_state" \
-  --config dist/server/wrangler.json \
-  --file drizzle/0000_sticky_gamora.sql
-npm exec -- wrangler d1 execute DB \
-  --local \
-  --persist-to "$e2e_d1_state" \
-  --config dist/server/wrangler.json \
-  --file drizzle/0001_amazing_cannonball.sql
-npm exec -- wrangler d1 execute DB \
-  --local \
-  --persist-to "$e2e_d1_state" \
-  --config dist/server/wrangler.json \
-  --command 'INSERT INTO sync_state(singleton, next_display_id) VALUES (1, 1)'
-npm exec -- wrangler d1 execute DB \
-  --local \
-  --persist-to "$e2e_d1_state" \
-  --config dist/server/wrangler.json \
-  --file drizzle/0017_production_launch_gate.sql
-npm exec -- wrangler d1 execute DB \
-  --local \
-  --persist-to "$e2e_d1_state" \
-  --config dist/server/wrangler.json \
-  --command "INSERT INTO launch_allowed_users(user_id, created_at) VALUES ('fukamu-notes-e2e-user', 1)"
-npm start -- --port 3100 --persist-to "$e2e_d1_state"
+
+: "${FUKAMU_E2E_LOCAL_AUTH_PUBLIC_KEY:?E2E public key is required}"
+: "${NOTES_LOCAL_AUTH_ISSUER:?E2E issuer is required}"
+: "${NOTES_LOCAL_AUTH_AUDIENCE:?E2E audience is required}"
+: "${NOTES_LEGACY_OWNER_SUBJECT:?E2E owner subject is required}"
+
+export NOTES_ENVIRONMENT=test
+export NOTES_DATABASE_URL="${NOTES_TEST_DATABASE_URL:-postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable}"
+export NOTES_HTTP_ADDR=127.0.0.1:3100
+export NOTES_STATIC_DIR="$static_directory"
+export NOTES_PRIVATE_AUTH_MODE=local-signed
+export NOTES_PUBLIC_ORIGIN=http://localhost:3100
+export NOTES_LOCAL_AUTH_PUBLIC_KEY="$FUKAMU_E2E_LOCAL_AUTH_PUBLIC_KEY"
+export NOTES_DATABASE_MAX_CONNECTIONS=4
+export NOTES_BODY_LIMIT_BYTES=4000000
+export NOTES_SHUTDOWN_TIMEOUT=2s
+export NOTES_LOG_LEVEL=info
+
+go -C backend run ./cmd/notesctl prepare-e2e \
+  --environment=test \
+  "--allowed-subject=$NOTES_LEGACY_OWNER_SUBJECT"
+
+exec go -C backend run ./cmd/notes

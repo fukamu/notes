@@ -132,7 +132,7 @@ describe('external transmission manifest', () => {
     );
     expect(result.status).toBe(0);
 
-    const [oidc, checkout, page, layout, privacy, notes, nextConfig] =
+    const [oidc, checkout, page, layout, privacy, notes, staticHandler] =
       await Promise.all([
         readFile('server/adapters/web-oidc.ts', 'utf8'),
         readFile('lib/client/http-billing-ui.ts', 'utf8'),
@@ -140,7 +140,7 @@ describe('external transmission manifest', () => {
         readFile('app/(public)/layout.tsx', 'utf8'),
         readFile('app/(public)/legal/privacy/page.tsx', 'utf8'),
         readFile('components/notes-presentation.tsx', 'utf8'),
-        readFile('next.config.ts', 'utf8'),
+        readFile('backend/internal/httpapi/static.go', 'utf8'),
       ]);
     expect(oidc).toContain(
       "decideBrowserExternalDestination(\n    'google-oidc'",
@@ -152,7 +152,7 @@ describe('external transmission manifest', () => {
     expect(layout).toContain('/legal/external-transmission');
     expect(privacy).toContain('/legal/external-transmission');
     expect(notes).not.toMatch(/外部送信|external-transmission/);
-    expect(nextConfig).toContain('Content-Security-Policy');
-    expect(nextConfig).toContain("connect-src 'self'");
+    expect(staticHandler).toContain('Content-Security-Policy');
+    expect(staticHandler).toContain("connect-src 'self'");
   });
 });

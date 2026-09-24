@@ -25,21 +25,31 @@ async function createHarness(options: {
   prebuilt: boolean;
   existingBuild: boolean;
   failStart?: boolean;
+  testDatabaseUrl?: string;
 }) {
   const root = await mkdtemp(path.join(tmpdir(), 'fukamu-e2e-server-'));
   temporaryDirectories.push(root);
   const bin = path.join(root, 'bin');
-  const log = path.join(root, 'npm.log');
+  const npmLog = path.join(root, 'npm.log');
+  const goLog = path.join(root, 'go.log');
   const environmentLog = path.join(root, 'environment.log');
   await mkdir(bin);
   await writeFile(
     path.join(bin, 'npm'),
-    `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "${log}"\nif [[ "$1 $2" == 'run build' ]]; then\n  mkdir -p dist/server\n  printf '{}' > dist/server/wrangler.json\nfi\nif [[ "$1" == 'start' ]]; then\n  printf 'WRANGLER_WRITE_LOGS=%s\\nWRANGLER_LOG_PATH=%s\\nMINIFLARE_REGISTRY_PATH=%s\\n' "$WRANGLER_WRITE_LOGS" "$WRANGLER_LOG_PATH" "$MINIFLARE_REGISTRY_PATH" > "${environmentLog}"\n  if [[ '${options.failStart ? '1' : '0'}' == '1' ]]; then\n    mkdir -p "$WRANGLER_LOG_PATH"\n    for line_number in $(seq 1 260); do\n      printf 'diagnostic-line-%03d\\n' "$line_number"\n    done > "$WRANGLER_LOG_PATH/wrangler.log"\n    exit 1\n  fi\nfi\n`,
+    `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "${npmLog}"\nif [[ "$1 $2" == 'run build' ]]; then\n  mkdir -p dist/frontend\n  printf '<!doctype html>' > dist/frontend/index.html\nfi\n`,
+  );
+  await writeFile(
+    path.join(bin, 'go'),
+    `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "${goLog}"\nif [[ "$*" == *'run ./cmd/notesctl prepare-e2e'* ]]; then\n  printf 'NOTES_ENVIRONMENT=%s\\nNOTES_DATABASE_URL=%s\\nNOTES_STATIC_DIR=%s\\nNOTES_PRIVATE_AUTH_MODE=%s\\n' "$NOTES_ENVIRONMENT" "$NOTES_DATABASE_URL" "$NOTES_STATIC_DIR" "$NOTES_PRIVATE_AUTH_MODE" > "${environmentLog}"\nfi\nif [[ "$*" == *'run ./cmd/notes' && '${options.failStart ? '1' : '0'}' == '1' ]]; then\n  exit 1\nfi\n`,
   );
   await chmod(path.join(bin, 'npm'), 0o755);
+  await chmod(path.join(bin, 'go'), 0o755);
   if (options.existingBuild) {
-    await mkdir(path.join(root, 'dist/server'), { recursive: true });
-    await writeFile(path.join(root, 'dist/server/wrangler.json'), '{}');
+    await mkdir(path.join(root, 'dist/frontend'), { recursive: true });
+    await writeFile(
+      path.join(root, 'dist/frontend/index.html'),
+      '<!doctype html>',
+    );
   }
 
   const result = await new Promise<{ code: number | null; stderr: string }>(
@@ -50,6 +60,11 @@ async function createHarness(options: {
           ...process.env,
           PATH: `${bin}:${process.env.PATH ?? ''}`,
           FUKAMU_E2E_USE_PREBUILT: options.prebuilt ? '1' : '0',
+          FUKAMU_E2E_LOCAL_AUTH_PUBLIC_KEY: 'test-public-key',
+          NOTES_LOCAL_AUTH_ISSUER: 'https://issuer.test',
+          NOTES_LOCAL_AUTH_AUDIENCE: 'notes-e2e',
+          NOTES_LEGACY_OWNER_SUBJECT: 'fukamu-notes-e2e-user',
+          NOTES_TEST_DATABASE_URL: options.testDatabaseUrl ?? '',
         },
         stdio: ['ignore', 'ignore', 'pipe'],
       });
@@ -62,67 +77,68 @@ async function createHarness(options: {
     },
   );
 
-  const calls = await readFile(log, 'utf8').catch(() => '');
+  const npmCalls = await readFile(npmLog, 'utf8').catch(() => '');
+  const goCalls = await readFile(goLog, 'utf8').catch(() => '');
   const environment = await readFile(environmentLog, 'utf8').catch(() => '');
-  return { ...result, calls, environment };
+  return { ...result, npmCalls, goCalls, environment, root };
 }
 
-describe('E2E server build reuse', () => {
-  it('limits prebuilt reuse to the E2E child of verify', async () => {
-    const packageSource = await readFile('package.json', 'utf8');
-
-    expect(packageSource).toContain(
-      '"verify": "npm run contracts:check && npm run format:check && npm run check && npm run go:check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e"',
-    );
-    expect(packageSource).toContain('"test:e2e": "playwright test"');
-  });
-
-  it('builds for standalone E2E even when an old build exists', async () => {
+describe('Go E2E server', () => {
+  it('builds for standalone E2E and prepares an isolated allowlisted database', async () => {
     const result = await createHarness({
       prebuilt: false,
       existingBuild: true,
     });
 
     expect(result.code).toBe(0);
-    expect(result.calls.split('\n')[0]).toBe('run build');
-    expect(result.calls).toContain('start -- --port 3100');
+    expect(result.npmCalls.split('\n')[0]).toBe('run build');
+    expect(result.goCalls).toContain('run ./cmd/notesctl prepare-e2e');
+    expect(result.goCalls).toContain('run ./cmd/notes');
+    expect(result.environment).toContain('NOTES_ENVIRONMENT=test');
+    expect(result.environment).toContain(
+      'NOTES_DATABASE_URL=postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable',
+    );
+    expect(result.environment).toContain(
+      `NOTES_STATIC_DIR=${result.root}/dist/frontend`,
+    );
+    expect(result.environment).toContain(
+      'NOTES_PRIVATE_AUTH_MODE=local-signed',
+    );
   });
 
-  it('uses verified build output only when explicitly requested', async () => {
+  it('uses verified frontend output only when explicitly requested', async () => {
     const result = await createHarness({ prebuilt: true, existingBuild: true });
 
     expect(result.code).toBe(0);
-    expect(result.calls).not.toContain('run build');
-    expect(result.calls).toContain('start -- --port 3100');
+    expect(result.npmCalls).toBe('');
+    expect(result.goCalls).toContain('run ./cmd/notesctl prepare-e2e');
   });
 
-  it('isolates Wrangler diagnostics and Miniflare registry state per run', async () => {
-    const result = await createHarness({ prebuilt: true, existingBuild: true });
+  it('uses the explicitly configured isolated test database', async () => {
+    const databaseUrl =
+      'postgres://notes_test:test_password@127.0.0.1:5432/fukamu_notes_go_test?sslmode=disable';
+    const result = await createHarness({
+      prebuilt: true,
+      existingBuild: true,
+      testDatabaseUrl: databaseUrl,
+    });
 
     expect(result.code).toBe(0);
-    expect(result.environment).toContain('WRANGLER_WRITE_LOGS=true');
-
-    const logPrefix = 'WRANGLER_LOG_PATH=';
-    const registryPrefix = 'MINIFLARE_REGISTRY_PATH=';
-    const logLine = result.environment
-      .split('\n')
-      .find((line) => line.startsWith(logPrefix));
-    const registryLine = result.environment
-      .split('\n')
-      .find((line) => line.startsWith(registryPrefix));
-
-    if (logLine === undefined || registryLine === undefined) {
-      throw new Error('Expected isolated Wrangler environment paths.');
-    }
-    const logPath = logLine.slice(logPrefix.length);
-    const registryPath = registryLine.slice(registryPrefix.length);
-
-    expect(path.dirname(logPath)).toBe(path.dirname(registryPath));
-    expect(path.basename(logPath)).toBe('wrangler-logs');
-    expect(path.basename(registryPath)).toBe('miniflare-registry');
+    expect(result.environment).toContain(`NOTES_DATABASE_URL=${databaseUrl}`);
   });
 
-  it('reports the bounded tail of Wrangler diagnostics when startup fails', async () => {
+  it('fails before database setup when requested frontend output is missing', async () => {
+    const result = await createHarness({
+      prebuilt: true,
+      existingBuild: false,
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('dist/frontend/index.html is missing');
+    expect(result.goCalls).toBe('');
+  });
+
+  it('propagates a Go server startup failure', async () => {
     const result = await createHarness({
       prebuilt: true,
       existingBuild: true,
@@ -130,18 +146,5 @@ describe('E2E server build reuse', () => {
     });
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain('diagnostic-line-260');
-    expect(result.stderr).not.toContain('diagnostic-line-020');
-  });
-
-  it('fails before database setup when requested build output is missing', async () => {
-    const result = await createHarness({
-      prebuilt: true,
-      existingBuild: false,
-    });
-
-    expect(result.code).toBe(1);
-    expect(result.stderr).toContain('dist/server/wrangler.json is missing');
-    expect(result.calls).toBe('');
   });
 });

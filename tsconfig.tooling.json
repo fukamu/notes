@@ -2,14 +2,15 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "lib": ["esnext"],
-    "types": ["node", "vinext/types"]
+    "types": ["node"]
   },
   "include": [
     "drizzle.config.ts",
-    "next.config.ts",
     "playwright.config.ts",
     "scripts/**/*.mts",
     "vite.config.ts",
+    "vite.frontend.config.ts",
+    "vite.frontend.ssr.config.ts",
     "vitest.config.ts",
     "vitest.benchmark.config.ts",
     "vitest.client-benchmark.config.ts",

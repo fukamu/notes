@@ -1,11 +1,10 @@
-import type { Metadata } from 'next';
 import {
   LegalDefinitionList,
   LegalDocument,
 } from '@/components/legal-document';
 import { legalTermsForCurrentEnvironment } from '@/lib/environment/legal-terms';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: '利用規約 | FUKAMU Notes',
 };
 

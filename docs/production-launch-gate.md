@@ -1,124 +1,97 @@
 # Production Launch Gate
 
-Production Launch Gate separates a production deployment from general
-availability. It is an application-wide admission boundary, not a feature
-flag. The only authorization rule is:
+Production Launch Gate separates a deployed service from general availability.
+It is an application-wide admission boundary, not a frontend feature flag. The
+decision remains:
 
 ```text
 canAccess = publicAccessEnabled OR userAllowed
 ```
 
-## Trust boundary
+This document describes the Go migration runtime on integration branch
+`integration/409-go-backend-migration`. It does not authorize a `main` change,
+deployment, identity-provider configuration, database write, or public launch.
 
-In the production Sites build, the server reads the authenticated identity
-only from the platform-supplied `oai-authenticated-user-id` request header. A
-browser-supplied user ID, query parameter, JSON field, or frontend state is
-never used for authorization. The value is treated as an opaque identifier;
-it is not parsed as an email address or an internal Notes Account ID.
+## Current trust boundary
 
-`server/launch-gate/http.ts` is the server authorization boundary.
-`/api/launch-status` exposes only the current request's booleans. It never
-returns the user ID or another user's allowlist state. The legacy sync, Sync
-v2, contract checkout, and terms-consent APIs enforce the same decision before
-their application handler. Account deletion, privacy requests, cancellation,
-public legal pages, and the status endpoint remain reachable so that the gate
-cannot prevent cancellation or privacy-rights operations.
+The Go origin accepts only an assertion that passes the configured verifier.
+The T04/T05 local and test adapter uses a short-lived Ed25519 assertion with an
+exact issuer, audience, opaque subject, issued-at, and expiry. It rejects
+duplicate headers, non-canonical encoding, unknown or duplicate JSON members,
+invalid signatures, clock violations, and assertions lasting more than ten
+minutes. The private signing key exists only in the test runner; the server
+receives only the public key.
 
-All per-user responses are `private, no-store` and vary on the identity header
-and Cookie. Configuration read errors, a missing singleton, a malformed
-identity header, and D1 errors return `503`; they never enable public access.
-An authenticated but unlisted user receives `403` from protected APIs and a
-short limited-release screen in the application UI.
+`local-signed` is rejected in production. The former Sites
+`oai-authenticated-user-id` header is also rejected, including when a caller
+supplies it together with a valid local assertion. A production assertion
+format, trusted proxy, issuer/audience, login entry URL, domain, and subject
+mapping remain explicit approval items in
+[`go-migration-decisions.md`](go-migration-decisions.md).
 
-After a successful server decision, the current browser tab records only an
-admitted boolean in `sessionStorage` so an already-authorized local-first user
-can reload while offline. It contains no user ID and expires with the tab.
-The existing logout purge clears it in every participating tab before local
-content deletion completes.
-Changing that browser value can only reveal the already-downloaded app shell;
-every network API still makes a fresh server-side D1 decision. An online deny,
-invalid response, or server error clears the marker and fails closed.
+`/api/launch-status` returns only booleans for the current request. It never
+returns a subject or another user's allowlist state. Legacy sync additionally
+requires exact equality with the configured legacy owner and same-origin
+mutation requests. Protected disconnected endpoints authorize before reading
+the request body and still perform no application action.
 
-Development and automated-test builds bypass the production gate in one
-central policy. Unknown build modes are treated as production and remain
-enforced. The production-like Playwright server applies the gate migration and
-uses an isolated allowlisted test identity, so direct API denial and approved
-reload behavior are exercised without production state.
+Per-user responses are `private, no-store` and vary on the signed assertion
+header and Cookie. Invalid identity, a missing gate dependency, a malformed
+database row, or a database error fails closed. An authenticated but unlisted
+user receives `403` from protected APIs and the limited-release UI. No value
+from query parameters, JSON fields, browser storage, or public build
+configuration is an authorization input.
+
+After a successful server decision, the current browser tab stores only an
+admitted boolean in `sessionStorage` so an authorized local-first user can
+reload offline. It contains no identity and expires with the tab. Logout purge
+clears it in participating tabs before local content deletion completes.
+Changing the browser value can expose only the already-downloaded shell; every
+network request makes a fresh server-side decision.
 
 ## Storage and migration
 
-Migration `drizzle/0017_production_launch_gate.sql` creates:
+Go migration `backend/migrations/00001_core.sql` creates PostgreSQL
+`launch_config` and `launch_allowed_users` with a default-closed singleton.
+The migration is applied only by `notesctl migrate`; request handlers never run
+DDL. T05 browser tests use `notesctl prepare-e2e`, which refuses any URL that is
+not loopback and the exact `fukamu_notes_go_test` database, recreates only its
+test schema, migrates, and seeds one explicit test subject.
 
-- `launch_config`: exactly one row (`singleton = 1`) containing
-  `public_access_enabled`; the migration inserts `0` (closed).
-- `launch_allowed_users`: one opaque Sites user ID per allowed user.
+The older TypeScript/D1 migration and adapters remain as compatibility
+reference and test inputs until T14 removes the server runtime. They are not
+the Go runtime's identity source, and no current D1 data has been copied or
+deleted.
 
-The migration is additive and contains no existing user or content migration.
-Apply it through the reviewed Sites/D1 migration procedure before deploying
-code that enforces the gate. Never delete the singleton row as an OFF
-operation: a missing row is an operational error and intentionally returns
-`503`.
+## Operations requiring separate approval
 
-## Reviewed production operations
+Before a production rehearsal, reviewers must approve all of the following:
 
-Obtain the exact authenticated user ID from the Sites identity administration
-source. Do not substitute an email address, invent an ID, or copy an internal
-Notes Account ID. Replace the placeholders below only after the identity and
-target D1 database have been verified. Run these statements with the existing
-reviewed D1 tooling; this document does not authorize a production operation.
+- hosting provider, region, service limits, public URL, TLS and rollback route;
+- PostgreSQL provider, region, connectivity, runtime/migration identities,
+  backups, retention, capacity and recurring cost;
+- the production signed-identity provider, trusted ingress, issuer/audience,
+  opaque owner mapping, sign-in URL and revocation behavior;
+- secrets and key references, redacted telemetry, and an isolated rehearsal
+  environment;
+- exact migration, smoke-test, cutover and rollback commands.
 
-Add one user while keeping the service closed:
+An approved operator runbook must keep general access closed, migrate a new
+empty PostgreSQL database, add only a separately verified owner subject, and
+prove that an unlisted subject and direct-origin spoof are rejected. Opening
+general access is a later, separate business and production decision. Do not
+substitute an email address or an internal Notes account ID for a provider
+subject.
 
-```sql
-INSERT INTO launch_allowed_users(user_id, created_at)
-VALUES ('<exact-sites-authenticated-user-id>', unixepoch() * 1000);
-```
+## Cutover and rollback contract
 
-Remove one user:
+The eventual release unit binds one frontend artifact hash, Go image digest,
+database migration version, public configuration, secret versions, and identity
+mapping. Cutover changes routing only after that unit passes the approved smoke
+plan. There is no long-lived dual write.
 
-```sql
-DELETE FROM launch_allowed_users
-WHERE user_id = '<exact-sites-authenticated-user-id>';
-```
-
-Open general access explicitly:
-
-```sql
-UPDATE launch_config
-SET public_access_enabled = 1, updated_at = unixepoch() * 1000
-WHERE singleton = 1;
-```
-
-Close general access without changing the allowlist:
-
-```sql
-UPDATE launch_config
-SET public_access_enabled = 0, updated_at = unixepoch() * 1000
-WHERE singleton = 1;
-```
-
-After every write, verify exactly one configuration row and the intended
-allowlist count without exporting user IDs into logs:
-
-```sql
-SELECT singleton, public_access_enabled, updated_at FROM launch_config;
-SELECT count(*) AS allowed_user_count FROM launch_allowed_users;
-```
-
-## Promotion sequence
-
-1. Apply the reviewed migration and verify `public_access_enabled = 0`.
-2. Add the verified developer identity and verify an unlisted identity still
-   receives the limited-release UI and API `403`.
-3. Deploy production code. With the developer identity, test login, logout,
-   login again, reload, direct API access, offline/local persistence, sync,
-   encryption-backed v2 paths when their real composition is enabled, and
-   existing billing/webhook paths in the authorized production test scope.
-4. Add verified closed-beta identities one at a time. Removing a row revokes
-   gate access on the next request.
-5. After the production smoke record and business approval are complete, set
-   `public_access_enabled = 1` explicitly. Test both a previously allowlisted
-   and an unlisted authenticated user.
-
-Rollback the application deployment without dropping these tables. If access
-must be closed, set the flag to `0`; keep the developer allowlist for diagnosis.
+Rollback restores the matching old Sites artifact, D1 database, configuration,
+and identity entry together. It must never point the old TypeScript backend at
+PostgreSQL, point Go at the existing D1 database, or infer permission to remove
+either datastore. The current integration work has no production rollback
+action because no production resource or route has changed.

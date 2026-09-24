@@ -35,24 +35,52 @@ func testHandlerWithRuntime(
 ) (http.Handler, *bytes.Buffer) {
 	t.Helper()
 	staticDirectory := t.TempDir()
-	if err := os.WriteFile(
-		filepath.Join(staticDirectory, "index.html"),
-		[]byte("<!doctype html><title>Go bootstrap</title>"),
-		0o600,
-	); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	writeStaticFixture(t, staticDirectory)
 	logs := &bytes.Buffer{}
 	handler, err := httpapi.NewHandler(httpapi.HandlerOptions{
-		StaticDirectory: staticDirectory,
-		BodyLimit:       bodyLimit,
-		Logger:          telemetry.NewLogger(logs, slog.LevelDebug),
-		PrivateRuntime:  privateRuntime,
+		StaticDirectory:     staticDirectory,
+		BodyLimit:           bodyLimit,
+		Logger:              telemetry.NewLogger(logs, slog.LevelDebug),
+		PrivateRuntime:      privateRuntime,
+		EnableLocalFixtures: true,
 	})
 	if err != nil {
 		t.Fatalf("NewHandler() error = %v", err)
 	}
 	return handler, logs
+}
+
+func writeStaticFixture(t *testing.T, directory string) {
+	t.Helper()
+	files := []string{"index.html", "favicon.svg", "manifest.webmanifest", "og.png", "sw.js"}
+	for _, filename := range publicRouteFilesForTest() {
+		files = append(files, filename)
+	}
+	for _, filename := range files {
+		path := filepath.Join(directory, filepath.FromSlash(filename))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
+		if err := os.WriteFile(path, []byte("<!doctype html><title>Go bootstrap</title>"), 0o600); err != nil {
+			t.Fatalf("WriteFile() error = %v", err)
+		}
+	}
+	asset := filepath.Join(directory, "assets", "app-Ab12.js")
+	if err := os.MkdirAll(filepath.Dir(asset), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(asset, []byte("export {};"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func publicRouteFilesForTest() []string {
+	return []string{
+		"account/billing/index.html", "account/privacy/index.html", "account/terms/index.html",
+		"checkout/index.html", "company/index.html", "legal/commercial-transactions/index.html",
+		"legal/external-transmission/index.html", "legal/privacy/index.html", "legal/terms/index.html",
+		"pricing/index.html",
+	}
 }
 
 type gateReaderFunction func(context.Context, *access.Subject) (launchgate.Facts, error)
@@ -411,6 +439,78 @@ func TestLegacySyncSanitizesGateAndStoreFailures(t *testing.T) {
 	}
 }
 
+func TestDisconnectedAPIsPreserveLocalFixturesAndStayClosedInProduction(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier, err := accessadapter.NewLocalVerifier(publicKey, "https://issuer.test", "notes-local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_800_000_000, 0)
+	owner, _ := access.ParseSubject("private-owner")
+	assertion := signedAssertion(t, privateKey, owner, now)
+	runtime := &httpapi.PrivateRuntime{
+		Verifier: verifier,
+		Gate: gateReaderFunction(func(_ context.Context, subject *access.Subject) (launchgate.Facts, error) {
+			return launchgate.Facts{UserAllowed: subject != nil && *subject == owner}, nil
+		}),
+		Clock: func() time.Time { return now },
+	}
+	local, _ := testHandlerWithRuntime(t, 1024, runtime)
+
+	protected := httptest.NewRequest(http.MethodPost, "/api/billing/checkout", nil)
+	protected.Header.Set(accessadapter.LocalAssertionHeader, assertion)
+	protectedResponse := httptest.NewRecorder()
+	local.ServeHTTP(protectedResponse, protected)
+	if protectedResponse.Code != http.StatusNotFound ||
+		protectedResponse.Body.String() != "{\"error\":\"not-found\"}\n" {
+		t.Fatalf("local protected fixture = %d %s", protectedResponse.Code, protectedResponse.Body.String())
+	}
+
+	denied := httptest.NewRecorder()
+	deniedBody := &trackingReadCloser{}
+	deniedRequest := httptest.NewRequest(http.MethodPost, "/api/v2/sync", nil)
+	deniedRequest.Body = deniedBody
+	deniedRequest.ContentLength = 2048
+	local.ServeHTTP(denied, deniedRequest)
+	if denied.Code != http.StatusForbidden {
+		t.Fatalf("unapproved disconnected API = %d %s", denied.Code, denied.Body.String())
+	}
+	if deniedBody.reads != 0 {
+		t.Fatal("protected disconnected API read the body before authorization")
+	}
+
+	publicResponse := httptest.NewRecorder()
+	local.ServeHTTP(publicResponse, httptest.NewRequest(http.MethodPost, "/api/billing/cancel", nil))
+	if publicResponse.Code != http.StatusNotFound ||
+		publicResponse.Body.String() != "{\"error\":\"not-found\"}\n" {
+		t.Fatalf("local public fixture = %d %s", publicResponse.Code, publicResponse.Body.String())
+	}
+
+	staticDirectory := t.TempDir()
+	writeStaticFixture(t, staticDirectory)
+	production, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory:     staticDirectory,
+		BodyLimit:           1024,
+		Logger:              slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PrivateRuntime:      runtime,
+		EnableLocalFixtures: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	productionRequest := httptest.NewRequest(http.MethodPost, "/api/billing/checkout", nil)
+	productionRequest.Header.Set(accessadapter.LocalAssertionHeader, assertion)
+	productionResponse := httptest.NewRecorder()
+	production.ServeHTTP(productionResponse, productionRequest)
+	if productionResponse.Code != http.StatusServiceUnavailable ||
+		productionResponse.Body.String() != "{\"error\":\"unavailable\"}\n" {
+		t.Fatalf("production disconnected API = %d %s", productionResponse.Code, productionResponse.Body.String())
+	}
+}
+
 func signedAssertion(
 	t *testing.T,
 	privateKey ed25519.PrivateKey,
@@ -515,7 +615,7 @@ func TestPrivateReadinessRequiresAllDependenciesAndDatabase(t *testing.T) {
 	}
 }
 
-func TestHandlerServesOnlyBootstrapAndProcessHealth(t *testing.T) {
+func TestHandlerServesKnownFrontendRoutesAssetsAndProcessHealth(t *testing.T) {
 	t.Parallel()
 	handler, _ := testHandler(t, 1024)
 	tests := []struct {
@@ -528,6 +628,20 @@ func TestHandlerServesOnlyBootstrapAndProcessHealth(t *testing.T) {
 		{
 			name:        "index",
 			path:        "/",
+			status:      http.StatusOK,
+			contentType: "text/html; charset=utf-8",
+			body:        "Go bootstrap",
+		},
+		{
+			name:        "notes deep link",
+			path:        "/cards/01991f20-61d2-7000-8000-000000001000/connections",
+			status:      http.StatusOK,
+			contentType: "text/html; charset=utf-8",
+			body:        "Go bootstrap",
+		},
+		{
+			name:        "public prerender",
+			path:        "/legal/privacy",
 			status:      http.StatusOK,
 			contentType: "text/html; charset=utf-8",
 			body:        "Go bootstrap",
@@ -584,6 +698,64 @@ func TestHandlerServesOnlyBootstrapAndProcessHealth(t *testing.T) {
 	}
 }
 
+func TestStaticResponsesApplySecurityAndCachePolicy(t *testing.T) {
+	t.Parallel()
+	handler, _ := testHandler(t, 1024)
+
+	for _, path := range []string{"/", "/history", "/pricing"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("GET %s = %d, cache = %q", path, response.Code, response.Header().Get("Cache-Control"))
+		}
+		if !strings.Contains(response.Header().Get("Content-Security-Policy"), "script-src 'self'") ||
+			strings.Contains(response.Header().Get("Content-Security-Policy"), "script-src 'self' 'unsafe-inline'") ||
+			response.Header().Get("X-Frame-Options") != "DENY" {
+			t.Fatalf("GET %s security headers = %#v", path, response.Header())
+		}
+	}
+
+	asset := httptest.NewRecorder()
+	handler.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/assets/app-Ab12.js", nil))
+	if asset.Code != http.StatusOK || asset.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
+		t.Fatalf("asset = %d, cache = %q", asset.Code, asset.Header().Get("Cache-Control"))
+	}
+
+	worker := httptest.NewRecorder()
+	handler.ServeHTTP(worker, httptest.NewRequest(http.MethodGet, "/sw.js", nil))
+	if worker.Code != http.StatusOK || worker.Header().Get("Cache-Control") != "no-cache" ||
+		worker.Header().Get("Service-Worker-Allowed") != "/" {
+		t.Fatalf("worker headers = %#v", worker.Header())
+	}
+
+	for _, path := range []string{
+		"/api/missing", "/pricing/", "/cards/id/unknown", "/.vite/manifest.json", "/index.html",
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusNotFound || strings.Contains(response.Body.String(), "Go bootstrap") {
+			t.Fatalf("GET %s = %d %s", path, response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestNewHandlerRejectsStaticSymlink(t *testing.T) {
+	t.Parallel()
+	staticDirectory := t.TempDir()
+	writeStaticFixture(t, staticDirectory)
+	if err := os.Symlink(filepath.Join(staticDirectory, "index.html"), filepath.Join(staticDirectory, "assets", "linked.js")); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory: staticDirectory,
+		BodyLimit:       1024,
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	if err == nil || handler != nil {
+		t.Fatal("NewHandler must reject symbolic links in static assets")
+	}
+}
+
 func TestHandlerRejectsOversizedBodiesBeforeRouting(t *testing.T) {
 	t.Parallel()
 	handler, _ := testHandler(t, 8)
@@ -626,7 +798,7 @@ func TestHandlerRejectsOversizedChunkedBodies(t *testing.T) {
 func TestHandlerOmitsResponseBodyForHead(t *testing.T) {
 	t.Parallel()
 	handler, _ := testHandler(t, 1024)
-	for _, path := range []string{"/healthz", "/readyz", "/api/sync", "/missing"} {
+	for _, path := range []string{"/", "/pricing", "/assets/app-Ab12.js", "/healthz", "/readyz", "/api/sync", "/missing"} {
 		request := httptest.NewRequest(http.MethodHead, path, nil)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)

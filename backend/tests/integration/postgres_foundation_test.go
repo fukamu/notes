@@ -126,9 +126,7 @@ func assertPrivateHTTPVertical(t *testing.T, ctx context.Context, pool *pgxpool.
 	publicOrigin, _ := url.Parse("https://notes.example")
 	owner, _ := access.ParseSubject("private-owner")
 	staticDirectory := t.TempDir()
-	if err := os.WriteFile(filepath.Join(staticDirectory, "index.html"), []byte("test"), 0o600); err != nil {
-		t.Fatalf("write static index: %v", err)
-	}
+	writeStaticSiteFixture(t, staticDirectory)
 	now := time.Unix(1_800_000_000, 0)
 	handler, err := httpapi.NewHandler(httpapi.HandlerOptions{
 		StaticDirectory: staticDirectory,
@@ -197,6 +195,26 @@ func assertPrivateHTTPVertical(t *testing.T, ctx context.Context, pool *pgxpool.
 	handler.ServeHTTP(spoofed, spoofedRequest)
 	if spoofed.Code != http.StatusServiceUnavailable || strings.Contains(spoofed.Body.String(), string(owner)) {
 		t.Fatalf("spoofed launch response = %d %s", spoofed.Code, spoofed.Body.String())
+	}
+}
+
+func writeStaticSiteFixture(t *testing.T, directory string) {
+	t.Helper()
+	files := []string{
+		"index.html", "favicon.svg", "manifest.webmanifest", "og.png", "sw.js",
+		"account/billing/index.html", "account/privacy/index.html", "account/terms/index.html",
+		"checkout/index.html", "company/index.html", "legal/commercial-transactions/index.html",
+		"legal/external-transmission/index.html", "legal/privacy/index.html", "legal/terms/index.html",
+		"pricing/index.html",
+	}
+	for _, filename := range files {
+		path := filepath.Join(directory, filepath.FromSlash(filename))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatalf("create static fixture directory: %v", err)
+		}
+		if err := os.WriteFile(path, []byte("test"), 0o600); err != nil {
+			t.Fatalf("write static fixture: %v", err)
+		}
 	}
 }
 

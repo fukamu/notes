@@ -2,6 +2,7 @@ import {
   resolvePrivacyProcessingRegistry,
   type PrivacyProcessingRegistryResolution,
 } from '@/lib/application/privacy-processing-registry';
+import { currentPublicBuildEnvironment } from './public-build';
 
 export class PrivacyProcessingRegistryConfigurationError extends Error {
   readonly reason: Extract<
@@ -21,7 +22,9 @@ export class PrivacyProcessingRegistryConfigurationError extends Error {
 }
 
 export function privacyProcessingRegistryForCurrentEnvironment() {
-  const resolution = resolvePrivacyProcessingRegistry(process.env);
+  const resolution = resolvePrivacyProcessingRegistry(
+    currentPublicBuildEnvironment(),
+  );
   if (resolution.kind === 'blocked') {
     throw new PrivacyProcessingRegistryConfigurationError(resolution);
   }

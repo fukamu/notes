@@ -41,6 +41,7 @@ func TestRunMigratesOnlyTheExplicitAllowlistedEnvironment(t *testing.T) {
 			}
 			return nil
 		},
+		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 	)
 	if code != 0 || !called || stdout.String() != "migration complete\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
@@ -61,12 +62,41 @@ func TestRunRefusesMigrationEnvironmentMismatchWithoutDisclosingURL(t *testing.T
 		&stderr,
 		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
 		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 	)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "refused") {
 		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
 	}
 	if strings.Contains(stderr.String(), "secret") {
 		t.Fatal("migration refusal disclosed credentials")
+	}
+}
+
+func TestRunPreparesOnlyTheAllowlistedE2EDatabase(t *testing.T) {
+	t.Parallel()
+	values := map[string]string{
+		"NOTES_ENVIRONMENT":  "test",
+		"NOTES_DATABASE_URL": "postgres://notes:secret@127.0.0.1:5432/fukamu_notes_go_test",
+	}
+	called := false
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithDependencies(
+		[]string{"prepare-e2e", "--environment=test", "--allowed-subject=fukamu-notes-e2e-user"},
+		&stdout,
+		&stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(_ context.Context, databaseURL string, subject string) error {
+			called = true
+			if !strings.Contains(databaseURL, "secret") || subject != "fukamu-notes-e2e-user" {
+				t.Fatal("prepare-e2e did not receive validated inputs")
+			}
+			return nil
+		},
+	)
+	if code != 0 || !called || stdout.String() != "e2e database prepared\n" || stderr.Len() != 0 {
+		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
 	}
 }
 

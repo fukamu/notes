@@ -12,13 +12,18 @@ import { decodeSyncRequest } from '@/lib/sync/protocol';
 import { connectionsBenchmarkFixtures } from '@/tests/fixtures/connections-layout';
 import { createClientPerformanceFixture } from '@/tests/fixtures/client-performance';
 import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
+import {
+  assertionForSubject,
+  e2eOwnerSubject,
+  localAssertionHeader,
+} from './identity-fixture';
 
 test.describe.configure({ mode: 'serial' });
 
 function approvedBrowserContext(browser: Browser) {
   return browser.newContext({
     extraHTTPHeaders: {
-      'oai-authenticated-user-id': 'fukamu-notes-e2e-user',
+      [localAssertionHeader]: assertionForSubject(e2eOwnerSubject),
     },
   });
 }
@@ -121,7 +126,7 @@ async function browserHeapUsed(page: Page): Promise<number | null> {
 }
 
 async function forceConnectionsLayoutFault(page: Page, failCorridor: boolean) {
-  await page.route('**/_next/static/chunks/notes-app-*.js', async (route) => {
+  await page.route('**/assets/index-*.js', async (route) => {
     const response = await route.fetch();
     const source = await response.text();
     const layoutInvocation =
