@@ -71,7 +71,7 @@ describe('E2E server build reuse', () => {
     const packageSource = await readFile('package.json', 'utf8');
 
     expect(packageSource).toContain(
-      '"verify": "npm run contracts:check && npm run format:check && npm run check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e"',
+      '"verify": "npm run contracts:check && npm run format:check && npm run check && npm run go:check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e"',
     );
     expect(packageSource).toContain('"test:e2e": "playwright test"');
   });
