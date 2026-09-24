@@ -29,10 +29,11 @@ async function createHarness(options: {
   temporaryDirectories.push(root);
   const bin = path.join(root, 'bin');
   const log = path.join(root, 'npm.log');
+  const environmentLog = path.join(root, 'environment.log');
   await mkdir(bin);
   await writeFile(
     path.join(bin, 'npm'),
-    `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "${log}"\nif [[ "$1 $2" == 'run build' ]]; then\n  mkdir -p dist/server\n  printf '{}' > dist/server/wrangler.json\nfi\n`,
+    `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "${log}"\nif [[ "$1 $2" == 'run build' ]]; then\n  mkdir -p dist/server\n  printf '{}' > dist/server/wrangler.json\nfi\nif [[ "$1" == 'start' ]]; then\n  printf 'WRANGLER_WRITE_LOGS=%s\\nWRANGLER_LOG_PATH=%s\\nMINIFLARE_REGISTRY_PATH=%s\\n' "$WRANGLER_WRITE_LOGS" "$WRANGLER_LOG_PATH" "$MINIFLARE_REGISTRY_PATH" > "${environmentLog}"\nfi\n`,
   );
   await chmod(path.join(bin, 'npm'), 0o755);
   if (options.existingBuild) {
@@ -61,7 +62,8 @@ async function createHarness(options: {
   );
 
   const calls = await readFile(log, 'utf8').catch(() => '');
-  return { ...result, calls };
+  const environment = await readFile(environmentLog, 'utf8').catch(() => '');
+  return { ...result, calls, environment };
 }
 
 describe('E2E server build reuse', () => {
@@ -91,6 +93,32 @@ describe('E2E server build reuse', () => {
     expect(result.code).toBe(0);
     expect(result.calls).not.toContain('run build');
     expect(result.calls).toContain('start -- --port 3100');
+  });
+
+  it('isolates Wrangler diagnostics and Miniflare registry state per run', async () => {
+    const result = await createHarness({ prebuilt: true, existingBuild: true });
+
+    expect(result.code).toBe(0);
+    expect(result.environment).toContain('WRANGLER_WRITE_LOGS=true');
+
+    const logPrefix = 'WRANGLER_LOG_PATH=';
+    const registryPrefix = 'MINIFLARE_REGISTRY_PATH=';
+    const logLine = result.environment
+      .split('\n')
+      .find((line) => line.startsWith(logPrefix));
+    const registryLine = result.environment
+      .split('\n')
+      .find((line) => line.startsWith(registryPrefix));
+
+    if (logLine === undefined || registryLine === undefined) {
+      throw new Error('Expected isolated Wrangler environment paths.');
+    }
+    const logPath = logLine.slice(logPrefix.length);
+    const registryPath = registryLine.slice(registryPrefix.length);
+
+    expect(path.dirname(logPath)).toBe(path.dirname(registryPath));
+    expect(path.basename(logPath)).toBe('wrangler-logs');
+    expect(path.basename(registryPath)).toBe('miniflare-registry');
   });
 
   it('fails before database setup when requested build output is missing', async () => {
