@@ -10,11 +10,16 @@ their explicit 404 fixture contract without connecting provider operations.
 Go 1.27.1 is pinned in `go.mod`, CI, and the container build stage. PostgreSQL
 access uses pinned pgx and goose versions; no ORM is used.
 
-T06 Issue #422 also provides a disconnected Go session/CSRF core and
-PostgreSQL session store. It hashes raw bearer tokens before lookup, performs
-rotation and revocation transactionally, and can derive a VaultContext through
-an injected resolver. No auth HTTP route uses it yet; local signed launch-gate
-identity and user sessions remain separate boundaries.
+T06 Issues #422 and #424 also provide disconnected Go session/CSRF and Google
+OIDC boundaries. The session store hashes raw bearer tokens before lookup,
+performs rotation and revocation transactionally, and can derive a VaultContext
+through an injected resolver. The OIDC core preserves ten-minute single-use
+transactions, exact redirect/state/nonce/audience policy, PKCE S256, identity
+collision/linking decisions, and same-vault session establishment. Its concrete
+provider adapter uses pinned `go-oidc` and `oauth2`; tests exercise discovery,
+code exchange, and JWKS signature verification against a local TLS provider.
+No auth HTTP route or production provider configuration uses these packages;
+local signed launch-gate identity and user sessions remain separate boundaries.
 
 ## Local start
 

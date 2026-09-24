@@ -1,8 +1,9 @@
 # Google OIDC boundary
 
-Issue #111 defines the provider-neutral Google sign-in boundary. It does not
-create a Google Cloud client, store a client secret, call Google, add a login
-route, or enable authentication in the local notes composition.
+Issue #111 defines the TypeScript provider-neutral Google sign-in boundary.
+Migration Issue #424 implements its Go replacement without creating a Google
+Cloud client, adding a repository secret, calling Google, adding a login route,
+or enabling authentication in the local notes composition.
 
 ## Flow and trust boundaries
 
@@ -18,12 +19,14 @@ denial, malformed claims, token-exchange failure, and successful login all make
 the callback single-use. The boundary consumes before code exchange and maps
 every public failure to the same `authentication-failed` result.
 
-The token port is a deliberately narrow seam. A production implementation must
-exchange the code over TLS, use the stored verifier and exact redirect URI, and
-verify ID-token signature, algorithm, key origin, and discovered provider
-metadata before returning claims as `unknown`. The boundary then decodes the
-claims again and checks exact issuer allowlisting, audience, `azp` for multiple
-audiences, expiry, issued-at bounds, nonce, subject, and verified email.
+The token port is a deliberately narrow seam. The Go adapter uses pinned
+`coreos/go-oidc/v3/oidc` and `golang.org/x/oauth2` to exchange the code over
+TLS, send the stored verifier and exact redirect URI, and verify ID-token
+signature, advertised algorithm, JWKS, exact discovery issuer, audience, and
+expiry. The application boundary then decodes the returned claims into bounded
+types and independently checks the configured issuer allowlist, audience,
+`azp` for multiple audiences, expiry, issued-at bounds, nonce, subject, and
+verified email.
 Google documents both `https://accounts.google.com` and its legacy exact
 `accounts.google.com` issuer value; the issuer codec can represent both, but a
 deployment accepts only values explicitly present in its configured allowlist.
@@ -45,6 +48,11 @@ derived from the authenticated `VaultContext` at the start boundary and cannot
 be supplied in the request body. A new identity can link only to that account;
 an identity or verified email owned by another account is rejected. Persistence
 of the resulting provision/link plan belongs to the control-plane schema work.
+The current `identities` schema stores provider, issuer, and subject but no
+verified email, and the TypeScript email lookup has only a fake adapter. The Go
+boundary therefore keeps this lookup as a fail-closed port. The OTP/signup slice
+must add a verified-email persistence and uniqueness contract before any route
+can be published; issuer or subject is never treated as a substitute for email.
 
 After the identity/control-plane operation commits, `establishOidcSession`
 creates a fresh initial session or rotates a same-account/same-vault session via
@@ -53,13 +61,17 @@ never reuses the previous session ID, bearer token, or epoch.
 
 ## Local development, migration, and rollback
 
-The current route continues to mount `LegacyNotesApp`; therefore local notes,
-offline editing, and E2E do not require Google or billing configuration. Tests
-use fake entropy, transaction, provider, and identity-directory adapters plus
-the runtime Web Crypto S256 adapter. No real provider request or email is sent.
+The current static route continues to mount the legacy notes UI; local notes,
+offline editing, and E2E do not require Google or billing configuration. Go
+boundary tests use fake entropy, atomic in-memory transaction, provider, and
+identity-directory adapters. Adapter tests use an ephemeral local TLS discovery,
+token, and JWKS server and verify the RFC 7636 S256 vector. No real provider
+request or email is sent.
 
-This Issue creates no schema or data migration. Reverting it removes only the
-OIDC contracts, fake/Web adapters, tests, and documentation. A real Google
-client/secret, callback route, production token verifier, and production
-transaction/identity stores require later Issues and explicit secret/provider
-approval.
+This Issue creates no schema or data migration. Reverting #424 removes only the
+disconnected Go OIDC core/provider adapter, tests, documentation, and pinned Go
+dependencies. A real Google client/secret, callback route, callback-browser
+binding, and production transaction/identity stores require later Issues and
+explicit secret/provider approval. The Strict session cookie is not weakened:
+because it will not accompany a cross-site Google callback, a separate
+short-lived callback binding remains required before publication.

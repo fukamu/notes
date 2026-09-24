@@ -43,8 +43,8 @@ the same contract as its closed route.
 | F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10      | integrated by #420 / PR #421                 |
 | F02 | B     | launch gate / private owner                 | T04                             | V02,V03      | signed gate #416; owner/origin enforced #418 |
 | F03 | A     | legacy sync                                 | T04                             | V01,V04,V10  | Go/Postgres #418; Go-served UI #420          |
-| F04 | B     | session / CSRF                              | T06                             | V02,V03,V04  | Go core/Postgres #422; integration pending   |
-| F05 | B     | Google OIDC                                 | T06                             | V03          | pending                                      |
+| F04 | B     | session / CSRF                              | T06                             | V02,V03,V04  | Go core/Postgres integrated by #422          |
+| F05 | B     | Google OIDC                                 | T06                             | V03          | Go core/provider adapter #424; disconnected  |
 | F06 | B     | email OTP                                   | T06                             | V03          | pending                                      |
 | F07 | B     | identity / vault context                    | T06                             | V03,V04      | session-derived context #422; auth pending   |
 | F08 | B     | signup admission                            | T06,T10                         | V03,V07      | pending                                      |
@@ -75,7 +75,7 @@ the same contract as its closed route.
 | --- | ------------------------------------------------------- | ------------------------------------------------------------- |
 | V01 | shared JSON, strict decoding, black-box HTTP            | same fixture through TS #410 and Go unit/DB/HTTP #418         |
 | V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests  |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC/OTP T06 slices pending                |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP T06 slice pending           |
 | V04 | empty Postgres, transactions, concurrency, rollback     | #414 empty DB; #418 serial retry/concurrency/rollback/release |
 | V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                   |
 | V06 | crypto vectors, tamper/AAD/KMS failures                 | T01 format/AAD baseline; full T07+ pending                    |
@@ -294,6 +294,43 @@ selection, external resources, production data, deployment, and `main` remain
 outside this Issue. OIDC and OTP/signup are later T06 slices; the whole-flow
 race between account deletion and session issuance remains T12.
 
+## T06 Google OIDC slice
+
+Issue #424 ports the disconnected TypeScript OIDC values, transaction and
+callback policies, claim validation, identity-resolution rules, signup seam,
+and session-establishment decision into `backend/internal/identity`. State and
+nonce are independent canonical 256-bit base64url values, the PKCE verifier is
+retained only in the server-side ten-minute transaction, and only an S256
+challenge enters the authorization request. Callback state is consumed before
+provider denial, exchange, or any later validation so every result is
+single-use. External failures collapse to the same public authentication error.
+
+The concrete adapter pins `github.com/coreos/go-oidc/v3/oidc` and
+`golang.org/x/oauth2`. It requires exact discovery issuer and authorization
+endpoint agreement, sends the stored verifier and redirect URI during code
+exchange, and verifies the ID-token signature, JWKS origin, issuer, audience,
+and expiry before the application boundary rechecks the exact issuer allowlist,
+`azp`, issued-at skew, nonce, subject, and verified email. Tests use only an
+ephemeral local TLS provider and local JWKS; they make no Google request and
+create no provider resource.
+
+The current schema review found no persisted verified-email attribute in
+`identities`; the TypeScript `findAccountIdByVerifiedEmail` port likewise has
+only a fake implementation. The Go boundary therefore keeps issuer/subject and
+verified-email lookup behind a typed fail-closed directory port. It does not
+infer email from subject or add an unsafe partial PostgreSQL lookup. The T06
+OTP/signup control-plane slice must add the verified-email persistence model,
+uniqueness/race tests, signup finalization, and a real transaction-store choice
+before auth publication.
+
+This capability remains disconnected. There is no sign-in/link/callback route,
+client or secret configuration, callback-browser binding, production pending
+transaction store, or external call in the running server. Because Strict
+session cookies are not sent on the cross-site Google callback, the missing
+short-lived browser binding remains a publication blocker; the session cookie
+policy is not weakened to compensate. `main`, deployment, production data, and
+external resources remain unchanged.
+
 ## Build, cutover, and rollback status
 
 A local-only Go bootstrap, PostgreSQL schema and legacy sync route, signed test
@@ -309,4 +346,5 @@ database or copies writes in both directions. T05 rollback now requires
 reverting the PR #421 merge as a reviewed integration change; it has no
 persistent schema or data effect. T06 #422 reuses the T03 session schema and is
 still disconnected, so its rollback removes Go code without migrating or
-deleting stored data.
+deleting stored data. T06 #424 adds no schema or provider resource; rollback
+removes the disconnected Go OIDC core/adapter and its pinned dependencies.
