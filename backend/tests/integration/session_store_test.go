@@ -146,8 +146,41 @@ func TestSessionStorePostgres(t *testing.T) {
 
 	assertConcurrentSessionRotation(t, ctx, store, accountID, vaultID)
 	assertAccountSessionRevocation(t, ctx, pool, store, accountID, vaultID)
+	assertMalformedStoredSessionRejected(t, ctx, pool, store, accountID, vaultID)
 	if acquired := pool.Stat().AcquiredConns(); acquired != 0 {
 		t.Fatalf("database connections still acquired: %d", acquired)
+	}
+}
+
+func assertMalformedStoredSessionRejected(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	store *postgresadapter.SessionStore,
+	accountID identity.AccountID,
+	vaultID identity.VaultID,
+) {
+	t.Helper()
+	token := sessionToken(t, 'K', 'g')
+	hash, err := identity.HashSessionToken(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(
+		ctx,
+		`INSERT INTO sessions(
+		   session_id, account_id, vault_id, token_hash, session_epoch,
+		   issued_at, expires_at, revoked_at, revocation_reason
+		 ) VALUES ('not-a-uuid', $1, $2, $3, 1, 1000, 2000, NULL, NULL)`,
+		string(accountID), string(vaultID), string(hash),
+	); err != nil {
+		t.Fatalf("seed malformed session row: %v", err)
+	}
+	if _, err := store.FindSessionByToken(ctx, token); !errors.Is(err, postgresadapter.ErrInvalidSessionRecord) {
+		t.Fatalf("malformed session lookup error = %v", err)
+	}
+	if _, err := pool.Exec(ctx, "DELETE FROM sessions WHERE token_hash = $1", string(hash)); err != nil {
+		t.Fatalf("remove malformed session row: %v", err)
 	}
 }
 
