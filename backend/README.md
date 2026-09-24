@@ -10,6 +10,12 @@ their explicit 404 fixture contract without connecting provider operations.
 Go 1.27.1 is pinned in `go.mod`, CI, and the container build stage. PostgreSQL
 access uses pinned pgx and goose versions; no ORM is used.
 
+T06 Issue #422 also provides a disconnected Go session/CSRF core and
+PostgreSQL session store. It hashes raw bearer tokens before lookup, performs
+rotation and revocation transactionally, and can derive a VaultContext through
+an injected resolver. No auth HTTP route uses it yet; local signed launch-gate
+identity and user sessions remain separate boundaries.
+
 ## Local start
 
 ```bash

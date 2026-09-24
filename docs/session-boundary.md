@@ -15,6 +15,13 @@ Production session storage must hash presented 256-bit tokens before lookup.
 The in-memory resolver in this Issue is a fake test adapter and must not be
 used as a production token store.
 
+Migration Issue #422 adds the equivalent Go boundary and a PostgreSQL adapter.
+The adapter persists only canonical SHA-256 token digests, validates every row
+on read, and derives VaultContext only after cookie, CSRF, active-state,
+expiry, and scope checks. It is intentionally not connected to an HTTP auth
+route until the later OIDC/OTP migration slices and production identity choice
+are reviewed.
+
 ## Session lifecycle
 
 The pure session core models active and revoked records. Authorization returns
@@ -68,7 +75,8 @@ not the production public-service composition. See
 
 ## Migration and rollback
 
-This Issue creates no schema and migrates no data. Reverting the Issue removes
-only new contracts, fake adapters, and the composition gate. No production
-session store, secret, email, payment, or deployment is created. `main` remains
-unchanged.
+The original TypeScript Issue created no schema or production data. The Go
+migration reuses the control-plane tables created by T03 and adds no migration.
+Reverting #422 removes only the disconnected Go core, adapter, tests, and
+documentation. No production session, secret, email, payment, provider, or
+deployment is created. `main` remains unchanged.
