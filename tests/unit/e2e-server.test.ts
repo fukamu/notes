@@ -25,6 +25,7 @@ async function createHarness(options: {
   prebuilt: boolean;
   existingBuild: boolean;
   failStart?: boolean;
+  testDatabaseUrl?: string;
 }) {
   const root = await mkdtemp(path.join(tmpdir(), 'fukamu-e2e-server-'));
   temporaryDirectories.push(root);
@@ -63,6 +64,7 @@ async function createHarness(options: {
           NOTES_LOCAL_AUTH_ISSUER: 'https://issuer.test',
           NOTES_LOCAL_AUTH_AUDIENCE: 'notes-e2e',
           NOTES_LEGACY_OWNER_SUBJECT: 'fukamu-notes-e2e-user',
+          NOTES_TEST_DATABASE_URL: options.testDatabaseUrl ?? '',
         },
         stdio: ['ignore', 'ignore', 'pipe'],
       });
@@ -110,6 +112,19 @@ describe('Go E2E server', () => {
     expect(result.code).toBe(0);
     expect(result.npmCalls).toBe('');
     expect(result.goCalls).toContain('run ./cmd/notesctl prepare-e2e');
+  });
+
+  it('uses the explicitly configured isolated test database', async () => {
+    const databaseUrl =
+      'postgres://notes_test:test_password@127.0.0.1:5432/fukamu_notes_go_test?sslmode=disable';
+    const result = await createHarness({
+      prebuilt: true,
+      existingBuild: true,
+      testDatabaseUrl: databaseUrl,
+    });
+
+    expect(result.code).toBe(0);
+    expect(result.environment).toContain(`NOTES_DATABASE_URL=${databaseUrl}`);
   });
 
   it('fails before database setup when requested frontend output is missing', async () => {
