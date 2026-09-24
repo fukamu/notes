@@ -58,10 +58,11 @@ describe('issue-based delivery contract', () => {
   });
 
   it('runs read-only verification for main and every delivery branch without deployment', async () => {
-    const [quality, goModule, dockerfile] = await Promise.all([
+    const [quality, goModule, dockerfile, compose] = await Promise.all([
       readFile('.github/workflows/quality.yml', 'utf8'),
       readFile('backend/go.mod', 'utf8'),
       readFile('deploy/Dockerfile', 'utf8'),
+      readFile('deploy/compose.test.yaml', 'utf8'),
     ]);
     const integrationBranchFilters = quality.match(/- 'integration\/\*\*'/g);
     const mainBranchFilters = quality.match(/- main/g);
@@ -87,12 +88,22 @@ describe('issue-based delivery contract', () => {
     const packageSource = await readFile('package.json', 'utf8');
     expect(packageSource).toContain('"go:check"');
     expect(packageSource).toContain('go -C backend test -race ./...');
+    expect(packageSource).toContain('go:test:integration');
     expect(goModule).toContain('go 1.27.1');
     expect(dockerfile).toMatch(
       /golang:1\.27\.1-alpine@sha256:[a-f0-9]{64} AS go-build/,
     );
+    expect(dockerfile).toContain('COPY backend/go.mod backend/go.sum ./');
     expect(dockerfile).toContain('FROM scratch AS static-assets');
     expect(dockerfile).toMatch(/\nFROM scratch\n/);
+    expect(quality).toContain('NOTES_TEST_DATABASE_URL');
+    expect(quality).toContain(
+      'postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873',
+    );
+    expect(compose).toContain(
+      'postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873',
+    );
+    expect(compose).toContain('127.0.0.1:55432:5432');
     expect(quality).not.toContain('codex/integration-type-safety-ui');
     expect(quality).not.toContain('refactor/type-safe-functional');
     expect(quality).not.toMatch(

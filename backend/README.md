@@ -1,12 +1,13 @@
 # Notes Go backend
 
 This directory contains the replacement server tracked by parent Issue #409.
-The current T02 bootstrap does not replace production routing or the existing
+The current T03 foundation does not replace production routing or the existing
 TypeScript server. It exposes only a fixed local index, process health, closed
-readiness, and closed API routes.
+readiness, and closed API routes. The PostgreSQL adapter and schema are not yet
+connected to an HTTP feature.
 
-Go 1.27.1 is pinned in `go.mod`, CI, and the container build stage. The runtime
-uses only the standard library at this stage.
+Go 1.27.1 is pinned in `go.mod`, CI, and the container build stage. PostgreSQL
+access uses pinned pgx and goose versions; no ORM is used.
 
 ## Local start
 
@@ -23,12 +24,28 @@ absolute `NOTES_STATIC_DIR`. Optional bounded settings are
 10s), and `NOTES_LOG_LEVEL` (`debug`, `info`, `warn`, or `error`). Invalid or
 missing configuration stops the process before it listens.
 
-`/healthz` reports process health. `/readyz` deliberately returns 503 until the
-database and migration readiness checks arrive in T03. `/api` and `/api/*`
-remain closed in T02.
+`/healthz` reports process health. `/readyz` deliberately returns 503 until T04
+connects database readiness to the private vertical path. `/api` and `/api/*`
+remain closed.
+
+## Local PostgreSQL migration
+
+The test fixture is loopback-only, uses a tmpfs instead of a persistent volume,
+and is pinned to the PostgreSQL 18.6 multi-architecture image digest.
+
+```bash
+docker compose -f deploy/compose.test.yaml up -d postgres
+NOTES_ENVIRONMENT=test \
+NOTES_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend run ./cmd/notesctl migrate --environment=test
+```
+
+The command refuses non-loopback hosts, any database name other than
+`fukamu_notes_go_test`, production environments, and an environment flag that
+does not match `NOTES_ENVIRONMENT`. It does not print connection values.
 
 ## Checks
 
-From the repository root, run `npm run go:check`. It verifies formatting, vet,
-unit and process smoke tests, the race detector, and both commands. The same
-gate is part of `npm run verify`.
+With the Compose database running, run `npm run go:check` from the repository
+root. It verifies formatting, vet, unit/process/integration tests, the race
+detector, and both commands. The same gate is part of `npm run verify`.
