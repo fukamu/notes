@@ -9,6 +9,9 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://localhost:3100',
+    extraHTTPHeaders: {
+      'oai-authenticated-user-id': 'fukamu-notes-e2e-user',
+    },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

@@ -7,6 +7,7 @@ import { dekRotationMigration } from '../crypto/rotation-migration';
 import { encryptedObjectRepositoryMigration } from '../encrypted-object/migration';
 import { entitlementMigration } from '../entitlement/migration';
 import { contractEvidenceMigration } from '../legal-checkout/migration';
+import { productionLaunchGateMigration } from '../launch-gate/migration';
 import { privacyRequestJournalMigration } from '../privacy-request/migration';
 import { vaultQuotaLedgerMigration } from '../quota/migration';
 import { vaultContentMigration } from '../vault-content/migration';
@@ -28,4 +29,5 @@ export const productionMigrationManifest = [
   contractEvidenceMigration,
   privacyRequestJournalMigration,
   termsConsentLedgerMigration,
+  productionLaunchGateMigration,
 ] as const;

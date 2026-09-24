@@ -43,7 +43,7 @@ npm run build
 npm start -- --port 3100
 ```
 
-ChatGPT Site版は [fukamu-notes-cards.matoruru.chatgpt.site](https://fukamu-notes-cards.matoruru.chatgpt.site) へ配置されています。Cloudflare D1は `DB` というバインディング名で接続します。Siteは初回公開時点では所有者限定で、共有範囲はChatGPT Sites側のアクセス設定で管理します。
+ChatGPT Site版は [fukamu-notes-cards.matoruru.chatgpt.site](https://fukamu-notes-cards.matoruru.chatgpt.site) へ配置されています。Cloudflare D1は `DB` というバインディング名で接続します。Productionへの配置と一般公開は [Production Launch Gate](docs/production-launch-gate.md) で分離し、初期値は非公開です。Siteの認証範囲とD1のallowlistを両方確認してから段階公開します。
 
 ## テスト
 

@@ -1,4 +1,10 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Browser,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 import { CONNECTIONS_ZOOM_PREFERENCE_KEY } from '@/lib/client/connections-zoom-preference';
 import { selectConnectionsViewModel } from '@/lib/application/view-models';
 import type { CardRecord } from '@/lib/domain/types';
@@ -8,6 +14,14 @@ import { createClientPerformanceFixture } from '@/tests/fixtures/client-performa
 import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
 
 test.describe.configure({ mode: 'serial' });
+
+function approvedBrowserContext(browser: Browser) {
+  return browser.newContext({
+    extraHTTPHeaders: {
+      'oai-authenticated-user-id': 'fukamu-notes-e2e-user',
+    },
+  });
+}
 
 function unique(prefix: string, project: string): string {
   return `${prefix}-${project}-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`;
@@ -402,7 +416,7 @@ test('offline creation, automatic save, reload, reconnect and another device syn
     .getAttribute('data-value');
   if (officialValue === null) throw new Error('official display ID is missing');
 
-  const otherDevice = await browser.newContext();
+  const otherDevice = await approvedBrowserContext(browser);
   const otherPage = await otherDevice.newPage();
   await ready(otherPage);
   await openFromHistory(otherPage, title);
@@ -426,8 +440,8 @@ test('duplicate provisional ids become unique official ids without renumbering l
   const seedTitle = unique('採番基準', testInfo.project.name);
   const firstTitle = unique('先着カード', testInfo.project.name);
   const lateTitle = unique('後着カード', testInfo.project.name);
-  const first = await browser.newContext();
-  const late = await browser.newContext();
+  const first = await approvedBrowserContext(browser);
+  const late = await approvedBrowserContext(browser);
   const firstPage = await first.newPage();
   const latePage = await late.newPage();
 
@@ -489,7 +503,7 @@ test('duplicate provisional ids become unique official ids without renumbering l
   expect(lateOfficial).not.toBe(firstOfficial);
   expect(Number(lateOfficial)).toBeGreaterThan(Number(firstOfficial));
 
-  const verifier = await browser.newContext();
+  const verifier = await approvedBrowserContext(browser);
   const verifierPage = await verifier.newPage();
   await ready(verifierPage);
   await openFromHistory(verifierPage, firstTitle);
@@ -4093,8 +4107,8 @@ test('concurrent device edits preserve both versions for explicit resolution', a
   const baseline = unique('競合カード', testInfo.project.name);
   const localVersion = `${baseline}-端末A`;
   const otherVersion = `${baseline}-端末B`;
-  const first = await browser.newContext();
-  const second = await browser.newContext();
+  const first = await approvedBrowserContext(browser);
+  const second = await approvedBrowserContext(browser);
   const firstPage = await first.newPage();
   const secondPage = await second.newPage();
   await ready(firstPage);
@@ -4118,7 +4132,7 @@ test('concurrent device edits preserve both versions for explicit resolution', a
       timeout: 15_000,
     },
   );
-  const serverCheck = await browser.newContext();
+  const serverCheck = await approvedBrowserContext(browser);
   const serverCheckPage = await serverCheck.newPage();
   await ready(serverCheckPage);
   await openFromHistory(serverCheckPage, localVersion);

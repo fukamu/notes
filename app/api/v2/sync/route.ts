@@ -1,9 +1,12 @@
 import { env } from 'cloudflare:workers';
 import { resolveServiceRuntimeMode } from '@/server/runtime-mode';
+import { enforceLaunchGate } from '@/server/launch-gate/http';
 
 export const runtime = 'edge';
 
-export async function POST(): Promise<Response> {
+export async function POST(request: Request): Promise<Response> {
+  const launchGateResponse = await enforceLaunchGate(request, env);
+  if (launchGateResponse) return launchGateResponse;
   const mode = resolveServiceRuntimeMode(env);
   if (mode.kind === 'configured' && mode.mode === 'legacy-test') {
     return unavailable(404);

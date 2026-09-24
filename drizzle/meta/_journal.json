@@ -120,6 +120,13 @@
       "when": 1789414652000,
       "tag": "0016_terms_consent_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1790208000000,
+      "tag": "0017_production_launch_gate",
+      "breakpoints": true
     }
   ]
 }

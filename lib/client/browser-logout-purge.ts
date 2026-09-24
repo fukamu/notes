@@ -24,6 +24,7 @@ import {
   connectionsLayoutWorkerIsReset,
   resetConnectionsLayoutWorker,
 } from '@/lib/client/connections-layout-worker';
+import { clearOfflineLaunchAdmission } from '@/lib/client/production-launch-admission';
 import { assertNever } from '@/lib/shared/invariant';
 import {
   closeNotesDatabase,
@@ -87,6 +88,7 @@ export function createBrowserLogoutPurgeTargets(
       }
     },
     async resetGraphWorker() {
+      clearOfflineLaunchAdmission();
       resetConnectionsLayoutWorker();
       return connectionsLayoutWorkerIsReset()
         ? { kind: 'completed' }
