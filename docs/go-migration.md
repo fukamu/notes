@@ -54,9 +54,10 @@ delete existing resources.
   #457. T12b account-deletion saga and closed HTTP were integrated by #458 / PR
   #459. T12c session and Billing effects were integrated by #460 / PR #461.
   T12d Vault live-data purge/write gate was integrated by #462 / PR #463. T12e
-  Issue #464 starts from exact integration tip
-  `ebce2faf411cf6b4761243e5e607b514d3d54656` and ports the bounded
-  private-object purge. Account finalization remains a later reviewed slice.
+  private-object purge was integrated by #464 / PR #465. T12f Issue #466 starts
+  from exact integration tip `e2bd21c69685cd7217e0b1c54186a333bc92f67d`
+  and ports policy-gated account finalization without selecting the pending
+  production legal-evidence decision.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -98,7 +99,7 @@ the same contract as its closed route.
 | F20 | B     | legal checkout evidence                     | T10                             | V01,V07         | core/store #444; closed Go HTTP #446                     |
 | F21 | B     | terms consent                               | T10                             | V01,V07         | core/store #442; closed Go HTTP #446                     |
 | F22 | B     | normal cancellation                         | T09                             | V07             | blocked on #404                                          |
-| F23 | B     | account deletion                            | T12                             | V03,V04,V07,V08 | saga #458; effects #460/#462; private-object purge #464  |
+| F23 | B     | account deletion                            | T12                             | V03,V04,V07,V08 | saga #458; effects #460/#462/#464; finalizer #466        |
 | F24 | B     | privacy request journal                     | T12                             | V01,V03,V08     | Go journal/closed HTTP in #456                           |
 | F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11         | core #414; legacy singleton seed #418                    |
 | F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | pending                                                  |
@@ -107,20 +108,20 @@ the same contract as its closed route.
 
 ## Verification matrix
 
-| ID  | Required evidence                                       | Current evidence                                                                                                                                      |
-| --- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454; legal #442/#444/#446; privacy #456                                                                                               |
-| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                                                          |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426; legal #446; privacy #456; deletion #458                                                                 |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450; sync #452/#454; privacy #456; deletion #458/#460/#462/#464 |
-| V05 | sync/quota paging, retry, conflict, limits              | quota #450; journal #452; authenticated encrypted composition #454                                                                                    |
-| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                                                                                                   |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; legal #442/#444/#446                                                                                        |
-| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434; privacy #456; deletion saga/effects #458/#460/#462/#464                                       |
-| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                             |
-| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                                                                         |
-| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                                                                                                       |
-| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                                                                                             |
+| ID  | Required evidence                                       | Current evidence                                                                                                                                           |
+| --- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454; legal #442/#444/#446; privacy #456                                                                                                    |
+| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                                                               |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426; legal #446; privacy #456; deletion #458                                                                      |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450; sync #452/#454; privacy #456; deletion #458/#460/#462/#464/#466 |
+| V05 | sync/quota paging, retry, conflict, limits              | quota #450; journal #452; authenticated encrypted composition #454                                                                                         |
+| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                                                                                                        |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; legal #442/#444/#446                                                                                             |
+| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434; privacy #456; deletion saga/effects #458/#460/#462/#464/#466                                       |
+| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                  |
+| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                                                                              |
+| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                                                                                                            |
+| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                                                                                                  |
 
 ## Intentional security differences
 
@@ -1248,5 +1249,50 @@ route, deployment, or `main` change is selected or performed.
 Rollback stops future attempts and restores a compatible artifact while
 retaining every pending outbox row and the account-deletion journal. Objects
 already deleted are not recreated; a retained row safely resumes through
-`not-found`. Wrapped-key destruction, owner finalization, legal-evidence policy,
-and privacy handoff remain separate later barriers.
+`not-found`. T12f owns the later wrapped-key, legal-evidence, and owner
+finalization barriers; privacy handoff remains separate.
+
+## T12f policy-gated account finalization
+
+Issue #466 ports `finalize-account` without composing the closed deletion HTTP
+handler or selecting a production legal-evidence policy. The pure Go service
+requires an explicit `undecided` or `delete-live-evidence` policy and runs four
+ordered barriers: private-object outbox reconfirmation, legal-evidence policy,
+wrapped DEK metadata removal, and live control-plane deletion. `undecided`
+stops an evidence-bearing operation before either destructive stage. The
+delete-live branch is only a locally tested candidate and is not a legal,
+production, or deployment decision.
+
+The PostgreSQL adapter requires the exact Account/Vault owner, running
+operation, matching prior completion time, and an exact ordered set of the four
+preceding receipts. Wrapped-key removal and live-state removal use separate
+serializable transactions so a control-plane failure rolls back all evidence
+and owner changes while a retry recognizes already-removed wrapped metadata.
+The live transaction explicitly removes sessions, identities, verified-email
+ownership, and the finalized signup reservation before deleting the Personal
+Vault and Account; Billing and Entitlement rows then cascade from the Vault.
+Deleting the signup reservation deliberately fixes a TypeScript omission that
+could retain email/provider uniqueness and block legitimate later
+re-provisioning.
+
+Migration 00016 serializes terms/contract evidence insertion and deletion start
+on the Personal Vault row. Evidence committed first remains visible to the
+policy barrier. Once the deletion journal is durable, new evidence insertion is
+rejected, closing the policy-check/wrapped-key race. The minimal deletion and
+privacy journals remain independent and survive owner removal.
+
+Disposable-PostgreSQL tests cover a pending policy, delete-live candidate,
+private-object barrier, missing/wrong receipts, wrong operation and owner,
+legal-evidence write rejection, transaction rollback, retry after partial
+progress, complete response-loss replay, another tenant, retained journals,
+and failed old identity/session lookups. No KMS provider is called and no
+production migration, object store, credential, public route, deployment, or
+`main` change is selected or performed.
+
+Rollback first stops finalization attempts and preserves migrations 00014-00016
+plus every operation, receipt, continuation, privacy journal, and pending
+outbox row. It must not drop the legal-evidence gate while an operation exists.
+Already removed keys, evidence, or live owner rows are not reconstructed;
+restore a compatible artifact or apply a reviewed forward fix and resume. A
+production legal-evidence choice, backup expiry, and provider-key destruction
+remain separately approved operations.

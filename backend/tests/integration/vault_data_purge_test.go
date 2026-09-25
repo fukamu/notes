@@ -533,12 +533,16 @@ func assertRowCount(
 	t.Helper()
 	allowed := map[string]map[string]bool{
 		"accounts": {"account_id": true}, "personal_vaults": {"account_id": true},
-		"identities": {"account_id": true}, "vault_dek_versions": {"vault_id": true},
+		"identities": {"account_id": true}, "sessions": {"account_id": true},
+		"verified_email_owners": {"account_id": true}, "signup_admission_reservations": {"account_id": true},
+		"vault_dek_versions":    {"vault_id": true},
 		"billing_subscriptions": {"account_id": true}, "terms_consent_evidence": {"account_id": true},
 		"contract_evidence": {"account_id": true}, "privacy_requests": {"account_id": true},
 		"entitlement_projections":     {"vault_id": true},
 		"account_deletion_operations": {"account_id": true}, "vault_encrypted_objects": {"vault_id": true},
-		"vault_encrypted_write_intents": {"vault_id": true}, "vault_object_delete_outbox": {"vault_id": true},
+		"account_deletion_step_receipts": {"operation_id": true},
+		"account_deletion_continuations": {"operation_id": true},
+		"vault_encrypted_write_intents":  {"vault_id": true}, "vault_object_delete_outbox": {"vault_id": true},
 		"vault_sync_v2_states": {"vault_id": true}, "vault_sync_v2_cards": {"vault_id": true},
 		"vault_sync_v2_conflicts": {"vault_id": true}, "vault_sync_v2_commits": {"vault_id": true},
 		"vault_sync_v2_changes": {"vault_id": true}, "vault_quota_usage": {"vault_id": true},
