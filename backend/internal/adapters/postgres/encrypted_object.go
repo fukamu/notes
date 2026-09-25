@@ -14,6 +14,7 @@ import (
 var (
 	ErrInvalidEncryptedObjectOperation = errors.New("invalid encrypted object database operation")
 	ErrInvalidStoredEncryptedObject    = errors.New("invalid stored encrypted object metadata")
+	ErrEncryptedObjectDeleteConflict   = errors.New("encrypted object delete outbox compare-and-swap conflict")
 )
 
 type EncryptedObjectStore struct {
@@ -404,7 +405,7 @@ func (store *EncryptedObjectStore) CompleteDelete(
 	if store.invalid() || !validDeleteEntry(entry) {
 		return ErrInvalidEncryptedObjectOperation
 	}
-	_, err := store.pool.Exec(
+	tag, err := store.pool.Exec(
 		ctx,
 		`DELETE FROM vault_object_delete_outbox
 		  WHERE vault_id = $1 AND object_key = $2 AND attempt_count = $3`,
@@ -412,6 +413,9 @@ func (store *EncryptedObjectStore) CompleteDelete(
 	)
 	if err != nil {
 		return errors.New("complete encrypted object delete")
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrEncryptedObjectDeleteConflict
 	}
 	return nil
 }
@@ -423,7 +427,7 @@ func (store *EncryptedObjectStore) RescheduleDelete(
 	if store.invalid() || !validDeleteEntry(entry) || entry.AttemptCount < 1 {
 		return ErrInvalidEncryptedObjectOperation
 	}
-	_, err := store.pool.Exec(
+	tag, err := store.pool.Exec(
 		ctx,
 		`UPDATE vault_object_delete_outbox
 		    SET attempt_count = $1, next_attempt_at = $2
@@ -432,6 +436,9 @@ func (store *EncryptedObjectStore) RescheduleDelete(
 	)
 	if err != nil {
 		return errors.New("reschedule encrypted object delete")
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrEncryptedObjectDeleteConflict
 	}
 	return nil
 }
@@ -541,10 +548,5 @@ func parseNullableRevision(value *int64) *cryptocontent.ObjectRevision {
 }
 
 func validDeleteEntry(entry encryptedobject.DeleteOutboxEntry) bool {
-	if _, err := encryptedobject.ParseObjectKey(string(entry.ObjectKey)); err != nil {
-		return false
-	}
-	return entry.AttemptCount >= 0 && entry.NextAttemptAt >= 0 &&
-		entry.NextAttemptAt <= identity.MaximumSafeInteger && entry.CreatedAtMilli >= 0 &&
-		entry.CreatedAtMilli <= identity.MaximumSafeInteger
+	return encryptedobject.ValidDeleteOutboxEntry(entry)
 }
