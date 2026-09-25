@@ -94,3 +94,17 @@ disposable loopback database and make no real KMS request. Production identity,
 CryptoKeyVersion, IAM, region/protection level, network, monitoring, cost, and
 shared-service impact remain unapproved. See [Go operations runner](go-operations.md#vault-dek-rotation)
 for invocation, resume, output-redaction, and rollback rules.
+
+Issue #482 adds the bounded follow-on command `notesctl dek reencrypt`. It
+verifies exact ownership and the promoted target before calling the existing
+durable batch service. Each invocation advances no more than the explicit
+limit; `pending` retains the PostgreSQL cursor and completed replay performs no
+storage, crypto, object-key, or KMS work. A committed replacement retains the
+old immutable object through the delete outbox.
+
+Only local/test loopback-database composition exists. Temporary test fakes and
+secure local directories prove process-restart persistence for immutable
+objects and nonce reservations; they are not a production object/nonce-store
+choice. No real provider request was made. Production object storage, nonce
+storage, KMS identity/resource, cost, retention, and shared-service impact
+remain unapproved. See [Vault ciphertext re-encryption](go-operations.md#vault-ciphertext-re-encryption).

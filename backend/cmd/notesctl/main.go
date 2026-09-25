@@ -8,18 +8,22 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/fukamu/notes/backend/internal/access"
+	contentcryptoadapter "github.com/fukamu/notes/backend/internal/adapters/contentcrypto"
 	kmsadapter "github.com/fukamu/notes/backend/internal/adapters/kms"
+	objectstorageadapter "github.com/fukamu/notes/backend/internal/adapters/objectstorage"
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
 	stripeadapter "github.com/fukamu/notes/backend/internal/adapters/stripe"
 	"github.com/fukamu/notes/backend/internal/billing"
 	"github.com/fukamu/notes/backend/internal/config"
 	"github.com/fukamu/notes/backend/internal/cryptocontent"
+	"github.com/fukamu/notes/backend/internal/encryptedobject"
 	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/fukamu/notes/backend/internal/operations"
 	"github.com/fukamu/notes/backend/internal/quota"
@@ -47,6 +51,7 @@ func run(ctx context.Context, arguments []string, stdout io.Writer, stderr io.Wr
 		inspectAccountDeletion,
 		reconcileBillingSubscription,
 		rotateVaultDEK,
+		reencryptVaultDEK,
 	)
 }
 
@@ -81,6 +86,15 @@ type rotateDEKFunction func(
 	string,
 	operations.DEKRotationCommand,
 ) (operations.DEKRotationResult, error)
+type reencryptDEKFunction func(
+	context.Context,
+	string,
+	string,
+	string,
+	string,
+	string,
+	operations.DEKReencryptionCommand,
+) (operations.DEKReencryptionResult, error)
 
 func runWithDependencies(
 	parent context.Context,
@@ -95,9 +109,10 @@ func runWithDependencies(
 	inspectDeletion inspectAccountDeletionFunction,
 	reconcileBilling reconcileBillingFunction,
 	rotateDEK rotateDEKFunction,
+	reencryptDEK reencryptDEKFunction,
 ) int {
 	if parent == nil || listQuotaCandidates == nil || finalizeQuotaCommit == nil || inspectDeletion == nil ||
-		reconcileBilling == nil || rotateDEK == nil {
+		reconcileBilling == nil || rotateDEK == nil || reencryptDEK == nil {
 		_, _ = fmt.Fprintln(stderr, "operation dependencies invalid")
 		return 1
 	}
@@ -157,6 +172,14 @@ func runWithDependencies(
 			return 2
 		}
 		return runDEKRotation(parent, dekRotation, stdout, stderr, lookup, rotateDEK)
+	}
+	dekReencryption, dekReencryptionRequested, dekReencryptionErr := parseDEKReencryptionArguments(arguments)
+	if dekReencryptionRequested {
+		if dekReencryptionErr != nil {
+			printUsage(stderr)
+			return 2
+		}
+		return runDEKReencryption(parent, dekReencryption, stdout, stderr, lookup, reencryptDEK)
 	}
 	prepareE2ERequested := len(arguments) == 3 && arguments[0] == "prepare-e2e" &&
 		arguments[1] == "--environment=test" && strings.HasPrefix(arguments[2], "--allowed-subject=")
@@ -902,6 +925,169 @@ func runDEKRotation(
 	return 0
 }
 
+type dekReencryptionArguments struct {
+	environment config.Environment
+	objectRoot  string
+	nonceRoot   string
+	command     operations.DEKReencryptionCommand
+}
+
+func parseDEKReencryptionArguments(arguments []string) (dekReencryptionArguments, bool, error) {
+	if len(arguments) < 2 || arguments[0] != "dek" || arguments[1] != "reencrypt" {
+		return dekReencryptionArguments{}, false, nil
+	}
+	values := make(map[string]string, 8)
+	confirmedObjects := false
+	confirmedKMS := false
+	for _, argument := range arguments[2:] {
+		switch argument {
+		case "--confirm-local-object-writes":
+			if confirmedObjects {
+				return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+			}
+			confirmedObjects = true
+			continue
+		case "--confirm-kms-unwrapping":
+			if confirmedKMS {
+				return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+			}
+			confirmedKMS = true
+			continue
+		}
+		name, value, found := strings.Cut(argument, "=")
+		if !found || value == "" || strings.ContainsAny(value, "\r\n\x00") ||
+			(name != "--environment" && name != "--account-id" && name != "--vault-id" &&
+				name != "--target-version" && name != "--limit" && name != "--performed-at-millis" &&
+				name != "--object-root" && name != "--nonce-root") {
+			return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+		}
+		if _, duplicate := values[name]; duplicate {
+			return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+		}
+		values[name] = value
+	}
+	if len(values) != 8 || !confirmedObjects || !confirmedKMS {
+		return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+	}
+	objectRoot := values["--object-root"]
+	nonceRoot := values["--nonce-root"]
+	if len(objectRoot) > 4_096 || len(nonceRoot) > 4_096 || !filepath.IsAbs(objectRoot) ||
+		!filepath.IsAbs(nonceRoot) || filepath.Clean(objectRoot) == filepath.Clean(nonceRoot) {
+		return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+	}
+	environment := config.Environment(values["--environment"])
+	if environment != config.EnvironmentLocal && environment != config.EnvironmentTest {
+		return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+	}
+	accountID, err := identity.ParseAccountID(values["--account-id"])
+	if err != nil {
+		return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+	}
+	vaultID, err := identity.ParseVaultID(values["--vault-id"])
+	if err != nil {
+		return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+	}
+	targetVersionValue, err := strconv.ParseInt(values["--target-version"], 10, 64)
+	if err != nil {
+		return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+	}
+	targetVersion, err := cryptocontent.ParseDEKVersion(targetVersionValue)
+	if err != nil {
+		return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+	}
+	limit, err := strconv.Atoi(values["--limit"])
+	if err != nil {
+		return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+	}
+	performedAt, err := strconv.ParseInt(values["--performed-at-millis"], 10, 64)
+	if err != nil {
+		return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+	}
+	command := operations.DEKReencryptionCommand{
+		AccountID: accountID, VaultID: vaultID, TargetVersion: targetVersion,
+		Limit: limit, PerformedAtMilli: performedAt,
+	}
+	if operations.ValidateDEKReencryptionCommand(command) != nil {
+		return dekReencryptionArguments{}, true, operations.ErrDEKReencryption
+	}
+	return dekReencryptionArguments{
+		environment: environment,
+		objectRoot:  objectRoot,
+		nonceRoot:   nonceRoot,
+		command:     command,
+	}, true, nil
+}
+
+func runDEKReencryption(
+	parent context.Context,
+	arguments dekReencryptionArguments,
+	stdout io.Writer,
+	stderr io.Writer,
+	lookup func(string) (string, bool),
+	reencrypt reencryptDEKFunction,
+) int {
+	databaseConfig, err := config.LoadDatabase(lookup)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "database configuration invalid")
+		return 1
+	}
+	if arguments.environment != databaseConfig.Environment {
+		_, _ = fmt.Fprintln(stderr, "DEK re-encryption environment refused")
+		return 1
+	}
+	if err := postgresadapter.ValidateTestDatabaseURL(databaseConfig.URL); err != nil {
+		_, _ = fmt.Fprintln(stderr, "DEK re-encryption target refused")
+		return 1
+	}
+	keyVersion, keyVersionFound := lookup("NOTES_GCP_KMS_CRYPTO_KEY_VERSION")
+	accessToken, tokenFound := lookup("NOTES_GCP_KMS_ACCESS_TOKEN")
+	if !keyVersionFound || keyVersion == "" || strings.ContainsAny(keyVersion, "\r\n\x00") ||
+		!tokenFound || !validKMSAccessToken(accessToken) {
+		_, _ = fmt.Fprintln(stderr, "DEK re-encryption provider configuration invalid")
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	defer cancel()
+	result, err := reencrypt(
+		ctx,
+		databaseConfig.URL,
+		keyVersion,
+		accessToken,
+		arguments.objectRoot,
+		arguments.nonceRoot,
+		arguments.command,
+	)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "DEK re-encryption failed")
+		return 1
+	}
+	if result.Kind == operations.DEKReencryptionRefused {
+		_, _ = fmt.Fprintln(stderr, "DEK re-encryption scope refused")
+		return 1
+	}
+	if (result.Kind != operations.DEKReencryptionCompleted && result.Kind != operations.DEKReencryptionPending) ||
+		result.TargetVersion != arguments.command.TargetVersion || result.Processed < 0 ||
+		result.Processed > arguments.command.Limit {
+		_, _ = fmt.Fprintln(stderr, "DEK re-encryption failed")
+		return 1
+	}
+	output := struct {
+		Command       string `json:"command"`
+		Outcome       string `json:"outcome"`
+		Processed     int    `json:"processed"`
+		TargetVersion int64  `json:"targetVersion"`
+		Pending       string `json:"pending,omitempty"`
+	}{
+		Command: "dek-reencrypt", Outcome: string(result.Kind), Processed: result.Processed,
+		TargetVersion: int64(result.TargetVersion), Pending: string(result.Pending),
+	}
+	if err := json.NewEncoder(stdout).Encode(output); err != nil {
+		_, _ = fmt.Fprintln(stderr, "DEK re-encryption output failed")
+		return 1
+	}
+	return 0
+}
+
 func validKMSAccessToken(value string) bool {
 	if len(value) < 20 || len(value) > 8_192 {
 		return false
@@ -915,7 +1101,7 @@ func validKMSAccessToken(value string) bool {
 }
 
 func printUsage(output io.Writer) {
-	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read] | notesctl dek rotate --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --operation-id=<uuidv7> --requested-at-millis=<unix-ms> --generated-at-millis=<unix-ms> --completed-at-millis=<unix-ms> --confirm-kms-key-generation [--confirm-production-kms-mutation]")
+	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read] | notesctl dek rotate --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --operation-id=<uuidv7> --requested-at-millis=<unix-ms> --generated-at-millis=<unix-ms> --completed-at-millis=<unix-ms> --confirm-kms-key-generation [--confirm-production-kms-mutation] | notesctl dek reencrypt --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --target-version=<version> --limit=1..100 --performed-at-millis=<unix-ms> --object-root=<absolute-secure-directory> --nonce-root=<absolute-secure-directory> --confirm-local-object-writes --confirm-kms-unwrapping")
 }
 
 func prepareE2EDatabase(ctx context.Context, databaseURL string, allowedSubject string) error {
@@ -1110,6 +1296,78 @@ func rotateVaultDEK(
 	service, err := operations.NewDEKRotationService(rotation)
 	if err != nil {
 		return operations.DEKRotationResult{}, err
+	}
+	return service.Run(ctx, command)
+}
+
+func reencryptVaultDEK(
+	ctx context.Context,
+	databaseURL string,
+	keyVersion string,
+	accessToken string,
+	objectRoot string,
+	nonceRoot string,
+	command operations.DEKReencryptionCommand,
+) (operations.DEKReencryptionResult, error) {
+	objects, err := objectstorageadapter.NewDirectory(objectRoot)
+	if err != nil {
+		return operations.DEKReencryptionResult{}, err
+	}
+	nonces, err := contentcryptoadapter.NewDirectoryNonceReservations(nonceRoot)
+	if err != nil {
+		return operations.DEKReencryptionResult{}, err
+	}
+	transport, err := kmsadapter.NewRESTTransport(
+		fixedKMSAccessToken(accessToken),
+		&http.Client{Timeout: 30 * time.Second},
+	)
+	if err != nil {
+		return operations.DEKReencryptionResult{}, err
+	}
+	keys, err := kmsadapter.NewGCPKeyManagement(
+		keyVersion,
+		transport,
+		kmsadapter.SecureEntropy{},
+		kmsadapter.SystemClock{},
+	)
+	if err != nil {
+		return operations.DEKReencryptionResult{}, err
+	}
+	encryption, err := cryptocontent.NewService(
+		keys,
+		contentcryptoadapter.NewSecureRandomNonceGenerator(),
+		nonces,
+		contentcryptoadapter.AES256GCM{},
+	)
+	if err != nil {
+		return operations.DEKReencryptionResult{}, err
+	}
+	pool, err := postgresadapter.OpenPool(ctx, databaseURL, 2)
+	if err != nil {
+		return operations.DEKReencryptionResult{}, err
+	}
+	defer pool.Close()
+	loader, err := postgresadapter.NewDEKReencryptionScopeStore(pool)
+	if err != nil {
+		return operations.DEKReencryptionResult{}, err
+	}
+	repository, err := postgresadapter.NewEncryptedObjectStore(pool, command.VaultID)
+	if err != nil {
+		return operations.DEKReencryptionResult{}, err
+	}
+	batches, err := encryptedobject.NewReencryptionService(
+		command.VaultID,
+		repository,
+		objects,
+		objectstorageadapter.NewRandomObjectKeyGenerator(),
+		encryption,
+	)
+	if err != nil {
+		return operations.DEKReencryptionResult{}, err
+	}
+	service, err := operations.NewDEKReencryptionService(loader, batches)
+	if err != nil {
+		return operations.DEKReencryptionResult{}, err
 	}
 	return service.Run(ctx, command)
 }

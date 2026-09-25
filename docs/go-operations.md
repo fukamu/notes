@@ -219,14 +219,76 @@ keeping rotation stopped while all existing wrapped versions remain readable.
 No option permits key disablement or destruction; that remains behind the
 recovery and retirement approval gate.
 
+## Vault ciphertext re-encryption
+
+The T13f command advances one bounded batch for one exact Account/Vault and
+the already-promoted target DEK version. It is intentionally available only in
+`local` or `test`; there is no production-form syntax.
+
+Before a local drill, create two distinct, existing directories with mode
+`0700`. The object directory must contain the immutable ciphertext files named
+by their exact `obj_v1_...` keys. The nonce directory is an append-only local
+reservation ledger. Neither directory is a production object-storage or nonce
+store recommendation.
+
+```bash
+NOTES_ENVIRONMENT=test \
+NOTES_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+NOTES_GCP_KMS_CRYPTO_KEY_VERSION='projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY/cryptoKeyVersions/VERSION' \
+NOTES_GCP_KMS_ACCESS_TOKEN='<separately-approved-short-lived-token>' \
+go -C backend run ./cmd/notesctl dek reencrypt \
+  --environment=test \
+  --account-id=01991f20-61d2-7000-8000-000000000101 \
+  --vault-id=01991f20-61d2-7000-8000-000000000201 \
+  --target-version=2 \
+  --limit=100 \
+  --performed-at-millis=1725000000000 \
+  --object-root=/absolute/private/object-directory \
+  --nonce-root=/absolute/private/nonce-directory \
+  --confirm-local-object-writes \
+  --confirm-kms-unwrapping
+```
+
+The command verifies exact Account/Vault ownership and loads a valid keyring
+whose write version equals `target-version` before object storage or KMS can be
+reached. It then calls the existing durable re-encryption service exactly once
+with a limit from 1 through 100. Each candidate is authenticated with its
+stored Vault/object/revision AAD, written under a fresh immutable object key,
+and committed by metadata CAS together with the old-key delete-outbox entry and
+job checkpoint. It never deletes the old object or retires a key.
+
+`pending` is a successful bounded invocation that must be repeated. The reason
+distinguishes page limit, scan restart, CAS conflict, or an older pending write.
+Keep the same `performed-at-millis` when retrying an uncertain invocation; a
+later intentional batch may use a later, never earlier timestamp. A completed
+job returns with zero processed objects and performs no storage, encryption,
+object-key generation, or KMS work.
+
+The local object adapter uses create-if-absent immutable files and persists
+replacement bytes before the PostgreSQL CAS. The local nonce adapter uses
+exclusive append-only marker creation and stores only a SHA-256-derived marker
+name. Both reject relative paths, symlink roots, non-directory roots, and roots
+accessible by group or other users. Output contains only command kind,
+`completed` or `pending`, processed count, target version, and pending reason;
+it omits scope IDs, paths, database/KMS configuration, object keys, ciphertext,
+wrapped/raw keys, nonces, and dependency errors.
+
+The confirmation flags are accidental-run guards, not authorization. This
+delivery uses injected fakes, temporary directories, and the loopback
+disposable database only. It makes no real KMS call. Any invocation that would
+use a real token/provider requires separate approval even in a local/test-form
+command. A real object provider, persistent production nonce store, runtime
+identity, exact KMS resource, IAM/network, region/retention, monitoring, cost,
+and shared-service impact remain unapproved.
+
 ## Remaining operations boundaries
 
 - checking application/provider evidence for a reservation;
 - deriving release evidence or automatically releasing a reservation;
 - pagination beyond the explicit bounded first page;
 - recurring scheduling or cron registration;
-- re-encryption, orphan scan, delete outbox, account-deletion advancement, or
-  recovery drill runners;
+- orphan scan, delete outbox, account-deletion advancement, or recovery drill
+  runners;
 - production KMS identity/resource composition and recurring scheduling.
 
 Those effects require separate typed commands, tests, and review. Age alone is
@@ -235,7 +297,7 @@ never evidence that a quota reservation is safe to release.
 ## Rollback
 
 Stop invoking the commands and roll back the application artifact to the prior
-integration commit. T13a through T13e add no schema. T13a and T13c write no
+integration commit. T13a through T13f add no schema. T13a and T13c write no
 data. A T13b commit is an intentional quota-ledger transition backed by an
 existing Sync receipt and must not be reversed by deleting rows or
 synthesizing a release. A T13d applied/ignored provider snapshot and its
@@ -247,4 +309,8 @@ A T13e rollback stops new rotation commands but preserves the operation row,
 every old/new wrapped key version, and the current logical write pointer. An
 interrupted operation resumes with the exact operation ID and timestamps;
 never delete a pending row, disable a referenced provider key, or restore the
-old write pointer by hand.
+old write pointer by hand. A T13f rollback stops new batches and preserves the
+durable job/checkpoint, current metadata, every source and replacement object,
+nonce reservations, and delete-outbox rows. Resume from the stored checkpoint;
+do not reset it, delete a newly written orphan by hand, remove an old object,
+or retire either DEK version to reverse application code.
