@@ -123,14 +123,55 @@ the quota commands. Production-form syntax requires
 `--confirm-production-read-only`; the flag is not authorization to access a
 production or shared database. No production audit was run by this delivery.
 
+## Billing provider reconciliation
+
+The T13d command retrieves and commits one provider snapshot for an exact
+Account/Vault-owned Billing subscription:
+
+```bash
+NOTES_ENVIRONMENT=test \
+NOTES_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+NOTES_STRIPE_API_KEY='<separately-approved-test-key>' \
+go -C backend run ./cmd/notesctl billing reconcile \
+  --environment=test \
+  --account-id=01991f20-61d2-7000-8000-000000000101 \
+  --vault-id=01991f20-61d2-7000-8000-000000000201 \
+  --snapshot-id=manual-2026-09-26T00:00:00Z \
+  --observed-at-millis=1725000000000 \
+  --recorded-at-millis=1725000000100
+```
+
+The stable snapshot ID and both timestamps are operator inputs. The command
+derives the internal subscription ID and Stripe subscription reference from
+the exact owner-scoped PostgreSQL record; neither is accepted as a flag. A
+missing/cross-owner subscription, non-Stripe or malformed provider mapping,
+or conflicting use of an existing snapshot ID is refused before any Stripe
+request. An exact durable checkpoint returns `replayed` without contacting the
+provider. Concurrent identical attempts rely on Billing's atomic checkpoint
+and projection CAS, so only one applies and the other becomes a replay.
+
+Successful output contains only command kind, `applied`, `ignored`, or
+`replayed`, the snapshot ID, and the supplied timestamps. It never prints the
+API key, database URL, owner scope, provider customer/subscription references,
+invoice/payment details, or dependency errors. Provider outages and malformed
+snapshots return a generic failure and grant no entitlement.
+
+Local/test execution remains restricted to the loopback disposable database
+and selects Stripe test mode. Production-form syntax additionally requires
+`--confirm-production-provider-read` and selects live mode. That flag is only
+an accidental-run guard: it does not authorize access to a production/shared
+database, use of a Stripe credential, a live provider read, deployment, or
+cost. This delivery's tests inject fakes or local HTTP stubs; no real Stripe
+request was made.
+
 ## Remaining operations boundaries
 
 - checking application/provider evidence for a reservation;
 - deriving release evidence or automatically releasing a reservation;
 - pagination beyond the explicit bounded first page;
 - recurring scheduling or cron registration;
-- billing reconciliation, DEK rotation, re-encryption, orphan scan, delete
-  outbox, account-deletion advancement, or recovery drill runners.
+- DEK rotation, re-encryption, orphan scan, delete outbox,
+  account-deletion advancement, or recovery drill runners.
 
 Those effects require separate typed commands, tests, and review. Age alone is
 never evidence that a quota reservation is safe to release.
@@ -138,9 +179,11 @@ never evidence that a quota reservation is safe to release.
 ## Rollback
 
 Stop invoking the commands and roll back the application artifact to the prior
-integration commit. T13a through T13c add no schema. T13a and T13c write no
+integration commit. T13a through T13d add no schema. T13a and T13c write no
 data. A T13b commit is an intentional quota-ledger transition backed by an
 existing Sync receipt and must not be reversed by deleting rows or
-synthesizing a release. Preserve emitted audit evidence and reconcile any
-in-flight invocation before application rollback. The T13c command can be
-stopped and repeated; it creates no effect to undo.
+synthesizing a release. A T13d applied/ignored provider snapshot and its
+checkpoint are authoritative Billing evidence and must likewise be preserved,
+not deleted or rewritten. Preserve emitted audit evidence and reconcile any
+in-flight invocation before application rollback. T13a/T13c can simply be
+stopped and repeated; T13d can be retried with the exact same snapshot inputs.

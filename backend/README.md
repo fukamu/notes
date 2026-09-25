@@ -79,6 +79,14 @@ Stripe packages are not composed into the server: there is no route, API key,
 endpoint secret, provider request, webhook registration, scheduler, charge,
 cancellation mutation, entitlement grant, or production operation.
 
+T13d Issue #478 composes only explicit `notesctl billing reconcile`: it
+derives provider mapping from an exact Account/Vault-owned PostgreSQL record,
+replays an exact checkpoint without a provider call, emits bounded redacted
+JSON, and requires an invocation-supplied API key. It adds no server route,
+scheduler, stored credential, automatic provider request, or fake fallback.
+Its verification uses injected fakes, local HTTP stubs, and the disposable
+database only.
+
 T09c Issue #440 adds the disconnected Go Entitlement core, service, and
 PostgreSQL repository. Migration 00008 stores Account/Vault-scoped projections
 and Session/SessionEpoch-bound offline leases. Projection CAS and active-lease
@@ -204,9 +212,10 @@ go -C backend test -race ./internal/cryptocontent/... ./internal/adapters/conten
 go -C backend test -race ./internal/encryptedobject/... ./internal/adapters/objectstorage/...
 go -C backend test -race ./internal/billing/...
 go -C backend test -race ./internal/stripebilling/... ./internal/adapters/stripe/...
+go -C backend test -race ./internal/operations/... ./cmd/notesctl/...
 go -C backend test -race ./internal/entitlement/... ./internal/adapters/postgres/...
 NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
-go -C backend test -tags=integration ./tests/integration -run TestBillingProjectionAtomicityAndReplayPostgres -count=3
+go -C backend test -tags=integration ./tests/integration -run 'TestBilling(ProjectionAtomicityAndReplay|ReconciliationRunnerScopesAndReplaysBeforeProvider)Postgres' -count=3
 NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
 go -C backend test -tags=integration ./tests/integration -run Entitlement -count=1
 ```

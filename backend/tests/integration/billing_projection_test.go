@@ -11,6 +11,8 @@ import (
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
 	"github.com/fukamu/notes/backend/internal/billing"
 	"github.com/fukamu/notes/backend/internal/identity"
+	"github.com/fukamu/notes/backend/internal/operations"
+	"github.com/fukamu/notes/backend/internal/stripebilling"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -165,6 +167,108 @@ func TestBillingProjectionAtomicityAndReplayPostgres(t *testing.T) {
 	if pool.Stat().AcquiredConns() != 0 {
 		t.Fatalf("database connections still acquired: %d", pool.Stat().AcquiredConns())
 	}
+}
+
+func TestBillingReconciliationRunnerScopesAndReplaysBeforeProviderPostgres(t *testing.T) {
+	ctx, pool := openIdentitySignupDatabase(t)
+	accountID, _ := identity.ParseAccountID("01991f20-61d2-7000-8000-000000000121")
+	vaultID, _ := identity.ParseVaultID("01991f20-61d2-7000-8000-000000000221")
+	otherAccountID, _ := identity.ParseAccountID("01991f20-61d2-7000-8000-000000000122")
+	otherVaultID, _ := identity.ParseVaultID("01991f20-61d2-7000-8000-000000000222")
+	seedCryptoVault(t, ctx, pool, string(accountID), vaultID)
+	seedCryptoVault(t, ctx, pool, string(otherAccountID), otherVaultID)
+	store, err := postgresadapter.NewBillingStore(pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	record, intent := integrationBillingCheckout(t, accountID, vaultID, 721, 722)
+	if result, err := store.CreateCheckout(ctx, record, intent); err != nil || result.Kind != billing.CheckoutCreated {
+		t.Fatalf("create checkout = %#v, %v", result, err)
+	}
+	linked := integrationSnapshot(record.SubscriptionID, "runner-link", 12_000, false)
+	linkedPlan := billing.PlanReconciliationSnapshot(record, linked)
+	if linkedPlan.Kind != billing.ProviderFactApply {
+		t.Fatalf("link plan = %#v", linkedPlan)
+	}
+	if result, err := store.CommitReconciliation(
+		ctx, record, linkedPlan.Record, integrationCheckpoint(linked, linkedPlan.Record),
+	); err != nil || result != billing.CommitApplied {
+		t.Fatalf("link subscription = %s, %v", result, err)
+	}
+
+	command := operations.BillingReconciliationCommand{
+		AccountID: accountID, VaultID: vaultID, SnapshotID: "runner-execute",
+		ObservedAt: 13_000, RecordedAt: 13_100,
+	}
+	executor := &integrationBillingReconciliationExecutor{
+		result: stripebilling.WebhookResult{Kind: stripebilling.WebhookAccepted, Outcome: billing.ResultApplied},
+	}
+	service, err := operations.NewBillingReconciliationService(store, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Reconcile(ctx, command)
+	if err != nil || result.Kind != operations.BillingReconciliationApplied || executor.calls != 1 ||
+		executor.command.ProviderSubscriptionReference != "sub_notes" {
+		t.Fatalf("execute = %#v, %v; executor = %#v", result, err, executor)
+	}
+
+	wrongScope := command
+	wrongScope.AccountID = otherAccountID
+	wrongScope.VaultID = otherVaultID
+	result, err = service.Reconcile(ctx, wrongScope)
+	if err != nil || result.Kind != operations.BillingReconciliationRefused ||
+		result.Reason != operations.BillingReconciliationOwnerMismatch || executor.calls != 1 {
+		t.Fatalf("cross-owner refusal = %#v, %v; calls = %d", result, err, executor.calls)
+	}
+
+	current, err := store.FindByOwner(ctx, billing.OwnerScope{AccountID: accountID, VaultID: vaultID})
+	if err != nil || current == nil {
+		t.Fatalf("current subscription = %#v, %v", current, err)
+	}
+	replaySnapshot := integrationSnapshot(current.SubscriptionID, "runner-replay", 14_000, false)
+	replayPlan := billing.PlanReconciliationSnapshot(*current, replaySnapshot)
+	if replayPlan.Kind != billing.ProviderFactApply {
+		t.Fatalf("replay seed plan = %#v", replayPlan)
+	}
+	if outcome, err := store.CommitReconciliation(
+		ctx, *current, replayPlan.Record, integrationCheckpoint(replaySnapshot, replayPlan.Record),
+	); err != nil || outcome != billing.CommitApplied {
+		t.Fatalf("replay seed = %s, %v", outcome, err)
+	}
+	command.SnapshotID = replaySnapshot.SnapshotID
+	command.ObservedAt = replaySnapshot.ObservedAt
+	command.RecordedAt = replaySnapshot.RecordedAt
+	result, err = service.Reconcile(ctx, command)
+	if err != nil || result.Kind != operations.BillingReconciliationReplayed || executor.calls != 1 {
+		t.Fatalf("durable replay = %#v, %v; calls = %d", result, err, executor.calls)
+	}
+
+	command.RecordedAt++
+	result, err = service.Reconcile(ctx, command)
+	if err != nil || result.Kind != operations.BillingReconciliationRefused ||
+		result.Reason != operations.BillingReconciliationSnapshotConflict || executor.calls != 1 {
+		t.Fatalf("snapshot conflict = %#v, %v; calls = %d", result, err, executor.calls)
+	}
+	if pool.Stat().AcquiredConns() != 0 {
+		t.Fatalf("database connections still acquired: %d", pool.Stat().AcquiredConns())
+	}
+}
+
+type integrationBillingReconciliationExecutor struct {
+	result  stripebilling.WebhookResult
+	calls   int
+	command stripebilling.ReconciliationCommand
+}
+
+func (executor *integrationBillingReconciliationExecutor) ReconcileSubscription(
+	_ context.Context,
+	command stripebilling.ReconciliationCommand,
+) stripebilling.WebhookResult {
+	executor.calls++
+	executor.command = command
+	return executor.result
 }
 
 func assertAccountDeletionBillingEffect(

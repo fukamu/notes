@@ -171,9 +171,20 @@ observation. Re-running reconciliation later therefore cannot make unchanged
 old evidence win ordering. The focused provider tests use a local HTTP stub;
 no Stripe endpoint is contacted.
 
-This implementation remains uncomposed: no HTTP route, endpoint secret, API
+Issue #478 composes that retrieve-and-commit path only into the explicit
+`notesctl billing reconcile` operations command. The shared Go
+`ReconciliationService` needs only the Billing and provider ports, so the
+runner does not invent Checkout URLs, a Price, or a webhook secret. Its
+owner-scoped policy derives provider identifiers from PostgreSQL and checks an
+existing reconciliation checkpoint before the SDK can issue a request. There
+is no fake-provider fallback in command composition; tests inject their fake
+at the command boundary or use local HTTP stubs.
+
+The server remains uncomposed: no HTTP route, endpoint secret, configured API
 key, webhook registration, scheduled reconciliation, cancellation mutation,
-charge, or entitlement grant is enabled. A real Stripe test-mode call must
+charge, or entitlement grant is enabled. The explicit command requires an API
+key at invocation and was verified without a real provider request. A real
+Stripe test-mode call must
 first be separately approved and must confirm the Checkout-hosted rendering,
 the selected Price, the nested expansion shape, 3DS flows, trial end, invoice
 events, and webhook endpoint API version. Production use requires a separate

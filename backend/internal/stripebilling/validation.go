@@ -6,11 +6,14 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/fukamu/notes/backend/internal/billing"
 )
 
 var (
-	ErrInvalidConfiguration = errors.New("invalid Stripe billing configuration")
-	ErrInvalidCheckout      = errors.New("invalid Stripe checkout input")
+	ErrInvalidConfiguration  = errors.New("invalid Stripe billing configuration")
+	ErrInvalidCheckout       = errors.New("invalid Stripe checkout input")
+	ErrInvalidReconciliation = errors.New("invalid Stripe reconciliation input")
 
 	pricePattern        = regexp.MustCompile(`^price_[A-Za-z0-9]+$`)
 	secretPattern       = regexp.MustCompile(`^whsec_[A-Za-z0-9]+$`)
@@ -20,6 +23,21 @@ var (
 	hashPattern         = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 	uuidV7Pattern       = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 )
+
+func ValidateReconciliationCommand(command ReconciliationCommand) error {
+	if _, err := billing.ParseReconciliationSnapshotID(string(command.SnapshotID)); err != nil {
+		return ErrInvalidReconciliation
+	}
+	if _, err := billing.ParseSubscriptionID(string(command.SubscriptionID)); err != nil {
+		return ErrInvalidReconciliation
+	}
+	if !validStripeID(string(command.ProviderSubscriptionReference), "sub_") ||
+		!validMillis(command.ObservedAt) || !validMillis(command.RecordedAt) ||
+		command.RecordedAt < command.ObservedAt {
+		return ErrInvalidReconciliation
+	}
+	return nil
+}
 
 func (configuration Configuration) Valid() bool {
 	return (configuration.Mode == ModeTest || configuration.Mode == ModeLive) &&

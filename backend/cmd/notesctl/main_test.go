@@ -12,6 +12,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/accountdeletion"
 	"github.com/fukamu/notes/backend/internal/operations"
 	"github.com/fukamu/notes/backend/internal/quota"
+	"github.com/fukamu/notes/backend/internal/stripebilling"
 )
 
 func TestRunRejectsUnknownCommand(t *testing.T) {
@@ -61,6 +62,7 @@ func TestRunMigratesOnlyTheExplicitAllowlistedEnvironment(t *testing.T) {
 			t.Fatal("account deletion audit must not run")
 			return operations.AccountDeletionAuditResult{}, nil
 		},
+		billingReconciliationMustNotRun(t),
 	)
 	if code != 0 || !called || stdout.String() != "migration complete\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
@@ -95,6 +97,7 @@ func TestRunRefusesMigrationEnvironmentMismatchWithoutDisclosingURL(t *testing.T
 			t.Fatal("account deletion audit must not run")
 			return operations.AccountDeletionAuditResult{}, nil
 		},
+		billingReconciliationMustNotRun(t),
 	)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "refused") {
 		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
@@ -139,6 +142,7 @@ func TestRunPreparesOnlyTheAllowlistedE2EDatabase(t *testing.T) {
 			t.Fatal("account deletion audit must not run")
 			return operations.AccountDeletionAuditResult{}, nil
 		},
+		billingReconciliationMustNotRun(t),
 	)
 	if code != 0 || !called || stdout.String() != "e2e database prepared\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
@@ -394,6 +398,7 @@ func runQuotaAuditForTest(
 			t.Fatal("account deletion audit must not run")
 			return operations.AccountDeletionAuditResult{}, nil
 		},
+		billingReconciliationMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -591,6 +596,7 @@ func runQuotaCommitForTest(
 			t.Fatal("account deletion audit must not run")
 			return operations.AccountDeletionAuditResult{}, nil
 		},
+		billingReconciliationMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -806,6 +812,7 @@ func runAccountDeletionAuditForTest(
 			return operations.QuotaCommitResult{}, nil
 		},
 		inspect,
+		billingReconciliationMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -818,4 +825,298 @@ func accountDeletionAuditCLIArguments(environment string) []string {
 		"--observed-at-millis=5000",
 		"--account-id=01991f20-61d2-7000-8000-000000000101",
 	}
+}
+
+func TestRunBillingReconciliationUsesExplicitScopeAndRedactedOutput(t *testing.T) {
+	values := billingReconciliationEnvironment(
+		"test",
+		"postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable",
+		"sk_test_FukamuOperationsOnly",
+	)
+	called := false
+	code, stdout, stderr := runBillingReconciliationForTest(
+		t, context.Background(), billingReconciliationCLIArguments("test"), values,
+		func(
+			_ context.Context,
+			databaseURL string,
+			mode stripebilling.RuntimeMode,
+			apiKey string,
+			command operations.BillingReconciliationCommand,
+		) (operations.BillingReconciliationResult, error) {
+			called = true
+			if !strings.Contains(databaseURL, "fukamu_notes_go_test") || mode != stripebilling.ModeTest ||
+				apiKey != values["NOTES_STRIPE_API_KEY"] || command.ObservedAt != 5_000 || command.RecordedAt != 5_100 {
+				t.Fatalf("unexpected input: %q, %q, %q, %#v", databaseURL, mode, apiKey, command)
+			}
+			return operations.BillingReconciliationResult{
+				Kind: operations.BillingReconciliationApplied, SnapshotID: command.SnapshotID,
+				ObservedAt: command.ObservedAt, RecordedAt: command.RecordedAt,
+			}, nil
+		},
+	)
+	if code != 0 || !called || stderr != "" {
+		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout, stderr)
+	}
+	var output struct {
+		Command    string `json:"command"`
+		Outcome    string `json:"outcome"`
+		SnapshotID string `json:"snapshotId"`
+		ObservedAt int64  `json:"observedAt"`
+		RecordedAt int64  `json:"recordedAt"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &output); err != nil || output.Command != "billing-reconcile" ||
+		output.Outcome != "applied" || output.SnapshotID != "manual-2026-09-26T00:00:00Z" ||
+		output.ObservedAt != 5_000 || output.RecordedAt != 5_100 {
+		t.Fatalf("output = %#v, err = %v", output, err)
+	}
+	for _, forbidden := range []string{
+		"01991f20-61d2-7000-8000-000000000101",
+		"01991f20-61d2-7000-8000-000000000201",
+		"sk_test_",
+		"secret",
+		"sub_",
+	} {
+		if strings.Contains(stdout+stderr, forbidden) {
+			t.Fatalf("output disclosed %q: stdout = %q, stderr = %q", forbidden, stdout, stderr)
+		}
+	}
+}
+
+func TestRunBillingReconciliationRejectsInvalidArgumentsBeforeDependencies(t *testing.T) {
+	valid := billingReconciliationCLIArguments("test")
+	tests := map[string][]string{
+		"missing":                 valid[:len(valid)-1],
+		"duplicate":               append(append([]string(nil), valid...), "--snapshot-id=another"),
+		"unknown":                 append(append([]string(nil), valid...), "--limit=1"),
+		"invalid snapshot":        replaceCLIArgument(valid, "--snapshot-id=", "--snapshot-id=bad snapshot"),
+		"zero observation":        replaceCLIArgument(valid, "--observed-at-millis=", "--observed-at-millis=0"),
+		"reversed time":           replaceCLIArgument(valid, "--recorded-at-millis=", "--recorded-at-millis=4999"),
+		"production unconfirmed":  billingReconciliationCLIArguments("production"),
+		"test production confirm": append(append([]string(nil), valid...), "--confirm-production-provider-read"),
+	}
+	values := billingReconciliationEnvironment(
+		"test", "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test", "sk_test_FukamuOperationsOnly",
+	)
+	for name, arguments := range tests {
+		t.Run(name, func(t *testing.T) {
+			code, stdout, stderr := runBillingReconciliationForTest(
+				t, context.Background(), arguments, values, billingReconciliationMustNotRun(t),
+			)
+			if code != 2 || stdout != "" || !strings.Contains(stderr, "usage:") {
+				t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestRunBillingReconciliationEnforcesEnvironmentTargetAndProviderConfiguration(t *testing.T) {
+	valid := billingReconciliationCLIArguments("test")
+	tests := []struct {
+		name   string
+		values map[string]string
+		want   string
+	}{
+		{
+			name: "environment mismatch",
+			values: billingReconciliationEnvironment(
+				"local", "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test", "sk_test_FukamuOperationsOnly",
+			),
+			want: "billing reconciliation environment refused\n",
+		},
+		{
+			name: "remote test database",
+			values: billingReconciliationEnvironment(
+				"test", "postgres://notes:secret@database.example/fukamu_notes_go_test", "sk_test_FukamuOperationsOnly",
+			),
+			want: "billing reconciliation target refused\n",
+		},
+		{
+			name: "missing provider key",
+			values: quotaAuditEnvironment(
+				"test", "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+			),
+			want: "billing reconciliation provider configuration invalid\n",
+		},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			code, stdout, stderr := runBillingReconciliationForTest(
+				t, context.Background(), valid, testCase.values, billingReconciliationMustNotRun(t),
+			)
+			if code != 1 || stdout != "" || stderr != testCase.want || strings.Contains(stderr, "secret") {
+				t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestRunBillingReconciliationProductionSyntaxSelectsLiveModeWithoutCallingProvider(t *testing.T) {
+	arguments := append(billingReconciliationCLIArguments("production"), "--confirm-production-provider-read")
+	values := billingReconciliationEnvironment(
+		"production", "postgres://notes:secret@database.example/notes", "sk_live_FukamuOperationsOnly",
+	)
+	code, stdout, stderr := runBillingReconciliationForTest(
+		t, context.Background(), arguments, values,
+		func(
+			_ context.Context,
+			_ string,
+			mode stripebilling.RuntimeMode,
+			_ string,
+			command operations.BillingReconciliationCommand,
+		) (operations.BillingReconciliationResult, error) {
+			if mode != stripebilling.ModeLive {
+				t.Fatalf("mode = %q", mode)
+			}
+			return operations.BillingReconciliationResult{
+				Kind: operations.BillingReconciliationReplayed, SnapshotID: command.SnapshotID,
+				ObservedAt: command.ObservedAt, RecordedAt: command.RecordedAt,
+			}, nil
+		},
+	)
+	if code != 0 || stderr != "" || !strings.Contains(stdout, `"outcome":"replayed"`) {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
+	}
+}
+
+func TestRunBillingReconciliationRedactsRefusalFailureCancellationAndOutputError(t *testing.T) {
+	values := billingReconciliationEnvironment(
+		"test", "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test", "sk_test_FukamuOperationsOnly",
+	)
+	arguments := billingReconciliationCLIArguments("test")
+	command := operations.BillingReconciliationCommand{}
+	parsed, requested, err := parseBillingReconciliationArguments(arguments)
+	if err != nil || !requested {
+		t.Fatalf("parse = %#v, %t, %v", parsed, requested, err)
+	}
+	command = parsed.command
+	tests := []struct {
+		name      string
+		ctx       context.Context
+		reconcile reconcileBillingFunction
+		want      string
+	}{
+		{
+			name: "refused", ctx: context.Background(), want: "billing reconciliation scope refused\n",
+			reconcile: func(context.Context, string, stripebilling.RuntimeMode, string, operations.BillingReconciliationCommand) (operations.BillingReconciliationResult, error) {
+				return operations.BillingReconciliationResult{
+					Kind: operations.BillingReconciliationRefused, SnapshotID: command.SnapshotID,
+					ObservedAt: command.ObservedAt, RecordedAt: command.RecordedAt,
+				}, nil
+			},
+		},
+		{
+			name: "dependency", ctx: context.Background(), want: "billing reconciliation failed\n",
+			reconcile: func(context.Context, string, stripebilling.RuntimeMode, string, operations.BillingReconciliationCommand) (operations.BillingReconciliationResult, error) {
+				return operations.BillingReconciliationResult{}, errors.New("STRIPE_PRIVATE_SECRET")
+			},
+		},
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	tests = append(tests, struct {
+		name      string
+		ctx       context.Context
+		reconcile reconcileBillingFunction
+		want      string
+	}{
+		name: "cancelled", ctx: cancelled, want: "billing reconciliation failed\n",
+		reconcile: func(ctx context.Context, _ string, _ stripebilling.RuntimeMode, _ string, _ operations.BillingReconciliationCommand) (operations.BillingReconciliationResult, error) {
+			return operations.BillingReconciliationResult{}, ctx.Err()
+		},
+	})
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			code, stdout, stderr := runBillingReconciliationForTest(
+				t, testCase.ctx, arguments, values, testCase.reconcile,
+			)
+			if code != 1 || stdout != "" || stderr != testCase.want || strings.Contains(stderr, "PRIVATE") {
+				t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
+			}
+		})
+	}
+	var stderr bytes.Buffer
+	code := runBillingReconciliation(
+		context.Background(), parsed, rejectingWriter{}, &stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string, stripebilling.RuntimeMode, string, operations.BillingReconciliationCommand) (operations.BillingReconciliationResult, error) {
+			return operations.BillingReconciliationResult{
+				Kind: operations.BillingReconciliationApplied, SnapshotID: command.SnapshotID,
+				ObservedAt: command.ObservedAt, RecordedAt: command.RecordedAt,
+			}, nil
+		},
+	)
+	if code != 1 || stderr.String() != "billing reconciliation output failed\n" {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+}
+
+func runBillingReconciliationForTest(
+	t *testing.T,
+	ctx context.Context,
+	arguments []string,
+	values map[string]string,
+	reconcile reconcileBillingFunction,
+) (int, string, string) {
+	t.Helper()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithDependencies(
+		ctx, arguments, &stdout, &stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
+		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
+			t.Fatal("quota audit must not run")
+			return operations.QuotaAuditResult{}, nil
+		},
+		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			t.Fatal("quota commit must not run")
+			return operations.QuotaCommitResult{}, nil
+		},
+		func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			t.Fatal("account deletion audit must not run")
+			return operations.AccountDeletionAuditResult{}, nil
+		},
+		reconcile,
+	)
+	return code, stdout.String(), stderr.String()
+}
+
+func billingReconciliationCLIArguments(environment string) []string {
+	return []string{
+		"billing", "reconcile",
+		"--vault-id=01991f20-61d2-7000-8000-000000000201",
+		"--environment=" + environment,
+		"--snapshot-id=manual-2026-09-26T00:00:00Z",
+		"--recorded-at-millis=5100",
+		"--account-id=01991f20-61d2-7000-8000-000000000101",
+		"--observed-at-millis=5000",
+	}
+}
+
+func billingReconciliationEnvironment(environment, databaseURL, apiKey string) map[string]string {
+	return map[string]string{
+		"NOTES_ENVIRONMENT": environment, "NOTES_DATABASE_URL": databaseURL,
+		"NOTES_STRIPE_API_KEY": apiKey,
+	}
+}
+
+func billingReconciliationMustNotRun(t *testing.T) reconcileBillingFunction {
+	t.Helper()
+	return func(
+		context.Context,
+		string,
+		stripebilling.RuntimeMode,
+		string,
+		operations.BillingReconciliationCommand,
+	) (operations.BillingReconciliationResult, error) {
+		t.Fatal("billing reconciliation must not run")
+		return operations.BillingReconciliationResult{}, nil
+	}
+}
+
+type rejectingWriter struct{}
+
+func (rejectingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
 }
