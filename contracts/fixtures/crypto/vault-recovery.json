@@ -1,0 +1,95 @@
+{
+  "profile": "vault-recovery-v1",
+  "manifest": {
+    "format": "fukamu-vault-recovery/v1",
+    "backupId": "backup_fixture_shared",
+    "accountId": "01991f20-61d2-7000-8000-000000001101",
+    "vaultId": "01991f20-61d2-7000-8000-000000001201",
+    "capturedAt": 2200,
+    "deleteAfter": 2592002200,
+    "keyring": {
+      "vaultId": "01991f20-61d2-7000-8000-000000001201",
+      "writeVersion": 2,
+      "versions": [
+        {
+          "vaultId": "01991f20-61d2-7000-8000-000000001201",
+          "dekVersion": 1,
+          "kekKeyReference": "fake-kek-version-1",
+          "wrappedDek": "ZmFrZS13cmFwcGVkLWRlay12MQ",
+          "createdAt": 500
+        },
+        {
+          "vaultId": "01991f20-61d2-7000-8000-000000001201",
+          "dekVersion": 2,
+          "kekKeyReference": "fake-kek-version-2",
+          "wrappedDek": "ZmFrZS13cmFwcGVkLWRlay12Mg",
+          "createdAt": 2000
+        }
+      ]
+    },
+    "rotation": {
+      "operationId": "01991f20-61d2-7000-8000-000000001901",
+      "accountId": "01991f20-61d2-7000-8000-000000001101",
+      "vaultId": "01991f20-61d2-7000-8000-000000001201",
+      "revision": 3,
+      "sourceVersion": 1,
+      "targetVersion": 2,
+      "state": {
+        "kind": "completed",
+        "metadata": {
+          "vaultId": "01991f20-61d2-7000-8000-000000001201",
+          "dekVersion": 2,
+          "kekKeyReference": "fake-kek-version-2",
+          "wrappedDek": "ZmFrZS13cmFwcGVkLWRlay12Mg",
+          "createdAt": 2000
+        },
+        "completedAt": 2100
+      },
+      "createdAt": 1500,
+      "updatedAt": 2100
+    },
+    "reencryption": {
+      "kind": "completed",
+      "targetVersion": 2
+    },
+    "objects": [
+      {
+        "object": {
+          "kind": "card",
+          "objectId": "01991f20-61d2-7000-8000-000000000101"
+        },
+        "objectRevision": 1,
+        "writeId": "01991f20-61d2-7000-8000-000000000201",
+        "objectKey": "obj_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "plaintextBytes": 16,
+        "ciphertextBytes": 128,
+        "cryptoVersion": "fukamu-envelope-aes-256-gcm/v1",
+        "dekVersion": 1,
+        "createdAt": 1000
+      },
+      {
+        "object": {
+          "kind": "conflict",
+          "objectId": "01991f20-61d2-7000-8000-000000000102"
+        },
+        "objectRevision": 2,
+        "writeId": "01991f20-61d2-7000-8000-000000000202",
+        "objectKey": "obj_v1_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "plaintextBytes": 24,
+        "ciphertextBytes": 144,
+        "cryptoVersion": "fukamu-envelope-aes-256-gcm/v1",
+        "dekVersion": 2,
+        "createdAt": 2100
+      }
+    ]
+  },
+  "drilledAt": 3000,
+  "expected": {
+    "backupId": "backup_fixture_shared",
+    "operationId": "01991f20-61d2-7000-8000-000000001901",
+    "sourceVersion": 1,
+    "targetVersion": 2,
+    "objectCount": 2,
+    "verifiedVersions": [1, 2]
+  }
+}

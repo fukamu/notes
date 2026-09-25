@@ -51,6 +51,11 @@ import {
   parsePrivacyRequestId,
   parsePrivacyRequestSubmissionId,
 } from '@/server/privacy-request/public';
+import {
+  completeVaultRecoveryDrill,
+  decodeVaultRecoveryManifest,
+  planVaultRecoveryDrill,
+} from '@/server/encrypted-object/recovery-core';
 
 const fixtureRoot = new URL('../../contracts/fixtures/', import.meta.url);
 
@@ -317,6 +322,34 @@ describe('Go migration shared contract fixtures', () => {
       }),
     ).rejects.toThrow('GCP Cloud KMS operation failed');
     expect(observedWrappedAad).toBe(string(field(wrappedAad, 'canonical')));
+  });
+
+  it('keeps the Vault recovery manifest and receipt decisions compatible', async () => {
+    const fixtureValue = record(await fixture('crypto/vault-recovery.json'));
+    const manifest = decodeVaultRecoveryManifest(
+      field(fixtureValue, 'manifest'),
+    );
+    const drilledAt = number(field(fixtureValue, 'drilledAt'));
+    expect(
+      planVaultRecoveryDrill({
+        scope: {
+          accountId: manifest.accountId,
+          vaultId: manifest.vaultId,
+        },
+        manifest,
+        drilledAt,
+      }),
+    ).toEqual({ kind: 'accepted' });
+    const completion = completeVaultRecoveryDrill({
+      manifest,
+      drilledAt,
+      verifiedObjects: manifest.objects.length,
+      verifiedVersions: manifest.objects.map((object) => object.dekVersion),
+    });
+    expect(completion).toMatchObject({
+      kind: 'verified',
+      receipt: field(fixtureValue, 'expected'),
+    });
   });
 
   it('passes billing fixtures through the current browser decoder', async () => {

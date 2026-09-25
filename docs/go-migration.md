@@ -21,10 +21,12 @@ delete existing resources.
 - T07 envelope encryption, GCP Cloud KMS boundary, and wrapped-DEK keyring were
   integrated by #428 / PR #429. The integration tip before the current slice
   is `6cc1de6e5938f77a5930cd2301ca12399a6c5f0f`.
-- T08a immutable object metadata, write intents, and delete outbox are Issue
-  #430 on `work/430-go-encrypted-object-repository`, branched from that exact
-  integration commit. They remain disconnected and do not select or create an
-  object-storage resource, expose a content route, or run a production job.
+- T08a immutable object metadata/write intents/delete outbox and T08b durable
+  rotation/re-encryption were integrated by #430 / PR #431 and #432 / PR #433.
+  T08c Issue #434 starts from exact integration tip
+  `8b8530f3687b293bfe6a072a7e8104f6cd410289`. All remain disconnected and do
+  not select or create an object/backup resource, expose a content route, run a
+  production job, or destroy a key.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -58,7 +60,7 @@ the same contract as its closed route.
 | F12 | B     | KMS / DEK                                   | T07                             | V06,V09      | Go local boundary #428; external proof open  |
 | F13 | B     | key rotation                                | T08                             | V04,V06,V08  | Go state machine/Postgres #432; disconnected |
 | F14 | B     | immutable encrypted object                  | T08                             | V04,V06,V08  | Go core/Postgres #430; disconnected          |
-| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08      | reencryption #432; recovery/backup pending   |
+| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08      | reencryption #432; fixture recovery #434     |
 | F16 | B     | quota                                       | T11                             | V04,V05      | pending                                      |
 | F17 | B     | billing projection                          | T09                             | V04,V07      | blocked on #404 where applicable             |
 | F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | pending, remains closed                      |
@@ -82,9 +84,9 @@ the same contract as its closed route.
 | V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426                  |
 | V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object intent/CAS/outbox #430         |
 | V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                   |
-| V06 | crypto vectors, tamper/AAD/KMS failures                 | TS/Go vector, tamper/AAD/CRC/timeout in #428; T08 pending     |
+| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434           |
 | V07 | billing/evidence duplicate/order/failure                | T01 browser decoder baseline; T09 pending                     |
-| V08 | resumable jobs/deletion fault injection                 | object lost-response/delete retry #430; T08b/T08c/T12 pending |
+| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434        |
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                     |
 | V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips |
 | V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                               |
@@ -473,9 +475,10 @@ The only object-storage implementation in this slice is a copy-on-read/write
 in-memory fake for isolated tests and drills. A cryptographic opaque-key
 generator exists but is not composed into the running server. There is no R2
 adapter, bucket, credential, network call, persistent nonce store, production
-route, or scheduled collector. T08b adds DEK rotation/reencryption checkpoints;
-T08c adds recovery drills. Selecting a real storage provider remains an
-approval item with cost, retention, region, IAM, and shared-service impact.
+route, or scheduled collector. T08b added DEK rotation/reencryption checkpoints,
+and T08c #434 adds fixture recovery verification. Selecting a real storage
+provider remains an approval item with cost, retention, region, IAM, and
+shared-service impact.
 
 Rollback before any persistent apply removes this disconnected code and
 recreates only the disposable test schema. After a separately approved
@@ -562,3 +565,39 @@ job checkpoints, object metadata, and outbox rows. Resume from the recorded
 revision after restoring the matching artifact. Never reset the cursor, drop
 these tables, delete old objects, or disable/destroy a KEK/DEK merely to roll
 back application code.
+
+## T08c recovery drill and retirement evidence gate
+
+Issue #434 ports the versioned recovery manifest, drill decisions, application
+service, and key-retirement evidence gate to Go. A shared fixture passes through
+both the TypeScript and Go strict decoders. The Go decoder rejects unknown
+fields, foreign scope, inconsistent rotation/keyring/checkpoint state,
+duplicate object identities or keys, unavailable DEK versions, and retention
+beyond 30 days before object access.
+
+The drill reads only through a provider-neutral backup port. For every declared
+mixed-version object it checks stored byte count and envelope/DEK version, then
+authenticates the exact Vault/object/revision AAD. Recovered plaintext is
+cleared immediately. The only output evidence contains opaque scope, operation,
+and backup identifiers, timestamps, version numbers, and counts; it contains no
+plaintext, ciphertext, object key, wrapped DEK, or raw key. Missing objects,
+malformed/swapped/tampered ciphertext, wrong keys, provider failure, expired
+retention, and incomplete re-encryption return explicit blocked results and no
+receipt.
+
+The retirement gate requires a completed exact-scope rotation, complete active
+and backup inventories, no old object or pending old write, confirmed source-key
+backup expiry/deletion, and a matching recovery receipt that covers source and
+target versions. Even when every condition holds, the terminal result is only
+`explicit-production-key-destruction-approval-required`. No disable, delete, or
+destroy port exists behind the gate. The only backup adapter is an isolated
+copying in-memory fixture; there is no provider, credential, route, scheduler,
+production operation, or recovery claim.
+
+Rollback removes the disconnected codec, service, and fake only. It preserves
+rotation and re-encryption state, all old/new wrapped metadata, immutable
+objects, backups, and evidence. A real provider choice, production recovery
+drill, backup deletion, or key disable/destruction requires a separate reviewed
+operation naming the exact resource, approval, retention window, audit record,
+and recovery path. T13 will compose an explicit local operations command around
+this application boundary without turning readiness into automatic deletion.
