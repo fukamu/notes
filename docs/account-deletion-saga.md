@@ -36,8 +36,12 @@ storage tests. Issue #466 implements account finalization with an explicit
 fail-closed legal-evidence policy and a PostgreSQL gate that prevents new legal
 evidence after deletion starts. The delete-live policy branch is a tested local
 candidate, not an approved selection, and the effect remains outside runtime
-composition. No provider, production migration, data deletion, cancellation,
-deployment, or public route is enabled by #458, #460, #462, #464, or #466.
+composition. Issue #468 connects a verified privacy deletion request only to
+the durable saga start. Its scoped deterministic identity makes a lost response
+replay one operation without executing any step, and `account-deletion-started`
+does not mean deletion completed. No provider, production migration, data
+deletion, cancellation, deployment, or public route is enabled by #458, #460,
+#462, #464, #466, or #468.
 The sections below describe the pre-existing TypeScript/D1 implementation that
 the Go port preserves as its compatibility oracle.
 

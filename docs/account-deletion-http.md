@@ -27,6 +27,14 @@ the T12f policy-gated finalizer. This does not remove the composition hold:
 approved production selection, and no provider credentials or destructive
 route are enabled.
 
+Issue #468 adds a separate internal start caller for an already verified
+privacy deletion request. It derives a stable owner/request identity, stores or
+replays the same operation and continuation, and stops before consuming the
+continuation. It neither mounts these HTTP handlers nor substitutes for the
+browser continuation flow. The privacy outcome `account-deletion-started`
+therefore means only that the durable saga exists; T13 must provide an explicit
+reviewed runner before any step can advance.
+
 Go migration `00014_account_deletion_saga.sql` adds operation, receipt, and
 continuation storage together because no Go route is enabled between partial
 schema stages. Before persistent use, rollback may recreate only the disposable
