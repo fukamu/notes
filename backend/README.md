@@ -28,6 +28,16 @@ store, rate-limit store, terms adapter, or provider configuration uses these
 packages; local signed launch-gate identity and user sessions remain separate
 boundaries.
 
+T07 Issue #428 adds a disconnected Go envelope-encryption module. It preserves
+the existing AES-256-GCM format and canonical object AAD, keeps DEKs in
+zeroizing in-process handles, and obtains key material only through an injected
+key-management port. The GCP Cloud KMS REST adapter validates the exact
+CryptoKeyVersion, wrapped-key AAD, canonical base64, and CRC32C fields and
+fails with fixed errors. Migration 00004 stores wrapped DEK metadata only and
+allows one write key per Vault. The production server does not compose these
+packages, no persistent nonce adapter is supplied, and no GCP resource,
+credential, request, or billing relationship is created.
+
 ## Local start
 
 ```bash
@@ -118,3 +128,13 @@ With the Compose database running, run `npm run go:check` from the repository
 root. It verifies formatting, vet, unit/process/integration tests, the race
 detector, both commands, and Go-served desktop/mobile browser behavior. The
 same gate is part of `npm run verify`.
+
+The shared crypto fixture is executed by both TypeScript Web Crypto and Go's
+AES-GCM implementation. Focused Go checks are:
+
+```bash
+go -C backend test ./internal/cryptocontent/... ./internal/adapters/contentcrypto/... ./internal/adapters/kms/...
+NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend test -tags=integration ./tests/integration -run TestVaultDEKKeyringPostgres
+go -C backend test -race ./internal/cryptocontent/... ./internal/adapters/contentcrypto/... ./internal/adapters/kms/...
+```

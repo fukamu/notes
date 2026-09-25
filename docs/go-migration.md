@@ -15,13 +15,14 @@ delete existing resources.
   corresponding T12 deletion contract remain dependent on its resolution.
 - T01 completed in #410 / PR #411, T02 in #412 / PR #413, T03 in #414 /
   PR #415, T04 part 1 in #416 / PR #417, T04 part 2 in #418 / PR #419, T05
-  in #420 / PR #421, and the first two T06 slices in #422 / PR #423 and
-  #424 / PR #425. The integration tip before the current slice is
-  `33f0032c5273044f4ef8ed5cc18857e3aec4022f`.
-- T06 Email OTP, verified-email ownership, and signup provisioning are Issue
-  #426 on `work/426-go-email-otp-signup`, branched from that exact integration
-  commit. They remain disconnected and do not select a mail provider, expose
-  an authentication route, or activate signup.
+  in #420 / PR #421, and T06 in #422 / PR #423, #424 / PR #425, and #426 /
+  PR #427. The integration tip before the current slice is
+  `90789d9056fcd77f46ac81d1087f668380d4a65d`.
+- T07 envelope encryption, GCP Cloud KMS boundary, and wrapped-DEK keyring are
+  Issue #428 on `work/428-go-envelope-kms-keyring`, branched from that exact
+  integration commit. They remain disconnected and do not select a production
+  KMS resource, create credentials, expose content routes, or activate paid
+  provider use.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -51,8 +52,8 @@ the same contract as its closed route.
 | F08 | B     | signup admission                            | T06,T10                         | V03,V07      | atomic Go provisioning #426; terms port open |
 | F09 | B     | vault content                               | T11                             | V04,V05      | pending                                      |
 | F10 | B     | sync v2                                     | T11                             | V01,V04,V05  | contract captured in #410                    |
-| F11 | B     | envelope encryption                         | T07                             | V06          | format/AAD captured in #410                  |
-| F12 | B     | KMS / DEK                                   | T07                             | V06,V09      | pending                                      |
+| F11 | B     | envelope encryption                         | T07                             | V06          | Go AES-GCM/fixture implemented by #428       |
+| F12 | B     | KMS / DEK                                   | T07                             | V06,V09      | Go local boundary #428; external proof open  |
 | F13 | B     | key rotation                                | T08                             | V04,V06,V08  | pending                                      |
 | F14 | B     | immutable encrypted object                  | T08                             | V04,V06,V08  | pending                                      |
 | F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08      | pending                                      |
@@ -79,7 +80,7 @@ the same contract as its closed route.
 | V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426                  |
 | V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418 plus signup atomicity/replay/conflict #426          |
 | V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                   |
-| V06 | crypto vectors, tamper/AAD/KMS failures                 | T01 format/AAD baseline; full T07+ pending                    |
+| V06 | crypto vectors, tamper/AAD/KMS failures                 | TS/Go vector, tamper/AAD/CRC/timeout in #428; T08 pending     |
 | V07 | billing/evidence duplicate/order/failure                | T01 browser decoder baseline; T09 pending                     |
 | V08 | resumable jobs/deletion fault injection                 | T12/T13 pending                                               |
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                     |
@@ -383,6 +384,55 @@ pepper configuration, OIDC transaction store, callback-browser binding, or
 T10 production terms adapter. Those are publication blockers; the running Go
 server continues to keep the routes closed.
 
+## T07 envelope encryption, KMS, and keyring slice
+
+Issue #428 ports the existing `fukamu-envelope-aes-256-gcm/v1` contract to Go.
+The pure model validates Vault/object/revision/version binding and serializes
+the same canonical JSON AAD tuple as TypeScript. The effect adapters use a
+32-byte DEK, 96-bit nonce, and 128-bit AES-GCM tag. Reads authenticate Vault,
+object kind and ID, object revision, crypto format, and DEK version; relabeling
+or ciphertext modification fails closed. Encryption requires an injected
+nonce reservation and retries collisions at most four times. Only test fakes
+implement that reservation in T07; a production nonce store is deferred until
+an encrypted write route is separately approved.
+
+The GCP Cloud KMS adapter creates DEKs locally, sends only the DEK and
+Vault/version/KEK-bound AAD to the exact configured CryptoKeyVersion, and
+stores only returned ciphertext metadata. Encrypt and decrypt requests include
+CRC32C. Responses must confirm input checksums and return matching output
+checksums; malformed base64/JSON, a different key, provider error, quota error,
+timeout, or cancellation returns one fixed error without plaintext fallback.
+Key buffers use copied, zeroizing handles and render as redacted values. The
+adapter does not log provider bodies, access tokens, wrapped values, or raw key
+material.
+
+Migration 00004 adds PostgreSQL `vault_dek_versions` with a Vault/version
+primary key, Vault foreign key, exact metadata bounds, and a partial unique
+index that permits only one write key per Vault. It contains no raw-key,
+plaintext, title, or body column. The Go store rejects malformed rows and
+builds a keyring only when exactly one stored version is the write version.
+Deletion follows the existing personal-Vault foreign key, but T07 does not run
+deletion or add the T08 rotation/recovery workflow.
+
+The shared fixture contains a deterministic key, nonce, plaintext, canonical
+AAD, and ciphertext. TypeScript Web Crypto and Go independently seal to the
+same bytes and open them. Go unit/race tests also cover tamper, object/revision
+swap, cross-Vault access, unknown versions, nonce collision, KMS transport and
+checksum failures, timeout, redaction, and destroyed key handles. Disposable
+PostgreSQL tests cover Vault isolation, mixed-version reads, the single-write
+constraint, foreign-key rejection, cascade behavior, and the exact metadata
+columns.
+
+No real Cloud KMS request is part of these checks. A future production choice
+would add provider charges, IAM, credentials/workload identity, region and
+protection-level decisions, monitoring, and a retained-key recovery policy;
+none is approved by #428. Local rollback removes the disconnected composition
+and recreates only the disposable test schema. If migration 00004 is ever
+approved for a persistent environment, rollback must be a reviewed forward
+migration: retain ciphertext and every referenced readable KEK version, stop
+new encrypted writes first, and never drop metadata or destroy provider keys
+as part of a code rollback.
+
 ## Build, cutover, and rollback status
 
 A local-only Go bootstrap, PostgreSQL schema and legacy sync route, signed test
@@ -406,3 +456,7 @@ of that disposable schema. After a future production apply, rollback must first
 disable new signup, retain verified-email ownership and terms evidence, and use
 a separately reviewed forward migration; it must not drop 00003 or expose the
 old TypeScript signup path against partially provisioned Go state.
+T07 #428 similarly applies migration 00004 only to disposable local/test
+PostgreSQL and makes no provider call. A future persistent apply must preserve
+wrapped metadata and referenced KEK versions across rollback; key disable or
+destruction is a separate, explicitly approved recovery/retirement operation.

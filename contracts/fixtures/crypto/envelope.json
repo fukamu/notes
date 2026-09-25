@@ -1,11 +1,19 @@
 {
   "profile": "envelope-aes-256-gcm-v1",
+  "keyBase64Url": "ERERERERERERERERERERERERERERERERERERERERERE",
+  "plaintextBase64Url": "cHJpdmF0ZSB0aXRsZSBhbmQgYm9keQ",
   "ciphertext": {
     "format": "fukamu-envelope-aes-256-gcm/v1",
     "algorithm": "A256GCM",
     "dekVersion": 1,
     "nonce": "AAAAAAAAAAAAAAAA",
-    "sealedPayload": "AAAAAAAAAAAAAAAAAAAAAA"
+    "sealedPayload": "tLh3EYDb-Ll1c8lpvtK74ZVA7fGc3Z89WH73e9OnoKLlggyz9R0"
+  },
+  "wrappedDekAad": {
+    "vaultId": "01991f20-61d2-7000-8000-000000000201",
+    "dekVersion": 1,
+    "keyVersionName": "projects/fukamu-test/locations/asia-northeast1/keyRings/fukamu-notes/cryptoKeys/vault-kek/cryptoKeyVersions/7",
+    "canonical": "[\"fukamu-vault-dek-wrap/v1\",\"01991f20-61d2-7000-8000-000000000201\",1,\"projects/fukamu-test/locations/asia-northeast1/keyRings/fukamu-notes/cryptoKeys/vault-kek/cryptoKeyVersions/7\"]"
   },
   "aad": {
     "vaultId": "01991f20-61d2-7000-8000-000000000201",
