@@ -30,11 +30,12 @@ delete existing resources.
   destroy a key.
 - T09a billing aggregate and PostgreSQL projection were integrated by #436 /
   PR #437, and the disconnected Stripe boundary was integrated by #438 / PR
-  #439. T09c Issue #440 starts from exact integration tip
-  `bd58c7345dcf430e26421840a76db262043e9e48`. Stripe and Entitlement remain
-  disconnected; no credential, provider resource, real request, public route,
-  charge, entitlement enforcement, or production data change is authorized by
-  these slices.
+  #439. T09c Entitlement/offline leases were integrated by #440 / PR #441.
+  T10a Issue #442 starts from exact integration tip
+  `008b3210c863896748c6c09eedf945fdd479659b`. Stripe, Entitlement, and legal
+  consent remain disconnected; no credential, provider resource, real request,
+  public route, charge, entitlement enforcement, or production data change is
+  authorized by these slices.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -61,7 +62,7 @@ the same contract as its closed route.
 | F05 | B     | Google OIDC                                 | T06                             | V03          | Go core/provider adapter #424; disconnected  |
 | F06 | B     | email OTP                                   | T06                             | V03          | Go core/HMAC/CAS #426; disconnected          |
 | F07 | B     | identity / vault context                    | T06                             | V03,V04      | session #422; persistent directories #426    |
-| F08 | B     | signup admission                            | T06,T10                         | V03,V07      | atomic Go provisioning #426; terms port open |
+| F08 | B     | signup admission                            | T06,T10                         | V03,V07      | provisioning #426; Go terms adapter #442     |
 | F09 | B     | vault content                               | T11                             | V04,V05      | pending                                      |
 | F10 | B     | sync v2                                     | T11                             | V01,V04,V05  | contract captured in #410                    |
 | F11 | B     | envelope encryption                         | T07                             | V06          | Go AES-GCM/fixture implemented by #428       |
@@ -73,8 +74,8 @@ the same contract as its closed route.
 | F17 | B     | billing projection                          | T09                             | V04,V07      | Go core/Postgres #436; cancel awaits #404    |
 | F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | Go core/SDK adapter #438; remains closed     |
 | F19 | B     | entitlement / offline lease                 | T09                             | V05,V07      | Go core/Postgres #440; disconnected          |
-| F20 | B     | legal checkout evidence                     | T10                             | V01,V07      | contract captured in #410                    |
-| F21 | B     | terms consent                               | T10                             | V01,V07      | contract captured in #410                    |
+| F20 | B     | legal checkout evidence                     | T10                             | V01,V07      | pending after terms slice                    |
+| F21 | B     | terms consent                               | T10                             | V01,V07      | Go core/Postgres #442; disconnected          |
 | F22 | B     | normal cancellation                         | T09                             | V07          | blocked on #404                              |
 | F23 | B     | account deletion                            | T12                             | V03,V04,V08  | contract captured; #404 overlap pending      |
 | F24 | B     | privacy request journal                     | T12                             | V01,V03,V08  | contract captured in #410                    |
@@ -85,20 +86,20 @@ the same contract as its closed route.
 
 ## Verification matrix
 
-| ID  | Required evidence                                       | Current evidence                                              |
-| --- | ------------------------------------------------------- | ------------------------------------------------------------- |
-| V01 | shared JSON, strict decoding, black-box HTTP            | same fixture through TS #410 and Go unit/DB/HTTP #418         |
-| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests  |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426                  |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440  |
-| V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                   |
-| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434           |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; entitlement/lease #440          |
-| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434        |
-| V09 | approved isolated provider environment / redacted logs  | external approval pending                                     |
-| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips |
-| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                               |
-| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                     |
+| ID  | Required evidence                                       | Current evidence                                                         |
+| --- | ------------------------------------------------------- | ------------------------------------------------------------------------ |
+| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418; terms canonical fixture #442                             |
+| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests             |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426                             |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; terms #442 |
+| V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                              |
+| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                      |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; terms #442                     |
+| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434                   |
+| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                |
+| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips            |
+| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                          |
+| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                |
 
 ## Intentional security differences
 
@@ -140,6 +141,13 @@ the same contract as its closed route.
   boolean. TypeScript and Go derive paid state from the validated `paid` status
   instead of rejecting current provider payloads or trusting a contradictory
   duplicate boolean. The shared signed fixture omits that removed field.
+- PostgreSQL terms evidence may be inserted either for an exact existing
+  Account/Vault owner or for the exact pre-finalization signup reservation.
+  The TypeScript D1 table's immediate Vault foreign key cannot represent its
+  documented reserve-then-consent-then-finalize order. A trigger preserves
+  owner enforcement without weakening signup ordering; evidence deletion is
+  left to the explicit T12 account-deletion workflow rather than an implicit
+  cascade.
 - These protections are recorded as intentional boundary hardening rather than
   accidental wire compatibility changes.
 
@@ -731,3 +739,38 @@ and lease record, restore the matching artifact, and verify Billing source
 versions before reopening. Never drop entitlement evidence or manufacture an
 active projection as part of rollback. T11 owns composition with notes, quota,
 and Sync v2; normal cancellation remains dependent on #403 / Draft PR #404.
+
+## T10a terms consent and signup evidence slice
+
+Issue #442 ports the versioned terms disclosure, canonical serialization,
+consent planning, current/reconsent/notice decisions, fail-closed application
+service, checkout verifier, and signup admission adapter to Go. The shared
+`legal/terms-consent.json` fixture includes `<>&` and U+2028/U+2029 and proves
+that TypeScript `JSON.stringify` and Go produce the same UTF-8 SHA-256 input.
+Unknown fields, trailing JSON, invalid product constants, stale version/hash,
+missing affirmation, cross-owner evidence, and undecided changed terms are
+rejected.
+
+Migration 00009 stores the complete immutable disclosure snapshot under an
+Account/Vault scope. It has submission idempotency, strict shape constraints,
+an update-blocking trigger, and an ownership trigger. Because signup records
+consent before its Account and Vault exist, that trigger accepts only an exact
+existing Personal Vault or the exact signup reservation matching submission,
+Account, and Vault. It does not accept client-supplied ownership. Concurrent
+identical submissions converge on the first evidence; a retry returns its
+original consent ID and timestamp.
+
+Unit and disposable-PostgreSQL tests cover canonical bytes, append/replay,
+reconsent classification, dependency failures, checkout verification,
+reservation-before-finalization, owner rejection, immutable updates, and a
+concurrent one-record race. This slice does not add an HTTP route, terms source
+configuration, provider call, public signup, production schema apply, or
+deployment. T10 follow-up slices still own legal checkout evidence and the
+disconnected GET/POST handler contracts.
+
+Before an approved persistent apply, rollback is a reviewed code revert plus
+disposable-schema recreation. After evidence exists, close new signup,
+checkout, and reconsent writes; keep migration 00009 and every evidence row;
+restore a compatible artifact or use a reviewed forward migration. Never drop,
+rewrite, or synthesize consent evidence as part of rollback. T12 must explicitly
+apply the approved evidence-retention decision during account deletion.

@@ -16,6 +16,7 @@ const requiredProfiles = new Set([
   'legacy-sync-v1-rejections',
   'session-core',
   'sync-v2-handler',
+  'terms-consent-v1',
 ]);
 
 const spec = await readFile(specPath, 'utf8');

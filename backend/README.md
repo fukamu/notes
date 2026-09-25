@@ -90,6 +90,17 @@ old/new paid ordering, issue/lock races, and rollback on revocation failure.
 Nothing is composed into an HTTP, notes, quota, or Sync v2 path, and no
 production migration or provider operation is performed.
 
+T10a Issue #442 adds the disconnected Go terms-consent core, fail-closed
+service, checkout verifier, signup admission adapter, and PostgreSQL immutable
+evidence repository. Migration 00009 authorizes insert only for an exact
+Personal Vault owner or the exact pre-finalization signup reservation and
+blocks updates. A shared TypeScript/Go fixture fixes canonical JSON bytes and
+SHA-256 across `<>&` and U+2028/U+2029. Unit and disposable-PostgreSQL tests
+cover stale/missing consent, replay, changed-term classification, cross-owner
+access, reservation-before-finalization, immutable evidence, and concurrent
+duplicate submissions. The package has no HTTP route, configured legal source,
+public signup, provider call, production migration, or deployment.
+
 ## Local start
 
 ```bash
