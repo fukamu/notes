@@ -56,9 +56,9 @@ the same contract as its closed route.
 | F10 | B     | sync v2                                     | T11                             | V01,V04,V05  | contract captured in #410                    |
 | F11 | B     | envelope encryption                         | T07                             | V06          | Go AES-GCM/fixture implemented by #428       |
 | F12 | B     | KMS / DEK                                   | T07                             | V06,V09      | Go local boundary #428; external proof open  |
-| F13 | B     | key rotation                                | T08                             | V04,V06,V08  | pending                                      |
+| F13 | B     | key rotation                                | T08                             | V04,V06,V08  | Go state machine/Postgres #432; disconnected |
 | F14 | B     | immutable encrypted object                  | T08                             | V04,V06,V08  | Go core/Postgres #430; disconnected          |
-| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08      | pending                                      |
+| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08      | reencryption #432; recovery/backup pending   |
 | F16 | B     | quota                                       | T11                             | V04,V05      | pending                                      |
 | F17 | B     | billing projection                          | T09                             | V04,V07      | blocked on #404 where applicable             |
 | F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | pending, remains closed                      |
@@ -515,3 +515,50 @@ T08a #430 applies migration 00005 only to the same disposable database and uses
 only in-memory object storage. A future rollback must preserve object metadata,
 pending intents, outbox entries, and immutable objects until the T08 recovery
 procedure proves their disposition.
+
+## T08b DEK rotation and durable re-encryption slice
+
+Issue #432 ports the existing rotation state machine and re-encryption batch to
+Go. Rotation is owner-scoped and revision-CAS guarded through `generating`,
+`promoting`, and `completed`. The KMS call occurs only after `generating` is
+durable. Its raw key handle is destroyed even when returned metadata is
+rejected. Promotion inserts or verifies the exact wrapped target metadata,
+changes the sole PostgreSQL write-key flag, and completes the operation in one
+transaction. Old wrapped versions remain readable; no retirement or provider
+delete is performed.
+
+Migration 00006 adds rotation operations and per-Vault re-encryption jobs. The
+TypeScript oracle accepted a caller-held checkpoint; the migration plan
+requires restart safety, so the Go repository makes target version, ordered
+cursor, state, and CAS revision durable. Each successful candidate transaction
+changes only physical encrypted-object metadata, enqueues the old immutable
+key, and advances that checkpoint atomically. A lost response resumes after
+the committed candidate. A metadata or checkpoint CAS loss commits neither DB
+change; its uploaded replacement is an orphan handled by the existing grace
+period collector.
+
+The batch authenticates the recorded Vault/object/revision AAD before creating
+fresh ciphertext with the promoted write version. It rejects newer-version
+inventory, resets a cursor when older rows appear behind it, and waits for
+old-version intents. Intent reservation now requires the current stored write
+version. It and key promotion take the same Vault-scoped transaction advisory
+lock, preventing an old-version intent from being newly committed after
+promotion. Completed jobs return without object, key-generation, encryption,
+or KMS work.
+
+Unit, race, and disposable-PostgreSQL tests cover concurrent start with one
+winner, KMS/storage/authentication failure, generated-key zeroization,
+cross-owner isolation, response loss after both rotation and re-encryption DB
+commits, process-style service reconstruction from the durable cursor,
+pending writes, scan reset, and mixed-version reads. The only object adapter is
+the isolated in-memory fake. There is no public route, scheduler, real R2
+adapter, production KMS call, staging resource, key retirement, or recovery
+claim in T08b; T08c owns the fixture recovery drill and retirement gate.
+
+Before any approved persistent apply, rollback is a reviewed code revert and
+disposable-schema recreation. After a persistent apply, stop rotation and
+re-encryption workers but retain migration 00006, all old/new wrapped metadata,
+job checkpoints, object metadata, and outbox rows. Resume from the recorded
+revision after restoring the matching artifact. Never reset the cursor, drop
+these tables, delete old objects, or disable/destroy a KEK/DEK merely to roll
+back application code.

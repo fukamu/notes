@@ -38,6 +38,13 @@ func TestEncryptedObjectPostgresCrashResumeIsolationAndOutbox(t *testing.T) {
 		integrationObjectKey(t, 'A'), integrationObjectKey(t, 'B'), integrationObjectKey(t, 'C'), integrationObjectKey(t, 'D'),
 	}}
 	keyring, encryption := integrationObjectEncryption(t, vaultA)
+	keyStore, err := postgresadapter.NewVaultDEKStore(pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := keyStore.InsertInitial(ctx, keyring.Versions[0]); err != nil {
+		t.Fatal(err)
+	}
 	failing := &failFirstMetadataCommit{MetadataRepository: storeA, fail: true}
 	service, err := encryptedobject.NewService(vaultA, failing, objects, keys, encryption, nil)
 	if err != nil {
