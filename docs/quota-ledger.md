@@ -90,8 +90,20 @@ failures and deadlocks a bounded number of times, and return an explicit
 candidate read changes state or treats age as proof that capacity can be
 released.
 
-The Go journal/content index is now available as a disconnected boundary from
-Issue #452. The ledger remains disconnected until T11c composes quota,
-encrypted objects, journal evidence, cursor authentication, and Sync v2 HTTP.
-No production migration, backfill, route, provider, automatic reconciler, or
-deployment is authorized by #450 or #452.
+The Go journal/content index was added as a disconnected boundary by Issue
+#452. T11c Issue #454 composes the ledger and immutable journal receipt behind
+a closed Sync v2 route. No production migration, backfill, public route,
+provider, automatic reconciler, or deployment is authorized by those slices.
+
+T13a Issue #470 adds an explicit owner-scoped, bounded,
+read-only candidate audit. T13b Issue #472 adds only the positive-evidence
+commit operation: the reservation can be committed after it is due when its
+ID, fingerprint, card ID, and original timestamp exactly match an immutable
+Sync v2 receipt. Missing or mismatched evidence fails closed, a released
+reservation cannot be recommitted, retries do not advance usage twice, and
+concurrent attempts serialize to one commit plus one replay.
+
+There is still no automatic release path. Determining that a write did not
+commit requires durable negative evidence not present in the current model;
+age is not sufficient. The operations commands add no schema, scheduling,
+HTTP/UI exposure, production execution, or production authorization.

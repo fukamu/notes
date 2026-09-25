@@ -105,7 +105,7 @@ func (repository *SyncV2JournalRepository) FindReceipt(
 	if !validSyncV2Repository(repository) || !validSyncV2MutationID(mutationID) {
 		return nil, ErrInvalidSyncV2Operation
 	}
-	return findSyncV2Receipt(ctx, repository.pool, repository.scope, mutationID)
+	return findSyncV2Receipt(ctx, repository.pool, repository.scope, mutationID, false)
 }
 
 func (repository *SyncV2JournalRepository) Commit(
@@ -229,7 +229,7 @@ func loadSyncV2Snapshot(
 	if err != nil {
 		return syncv2.Snapshot{}, err
 	}
-	receipt, err := findSyncV2Receipt(ctx, transaction, scope, command.MutationID)
+	receipt, err := findSyncV2Receipt(ctx, transaction, scope, command.MutationID, false)
 	if err != nil {
 		return syncv2.Snapshot{}, err
 	}
@@ -428,11 +428,16 @@ func findSyncV2Receipt(
 	querier syncV2Querier,
 	scope syncv2.Scope,
 	mutationID syncv2.MutationID,
+	lock bool,
 ) (*syncv2.Receipt, error) {
 	var rawMutationID, rawFingerprint, rawCardID string
 	var revision, committedAt int64
-	err := querier.QueryRow(ctx, `SELECT mutation_id, fingerprint, card_id, applied_revision, committed_at
-		FROM vault_sync_v2_commits WHERE account_id = $1 AND vault_id = $2 AND mutation_id = $3`,
+	query := `SELECT mutation_id, fingerprint, card_id, applied_revision, committed_at
+		FROM vault_sync_v2_commits WHERE account_id = $1 AND vault_id = $2 AND mutation_id = $3`
+	if lock {
+		query += " FOR SHARE"
+	}
+	err := querier.QueryRow(ctx, query,
 		string(scope.AccountID), string(scope.VaultID), string(mutationID)).Scan(
 		&rawMutationID, &rawFingerprint, &rawCardID, &revision, &committedAt,
 	)

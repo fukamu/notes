@@ -52,6 +52,10 @@ func TestRunMigratesOnlyTheExplicitAllowlistedEnvironment(t *testing.T) {
 			t.Fatal("quota audit must not run")
 			return operations.QuotaAuditResult{}, nil
 		},
+		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			t.Fatal("quota commit must not run")
+			return operations.QuotaCommitResult{}, nil
+		},
 	)
 	if code != 0 || !called || stdout.String() != "migration complete\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
@@ -77,6 +81,10 @@ func TestRunRefusesMigrationEnvironmentMismatchWithoutDisclosingURL(t *testing.T
 		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
 			t.Fatal("quota audit must not run")
 			return operations.QuotaAuditResult{}, nil
+		},
+		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			t.Fatal("quota commit must not run")
+			return operations.QuotaCommitResult{}, nil
 		},
 	)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "refused") {
@@ -113,6 +121,10 @@ func TestRunPreparesOnlyTheAllowlistedE2EDatabase(t *testing.T) {
 		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
 			t.Fatal("quota audit must not run")
 			return operations.QuotaAuditResult{}, nil
+		},
+		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			t.Fatal("quota commit must not run")
+			return operations.QuotaCommitResult{}, nil
 		},
 	)
 	if code != 0 || !called || stdout.String() != "e2e database prepared\n" || stderr.Len() != 0 {
@@ -361,6 +373,10 @@ func runQuotaAuditForTest(
 		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
 		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 		list,
+		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			t.Fatal("quota commit must not run")
+			return operations.QuotaCommitResult{}, nil
+		},
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -385,6 +401,196 @@ func replaceCLIArgument(arguments []string, prefix, replacement string) []string
 		if strings.HasPrefix(argument, prefix) {
 			result[index] = replacement
 			return result
+		}
+	}
+	return result
+}
+
+func TestRunCommitsQuotaOnlyThroughConfirmedEvidenceCommand(t *testing.T) {
+	t.Parallel()
+	values := quotaAuditEnvironment("test", "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test")
+	called := false
+	code, stdout, stderr := runQuotaCommitForTest(
+		t, context.Background(), quotaCommitCLIArguments("test"), values,
+		func(_ context.Context, databaseURL string, command operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			called = strings.Contains(databaseURL, "secret") && command.FinalizedAt == 5_000
+			return operations.QuotaCommitResult{
+				Kind:          operations.QuotaCommitCommitted,
+				ReservationID: command.ReservationID, FinalizedAt: command.FinalizedAt,
+			}, nil
+		},
+	)
+	if code != 0 || !called || stderr != "" {
+		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout, stderr)
+	}
+	var output struct {
+		Command       string `json:"command"`
+		Outcome       string `json:"outcome"`
+		ReservationID string `json:"reservationId"`
+		FinalizedAt   int64  `json:"finalizedAt"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &output); err != nil ||
+		output.Command != "quota-reconcile-commit" || output.Outcome != "committed" ||
+		output.ReservationID != "01991f20-61d2-7000-8000-000000000401" || output.FinalizedAt != 5_000 {
+		t.Fatalf("output = %#v, error = %v", output, err)
+	}
+	for _, forbidden := range []string{
+		"secret", "01991f20-61d2-7000-8000-000000000101", "01991f20-61d2-7000-8000-000000000201",
+	} {
+		if strings.Contains(stdout+stderr, forbidden) {
+			t.Fatalf("output disclosed %q: %q %q", forbidden, stdout, stderr)
+		}
+	}
+}
+
+func TestRunQuotaCommitRejectsMalformedOrUnconfirmedArgumentsBeforeMutation(t *testing.T) {
+	t.Parallel()
+	valid := quotaCommitCLIArguments("test")
+	tests := map[string][]string{
+		"missing evidence confirmation":   removeCLIArgument(valid, "--confirm-durable-sync-receipt"),
+		"duplicate evidence confirmation": append(append([]string(nil), valid...), "--confirm-durable-sync-receipt"),
+		"missing value":                   valid[:len(valid)-1],
+		"invalid reservation": replaceCLIArgument(
+			valid, "--reservation-id=", "--reservation-id=invalid",
+		),
+		"invalid timestamp": replaceCLIArgument(
+			valid, "--finalized-at-millis=", "--finalized-at-millis=-1",
+		),
+		"test production confirmation": append(append([]string(nil), valid...), "--confirm-production-mutation"),
+		"production unconfirmed":       quotaCommitCLIArguments("production"),
+	}
+	for name, arguments := range tests {
+		name, arguments := name, arguments
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			called := false
+			code, stdout, stderr := runQuotaCommitForTest(
+				t, context.Background(), arguments,
+				quotaAuditEnvironment("test", "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test"),
+				func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+					called = true
+					return operations.QuotaCommitResult{}, nil
+				},
+			)
+			if code != 2 || called || stdout != "" || !strings.Contains(stderr, "usage:") {
+				t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestRunQuotaCommitMapsRefusalFailureAndCancellationToFixedMessages(t *testing.T) {
+	t.Parallel()
+	values := quotaAuditEnvironment("test", "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test")
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		finalize finalizeQuotaCommitFunction
+		want     string
+	}{
+		{
+			name: "refused", ctx: context.Background(), want: "quota reconciliation commit refused\n",
+			finalize: func(_ context.Context, _ string, command operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+				return operations.QuotaCommitResult{
+					Kind: operations.QuotaCommitRefused, Reason: operations.QuotaCommitEvidenceMissing,
+					ReservationID: command.ReservationID,
+				}, nil
+			},
+		},
+		{
+			name: "dependency", ctx: context.Background(), want: "quota reconciliation commit failed\n",
+			finalize: func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+				return operations.QuotaCommitResult{}, errors.New("PRIVATE-DB-FAILURE")
+			},
+		},
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	tests = append(tests, struct {
+		name     string
+		ctx      context.Context
+		finalize finalizeQuotaCommitFunction
+		want     string
+	}{
+		name: "cancelled", ctx: cancelled, want: "quota reconciliation commit failed\n",
+		finalize: func(ctx context.Context, _ string, _ operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			return operations.QuotaCommitResult{}, ctx.Err()
+		},
+	})
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			code, stdout, stderr := runQuotaCommitForTest(
+				t, test.ctx, quotaCommitCLIArguments("test"), values, test.finalize,
+			)
+			if code != 1 || stdout != "" || stderr != test.want || strings.Contains(stderr, "PRIVATE") {
+				t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestRunQuotaCommitRequiresExplicitProductionMutationConfirmation(t *testing.T) {
+	t.Parallel()
+	arguments := append(quotaCommitCLIArguments("production"), "--confirm-production-mutation")
+	called := false
+	code, stdout, stderr := runQuotaCommitForTest(
+		t, context.Background(), arguments,
+		quotaAuditEnvironment("production", "postgres://notes:secret@database.example/notes"),
+		func(_ context.Context, databaseURL string, command operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			called = strings.Contains(databaseURL, "database.example")
+			return operations.QuotaCommitResult{
+				Kind:          operations.QuotaCommitReplayed,
+				ReservationID: command.ReservationID, FinalizedAt: command.FinalizedAt,
+			}, nil
+		},
+	)
+	if code != 0 || !called || stderr != "" || !strings.Contains(stdout, `"outcome":"replayed"`) ||
+		strings.Contains(stdout+stderr, "secret") {
+		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout, stderr)
+	}
+}
+
+func runQuotaCommitForTest(
+	t *testing.T,
+	ctx context.Context,
+	arguments []string,
+	values map[string]string,
+	finalize finalizeQuotaCommitFunction,
+) (int, string, string) {
+	t.Helper()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithDependencies(
+		ctx, arguments, &stdout, &stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
+		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
+			t.Fatal("quota audit must not run")
+			return operations.QuotaAuditResult{}, nil
+		},
+		finalize,
+	)
+	return code, stdout.String(), stderr.String()
+}
+
+func quotaCommitCLIArguments(environment string) []string {
+	return []string{
+		"quota", "reconcile-commit",
+		"--reservation-id=01991f20-61d2-7000-8000-000000000401",
+		"--vault-id=01991f20-61d2-7000-8000-000000000201",
+		"--environment=" + environment,
+		"--finalized-at-millis=5000",
+		"--account-id=01991f20-61d2-7000-8000-000000000101",
+		"--confirm-durable-sync-receipt",
+	}
+}
+
+func removeCLIArgument(arguments []string, value string) []string {
+	result := make([]string, 0, len(arguments))
+	for _, argument := range arguments {
+		if argument != value {
+			result = append(result, argument)
 		}
 	}
 	return result

@@ -17,6 +17,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/config"
 	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/fukamu/notes/backend/internal/operations"
+	"github.com/fukamu/notes/backend/internal/quota"
 	"github.com/fukamu/notes/backend/migrations"
 )
 
@@ -36,6 +37,7 @@ func run(ctx context.Context, arguments []string, stdout io.Writer, stderr io.Wr
 		migrateDatabase,
 		prepareE2EDatabase,
 		listQuotaReconciliationCandidates,
+		finalizeQuotaReconciliationCommit,
 	)
 }
 
@@ -46,6 +48,11 @@ type listQuotaCandidatesFunction func(
 	string,
 	operations.QuotaCandidateQuery,
 ) (operations.QuotaAuditResult, error)
+type finalizeQuotaCommitFunction func(
+	context.Context,
+	string,
+	operations.QuotaCommitCommand,
+) (operations.QuotaCommitResult, error)
 
 func runWithDependencies(
 	parent context.Context,
@@ -56,8 +63,9 @@ func runWithDependencies(
 	migrate migrateFunction,
 	prepareE2E prepareE2EFunction,
 	listQuotaCandidates listQuotaCandidatesFunction,
+	finalizeQuotaCommit finalizeQuotaCommitFunction,
 ) int {
-	if parent == nil || listQuotaCandidates == nil {
+	if parent == nil || listQuotaCandidates == nil || finalizeQuotaCommit == nil {
 		_, _ = fmt.Fprintln(stderr, "operation dependencies invalid")
 		return 1
 	}
@@ -77,6 +85,16 @@ func runWithDependencies(
 		}
 		return runQuotaAudit(
 			parent, quotaAudit, stdout, stderr, lookup, listQuotaCandidates,
+		)
+	}
+	quotaCommit, quotaCommitRequested, quotaCommitErr := parseQuotaCommitArguments(arguments)
+	if quotaCommitRequested {
+		if quotaCommitErr != nil {
+			printUsage(stderr)
+			return 2
+		}
+		return runQuotaCommit(
+			parent, quotaCommit, stdout, stderr, lookup, finalizeQuotaCommit,
 		)
 	}
 	prepareE2ERequested := len(arguments) == 3 && arguments[0] == "prepare-e2e" &&
@@ -263,8 +281,142 @@ func runQuotaAudit(
 	return 0
 }
 
+type quotaCommitArguments struct {
+	environment config.Environment
+	production  bool
+	command     operations.QuotaCommitCommand
+}
+
+func parseQuotaCommitArguments(arguments []string) (quotaCommitArguments, bool, error) {
+	if len(arguments) < 2 || arguments[0] != "quota" || arguments[1] != "reconcile-commit" {
+		return quotaCommitArguments{}, false, nil
+	}
+	values := make(map[string]string, 5)
+	confirmedEvidence := false
+	confirmedProduction := false
+	for _, argument := range arguments[2:] {
+		switch argument {
+		case "--confirm-durable-sync-receipt":
+			if confirmedEvidence {
+				return quotaCommitArguments{}, true, operations.ErrQuotaReconciliationAudit
+			}
+			confirmedEvidence = true
+			continue
+		case "--confirm-production-mutation":
+			if confirmedProduction {
+				return quotaCommitArguments{}, true, operations.ErrQuotaReconciliationAudit
+			}
+			confirmedProduction = true
+			continue
+		}
+		name, value, found := strings.Cut(argument, "=")
+		if !found || value == "" ||
+			(name != "--environment" && name != "--account-id" && name != "--vault-id" &&
+				name != "--reservation-id" && name != "--finalized-at-millis") {
+			return quotaCommitArguments{}, true, operations.ErrQuotaReconciliationAudit
+		}
+		if _, duplicate := values[name]; duplicate {
+			return quotaCommitArguments{}, true, operations.ErrQuotaReconciliationAudit
+		}
+		values[name] = value
+	}
+	if len(values) != 5 || !confirmedEvidence {
+		return quotaCommitArguments{}, true, operations.ErrQuotaReconciliationAudit
+	}
+	environment := config.Environment(values["--environment"])
+	if environment != config.EnvironmentLocal && environment != config.EnvironmentTest &&
+		environment != config.EnvironmentProduction {
+		return quotaCommitArguments{}, true, operations.ErrQuotaReconciliationAudit
+	}
+	if (environment == config.EnvironmentProduction) != confirmedProduction {
+		return quotaCommitArguments{}, true, operations.ErrQuotaReconciliationAudit
+	}
+	accountID, err := identity.ParseAccountID(values["--account-id"])
+	if err != nil {
+		return quotaCommitArguments{}, true, operations.ErrQuotaReconciliationAudit
+	}
+	vaultID, err := identity.ParseVaultID(values["--vault-id"])
+	if err != nil {
+		return quotaCommitArguments{}, true, operations.ErrQuotaReconciliationAudit
+	}
+	reservationID, err := quota.ParseReservationID(values["--reservation-id"])
+	if err != nil {
+		return quotaCommitArguments{}, true, operations.ErrQuotaReconciliationAudit
+	}
+	finalizedAt, err := strconv.ParseInt(values["--finalized-at-millis"], 10, 64)
+	if err != nil {
+		return quotaCommitArguments{}, true, operations.ErrQuotaReconciliationAudit
+	}
+	command := operations.QuotaCommitCommand{
+		AccountID: accountID, VaultID: vaultID,
+		ReservationID: reservationID, FinalizedAt: finalizedAt,
+	}
+	if operations.ValidateQuotaCommitCommand(command) != nil {
+		return quotaCommitArguments{}, true, operations.ErrQuotaReconciliationAudit
+	}
+	return quotaCommitArguments{
+		environment: environment, production: confirmedProduction, command: command,
+	}, true, nil
+}
+
+func runQuotaCommit(
+	parent context.Context,
+	arguments quotaCommitArguments,
+	stdout io.Writer,
+	stderr io.Writer,
+	lookup func(string) (string, bool),
+	finalize finalizeQuotaCommitFunction,
+) int {
+	databaseConfig, err := config.LoadDatabase(lookup)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "database configuration invalid")
+		return 1
+	}
+	if arguments.environment != databaseConfig.Environment ||
+		(arguments.environment == config.EnvironmentProduction && !arguments.production) {
+		_, _ = fmt.Fprintln(stderr, "quota reconciliation environment refused")
+		return 1
+	}
+	if arguments.environment != config.EnvironmentProduction {
+		if err := postgresadapter.ValidateTestDatabaseURL(databaseConfig.URL); err != nil {
+			_, _ = fmt.Fprintln(stderr, "quota reconciliation target refused")
+			return 1
+		}
+	}
+	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	defer cancel()
+	result, err := finalize(ctx, databaseConfig.URL, arguments.command)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "quota reconciliation commit failed")
+		return 1
+	}
+	if result.Kind == operations.QuotaCommitRefused {
+		_, _ = fmt.Fprintln(stderr, "quota reconciliation commit refused")
+		return 1
+	}
+	if (result.Kind != operations.QuotaCommitCommitted && result.Kind != operations.QuotaCommitReplayed) ||
+		result.ReservationID != arguments.command.ReservationID {
+		_, _ = fmt.Fprintln(stderr, "quota reconciliation commit failed")
+		return 1
+	}
+	output := struct {
+		Command       string `json:"command"`
+		Outcome       string `json:"outcome"`
+		ReservationID string `json:"reservationId"`
+		FinalizedAt   int64  `json:"finalizedAt"`
+	}{
+		Command: "quota-reconcile-commit", Outcome: string(result.Kind),
+		ReservationID: string(result.ReservationID), FinalizedAt: result.FinalizedAt,
+	}
+	if err := json.NewEncoder(stdout).Encode(output); err != nil {
+		_, _ = fmt.Fprintln(stderr, "quota reconciliation commit output failed")
+		return 1
+	}
+	return 0
+}
+
 func printUsage(output io.Writer) {
-	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only]")
+	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation]")
 }
 
 func prepareE2EDatabase(ctx context.Context, databaseURL string, allowedSubject string) error {
@@ -324,4 +476,25 @@ func listQuotaReconciliationCandidates(
 		return operations.QuotaAuditResult{}, err
 	}
 	return service.ListCandidates(ctx, query)
+}
+
+func finalizeQuotaReconciliationCommit(
+	ctx context.Context,
+	databaseURL string,
+	command operations.QuotaCommitCommand,
+) (operations.QuotaCommitResult, error) {
+	pool, err := postgresadapter.OpenPool(ctx, databaseURL, 2)
+	if err != nil {
+		return operations.QuotaCommitResult{}, err
+	}
+	defer pool.Close()
+	store, err := postgresadapter.NewQuotaCommitStore(pool)
+	if err != nil {
+		return operations.QuotaCommitResult{}, err
+	}
+	service, err := operations.NewQuotaCommitService(store)
+	if err != nil {
+		return operations.QuotaCommitResult{}, err
+	}
+	return service.Commit(ctx, command)
 }
