@@ -46,13 +46,12 @@ fails generically; it is not silently merged.
 Account linking is a separate transaction purpose. The target AccountId is
 derived from the authenticated `VaultContext` at the start boundary and cannot
 be supplied in the request body. A new identity can link only to that account;
-an identity or verified email owned by another account is rejected. Persistence
-of the resulting provision/link plan belongs to the control-plane schema work.
-The current `identities` schema stores provider, issuer, and subject but no
-verified email, and the TypeScript email lookup has only a fake adapter. The Go
-boundary therefore keeps this lookup as a fail-closed port. The OTP/signup slice
-must add a verified-email persistence and uniqueness contract before any route
-can be published; issuer or subject is never treated as a substitute for email.
+an identity or verified email owned by another account is rejected. Issue #426
+adds a provider-neutral `verified_email_owners` table and a PostgreSQL
+directory; one canonical address can belong to only one account even when that
+account has multiple provider identities. Both OIDC and OTP preserve the local
+part and lowercase only the domain. Issuer or subject is never treated as a
+substitute for email. Link writes remain disconnected work.
 
 After the identity/control-plane operation commits, `establishOidcSession`
 creates a fresh initial session or rotates a same-account/same-vault session via
@@ -68,10 +67,12 @@ identity-directory adapters. Adapter tests use an ephemeral local TLS discovery,
 token, and JWKS server and verify the RFC 7636 S256 vector. No real provider
 request or email is sent.
 
-This Issue creates no schema or data migration. Reverting #424 removes only the
-disconnected Go OIDC core/provider adapter, tests, documentation, and pinned Go
-dependencies. A real Google client/secret, callback route, callback-browser
-binding, and production transaction/identity stores require later Issues and
-explicit secret/provider approval. The Strict session cookie is not weakened:
-because it will not accompany a cross-site Google callback, a separate
-short-lived callback binding remains required before publication.
+Issue #424 itself creates no schema or data migration; #426 adds the
+verified-email and signup schema only to disposable local/test PostgreSQL.
+Reverting before production use removes the disconnected code and recreates
+that test schema. A real Google client/secret, callback route,
+callback-browser binding, production transaction store, and linking composition
+require later Issues and explicit secret/provider approval. The Strict session
+cookie is not weakened: because it will not accompany a cross-site Google
+callback, a separate short-lived callback binding remains required before
+publication.

@@ -1,9 +1,10 @@
 # Email OTP boundary
 
-Issue #112 defines an abuse-resistant, provider-neutral Email OTP boundary. It
-does not select a mail provider, send real email, add an authentication route,
-create a database schema, or enable authentication in the local notes
-composition.
+Issue #112 defines the TypeScript abuse-resistant, provider-neutral Email OTP
+boundary. Migration Issue #426 implements the Go replacement and persistent
+identity/signup control plane. It does not select a mail provider, send real
+email, add an authentication route, persist production challenges or abuse
+counters, or enable authentication in the local Notes composition.
 
 ## Security status and standards limitation
 
@@ -30,10 +31,9 @@ The start boundary normalizes a bounded ASCII address, obtains an opaque UUIDv7
 challenge ID, eight-digit code, and 256-bit salt from injected ports, and asks a
 hashing port for a digest. Only the digest and salt enter the challenge store.
 The plaintext code exists only long enough to call `EmailDeliveryPort`; it must
-never be persisted or logged. Production hashing must use a server-held pepper
-and a construction suitable for the low-entropy code space. The fake adapter
-uses SHA-256 only as deterministic test infrastructure and is not a production
-password/OTP store.
+never be persisted or logged. The Go adapter uses framed HMAC-SHA-256 with a
+minimum 256-bit server-held pepper and constant-time comparison. Test boundary
+fakes remain deterministic infrastructure and are not production OTP stores.
 
 The store inserts version 1 and implements versioned compare-and-swap. Correct
 verification transitions a pending challenge to `consumed`; concurrent replay
@@ -77,21 +77,27 @@ generically and linking is a separate challenge purpose. The link target comes
 only from the authenticated `VaultContext`, never the request body. An identity
 owned by another account and a verified-contact collision are rejected.
 
-Persistence of provision/link decisions and session establishment belongs to
-the control-plane composition. That composition must use the #110 session core
-and must not grant a session from the start response, delivery success, or an
-uncommitted identity plan.
+Migration 00003 persists a provider-neutral verified-email owner separately
+from provider identities. The disconnected Go signup finalizer creates the
+account, personal vault, identity, verified-email owner, and hash-only initial
+session atomically. It does not grant a session from the start response,
+delivery success, or an uncommitted identity plan. Linking persistence remains
+a later composition concern.
 
 ## Local development, migration, and rollback
 
 The current route still mounts `LegacyNotesApp`. Local notes, offline editing,
 E2E, and `npm run dev` do not require a mail account, billing configuration, or
-an OTP credential. Tests use only fake entropy, challenge storage, abuse limits,
-delivery, hashing, and identity-directory adapters; the fake delivery captures
-messages in memory and sends nothing externally.
+an OTP credential. Tests use race-safe in-memory challenge, abuse-limit, and
+delivery adapters; fake delivery captures messages in memory and sends nothing
+externally. The shared fixture executes through both TypeScript and Go.
 
-This Issue creates no migration or production state. Reverting it removes only
-the Email OTP contracts, fake adapters, tests, and documentation. A real mail
-adapter, schema, route, secret, and production rate-limit backend require later
-Issues, provider approval, and the production-operation approvals in parent
-#106.
+Issue #426 adds migration 00003 only to disposable local/test PostgreSQL. Its
+Go identity directory and signup finalizer are implemented but disconnected.
+Before production use, the system still needs reviewed persistent challenge and
+rate-limit adapters, trusted network extraction, secret configuration and
+rotation, a mail adapter/provider, route/UI composition, monitoring, and the
+T10 terms adapter. Reverting before a production migration is a reviewed code
+revert plus test-schema recreation. After persistent identity or evidence rows
+exist, rollback must disable signup and use a forward migration; it must not
+drop verified-email ownership or immutable terms evidence.

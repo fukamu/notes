@@ -107,11 +107,15 @@ func ParseOidcRedirectURI(value string) (OidcRedirectURI, error) {
 }
 
 func ParseOidcEmailAddress(value string) (OidcEmailAddress, error) {
-	if len(value) < 3 || len(value) > 320 || !visibleASCIIPattern.MatchString(value) ||
-		strings.Count(value, "@") != 1 || strings.HasPrefix(value, "@") || strings.HasSuffix(value, "@") {
+	canonical, err := ParseVerifiedEmailAddress(value)
+	if err != nil {
 		return "", ErrInvalidOidcValue
 	}
-	return OidcEmailAddress(value), nil
+	return OidcEmailAddress(canonical), nil
+}
+
+func (address OidcEmailAddress) Verified() VerifiedEmailAddress {
+	return VerifiedEmailAddress(address)
 }
 
 func validHTTPSURI(value string, allowQuery bool) bool {

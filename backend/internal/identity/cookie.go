@@ -6,9 +6,9 @@ import (
 )
 
 const (
-	SessionCookieName        = "__Host-fukamu_session"
-	maximumCookieHeaderBytes = 8_192
-	maximumCookieAgeSeconds  = 2_592_000
+	SessionCookieName              = "__Host-fukamu_session"
+	maximumCookieHeaderBytes       = 8_192
+	MaximumSessionCookieAgeSeconds = 2_592_000
 )
 
 type CookieParseKind string
@@ -53,7 +53,7 @@ func ParseSessionCookieHeader(header string) CookieParseResult {
 }
 
 func SetSessionCookie(token SessionToken, maxAgeSeconds int64) (string, bool) {
-	if !validToken(token) || maxAgeSeconds < 1 || maxAgeSeconds > maximumCookieAgeSeconds {
+	if !validToken(token) || maxAgeSeconds < 1 || maxAgeSeconds > MaximumSessionCookieAgeSeconds {
 		return "", false
 	}
 	return serializeSessionCookie(string(token), maxAgeSeconds), true

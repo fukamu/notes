@@ -265,6 +265,8 @@ func assertCoreTables(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 		"personal_vaults",
 		"identities",
 		"sessions",
+		"verified_email_owners",
+		"signup_admission_reservations",
 		"schema_migrations",
 		"launch_config",
 		"launch_allowed_users",
@@ -306,6 +308,18 @@ func assertConstraints(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	}
 	if _, err := pool.Exec(ctx, "INSERT INTO accounts(account_id, created_at) VALUES ('account', 0)"); err != nil {
 		t.Fatalf("insert account: %v", err)
+	}
+	if _, err := pool.Exec(
+		ctx,
+		"INSERT INTO verified_email_owners(email, account_id, verified_at) VALUES ('Person@Example.COM', 'account', 0)",
+	); err == nil {
+		t.Fatal("verified email accepted a non-canonical domain")
+	}
+	if _, err := pool.Exec(
+		ctx,
+		"INSERT INTO verified_email_owners(email, account_id, verified_at) VALUES ('Person@example.com', 'account', 0)",
+	); err != nil {
+		t.Fatalf("insert canonical verified email: %v", err)
 	}
 	if _, err := pool.Exec(ctx, "INSERT INTO identities(identity_id, account_id, provider, issuer, subject, created_at) VALUES ('identity-1', 'account', 'email-otp', 'issuer', 'subject', 0)"); err != nil {
 		t.Fatalf("insert identity: %v", err)

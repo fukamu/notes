@@ -22,6 +22,7 @@ const (
 	fixtureOidcSubject     = "google-subject-123"
 	fixtureOidcEmail       = "person@example.com"
 	fixtureIdentityID      = "01991f20-61d2-7000-8000-000000000401"
+	fixtureOtherIdentityID = "01991f20-61d2-7000-8000-000000000402"
 )
 
 var (
