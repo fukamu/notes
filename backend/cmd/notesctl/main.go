@@ -14,10 +14,12 @@ import (
 	"time"
 
 	"github.com/fukamu/notes/backend/internal/access"
+	kmsadapter "github.com/fukamu/notes/backend/internal/adapters/kms"
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
 	stripeadapter "github.com/fukamu/notes/backend/internal/adapters/stripe"
 	"github.com/fukamu/notes/backend/internal/billing"
 	"github.com/fukamu/notes/backend/internal/config"
+	"github.com/fukamu/notes/backend/internal/cryptocontent"
 	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/fukamu/notes/backend/internal/operations"
 	"github.com/fukamu/notes/backend/internal/quota"
@@ -44,6 +46,7 @@ func run(ctx context.Context, arguments []string, stdout io.Writer, stderr io.Wr
 		finalizeQuotaReconciliationCommit,
 		inspectAccountDeletion,
 		reconcileBillingSubscription,
+		rotateVaultDEK,
 	)
 }
 
@@ -71,6 +74,13 @@ type reconcileBillingFunction func(
 	string,
 	operations.BillingReconciliationCommand,
 ) (operations.BillingReconciliationResult, error)
+type rotateDEKFunction func(
+	context.Context,
+	string,
+	string,
+	string,
+	operations.DEKRotationCommand,
+) (operations.DEKRotationResult, error)
 
 func runWithDependencies(
 	parent context.Context,
@@ -84,9 +94,10 @@ func runWithDependencies(
 	finalizeQuotaCommit finalizeQuotaCommitFunction,
 	inspectDeletion inspectAccountDeletionFunction,
 	reconcileBilling reconcileBillingFunction,
+	rotateDEK rotateDEKFunction,
 ) int {
 	if parent == nil || listQuotaCandidates == nil || finalizeQuotaCommit == nil || inspectDeletion == nil ||
-		reconcileBilling == nil {
+		reconcileBilling == nil || rotateDEK == nil {
 		_, _ = fmt.Fprintln(stderr, "operation dependencies invalid")
 		return 1
 	}
@@ -138,6 +149,14 @@ func runWithDependencies(
 		return runBillingReconciliation(
 			parent, billingReconciliation, stdout, stderr, lookup, reconcileBilling,
 		)
+	}
+	dekRotation, dekRotationRequested, dekRotationErr := parseDEKRotationArguments(arguments)
+	if dekRotationRequested {
+		if dekRotationErr != nil {
+			printUsage(stderr)
+			return 2
+		}
+		return runDEKRotation(parent, dekRotation, stdout, stderr, lookup, rotateDEK)
 	}
 	prepareE2ERequested := len(arguments) == 3 && arguments[0] == "prepare-e2e" &&
 		arguments[1] == "--environment=test" && strings.HasPrefix(arguments[2], "--allowed-subject=")
@@ -729,8 +748,174 @@ func runBillingReconciliation(
 	return 0
 }
 
+type dekRotationArguments struct {
+	environment config.Environment
+	production  bool
+	command     operations.DEKRotationCommand
+}
+
+func parseDEKRotationArguments(arguments []string) (dekRotationArguments, bool, error) {
+	if len(arguments) < 2 || arguments[0] != "dek" || arguments[1] != "rotate" {
+		return dekRotationArguments{}, false, nil
+	}
+	values := make(map[string]string, 7)
+	confirmedGeneration := false
+	confirmedProduction := false
+	for _, argument := range arguments[2:] {
+		switch argument {
+		case "--confirm-kms-key-generation":
+			if confirmedGeneration {
+				return dekRotationArguments{}, true, operations.ErrDEKRotation
+			}
+			confirmedGeneration = true
+			continue
+		case "--confirm-production-kms-mutation":
+			if confirmedProduction {
+				return dekRotationArguments{}, true, operations.ErrDEKRotation
+			}
+			confirmedProduction = true
+			continue
+		}
+		name, value, found := strings.Cut(argument, "=")
+		if !found || value == "" ||
+			(name != "--environment" && name != "--account-id" && name != "--vault-id" &&
+				name != "--operation-id" && name != "--requested-at-millis" &&
+				name != "--generated-at-millis" && name != "--completed-at-millis") {
+			return dekRotationArguments{}, true, operations.ErrDEKRotation
+		}
+		if _, duplicate := values[name]; duplicate {
+			return dekRotationArguments{}, true, operations.ErrDEKRotation
+		}
+		values[name] = value
+	}
+	if len(values) != 7 || !confirmedGeneration {
+		return dekRotationArguments{}, true, operations.ErrDEKRotation
+	}
+	environment := config.Environment(values["--environment"])
+	if environment != config.EnvironmentLocal && environment != config.EnvironmentTest &&
+		environment != config.EnvironmentProduction {
+		return dekRotationArguments{}, true, operations.ErrDEKRotation
+	}
+	if (environment == config.EnvironmentProduction) != confirmedProduction {
+		return dekRotationArguments{}, true, operations.ErrDEKRotation
+	}
+	accountID, err := identity.ParseAccountID(values["--account-id"])
+	if err != nil {
+		return dekRotationArguments{}, true, operations.ErrDEKRotation
+	}
+	vaultID, err := identity.ParseVaultID(values["--vault-id"])
+	if err != nil {
+		return dekRotationArguments{}, true, operations.ErrDEKRotation
+	}
+	operationID, err := cryptocontent.ParseRotationOperationID(values["--operation-id"])
+	if err != nil {
+		return dekRotationArguments{}, true, operations.ErrDEKRotation
+	}
+	requestedAt, err := strconv.ParseInt(values["--requested-at-millis"], 10, 64)
+	if err != nil {
+		return dekRotationArguments{}, true, operations.ErrDEKRotation
+	}
+	generatedAt, err := strconv.ParseInt(values["--generated-at-millis"], 10, 64)
+	if err != nil {
+		return dekRotationArguments{}, true, operations.ErrDEKRotation
+	}
+	completedAt, err := strconv.ParseInt(values["--completed-at-millis"], 10, 64)
+	if err != nil {
+		return dekRotationArguments{}, true, operations.ErrDEKRotation
+	}
+	command := operations.DEKRotationCommand{
+		AccountID: accountID, VaultID: vaultID, OperationID: operationID,
+		RequestedAtMilli: requestedAt, GeneratedAtMilli: generatedAt, CompletedAtMilli: completedAt,
+	}
+	if operations.ValidateDEKRotationCommand(command) != nil {
+		return dekRotationArguments{}, true, operations.ErrDEKRotation
+	}
+	return dekRotationArguments{
+		environment: environment, production: confirmedProduction, command: command,
+	}, true, nil
+}
+
+func runDEKRotation(
+	parent context.Context,
+	arguments dekRotationArguments,
+	stdout io.Writer,
+	stderr io.Writer,
+	lookup func(string) (string, bool),
+	rotate rotateDEKFunction,
+) int {
+	databaseConfig, err := config.LoadDatabase(lookup)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "database configuration invalid")
+		return 1
+	}
+	if arguments.environment != databaseConfig.Environment ||
+		(arguments.environment == config.EnvironmentProduction && !arguments.production) {
+		_, _ = fmt.Fprintln(stderr, "DEK rotation environment refused")
+		return 1
+	}
+	if arguments.environment != config.EnvironmentProduction {
+		if err := postgresadapter.ValidateTestDatabaseURL(databaseConfig.URL); err != nil {
+			_, _ = fmt.Fprintln(stderr, "DEK rotation target refused")
+			return 1
+		}
+	}
+	keyVersion, keyVersionFound := lookup("NOTES_GCP_KMS_CRYPTO_KEY_VERSION")
+	accessToken, tokenFound := lookup("NOTES_GCP_KMS_ACCESS_TOKEN")
+	if !keyVersionFound || keyVersion == "" || strings.ContainsAny(keyVersion, "\r\n\x00") ||
+		!tokenFound || !validKMSAccessToken(accessToken) {
+		_, _ = fmt.Fprintln(stderr, "DEK rotation provider configuration invalid")
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	defer cancel()
+	result, err := rotate(ctx, databaseConfig.URL, keyVersion, accessToken, arguments.command)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "DEK rotation failed")
+		return 1
+	}
+	if result.Kind == operations.DEKRotationRefused {
+		_, _ = fmt.Fprintln(stderr, "DEK rotation scope refused")
+		return 1
+	}
+	if (result.Kind != operations.DEKRotationCompleted && result.Kind != operations.DEKRotationReplayed) ||
+		result.OperationID != arguments.command.OperationID {
+		_, _ = fmt.Fprintln(stderr, "DEK rotation failed")
+		return 1
+	}
+	output := struct {
+		Command           string `json:"command"`
+		Outcome           string `json:"outcome"`
+		OperationID       string `json:"operationId"`
+		RequestedAtMillis int64  `json:"requestedAtMillis"`
+		GeneratedAtMillis int64  `json:"generatedAtMillis"`
+		CompletedAtMillis int64  `json:"completedAtMillis"`
+	}{
+		Command: "dek-rotate", Outcome: string(result.Kind), OperationID: string(result.OperationID),
+		RequestedAtMillis: arguments.command.RequestedAtMilli,
+		GeneratedAtMillis: arguments.command.GeneratedAtMilli,
+		CompletedAtMillis: arguments.command.CompletedAtMilli,
+	}
+	if err := json.NewEncoder(stdout).Encode(output); err != nil {
+		_, _ = fmt.Fprintln(stderr, "DEK rotation output failed")
+		return 1
+	}
+	return 0
+}
+
+func validKMSAccessToken(value string) bool {
+	if len(value) < 20 || len(value) > 8_192 {
+		return false
+	}
+	for index := range len(value) {
+		if value[index] < 0x21 || value[index] > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
 func printUsage(output io.Writer) {
-	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read]")
+	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read] | notesctl dek rotate --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --operation-id=<uuidv7> --requested-at-millis=<unix-ms> --generated-at-millis=<unix-ms> --completed-at-millis=<unix-ms> --confirm-kms-key-generation [--confirm-production-kms-mutation]")
 }
 
 func prepareE2EDatabase(ctx context.Context, databaseURL string, allowedSubject string) error {
@@ -871,4 +1056,60 @@ func reconcileBillingSubscription(
 		return operations.BillingReconciliationResult{}, err
 	}
 	return service.Reconcile(ctx, command)
+}
+
+type fixedKMSAccessToken string
+
+func (token fixedKMSAccessToken) ReadAccessToken(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return string(token), nil
+}
+
+type fixedKMSClock int64
+
+func (clock fixedKMSClock) NowMillis() int64 { return int64(clock) }
+
+func rotateVaultDEK(
+	ctx context.Context,
+	databaseURL string,
+	keyVersion string,
+	accessToken string,
+	command operations.DEKRotationCommand,
+) (operations.DEKRotationResult, error) {
+	transport, err := kmsadapter.NewRESTTransport(
+		fixedKMSAccessToken(accessToken),
+		&http.Client{Timeout: 30 * time.Second},
+	)
+	if err != nil {
+		return operations.DEKRotationResult{}, err
+	}
+	keys, err := kmsadapter.NewGCPKeyManagement(
+		keyVersion,
+		transport,
+		kmsadapter.SecureEntropy{},
+		fixedKMSClock(command.GeneratedAtMilli),
+	)
+	if err != nil {
+		return operations.DEKRotationResult{}, err
+	}
+	pool, err := postgresadapter.OpenPool(ctx, databaseURL, 2)
+	if err != nil {
+		return operations.DEKRotationResult{}, err
+	}
+	defer pool.Close()
+	store, err := postgresadapter.NewDEKRotationStore(pool)
+	if err != nil {
+		return operations.DEKRotationResult{}, err
+	}
+	rotation, err := cryptocontent.NewRotationService(store, keys)
+	if err != nil {
+		return operations.DEKRotationResult{}, err
+	}
+	service, err := operations.NewDEKRotationService(rotation)
+	if err != nil {
+		return operations.DEKRotationResult{}, err
+	}
+	return service.Run(ctx, command)
 }

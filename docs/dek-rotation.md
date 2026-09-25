@@ -77,3 +77,20 @@ Issue #190 now supplies the fixture-only recovery drill and retirement evidence
 gate described in [DEK rotation recovery drill and retirement gate](dek-rotation-recovery.md).
 The gate has no delete effect and terminates at a separate explicit-production-
 approval-required result even after all evidence passes.
+
+## Explicit Go operations runner
+
+Issue #480 composes the Go state machine and PostgreSQL repository as
+`notesctl dek rotate`. One invocation advances only one exact Account/Vault and
+operation ID through the durable phases. Stable request, generation, and
+completion timestamps make the same command replayable after interruption.
+The runner skips generation when wrapped metadata is already durable and skips
+all provider work after completion. Unknown or cross-owner scope fails before
+KMS access.
+
+The command accepts the existing GCP adapter configuration as a candidate, but
+its flags are only accidental-run guards. Issue tests use a fake key port and a
+disposable loopback database and make no real KMS request. Production identity,
+CryptoKeyVersion, IAM, region/protection level, network, monitoring, cost, and
+shared-service impact remain unapproved. See [Go operations runner](go-operations.md#vault-dek-rotation)
+for invocation, resume, output-redaction, and rollback rules.
