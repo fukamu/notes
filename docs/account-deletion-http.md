@@ -21,6 +21,12 @@ idempotency credential and derived continuation secret to the Account/Vault
 scope. PostgreSQL stores only the HMAC idempotency digest and SHA-256 secret
 digest. The adapter reads no environment and copies caller-owned key bytes.
 
+All five ordered Go effect boundaries now have local implementations, including
+the T12f policy-gated finalizer. This does not remove the composition hold:
+`HandlerOptions` still has no deletion runtime, the legal-evidence policy has no
+approved production selection, and no provider credentials or destructive
+route are enabled.
+
 Go migration `00014_account_deletion_saga.sql` adds operation, receipt, and
 continuation storage together because no Go route is enabled between partial
 schema stages. Before persistent use, rollback may recreate only the disposable
