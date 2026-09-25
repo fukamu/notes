@@ -64,9 +64,10 @@ delete existing resources.
   `3873f0d0ba3f00d22ead784924c9213d29b2a7ea`. T13c was integrated by #474 / PR
   #475 from exact integration tip
   `9255296776ec269a5c741e17b0e2351b2a561db7`. Billing evidence-time hardening
-  Issue #476 starts from exact integration tip
-  `0efe3917336f5b344a20c8c9a77962d546f7beb7` before the T13 billing runner is
-  composed.
+  was integrated by #476 / PR #477 from exact integration tip
+  `0efe3917336f5b344a20c8c9a77962d546f7beb7`. T13d Issue #478 starts from exact
+  integration tip `4f5c6a75c98d69058eaf755e6d6335ea7c5c77a8` and composes only the explicit
+  owner-scoped billing reconciliation runner.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -111,7 +112,7 @@ the same contract as its closed route.
 | F23 | B     | account deletion                            | T12                             | V03,V04,V07,V08 | saga #458; effects #460/#462/#464; finalizer #466; handoff #468 |
 | F24 | B     | privacy request journal                     | T12                             | V01,V03,V08     | Go journal/closed HTTP #456; deletion handoff #468              |
 | F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11         | core #414; legacy singleton seed #418                           |
-| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | quota #470/#472; deletion audit #474; others pending            |
+| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | quota #470/#472; deletion audit #474; billing runner #478       |
 | F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10         | static runtime #420; legacy removal T14                         |
 | F28 | C     | scheduler / realtime services               | none unless separately approved | V08             | intentionally not added                                         |
 
@@ -125,8 +126,8 @@ the same contract as its closed route.
 | V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450/#472; sync #452/#454; privacy #456; deletion #458/#460/#462/#464/#466/#468 |
 | V05 | sync/quota paging, retry, conflict, limits              | quota #450/#472; journal #452; authenticated encrypted composition #454                                                                                              |
 | V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                                                                                                                  |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438/#476; lease #440; legal #442/#444/#446                                                                                                  |
-| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468                                    |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438/#476; lease #440; legal #442/#444/#446; scoped reconciliation #478                                                                      |
+| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468; reconciliation replay #478        |
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                            |
 | V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                                                                                        |
 | V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                                                                                                                      |
@@ -1483,3 +1484,35 @@ credential, charge, scheduler, public route, production database, or provider
 resource is introduced. Rollback is an application-code revert; existing
 Billing facts and reconciliation checkpoints remain authoritative and must not
 be deleted or rewritten.
+
+## T13d scoped billing provider reconciliation runner
+
+Issue #478 adds `notesctl billing reconcile` for one exact Account/Vault scope,
+stable snapshot ID, observation time, and recording time. The operations
+policy loads the owner-scoped Billing projection first and derives the internal
+subscription and Stripe customer/subscription references from that record. The
+provider snapshot must match both stored references. Missing or
+cross-owner scope, malformed stored state, a non-Stripe/unlinked provider, and
+a conflicting checkpoint all refuse before any provider request.
+
+An exact existing checkpoint reports `replayed` without calling Stripe. A new
+command uses the same `ReconciliationService` and stable provider-evidence-time
+decoder as verified webhook snapshots, then commits through Billing's atomic
+projection/checkpoint transaction. Applied, ignored, concurrent duplicate,
+provider failure, and malformed provider state are exhaustively mapped;
+provider or persistence failures cannot become success or entitlement.
+
+CLI output contains only command kind, outcome, snapshot ID, and the two
+timestamps. It omits the API key, database URL, owner IDs, provider references,
+payment data, and dependency errors. Local/test targets must be the loopback
+disposable database and use test mode. Production-form syntax requires a live
+mode confirmation guard, but the guard is not authorization for production or
+shared database access, a live Stripe read, deployment, or cost.
+
+Unit, CLI, local HTTP-stub, and disposable-PostgreSQL tests perform no real
+Stripe request. This slice adds no HTTP/UI route, scheduler, webhook
+registration, stored secret, charge, cancellation mutation, production
+resource, or schema. Rollback stops the command and restores the prior
+artifact; any committed snapshot/checkpoint remains authoritative and must be
+preserved. Retrying an interrupted operation uses the exact same snapshot ID
+and timestamps.

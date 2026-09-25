@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -14,10 +15,13 @@ import (
 
 	"github.com/fukamu/notes/backend/internal/access"
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
+	stripeadapter "github.com/fukamu/notes/backend/internal/adapters/stripe"
+	"github.com/fukamu/notes/backend/internal/billing"
 	"github.com/fukamu/notes/backend/internal/config"
 	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/fukamu/notes/backend/internal/operations"
 	"github.com/fukamu/notes/backend/internal/quota"
+	"github.com/fukamu/notes/backend/internal/stripebilling"
 	"github.com/fukamu/notes/backend/migrations"
 )
 
@@ -39,6 +43,7 @@ func run(ctx context.Context, arguments []string, stdout io.Writer, stderr io.Wr
 		listQuotaReconciliationCandidates,
 		finalizeQuotaReconciliationCommit,
 		inspectAccountDeletion,
+		reconcileBillingSubscription,
 	)
 }
 
@@ -59,6 +64,13 @@ type inspectAccountDeletionFunction func(
 	string,
 	operations.AccountDeletionAuditQuery,
 ) (operations.AccountDeletionAuditResult, error)
+type reconcileBillingFunction func(
+	context.Context,
+	string,
+	stripebilling.RuntimeMode,
+	string,
+	operations.BillingReconciliationCommand,
+) (operations.BillingReconciliationResult, error)
 
 func runWithDependencies(
 	parent context.Context,
@@ -71,8 +83,10 @@ func runWithDependencies(
 	listQuotaCandidates listQuotaCandidatesFunction,
 	finalizeQuotaCommit finalizeQuotaCommitFunction,
 	inspectDeletion inspectAccountDeletionFunction,
+	reconcileBilling reconcileBillingFunction,
 ) int {
-	if parent == nil || listQuotaCandidates == nil || finalizeQuotaCommit == nil || inspectDeletion == nil {
+	if parent == nil || listQuotaCandidates == nil || finalizeQuotaCommit == nil || inspectDeletion == nil ||
+		reconcileBilling == nil {
 		_, _ = fmt.Fprintln(stderr, "operation dependencies invalid")
 		return 1
 	}
@@ -112,6 +126,17 @@ func runWithDependencies(
 		}
 		return runAccountDeletionAudit(
 			parent, deletionAudit, stdout, stderr, lookup, inspectDeletion,
+		)
+	}
+	billingReconciliation, billingReconciliationRequested, billingReconciliationErr :=
+		parseBillingReconciliationArguments(arguments)
+	if billingReconciliationRequested {
+		if billingReconciliationErr != nil {
+			printUsage(stderr)
+			return 2
+		}
+		return runBillingReconciliation(
+			parent, billingReconciliation, stdout, stderr, lookup, reconcileBilling,
 		)
 	}
 	prepareE2ERequested := len(arguments) == 3 && arguments[0] == "prepare-e2e" &&
@@ -559,8 +584,153 @@ func runQuotaCommit(
 	return 0
 }
 
+type billingReconciliationArguments struct {
+	environment config.Environment
+	production  bool
+	command     operations.BillingReconciliationCommand
+}
+
+func parseBillingReconciliationArguments(
+	arguments []string,
+) (billingReconciliationArguments, bool, error) {
+	if len(arguments) < 2 || arguments[0] != "billing" || arguments[1] != "reconcile" {
+		return billingReconciliationArguments{}, false, nil
+	}
+	values := make(map[string]string, 6)
+	confirmedProduction := false
+	for _, argument := range arguments[2:] {
+		if argument == "--confirm-production-provider-read" {
+			if confirmedProduction {
+				return billingReconciliationArguments{}, true, operations.ErrBillingReconciliation
+			}
+			confirmedProduction = true
+			continue
+		}
+		name, value, found := strings.Cut(argument, "=")
+		if !found || value == "" ||
+			(name != "--environment" && name != "--account-id" && name != "--vault-id" &&
+				name != "--snapshot-id" && name != "--observed-at-millis" && name != "--recorded-at-millis") {
+			return billingReconciliationArguments{}, true, operations.ErrBillingReconciliation
+		}
+		if _, duplicate := values[name]; duplicate {
+			return billingReconciliationArguments{}, true, operations.ErrBillingReconciliation
+		}
+		values[name] = value
+	}
+	if len(values) != 6 {
+		return billingReconciliationArguments{}, true, operations.ErrBillingReconciliation
+	}
+	environment := config.Environment(values["--environment"])
+	if environment != config.EnvironmentLocal && environment != config.EnvironmentTest &&
+		environment != config.EnvironmentProduction {
+		return billingReconciliationArguments{}, true, operations.ErrBillingReconciliation
+	}
+	if (environment == config.EnvironmentProduction) != confirmedProduction {
+		return billingReconciliationArguments{}, true, operations.ErrBillingReconciliation
+	}
+	accountID, err := identity.ParseAccountID(values["--account-id"])
+	if err != nil {
+		return billingReconciliationArguments{}, true, operations.ErrBillingReconciliation
+	}
+	vaultID, err := identity.ParseVaultID(values["--vault-id"])
+	if err != nil {
+		return billingReconciliationArguments{}, true, operations.ErrBillingReconciliation
+	}
+	snapshotID, err := billing.ParseReconciliationSnapshotID(values["--snapshot-id"])
+	if err != nil {
+		return billingReconciliationArguments{}, true, operations.ErrBillingReconciliation
+	}
+	observedAt, err := strconv.ParseInt(values["--observed-at-millis"], 10, 64)
+	if err != nil {
+		return billingReconciliationArguments{}, true, operations.ErrBillingReconciliation
+	}
+	recordedAt, err := strconv.ParseInt(values["--recorded-at-millis"], 10, 64)
+	if err != nil {
+		return billingReconciliationArguments{}, true, operations.ErrBillingReconciliation
+	}
+	command := operations.BillingReconciliationCommand{
+		AccountID: accountID, VaultID: vaultID, SnapshotID: snapshotID,
+		ObservedAt: observedAt, RecordedAt: recordedAt,
+	}
+	if operations.ValidateBillingReconciliationCommand(command) != nil {
+		return billingReconciliationArguments{}, true, operations.ErrBillingReconciliation
+	}
+	return billingReconciliationArguments{
+		environment: environment, production: confirmedProduction, command: command,
+	}, true, nil
+}
+
+func runBillingReconciliation(
+	parent context.Context,
+	arguments billingReconciliationArguments,
+	stdout io.Writer,
+	stderr io.Writer,
+	lookup func(string) (string, bool),
+	reconcile reconcileBillingFunction,
+) int {
+	databaseConfig, err := config.LoadDatabase(lookup)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "database configuration invalid")
+		return 1
+	}
+	if arguments.environment != databaseConfig.Environment ||
+		(arguments.environment == config.EnvironmentProduction && !arguments.production) {
+		_, _ = fmt.Fprintln(stderr, "billing reconciliation environment refused")
+		return 1
+	}
+	if arguments.environment != config.EnvironmentProduction {
+		if err := postgresadapter.ValidateTestDatabaseURL(databaseConfig.URL); err != nil {
+			_, _ = fmt.Fprintln(stderr, "billing reconciliation target refused")
+			return 1
+		}
+	}
+	apiKey, found := lookup("NOTES_STRIPE_API_KEY")
+	if !found || apiKey == "" || strings.ContainsAny(apiKey, "\r\n\x00") {
+		_, _ = fmt.Fprintln(stderr, "billing reconciliation provider configuration invalid")
+		return 1
+	}
+	mode := stripebilling.ModeTest
+	if arguments.environment == config.EnvironmentProduction {
+		mode = stripebilling.ModeLive
+	}
+	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	defer cancel()
+	result, err := reconcile(ctx, databaseConfig.URL, mode, apiKey, arguments.command)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "billing reconciliation failed")
+		return 1
+	}
+	if result.Kind == operations.BillingReconciliationRefused {
+		_, _ = fmt.Fprintln(stderr, "billing reconciliation scope refused")
+		return 1
+	}
+	if (result.Kind != operations.BillingReconciliationApplied &&
+		result.Kind != operations.BillingReconciliationIgnored &&
+		result.Kind != operations.BillingReconciliationReplayed) ||
+		result.SnapshotID != arguments.command.SnapshotID ||
+		result.ObservedAt != arguments.command.ObservedAt || result.RecordedAt != arguments.command.RecordedAt {
+		_, _ = fmt.Fprintln(stderr, "billing reconciliation failed")
+		return 1
+	}
+	output := struct {
+		Command    string `json:"command"`
+		Outcome    string `json:"outcome"`
+		SnapshotID string `json:"snapshotId"`
+		ObservedAt int64  `json:"observedAt"`
+		RecordedAt int64  `json:"recordedAt"`
+	}{
+		Command: "billing-reconcile", Outcome: string(result.Kind),
+		SnapshotID: string(result.SnapshotID), ObservedAt: result.ObservedAt, RecordedAt: result.RecordedAt,
+	}
+	if err := json.NewEncoder(stdout).Encode(output); err != nil {
+		_, _ = fmt.Fprintln(stderr, "billing reconciliation output failed")
+		return 1
+	}
+	return 0
+}
+
 func printUsage(output io.Writer) {
-	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only]")
+	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read]")
 }
 
 func prepareE2EDatabase(ctx context.Context, databaseURL string, allowedSubject string) error {
@@ -662,4 +832,43 @@ func inspectAccountDeletion(
 		return operations.AccountDeletionAuditResult{}, err
 	}
 	return service.Inspect(ctx, query)
+}
+
+func reconcileBillingSubscription(
+	ctx context.Context,
+	databaseURL string,
+	mode stripebilling.RuntimeMode,
+	apiKey string,
+	command operations.BillingReconciliationCommand,
+) (operations.BillingReconciliationResult, error) {
+	pool, err := postgresadapter.OpenPool(ctx, databaseURL, 2)
+	if err != nil {
+		return operations.BillingReconciliationResult{}, err
+	}
+	defer pool.Close()
+	billingStore, err := postgresadapter.NewBillingStore(pool)
+	if err != nil {
+		return operations.BillingReconciliationResult{}, err
+	}
+	ownership, err := postgresadapter.NewEntitlementStore(pool)
+	if err != nil {
+		return operations.BillingReconciliationResult{}, err
+	}
+	billingService, err := billing.NewService(ownership, billingStore)
+	if err != nil {
+		return operations.BillingReconciliationResult{}, err
+	}
+	provider, err := stripeadapter.NewProvider(apiKey, mode, &http.Client{Timeout: 30 * time.Second})
+	if err != nil {
+		return operations.BillingReconciliationResult{}, err
+	}
+	stripeReconciler, err := stripebilling.NewReconciliationService(billingService, provider)
+	if err != nil {
+		return operations.BillingReconciliationResult{}, err
+	}
+	service, err := operations.NewBillingReconciliationService(billingStore, stripeReconciler)
+	if err != nil {
+		return operations.BillingReconciliationResult{}, err
+	}
+	return service.Reconcile(ctx, command)
 }

@@ -15,13 +15,36 @@ type Service struct {
 	billing       BillingPort
 	provider      ProviderPort
 	verifier      WebhookVerifierPort
+	reconciler    *ReconciliationService
 }
 
 func NewService(configuration Configuration, billingPort BillingPort, provider ProviderPort, verifier WebhookVerifierPort) (*Service, error) {
 	if !configuration.Valid() || billingPort == nil || provider == nil || verifier == nil {
 		return nil, ErrInvalidServiceConfiguration
 	}
-	return &Service{configuration: configuration, billing: billingPort, provider: provider, verifier: verifier}, nil
+	reconciler, err := NewReconciliationService(billingPort, provider)
+	if err != nil {
+		return nil, err
+	}
+	return &Service{
+		configuration: configuration, billing: billingPort, provider: provider,
+		verifier: verifier, reconciler: reconciler,
+	}, nil
+}
+
+// ReconciliationService is the shared retrieve-and-commit application path for
+// webhook-triggered and explicit operations reconciliation. It intentionally
+// has no Checkout, webhook-secret, or hosted-return configuration.
+type ReconciliationService struct {
+	billing  BillingPort
+	provider ProviderPort
+}
+
+func NewReconciliationService(billingPort BillingPort, provider ProviderPort) (*ReconciliationService, error) {
+	if billingPort == nil || provider == nil {
+		return nil, ErrInvalidServiceConfiguration
+	}
+	return &ReconciliationService{billing: billingPort, provider: provider}, nil
 }
 
 func (service *Service) BeginHostedCheckout(
@@ -94,21 +117,38 @@ func (service *Service) IngestWebhook(ctx context.Context, request WebhookReques
 		if plan.Snapshot == nil {
 			return rejectedWebhook(ReasonMalformedEvent)
 		}
-		return service.retrieveAndReconcile(ctx, *plan.Snapshot)
+		return service.reconciler.reconcile(ctx, *plan.Snapshot)
 	default:
 		return rejectedWebhook(ReasonMalformedEvent)
 	}
 }
 
 func (service *Service) ReconcileSubscription(ctx context.Context, command ReconciliationCommand) WebhookResult {
-	return service.retrieveAndReconcile(ctx, SnapshotPlan{
+	if service == nil || service.reconciler == nil {
+		return rejectedWebhook(ReasonBillingRejected)
+	}
+	return service.reconciler.ReconcileSubscription(ctx, command)
+}
+
+func (service *ReconciliationService) ReconcileSubscription(
+	ctx context.Context,
+	command ReconciliationCommand,
+) WebhookResult {
+	if service == nil || service.billing == nil || service.provider == nil || ctx == nil {
+		return rejectedWebhook(ReasonBillingRejected)
+	}
+	if ValidateReconciliationCommand(command) != nil {
+		return rejectedWebhook(ReasonInvalidInput)
+	}
+	return service.reconcile(ctx, SnapshotPlan{
 		SnapshotID: command.SnapshotID, SubscriptionID: command.SubscriptionID,
+		ProviderCustomerReference:     command.ProviderCustomerReference,
 		ProviderSubscriptionReference: command.ProviderSubscriptionReference,
 		ObservedAt:                    command.ObservedAt, RecordedAt: command.RecordedAt,
 	})
 }
 
-func (service *Service) retrieveAndReconcile(ctx context.Context, plan SnapshotPlan) WebhookResult {
+func (service *ReconciliationService) reconcile(ctx context.Context, plan SnapshotPlan) WebhookResult {
 	input, err := service.provider.RetrieveSubscriptionSnapshot(ctx, plan.ProviderSubscriptionReference)
 	if err != nil {
 		return rejectedWebhook(ReasonProviderUnavailable)

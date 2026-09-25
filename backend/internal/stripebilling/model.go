@@ -177,6 +177,7 @@ type ProviderPaymentIntent struct {
 type SnapshotPlan struct {
 	SnapshotID                    billing.ReconciliationSnapshotID
 	SubscriptionID                billing.SubscriptionID
+	ProviderCustomerReference     billing.ProviderCustomerReference
 	ProviderSubscriptionReference billing.ProviderSubscriptionReference
 	ObservedAt                    int64
 	RecordedAt                    int64
@@ -249,6 +250,7 @@ type WebhookResult struct {
 type ReconciliationCommand struct {
 	SnapshotID                    billing.ReconciliationSnapshotID
 	SubscriptionID                billing.SubscriptionID
+	ProviderCustomerReference     billing.ProviderCustomerReference
 	ProviderSubscriptionReference billing.ProviderSubscriptionReference
 	ObservedAt                    int64
 	RecordedAt                    int64
