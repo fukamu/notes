@@ -74,7 +74,7 @@ the same contract as its closed route.
 | F17 | B     | billing projection                          | T09                             | V04,V07      | Go core/Postgres #436; cancel awaits #404    |
 | F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | Go core/SDK adapter #438; remains closed     |
 | F19 | B     | entitlement / offline lease                 | T09                             | V05,V07      | Go core/Postgres #440; disconnected          |
-| F20 | B     | legal checkout evidence                     | T10                             | V01,V07      | pending after terms slice                    |
+| F20 | B     | legal checkout evidence                     | T10                             | V01,V07      | Go core/Postgres/orchestration #444          |
 | F21 | B     | terms consent                               | T10                             | V01,V07      | Go core/Postgres #442; disconnected          |
 | F22 | B     | normal cancellation                         | T09                             | V07          | blocked on #404                              |
 | F23 | B     | account deletion                            | T12                             | V03,V04,V08  | contract captured; #404 overlap pending      |
@@ -86,20 +86,20 @@ the same contract as its closed route.
 
 ## Verification matrix
 
-| ID  | Required evidence                                       | Current evidence                                                         |
-| --- | ------------------------------------------------------- | ------------------------------------------------------------------------ |
-| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418; terms canonical fixture #442                             |
-| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests             |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426                             |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; terms #442 |
-| V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                              |
-| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                      |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; terms #442                     |
-| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434                   |
-| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                |
-| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips            |
-| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                          |
-| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                |
+| ID  | Required evidence                                       | Current evidence                                                              |
+| --- | ------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418; terms #442; contract evidence #444                            |
+| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                  |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426                                  |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444 |
+| V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                                   |
+| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                           |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; terms #442                          |
+| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434                        |
+| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                     |
+| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                 |
+| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                               |
+| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                     |
 
 ## Intentional security differences
 
@@ -774,3 +774,51 @@ checkout, and reconsent writes; keep migration 00009 and every evidence row;
 restore a compatible artifact or use a reviewed forward migration. Never drop,
 rewrite, or synthesize consent evidence as part of rollback. T12 must explicitly
 apply the approved evidence-retention decision during account deletion.
+
+## T10b commercial contract evidence and checkout orchestration slice
+
+Issue #444 ports the strict legal-commerce decoder, authoritative offer
+derivation, JavaScript-compatible canonical JSON and SHA-256 boundary,
+affirmative commercial consent plan, immutable evidence application service,
+and checkout mapping to Go. The shared `legal/contract-evidence.json` fixture
+proves identical TypeScript/Go bytes for Japanese text, `<>&`, and U+2028/U+2029,
+as well as the evidence-to-Billing subscription and checkout-intent identifiers.
+
+Migration 00010 stores the complete canonical offer under an Account/Vault
+scope, enforces UUID/hash/version/timestamp shape, and rejects UPDATE. The
+PostgreSQL repository accepts only an existing exact Personal Vault, scopes all
+reads and conflicts by its owner, rejects malformed stored JSON and metadata,
+and converges concurrent identical submissions on the first evidence. Its
+foreign key deliberately has no implicit delete action: T12 must perform the
+reviewed deletion or retention workflow explicitly instead of treating this
+migration as permission to erase or indefinitely retain legal evidence.
+
+Checkout orchestration verifies current terms first, records or replays
+commercial evidence second, and only then calls the existing Go Stripe Billing
+port. Evidence ID becomes the Billing subscription ID; submission ID becomes
+the provider idempotency key. On a retry after response loss, the Go path also
+reuses the original evidence timestamp. This closes a disconnected TypeScript
+edge case where a later server clock could produce a different Billing command
+for the same submission and conflict with the pending checkout.
+
+Unit and disposable-PostgreSQL tests cover missing/stale consent, exact replay,
+owner isolation, immutable updates, malformed rows, concurrent submission,
+dependency/provider failures, provider mapping failures, terms-before-provider
+ordering, and response-loss retry. This slice adds no HTTP handler composition,
+approved production commerce source, Stripe credentials or network call,
+production schema apply, charge, deployment, or public availability. T10c owns
+the disconnected Go GET/POST handler and client wire contracts.
+
+One connection blocker remains explicit: the preserved checkout verifier looks
+up terms evidence by the checkout submission ID, while the existing terms and
+checkout UI boundaries generate independent submission IDs. T10c must make one
+reviewed wire contract authoritative—preferably accepting current owner-scoped
+terms evidence independently from commercial idempotency—before the route can
+open. The current disconnected implementation does not guess or bypass this
+gate.
+
+Before an approved persistent apply, rollback is a reviewed code revert plus
+disposable-schema recreation. After evidence exists, close new checkout writes,
+preserve migration 00010 and all evidence, and restore a compatible artifact or
+use a reviewed forward migration. Do not drop, rewrite, or synthesize evidence
+as rollback.

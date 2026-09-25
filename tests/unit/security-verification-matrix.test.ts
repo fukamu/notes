@@ -161,6 +161,13 @@ const requirements = [
     evidence: ['tests/unit/entitlement-core.test.ts'],
   },
   {
+    id: 'SEC-BILLING-08',
+    evidence: [
+      'backend/internal/legal/contract_test.go',
+      'backend/tests/integration/contract_evidence_test.go',
+    ],
+  },
+  {
     id: 'SEC-LOG-01',
     evidence: [
       'tests/integration/auth-security-corpus.test.ts',

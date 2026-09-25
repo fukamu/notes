@@ -1,0 +1,41 @@
+{
+  "profile": "contract-evidence-v1",
+  "scope": {
+    "accountId": "01991f20-61d2-7000-8000-000000000101",
+    "vaultId": "01991f20-61d2-7000-8000-000000000201"
+  },
+  "evidenceId": "01991f20-61d2-7000-8000-000000002301",
+  "submissionId": "01991f20-61d2-7000-8000-000000002401",
+  "confirmedAt": 3000,
+  "disclosure": {
+    "schemaVersion": 1,
+    "seller": {
+      "legalName": "株式会社深考ノート",
+      "representative": "販売責任者 山田太郎",
+      "postalAddress": "〒100-0001 東京都千代田区千代田1-1",
+      "phone": "03-1234-5678",
+      "supportUrl": "https://support.fukamu-notes.jp/contact?product=notes&lang=ja"
+    },
+    "offer": {
+      "planName": "FUKAMU Notes <標準> & 個人",
+      "priceYen": 1280,
+      "billingPeriod": "monthly",
+      "taxIncluded": true,
+      "trialDays": 14
+    },
+    "additionalFees": "通信費は利用者負担です。\u2028端末費用も含みません。",
+    "cancellationPolicy": "契約管理画面からいつでも解約でき、現在の請求期間末に終了します。",
+    "refundPolicy": "支払い済み期間の日割り返金はありません。",
+    "specialTerms": "日本国内から利用できます。\u2029",
+    "systemRequirements": ["最新版のChrome、Safari、Firefox、Edge"],
+    "effectiveDate": "2026-09-14"
+  },
+  "expected": {
+    "offerVersion": "legal-commerce-v1:2026-09-14",
+    "annualEstimateYen": 15360,
+    "canonicalSha256": "sha256:a375988a9ef9b7062e711817a6994d4b6ac00589a4173a990a32ab331130a271",
+    "evidencePlan": "append",
+    "checkoutSubscriptionId": "01991f20-61d2-7000-8000-000000002301",
+    "checkoutIntentId": "01991f20-61d2-7000-8000-000000002401"
+  }
+}

@@ -35,7 +35,7 @@ application service receives `VaultContext`, evidence identifier, and clock
 value from trusted outer adapters. It rejects missing consent, a stale hash,
 malformed values, owner mismatch, and identifier conflicts.
 
-The D1 repository keys every lookup and write by Account and Vault. Repeating
+The TypeScript D1 repository keys every lookup and write by Account and Vault. Repeating
 the same scoped submission with identical terms is a replay; reusing an
 identifier for different terms is a conflict. The repository exposes only
 append and scoped reads. Explicit production migrations reject UPDATE with an
@@ -57,10 +57,14 @@ production provider fallback is introduced.
 
 ## Deletion, retention, and rollback
 
-Contract evidence is live Account/Vault data. Its foreign key uses `ON DELETE
-CASCADE`, so the existing account-deletion saga removes it with the Personal
-Vault as required by the product deletion contract. While the account is live,
-the application exposes append/read behavior only and the database rejects
+Contract evidence is live Account/Vault data. The TypeScript D1 foreign key uses
+`ON DELETE CASCADE`, so its existing account-deletion saga removes it with the
+Personal Vault as required by that runtime's product deletion contract. The Go
+PostgreSQL migration intentionally does not copy that implicit cascade: its
+foreign key blocks owner deletion until T12 executes a reviewed explicit
+deletion/retention workflow. This is a safety hold, not a decision to retain the
+evidence indefinitely. While the account is live, both application repositories
+expose append/read behavior only and their production-grade migrations reject
 mutation by UPDATE.
 
 Whether Japanese corporate, tax, or dispute-handling obligations require a
@@ -80,7 +84,10 @@ separate explicit approval.
 Focused unit and Miniflare tests cover authoritative derivation, stable hashing,
 consent and stale-offer rejection, replay and race behavior, cross-Vault
 isolation, immutable rows, malformed-row fail-closed behavior, migration order,
-and account-deletion cascade. The repository-wide required gates remain:
+and the TypeScript account-deletion cascade. Go Issue #444 adds the shared
+canonical fixture, pure/application checkout tests, and disposable-PostgreSQL
+coverage for exact ownership, immutable rows, malformed data, concurrent replay,
+and the explicit deletion hold. The repository-wide required gates remain:
 
 ```bash
 git diff --check

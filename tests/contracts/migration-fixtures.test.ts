@@ -8,6 +8,7 @@ import { createBillingUiHttpTransport } from '@/lib/client/http-billing-ui';
 import { createPrivacyRequestUiHttpTransport } from '@/lib/client/http-privacy-request';
 import { createTermsConsentUiHttpTransport } from '@/lib/client/terms-consent-ui';
 import { decodeLegalTermsDisclosure } from '@/lib/application/legal-terms';
+import { decodeLegalCommerceDisclosure } from '@/lib/application/legal-commerce';
 import { parseCardId } from '@/lib/domain/id';
 import {
   parseAccountId,
@@ -86,7 +87,13 @@ import {
   contractOfferSnapshotDecoder,
   parseContractEvidenceId,
   parseContractOfferHash,
+  parseContractSubmissionId,
 } from '@/server/legal-checkout/public';
+import {
+  planContractEvidence,
+  planContractOffer,
+  serializeContractOffer,
+} from '@/server/legal-checkout/core';
 import {
   decodeStripeEventPlan,
   planStripeCheckout,
@@ -122,6 +129,62 @@ import {
 const fixtureRoot = new URL('../../contracts/fixtures/', import.meta.url);
 
 describe('Go migration shared contract fixtures', () => {
+  it('keeps commercial offer bytes, evidence, and checkout identifiers compatible', async () => {
+    const fixtureValue = record(await fixture('legal/contract-evidence.json'));
+    const expected = record(field(fixtureValue, 'expected'));
+    const decoded = decodeLegalCommerceDisclosure(
+      field(fixtureValue, 'disclosure'),
+    );
+    if (decoded.kind !== 'decoded') {
+      throw new Error(`invalid commerce fixture: ${decoded.issues.join(', ')}`);
+    }
+    const offer = planContractOffer(decoded.disclosure);
+    if (offer.kind !== 'ready') throw new Error('invalid contract offer');
+    const serialized = serializeContractOffer(offer.offer);
+    const offerHash = parseContractOfferHash(
+      `sha256:${createHash('sha256').update(serialized).digest('hex')}`,
+    );
+    expect(offerHash).toBe(field(expected, 'canonicalSha256'));
+    expect(offer.offer).toMatchObject({
+      offerVersion: field(expected, 'offerVersion'),
+      annualEstimateYen: number(field(expected, 'annualEstimateYen')),
+    });
+    expect(serialized).toContain('<標準> & 個人');
+    expect(serialized).toContain('\u2028');
+    expect(serialized).not.toMatch(/\\u(?:003c|003e|0026|2028|2029)/);
+
+    const scopeValue = record(field(fixtureValue, 'scope'));
+    const submissionId = parseContractSubmissionId(
+      field(fixtureValue, 'submissionId'),
+    );
+    const evidence = planContractEvidence({
+      context: {
+        accountId: parseAccountId(field(scopeValue, 'accountId')),
+        vaultId: parseVaultId(field(scopeValue, 'vaultId')),
+        sessionId: parseSessionId('01991f20-61d2-7000-8000-000000000301'),
+        sessionEpoch: parseSessionEpoch(1),
+      },
+      command: {
+        submissionId,
+        presentedOfferHash: offerHash,
+        consent: { kind: 'affirmed' },
+      },
+      offer: offer.offer,
+      serializedOffer: serialized,
+      authoritativeOfferHash: offerHash,
+      evidenceId: parseContractEvidenceId(field(fixtureValue, 'evidenceId')),
+      confirmedAt: number(field(fixtureValue, 'confirmedAt')),
+      existing: undefined,
+    });
+    expect(evidence.kind).toBe(field(expected, 'evidencePlan'));
+    expect(evidence).toMatchObject({
+      record: {
+        evidenceId: field(expected, 'checkoutSubscriptionId'),
+        submissionId: field(expected, 'checkoutIntentId'),
+      },
+    });
+  });
+
   it('keeps terms consent serialization and decisions compatible', async () => {
     const fixtureValue = record(await fixture('legal/terms-consent.json'));
     const expected = record(field(fixtureValue, 'expected'));
