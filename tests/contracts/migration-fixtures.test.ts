@@ -58,6 +58,7 @@ import { webCryptoAes256Gcm } from '@/server/crypto/web-aes-gcm';
 import {
   parsePrivacyRequestId,
   parsePrivacyRequestSubmissionId,
+  privacyRequestKindDecoder,
 } from '@/server/privacy-request/public';
 import {
   completeVaultRecoveryDrill,
@@ -835,6 +836,31 @@ describe('Go migration shared contract fixtures', () => {
       kind: 'rejected',
       reason: 'unavailable',
     });
+
+    const publicStatuses = field(privacy, 'publicStatuses');
+    if (!Array.isArray(publicStatuses)) {
+      throw new Error('privacy publicStatuses must be an array');
+    }
+    for (const candidate of publicStatuses) {
+      const candidateRecord = record(candidate);
+      const requestKind = decodeOrThrow(
+        privacyRequestKindDecoder,
+        field(candidateRecord, 'requestKind'),
+        'shared privacy request kind',
+      );
+      const transport = createPrivacyRequestUiHttpTransport(async () =>
+        Response.json(candidate),
+      );
+      await expect(
+        transport.submit({
+          submissionId: command.submissionId,
+          requestKind,
+        }),
+      ).resolves.toMatchObject({
+        kind: 'accepted',
+        request: { requestKind },
+      });
+    }
   });
 
   it('decodes the shared terms status through the browser boundary', async () => {

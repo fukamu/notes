@@ -46,9 +46,10 @@ delete existing resources.
 - T11a quota policy/ledger was integrated by #450 / PR #451. T11b Issue #452
   starts from exact integration tip
   `347be2997b38e67502936972f7cb63934efcac43`.
-- T11b durable journal was integrated by #452 / PR #453. T11c Issue #454
-  starts from exact integration tip
-  `7ed81c8f1666a8b9c438379cfb585d0bda98019f`.
+- T11b durable journal was integrated by #452 / PR #453. T11c authenticated
+  Sync v2 composition was integrated by #454 / PR #455. T12a Issue #456 starts
+  from exact integration tip
+  `68e8bc004bde27aed29ad7dd31017baaa9db2592`.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -91,7 +92,7 @@ the same contract as its closed route.
 | F21 | B     | terms consent                               | T10                             | V01,V07      | core/store #442; closed Go HTTP #446         |
 | F22 | B     | normal cancellation                         | T09                             | V07          | blocked on #404                              |
 | F23 | B     | account deletion                            | T12                             | V03,V04,V08  | contract captured; #404 overlap pending      |
-| F24 | B     | privacy request journal                     | T12                             | V01,V03,V08  | contract captured in #410                    |
+| F24 | B     | privacy request journal                     | T12                             | V01,V03,V08  | Go journal/closed HTTP in #456               |
 | F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11      | core #414; legacy singleton seed #418        |
 | F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09      | pending                                      |
 | F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10      | static runtime #420; legacy removal T14      |
@@ -99,20 +100,20 @@ the same contract as its closed route.
 
 ## Verification matrix
 
-| ID  | Required evidence                                       | Current evidence                                                                                          |
-| --- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454; legal fixtures #442/#444; legal Go HTTP #446                                         |
-| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                              |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426; legal HTTP #446                                             |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450; sync #452/#454 |
-| V05 | sync/quota paging, retry, conflict, limits              | quota #450; journal #452; authenticated encrypted composition #454                                        |
-| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                                                       |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; legal #442/#444/#446                                            |
-| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434                                                    |
-| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                 |
-| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                             |
-| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                                                           |
-| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                                                 |
+| ID  | Required evidence                                       | Current evidence                                                                                                        |
+| --- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454; legal #442/#444/#446; privacy #456                                                                 |
+| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                            |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426; legal #446; privacy #456                                                  |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450; sync #452/#454; privacy #456 |
+| V05 | sync/quota paging, retry, conflict, limits              | quota #450; journal #452; authenticated encrypted composition #454                                                      |
+| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                                                                     |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; legal #442/#444/#446                                                          |
+| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434; privacy journal #456                                            |
+| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                               |
+| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                                           |
+| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                                                                         |
+| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                                                               |
 
 ## Intentional security differences
 
@@ -1037,3 +1038,46 @@ their object bytes, keyrings, reservations, receipts, and sequence state as one
 consistency set. Restore a compatible artifact or apply a reviewed forward
 fix; never delete pending reservations or immutable objects merely to roll
 back application code.
+
+## T12a privacy request journal and closed HTTP contract
+
+Issue #456 ports the existing provider-neutral privacy request journal to
+`backend/internal/privacyrequest`. Pure transitions preserve the exact
+verification-pending, ready, processing, completed, rejected, failed, and
+retryable-failure lifecycle. Strict request and public-response codecs reject
+duplicate or unknown members, trailing values, invalid UTF-8, unpaired
+surrogates, malformed UUIDv7 identifiers, unsafe timestamps, and owner fields
+in public responses. The shared account lifecycle fixture is decoded by both
+the TypeScript client and Go.
+
+Migration 00013 adds an empty owner-scoped PostgreSQL journal. An insert-time
+trigger requires an exact current Personal Vault owner, while the table has no
+owner foreign key so a previously accepted deletion request can remain
+trackable after live Account/Vault removal. Scoped request/submission
+uniqueness, compare-and-swap revisions, state-shape checks, and boundary
+decoding provide replay, conflict, and malformed-row protection. This shape is
+not a retention decision.
+
+The application keeps verification, non-deletion fulfillment, and the
+existing account-deletion handoff as separate ports. A request cannot execute
+before verification; a concurrent processing claim runs at most one effect;
+provider failure records only a redacted failure code and retryability. A
+deletion request cannot pass through the generic fulfillment port and can only
+complete with `account-deletion-started` after the typed handoff succeeds.
+
+`backend/internal/httpapi/privacy_request.go` authenticates the secure session
+and same-origin request before reading the bounded body and returns only fixed
+`no-store` categories. Its constructor is intentionally absent from
+`HandlerOptions`, so both public routes retain the existing closed 404/503
+contract. The slice does not choose identity verification, fulfillment,
+retention, a provider, or recovery for a permanently processing request. It
+does not incorporate the still-draft normal-cancellation policy from #404;
+T12b owns the account-deletion saga and that overlap.
+
+Before any persistent use, rollback is a code revert while the handler remains
+unmounted and the disposable schema may be recreated. After an accepted
+request exists, first stop new submissions and processing, preserve migration
+00013 and every journal revision, restore a compatible artifact or apply a
+reviewed forward fix, and resume from durable state. Never drop an accepted
+request or synthesize verification, execution, deletion, or completion
+evidence as rollback.

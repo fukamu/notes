@@ -2,7 +2,7 @@ package migrations
 
 import "embed"
 
-const LatestVersion int64 = 12
+const LatestVersion int64 = 13
 
 // Files contains the immutable, ordered SQL migrations used by notesctl.
 //

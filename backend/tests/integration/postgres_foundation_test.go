@@ -278,6 +278,7 @@ func assertCoreTables(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 		"vault_sync_v2_conflicts",
 		"vault_sync_v2_commits",
 		"vault_sync_v2_changes",
+		"privacy_requests",
 		"schema_migrations",
 		"launch_config",
 		"launch_allowed_users",

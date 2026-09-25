@@ -12,6 +12,13 @@
     }
   },
   "privacy": {
+    "submit": {
+      "submissionId": "01991f20-61d2-7000-8000-000000002101",
+      "requestKind": "disclosure"
+    },
+    "statusCommand": {
+      "requestId": "01991f20-61d2-7000-8000-000000002001"
+    },
     "pending": {
       "requestId": "01991f20-61d2-7000-8000-000000002001",
       "requestKind": "disclosure",
@@ -19,6 +26,60 @@
       "updatedAt": 1000,
       "status": "verification-pending"
     },
+    "publicStatuses": [
+      {
+        "requestId": "01991f20-61d2-7000-8000-000000002001",
+        "requestKind": "disclosure",
+        "requestedAt": 1000,
+        "updatedAt": 1000,
+        "status": "verification-pending"
+      },
+      {
+        "requestId": "01991f20-61d2-7000-8000-000000002002",
+        "requestKind": "correction",
+        "requestedAt": 1000,
+        "updatedAt": 1100,
+        "status": "ready"
+      },
+      {
+        "requestId": "01991f20-61d2-7000-8000-000000002003",
+        "requestKind": "usage-suspension",
+        "requestedAt": 1000,
+        "updatedAt": 1200,
+        "status": "processing"
+      },
+      {
+        "requestId": "01991f20-61d2-7000-8000-000000002004",
+        "requestKind": "third-party-provision-suspension",
+        "requestedAt": 1000,
+        "updatedAt": 1300,
+        "status": "completed",
+        "outcome": "fulfilled"
+      },
+      {
+        "requestId": "01991f20-61d2-7000-8000-000000002005",
+        "requestKind": "deletion",
+        "requestedAt": 1000,
+        "updatedAt": 1300,
+        "status": "completed",
+        "outcome": "account-deletion-started"
+      },
+      {
+        "requestId": "01991f20-61d2-7000-8000-000000002006",
+        "requestKind": "purpose-notification",
+        "requestedAt": 1000,
+        "updatedAt": 1100,
+        "status": "rejected"
+      },
+      {
+        "requestId": "01991f20-61d2-7000-8000-000000002007",
+        "requestKind": "disclosure",
+        "requestedAt": 1000,
+        "updatedAt": 1300,
+        "status": "failed",
+        "retryable": true
+      }
+    ],
     "invalid": {
       "requestId": "01991f20-61d2-7000-8000-000000002001",
       "requestKind": "disclosure",
