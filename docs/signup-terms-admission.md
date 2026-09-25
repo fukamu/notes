@@ -64,6 +64,9 @@ conflicts roll the whole transaction back. Reverting before a production apply
 removes the disconnected code and recreates only the disposable test schema.
 After evidence or finalized accounts exist, rollback must retain them and use a
 reviewed forward migration. During rollback or an admission outage, new signup
-must remain disabled rather than bypassing the gate. Real provider UI/adapters,
-the T10 production terms adapter, and deployment require their own reviewed
-Issues and explicit provider/secret/deployment approval.
+must remain disabled rather than bypassing the gate. Real provider UI/adapters
+and deployment require their own reviewed Issues and explicit
+provider/secret/deployment approval. T10a Issue #442 now supplies the
+disconnected Go terms adapter and PostgreSQL evidence store. It authorizes the
+pre-finalization write only through the exact durable reservation and remains
+unavailable from HTTP or a production legal-terms source.

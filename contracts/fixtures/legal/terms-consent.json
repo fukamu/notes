@@ -1,0 +1,71 @@
+{
+  "profile": "terms-consent-v1",
+  "scope": {
+    "accountId": "01991f20-61d2-7000-8000-000000000101",
+    "vaultId": "01991f20-61d2-7000-8000-000000000201"
+  },
+  "consentId": "01991f20-61d2-7000-8000-000000002501",
+  "submissionId": "01991f20-61d2-7000-8000-000000002601",
+  "acceptedAt": 2000,
+  "disclosure": {
+    "schemaVersion": 1,
+    "termsVersion": "terms-v1:2026-09-15",
+    "effectiveDate": "2026-09-15",
+    "serviceName": "FUKAMU Notes",
+    "operator": {
+      "legalName": "FUKAMU <Notes> & Co",
+      "supportUrl": "https://example.com/support?product=notes&lang=ja"
+    },
+    "serviceEligibility": "eligible\u2028line\u2029end",
+    "accountSecurity": "protect credentials",
+    "authentication": {
+      "googleLogin": true,
+      "emailOtp": true,
+      "password": false,
+      "sharedVault": false
+    },
+    "prohibitedActivities": ["unauthorized access", "service disruption"],
+    "userContent": {
+      "ownership": "retained-by-user",
+      "licenseScope": "minimum-necessary-for-service",
+      "licensePurpose": "store, encrypt, synchronize, and display user content"
+    },
+    "billing": {
+      "paidOnly": true,
+      "trialDays": 14,
+      "firstChargeDay": 15,
+      "automaticRenewal": true,
+      "cancellationPolicy": "cancel future renewals",
+      "refundPolicy": "no refund except where required by law",
+      "paymentFailureLock": "immediate-online-lock",
+      "resumePolicy": "invoice-paid-only",
+      "cancellationSeparateFromAccountDeletion": true
+    },
+    "dataHandling": {
+      "oneAccountOnePersonalVault": true,
+      "localContentOnLogout": "deleted-on-logout",
+      "liveDataOnAccountDeletion": "deleted-on-account-deletion",
+      "backupMaximumDays": 30
+    },
+    "suspensionPolicy": "suspend only when required",
+    "maintenanceAndChanges": "announce material service changes",
+    "serviceTermination": "provide notice where possible",
+    "intellectualProperty": "service rights remain with their owners",
+    "liability": "liability is limited where permitted",
+    "notices": "notices use the registered contact channel",
+    "governingLawAndVenue": "applicable law and agreed venue",
+    "amendments": {
+      "procedure": "publish and classify every amendment",
+      "materialChangeHandling": "legal-review-required-before-enforcement"
+    }
+  },
+  "acceptancePolicy": {
+    "kind": "initial-release"
+  },
+  "expected": {
+    "canonicalSha256": "sha256:5b1e0d27a4c4b460dac722caf65e05d8bf84603d7d22f26922330d4eb747a549",
+    "initialStatus": "current",
+    "acceptedStatus": "accepted",
+    "consentPlan": "append"
+  }
+}

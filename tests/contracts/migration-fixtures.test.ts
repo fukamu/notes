@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { decodeOrThrow } from '@/lib/codec/core';
 import { accountDeletionIdempotencyKeyDecoder } from '@/lib/application/account-deletion-handoff';
@@ -6,6 +7,7 @@ import { createAccountDeletionHttpRemote } from '@/lib/client/http-account-delet
 import { createBillingUiHttpTransport } from '@/lib/client/http-billing-ui';
 import { createPrivacyRequestUiHttpTransport } from '@/lib/client/http-privacy-request';
 import { createTermsConsentUiHttpTransport } from '@/lib/client/terms-consent-ui';
+import { decodeLegalTermsDisclosure } from '@/lib/application/legal-terms';
 import { parseCardId } from '@/lib/domain/id';
 import {
   parseAccountId,
@@ -105,10 +107,88 @@ import {
   parseOfflineLeaseDuration,
   parseOfflineLeaseId,
 } from '@/server/entitlement/public';
+import { decideTermsConsentStatus } from '@/server/terms-consent/application-core';
+import {
+  planTermsConsent,
+  planTermsConsentSnapshot,
+  serializeTermsDisclosure,
+} from '@/server/terms-consent/core';
+import {
+  parseTermsConsentId,
+  parseTermsConsentSubmissionId,
+  parseTermsDocumentHash,
+} from '@/server/terms-consent/public';
 
 const fixtureRoot = new URL('../../contracts/fixtures/', import.meta.url);
 
 describe('Go migration shared contract fixtures', () => {
+  it('keeps terms consent serialization and decisions compatible', async () => {
+    const fixtureValue = record(await fixture('legal/terms-consent.json'));
+    const expected = record(field(fixtureValue, 'expected'));
+    const decoded = decodeLegalTermsDisclosure(
+      field(fixtureValue, 'disclosure'),
+    );
+    if (decoded.kind !== 'decoded') {
+      throw new Error(`invalid terms fixture: ${decoded.issues.join(', ')}`);
+    }
+    const serialized = serializeTermsDisclosure(decoded.disclosure);
+    const termsHash = parseTermsDocumentHash(
+      `sha256:${createHash('sha256').update(serialized).digest('hex')}`,
+    );
+    expect(termsHash).toBe(field(expected, 'canonicalSha256'));
+
+    const snapshot = planTermsConsentSnapshot({
+      disclosure: decoded.disclosure,
+      termsHash,
+    });
+    if (snapshot.kind !== 'ready') throw new Error('invalid terms snapshot');
+    const scopeValue = record(field(fixtureValue, 'scope'));
+    const scope = {
+      accountId: parseAccountId(field(scopeValue, 'accountId')),
+      vaultId: parseVaultId(field(scopeValue, 'vaultId')),
+    };
+    const consent = planTermsConsent({
+      context: scope,
+      command: {
+        submissionId: parseTermsConsentSubmissionId(
+          field(fixtureValue, 'submissionId'),
+        ),
+        presentedTermsVersion: snapshot.snapshot.termsVersion,
+        presentedTermsHash: snapshot.snapshot.termsHash,
+        consent: { kind: 'affirmed' },
+      },
+      snapshot: snapshot.snapshot,
+      consentId: parseTermsConsentId(field(fixtureValue, 'consentId')),
+      acceptedAt: number(field(fixtureValue, 'acceptedAt')),
+      existing: undefined,
+    });
+    expect(consent.kind).toBe(field(expected, 'consentPlan'));
+    if (consent.kind !== 'append') throw new Error('terms consent rejected');
+
+    expect(
+      decideTermsConsentStatus({
+        context: scope,
+        current: snapshot.snapshot,
+        latest: undefined,
+        acceptancePolicy: { kind: 'initial-release' },
+      }),
+    ).toMatchObject({
+      kind: 'resolved',
+      status: { kind: field(expected, 'initialStatus') },
+    });
+    expect(
+      decideTermsConsentStatus({
+        context: scope,
+        current: snapshot.snapshot,
+        latest: consent.record,
+        acceptancePolicy: { kind: 'initial-release' },
+      }),
+    ).toMatchObject({
+      kind: 'resolved',
+      status: { kind: field(expected, 'acceptedStatus') },
+    });
+  });
+
   it('keeps the legacy request encoding and response invariants executable', async () => {
     const fixtureData = record(await fixture('sync/legacy-v1.json'));
     const request = decodeSyncRequest(field(fixtureData, 'request'));
