@@ -803,6 +803,19 @@ describe('Go migration shared contract fixtures', () => {
       kind: 'accepted',
       status: { kind: 'in-progress' },
     });
+    for (const [fixtureName, statusKind] of [
+      ['retryWait', 'retry-wait'],
+      ['failed', 'failed'],
+      ['terminal', 'completed'],
+    ] as const) {
+      const remote = createAccountDeletionHttpRemote(async () =>
+        Response.json(field(deletion, fixtureName)),
+      );
+      await expect(remote.start({ idempotencyKey })).resolves.toMatchObject({
+        kind: 'accepted',
+        status: { kind: statusKind },
+      });
+    }
     const rejected = createAccountDeletionHttpRemote(async () =>
       Response.json(field(deletion, 'invalidTerminal')),
     );

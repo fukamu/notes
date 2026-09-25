@@ -1,5 +1,38 @@
 # Account deletion saga foundation
 
+## Go migration status (T12b)
+
+Issue #458 ports the provider-neutral saga to
+`backend/internal/accountdeletion` and PostgreSQL migration
+`00014_account_deletion_saga.sql`. The fixed step order, typed states, bounded
+leases and retries, prefix receipts, and compare-and-swap transitions are now
+covered by Go unit and PostgreSQL integration tests. The shared account
+lifecycle fixture is decoded by TypeScript and Go so public states cannot drift.
+
+`account_deletion_operations` intentionally has no live Account/Vault foreign
+key; a continuation and minimal journal must survive finalization long enough
+to report the terminal result. An insert trigger nevertheless requires the
+exact current Personal Vault owner for every new operation. Receipts and
+continuations remain operation-owned and cascade only with that journal.
+PostgreSQL tests cover owner rejection, cross-owner operation-ID collision,
+sequence and revision races, exact replay, atomic success receipts, malformed
+stored rows, and journal access after live Account/Vault removal.
+
+The Go application exposes one explicit port for each effect: session
+revocation, immediate subscription cancellation, Vault live-data purge,
+private-object purge, and account finalization. A continuation sequence is
+consumed before a step is claimed; only a newly applied claim can dispatch an
+effect. Provider errors become the non-sensitive `effect-unavailable` code.
+Operation ID plus step is the stable effect identity; adapters must make that
+identity idempotent across timeout and lease recovery.
+
+This slice does not compose real effect adapters. In particular, contract
+evidence still blocks implicit owner deletion until its legal retention or
+deletion policy is separately approved. No provider, production migration,
+data deletion, cancellation, deployment, or public route is enabled by #458.
+The sections below describe the pre-existing TypeScript/D1 implementation that
+the Go port preserves as its compatibility oracle.
+
 Issue #168 introduces only the durable, provider-neutral foundation for account
 deletion. It does not expose an HTTP endpoint, revoke a session, cancel a real
 subscription, delete content, contact R2 or KMS, or change browser storage.
@@ -49,14 +82,14 @@ That lets the final step remove live control-plane state while retaining a
 minimal progress record for retry and the separately governed retention
 window. Its receipts do have an internal foreign key to the operation.
 
-Migration `0009_account_deletion_saga` is additive and part of the explicit
+The legacy migration `0009_account_deletion_saga` is additive and part of the explicit
 production manifest. This change does not apply it to production. Rolling code
 back stops new operations but must preserve operation and receipt rows so an
 in-progress deletion can be resumed by the later implementation or runbook.
 
 ## Local development
 
-Nothing invokes this repository from the current local/Sites runtime. Existing
+Nothing invokes either repository from the current local/Sites runtime. Existing
 local-first notes, offline sync, logout purge, and v1/v2 compatibility remain
 unchanged. Tests use Miniflare D1 and pure fixtures only; they perform no real
 deletion, billing, email, Cloudflare, or KMS operation.
