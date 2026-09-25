@@ -5,6 +5,10 @@ import {
   planVerifiedProviderFact,
 } from '@/server/billing/core';
 import {
+  parseProviderInvoiceReference,
+  parseReconciliationSnapshotId,
+} from '@/server/billing/public';
+import {
   beginCheckoutCommand,
   billingContext,
   cancellationScheduledFact,
@@ -123,6 +127,32 @@ describe('Billing subscription aggregate', () => {
         reconciliationSnapshot(7_000),
       ),
     ).toMatchObject({ kind: 'ignore', reason: 'stale' });
+  });
+
+  it('accepts a distinct reconciliation snapshot observed in the same millisecond', () => {
+    const current = apply(checkoutRecord(), paymentFailedFact(5_000));
+    const first = planReconciliationSnapshot(
+      current,
+      reconciliationSnapshot(8_000),
+    );
+    if (first.kind !== 'apply') throw new Error('expected first snapshot');
+
+    const sameTime = reconciliationSnapshot(8_000);
+    const second = planReconciliationSnapshot(first.record, {
+      ...sameTime,
+      snapshotId: parseReconciliationSnapshotId('snapshot-same-time'),
+      latestPaidInvoice: null,
+      delinquency: {
+        reason: 'payment-action-required',
+        invoiceReference: parseProviderInvoiceReference('in_same_time'),
+        occurredAt: 8_000,
+      },
+    });
+
+    expect(second).toMatchObject({
+      kind: 'apply',
+      record: { lifecycle: { kind: 'delinquent' } },
+    });
   });
 
   it('keeps cancellation terminal under later events and reconciliation', () => {

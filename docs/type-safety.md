@@ -75,6 +75,8 @@ Drizzle schema、checked-in migration、feature-owned manifestはschema testがt
 
 T05のrequest-time runtimeはGoとPostgreSQLです。TypeScript/D1 adapterは移行後機能のcompatibility contractを保護するtest対象として残り、T14までrequest handlerの意味論を比較するために検査します。Goはenvironmentを起動時にdecodeし、PostgreSQL rowをscan後に検査し、欠落・不正設定や未migration schemaをfail closedにします。`npm run check:environment` は静的frontend route、public build allowlist、Go起動、container assetの整合を照合します。
 
+T09aのbilling境界はprovider factとsnapshotをtyped discriminantで検査し、Account/Vault、subscription、provider mapping、時刻順序、lifecycle shapeをpure coreで確定します。PostgreSQL adapterはnullable columnを明示的にscanして同じrecord invariantを再検査し、aggregate versionとunique receipt/checkpointを一transactionで更新します。同一時刻の別snapshotはIDで区別し、同一ID replayだけをduplicateとするため、時刻だけをidempotency keyとして扱いません。
+
 `NEXT_PUBLIC_SITE_URL` は未設定または空なら公開既定URLを使います。設定時はabsolute HTTP(S) URLだけを受理し、不正値はmetadata moduleの初期化／buildを明示的に失敗させます。相対URL、HTTP(S)以外、非文字列をassertionで通しません。
 
 ## trust boundary

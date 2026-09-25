@@ -21,12 +21,13 @@ delete existing resources.
 - T07 envelope encryption, GCP Cloud KMS boundary, and wrapped-DEK keyring were
   integrated by #428 / PR #429. The integration tip before the current slice
   is `6cc1de6e5938f77a5930cd2301ca12399a6c5f0f`.
-- T08a immutable object metadata/write intents/delete outbox and T08b durable
-  rotation/re-encryption were integrated by #430 / PR #431 and #432 / PR #433.
-  T08c Issue #434 starts from exact integration tip
-  `8b8530f3687b293bfe6a072a7e8104f6cd410289`. All remain disconnected and do
-  not select or create an object/backup resource, expose a content route, run a
-  production job, or destroy a key.
+- T08a immutable object metadata/write intents/delete outbox, T08b durable
+  rotation/re-encryption, and T08c recovery/retirement evidence were integrated
+  by #430 / PR #431, #432 / PR #433, and #434 / PR #435. T09a Issue #436 starts
+  from exact integration tip `dba65ed9e6aa5fedf4456ccb464ec55041468ee9`.
+  All encrypted-object paths remain disconnected and do not select or create
+  an object/backup resource, expose a content route, run a production job, or
+  destroy a key.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -62,7 +63,7 @@ the same contract as its closed route.
 | F14 | B     | immutable encrypted object                  | T08                             | V04,V06,V08  | Go core/Postgres #430; disconnected          |
 | F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08      | reencryption #432; fixture recovery #434     |
 | F16 | B     | quota                                       | T11                             | V04,V05      | pending                                      |
-| F17 | B     | billing projection                          | T09                             | V04,V07      | blocked on #404 where applicable             |
+| F17 | B     | billing projection                          | T09                             | V04,V07      | Go core/Postgres #436; cancel awaits #404    |
 | F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | pending, remains closed                      |
 | F19 | B     | entitlement / offline lease                 | T09                             | V05,V07      | pending                                      |
 | F20 | B     | legal checkout evidence                     | T10                             | V01,V07      | contract captured in #410                    |
@@ -82,10 +83,10 @@ the same contract as its closed route.
 | V01 | shared JSON, strict decoding, black-box HTTP            | same fixture through TS #410 and Go unit/DB/HTTP #418         |
 | V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests  |
 | V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426                  |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object intent/CAS/outbox #430         |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing CAS #436         |
 | V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                   |
 | V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434           |
-| V07 | billing/evidence duplicate/order/failure                | T01 browser decoder baseline; T09 pending                     |
+| V07 | billing/evidence duplicate/order/failure                | shared fixture/atomic projection #436; Stripe remains open    |
 | V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434        |
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                     |
 | V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips |
@@ -123,6 +124,11 @@ the same contract as its closed route.
   indexes scoped key uniqueness to one Vault; retaining that shape with one
   shared object namespace could let a colliding key be collected by another
   Vault. Go therefore fails closed across the whole object namespace.
+- Billing reconciliation no longer drops a different provider snapshot merely
+  because it has the same millisecond `observedAt` as the prior snapshot.
+  Exact snapshot IDs remain durably deduplicated, older observations remain
+  stale, and same-time delinquency still dominates paid evidence. The
+  TypeScript oracle carries the same regression fix.
 - These protections are recorded as intentional boundary hardening rather than
   accidental wire compatibility changes.
 
@@ -601,3 +607,42 @@ drill, backup deletion, or key disable/destruction requires a separate reviewed
 operation naming the exact resource, approval, retention window, audit record,
 and recovery path. T13 will compose an explicit local operations command around
 this application boundary without turning readiness into automatic deletion.
+
+## T09a billing aggregate and PostgreSQL projection slice
+
+Issue #436 ports the provider-neutral billing aggregate and application
+service to Go. Checkout starts with no entitlement evidence. Only verified
+provider facts or a reconciliation snapshot can establish trial, paid,
+delinquent, scheduled-cancellation, or terminal-cancellation state. Provider,
+customer, subscription, owner, and subscription-ID mappings fail closed. A
+payment-method update never clears delinquency, and same-time delinquency wins
+over paid evidence regardless of delivery order.
+
+Migration 00007 adds one Account/Vault-scoped subscription aggregate, checkout
+intents, provider-event receipts, and reconciliation checkpoints. A
+serializable transaction locks the aggregate, inserts the unique receipt or
+checkpoint, and advances the version-CAS projection together. Lost responses
+replay as duplicates without advancing state. Concurrent different events from
+one expected version produce one applied result and one CAS conflict; reuse of
+an event or snapshot ID for a different subscription is rejected. The schema
+stores historical `last_delinquency_at` separately from the current lifecycle
+shape so a terminal transition does not erase ordering evidence.
+
+The shared `billing/projection.json` fixture runs through both the TypeScript
+and Go cores. Unit and disposable-PostgreSQL tests cover owner rejection,
+mapping mismatch, duplicate/lost-response replay, same-second event ordering,
+same-millisecond distinct snapshots, cross-subscription ID collision, and
+concurrent CAS. This slice has no Stripe SDK or HTTP transport, signature
+verification, provider call, public route, charge, cancellation request,
+entitlement grant, offline lease, deployment, or production schema apply.
+T09b owns the disconnected Stripe adapter and T09c owns Entitlement. Normal
+cancellation remains dependent on #403 / Draft PR #404 and is not inferred
+from this projection work.
+
+Before any approved persistent apply, rollback is a reviewed code revert plus
+disposable-schema recreation. After a persistent apply, stop billing ingestion
+while preserving migration 00007, every event receipt/checkpoint, provider
+mapping, version, and historical timestamp. Resume only with the matching
+artifact and schema. Never drop billing evidence, synthesize entitlement,
+cancel a provider subscription, or replay a provider event as part of code
+rollback.
