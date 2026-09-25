@@ -60,6 +60,15 @@ a newly reserved old-key write. These services remain uncomposed: no route,
 scheduler, real object provider, production KMS request, or key destruction is
 enabled.
 
+T08c Issue #434 adds a disconnected fixture-only Vault recovery drill. It
+strictly decodes the versioned backup manifest, authenticates every declared
+mixed-version object with exact Vault/object/revision AAD, clears recovered
+plaintext, and emits only a content-free receipt. The retirement evidence gate
+never returns a delete action: even complete evidence stops at a separately
+approved production-key-destruction requirement. Its only backup adapter is an
+isolated in-memory fake. No production backup provider, credential, route,
+scheduler, KMS disable/delete call, or recovery claim is configured.
+
 ## Local start
 
 ```bash

@@ -1,9 +1,12 @@
 # DEK rotation recovery drill and retirement gate
 
-Issue #190 defines a fixture-only recovery drill and an evidence gate for old
-Vault DEKs. It does not connect to a production backup, R2, D1, or KMS; it does
-not delete ciphertext, wrapped metadata, KEKs, or DEKs. A provider adapter and
-every real operation require separate review and explicit user approval.
+Issue #190 established the TypeScript fixture-only recovery drill and evidence
+gate for old Vault DEKs. Go migration Issue #434 ports that contract to the
+provider-independent Go application boundary and shares one versioned manifest
+fixture between both decoders. Neither implementation connects to a production
+backup, object storage, database, or KMS; neither deletes ciphertext, wrapped
+metadata, KEKs, or DEKs. A provider adapter and every real operation require
+separate review and explicit user approval.
 
 ## Fixture drill
 
@@ -33,6 +36,12 @@ Run the fake drill in this order:
 The drill deliberately covers both source and target DEKs. A successful
 receipt says that this fixture was recoverable at `drilledAt`; it does not prove
 that a production provider snapshot is complete or restorable.
+
+The Go evidence is in
+`backend/internal/encryptedobject/recovery_test.go` and
+`backend/internal/encryptedobject/recovery_service_test.go`. The backup adapter
+copies bytes on read and replacement and is isolated under
+`backend/internal/adapters/recoverybackup`; it is not composed into the server.
 
 ## Retirement evidence gate
 
