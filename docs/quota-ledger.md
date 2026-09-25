@@ -90,6 +90,8 @@ failures and deadlocks a bounded number of times, and return an explicit
 candidate read changes state or treats age as proof that capacity can be
 released.
 
-The Go ledger remains disconnected until the later T11 journal/content and
-Sync v2 composition Issue. No production migration, backfill, route, provider,
-automatic reconciler, or deployment is authorized by #450.
+The Go journal/content index is now available as a disconnected boundary from
+Issue #452. The ledger remains disconnected until T11c composes quota,
+encrypted objects, journal evidence, cursor authentication, and Sync v2 HTTP.
+No production migration, backfill, route, provider, automatic reconciler, or
+deployment is authorized by #450 or #452.
