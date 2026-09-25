@@ -22,6 +22,8 @@ type Provider struct {
 	client *stripe.Client
 }
 
+var _ billing.SubscriptionCancellationProviderPort = (*Provider)(nil)
+
 func NewProvider(apiKey string, mode stripebilling.RuntimeMode, httpClient *http.Client) (*Provider, error) {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
@@ -143,6 +145,75 @@ func (provider *Provider) RetrieveSubscriptionSnapshot(ctx context.Context, refe
 		}
 	}
 	return result, nil
+}
+
+func (provider *Provider) CancelSubscription(
+	ctx context.Context,
+	command billing.ProviderCancellationCommand,
+) (billing.ProviderCancellationObservation, error) {
+	if provider == nil || provider.client == nil || command.Provider != stripebilling.Provider {
+		return billing.ProviderCancellationObservation{}, ErrInvalidProviderCommand
+	}
+	if _, err := billing.ParseProviderSubscriptionReference(string(command.ProviderSubscriptionReference)); err != nil ||
+		!subscriptionReferencePattern.MatchString(string(command.ProviderSubscriptionReference)) {
+		return billing.ProviderCancellationObservation{}, ErrInvalidProviderCommand
+	}
+	if _, err := billing.ParseCancellationIdempotencyKey(string(command.IdempotencyKey)); err != nil ||
+		command.RequestedAt < 0 || command.RequestedAt > 9_007_199_254_740_991 {
+		return billing.ProviderCancellationObservation{}, ErrInvalidProviderCommand
+	}
+	params := &stripe.SubscriptionCancelParams{
+		Params:     stripe.Params{IdempotencyKey: stripe.String(string(command.IdempotencyKey))},
+		InvoiceNow: stripe.Bool(false),
+		Prorate:    stripe.Bool(false),
+	}
+	subscription, err := provider.client.V1Subscriptions.Cancel(
+		ctx,
+		string(command.ProviderSubscriptionReference),
+		params,
+	)
+	if err != nil {
+		if terminalStripeCancellationError(err) {
+			return providerCancellationObservation(
+				command,
+				billing.ProviderCancellationTerminalFailure,
+				command.RequestedAt,
+			), nil
+		}
+		return billing.ProviderCancellationObservation{}, err
+	}
+	if subscription == nil || subscription.ID != string(command.ProviderSubscriptionReference) ||
+		subscription.Status != stripe.SubscriptionStatusCanceled || subscription.CanceledAt < 0 ||
+		subscription.CanceledAt > 9_007_199_254_740 {
+		return billing.ProviderCancellationObservation{}, nil
+	}
+	return providerCancellationObservation(
+		command,
+		billing.ProviderCancellationCancelled,
+		subscription.CanceledAt*1_000,
+	), nil
+}
+
+func providerCancellationObservation(
+	command billing.ProviderCancellationCommand,
+	kind billing.ProviderCancellationKind,
+	observedAt int64,
+) billing.ProviderCancellationObservation {
+	return billing.ProviderCancellationObservation{
+		Kind: kind, Provider: command.Provider,
+		ProviderSubscriptionReference: command.ProviderSubscriptionReference,
+		IdempotencyKey:                command.IdempotencyKey, ObservedAt: observedAt,
+	}
+}
+
+func terminalStripeCancellationError(err error) bool {
+	var stripeError *stripe.Error
+	if !errors.As(err, &stripeError) {
+		return false
+	}
+	status := stripeError.HTTPStatusCode
+	return status >= http.StatusBadRequest && status < http.StatusInternalServerError &&
+		status != http.StatusConflict && status != http.StatusTooManyRequests
 }
 
 func mapSubscription(input *stripe.Subscription) stripebilling.ProviderSubscription {

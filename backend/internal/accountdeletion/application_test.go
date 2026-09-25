@@ -41,6 +41,11 @@ func TestServiceConsumesBeforeEffectsAndReplaysWithoutDuplicates(t *testing.T) {
 	if err != nil || second.Kind != ApplicationAccepted || effects.calls[StepCancelSubscription] != 1 {
 		t.Fatalf("second Resume() = %#v, calls=%v, %v", second, effects.calls, err)
 	}
+	if len(effects.inputs) != 2 || effects.inputs[0].RequestedAt != 1_000 ||
+		effects.inputs[0].ExecutedAt != 1_100 || effects.inputs[1].RequestedAt != 1_100 ||
+		effects.inputs[1].ExecutedAt != 1_200 {
+		t.Fatalf("effect timing = %#v", effects.inputs)
+	}
 
 	future, _ := CreateContinuationToken(credentials.bundle.Secret, 9)
 	rejected, err := service.Resume(context.Background(), ResumeCommand{ContinuationToken: future}, 1_102)
@@ -166,6 +171,7 @@ func (port *applicationCredentialsPort) DigestSecret(secret ContinuationSecret) 
 
 type applicationEffects struct {
 	calls  map[Step]int
+	inputs []StepEffectInput
 	result StepEffectResult
 	err    error
 }
@@ -175,6 +181,7 @@ func (effects *applicationEffects) invoke(input StepEffectInput) (StepEffectResu
 		effects.calls = make(map[Step]int)
 	}
 	effects.calls[input.Step]++
+	effects.inputs = append(effects.inputs, input)
 	if effects.err != nil {
 		return StepEffectResult{}, effects.err
 	}

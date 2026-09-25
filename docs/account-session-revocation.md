@@ -1,5 +1,26 @@
 # Account-wide session revocation
 
+## Go migration status
+
+Issue #460 adapts the PostgreSQL `SessionStore` directly to the typed Go
+account-deletion effect contract. The saga supplies both the stable prior-step
+request time and the current execution time; revocation uses the latter so a
+session created before a retry is not left active. A zero-row replay succeeds
+only after the exact owner exists and no active session remains.
+
+Session creation and rotation now take the same retained Personal Vault row
+lock as account-deletion start. Once an operation exists for that owner scope,
+both issuance paths fail closed with `ErrSessionDeletionPending`. If issuance
+wins the lock before deletion start, the operation is created afterward and
+the first revocation attempt includes that session. PostgreSQL integration
+tests cover both race outcomes, a later session that forces a retry, replay,
+and cross-owner rejection.
+
+The adapter exposes only fixed saga failure codes. It does not return a token,
+session ID, revocation count, or database error. The account-deletion HTTP
+handlers remain unmounted, so this implementation does not revoke any live or
+production session by itself.
+
 Issue #169 adds the first external effect used by the account-deletion saga:
 revoking every active session owned by the authenticated Account and Personal
 Vault. It does not expose an HTTP account-deletion endpoint and does not cancel
@@ -13,7 +34,7 @@ persisted, already-authenticated saga operation. Request bodies cannot supply or
 replace that scope. The caller also supplies the revocation timestamp; neither
 the pure plans nor the adapter reads a clock.
 
-The D1 adapter executes these statements as one D1 batch:
+The legacy D1 adapter executes these statements as one D1 batch:
 
 1. confirm that the exact Account/Vault owner pair exists;
 2. revoke every session in that scope whose `revoked_at` is still null;
