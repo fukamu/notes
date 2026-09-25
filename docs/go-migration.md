@@ -43,6 +43,9 @@ delete existing resources.
 - T10c legal HTTP/composition and T09d billing contention hardening were
   integrated by #446 / PR #447 and #448 / PR #449. T11a Issue #450 starts from
   exact integration tip `383587fb7acdcf54026c5cefa40811dd5a2b243f`.
+- T11a quota policy/ledger was integrated by #450 / PR #451. T11b Issue #452
+  starts from exact integration tip
+  `347be2997b38e67502936972f7cb63934efcac43`.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -70,8 +73,8 @@ the same contract as its closed route.
 | F06 | B     | email OTP                                   | T06                             | V03          | Go core/HMAC/CAS #426; disconnected          |
 | F07 | B     | identity / vault context                    | T06                             | V03,V04      | session #422; persistent directories #426    |
 | F08 | B     | signup admission                            | T06,T10                         | V03,V07      | provisioning #426; Go terms adapter #442     |
-| F09 | B     | vault content                               | T11                             | V04,V05      | pending                                      |
-| F10 | B     | sync v2                                     | T11                             | V01,V04,V05  | contract captured in #410                    |
+| F09 | B     | vault content                               | T11                             | V04,V05      | Go journal/index #452; composition open      |
+| F10 | B     | sync v2                                     | T11                             | V01,V04,V05  | Go durable journal #452; HTTP open           |
 | F11 | B     | envelope encryption                         | T07                             | V06          | Go AES-GCM/fixture implemented by #428       |
 | F12 | B     | KMS / DEK                                   | T07                             | V06,V09      | Go local boundary #428; external proof open  |
 | F13 | B     | key rotation                                | T08                             | V04,V06,V08  | Go state machine/Postgres #432; disconnected |
@@ -93,20 +96,20 @@ the same contract as its closed route.
 
 ## Verification matrix
 
-| ID  | Required evidence                                       | Current evidence                                                                          |
-| --- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418; legal fixtures #442/#444; legal Go HTTP #446                              |
-| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                              |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426; legal HTTP #446                             |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450 |
-| V05 | sync/quota paging, retry, conflict, limits              | quota policy/ledger #450; sync paging/composition pending                                 |
-| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                                       |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; legal #442/#444/#446                            |
-| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434                                    |
-| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                 |
-| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                             |
-| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                                           |
-| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                                 |
+| ID  | Required evidence                                       | Current evidence                                                                                        |
+| --- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418; legal fixtures #442/#444; legal Go HTTP #446                                            |
+| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                            |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426; legal HTTP #446                                           |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450; journal #452 |
+| V05 | sync/quota paging, retry, conflict, limits              | quota #450; journal paging/conflict #452; composition pending                                           |
+| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                                                     |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; legal #442/#444/#446                                          |
+| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434                                                  |
+| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                               |
+| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                           |
+| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                                                         |
+| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                                               |
 
 ## Intentional security differences
 
@@ -935,3 +938,44 @@ stop online mutations, preserve migration 00011 and every pending reservation,
 restore a compatible artifact or reviewed forward fix, and reconcile only
 against durable content and journal evidence. Never delete or age-release
 pending reservations as rollback.
+
+## T11b Sync v2 durable journal and content-index slice
+
+Issue #452 ports the disconnected tenant-scoped Sync v2 journal from the D1
+reference to `backend/internal/syncv2` and PostgreSQL. The pure planner retains
+the existing card create/update, conflict create/resolve, and card-delete
+state transitions. It allocates Vault-local display IDs and contiguous change
+sequences, orders conflict tombstones before the final card tombstone, and
+returns a durable receipt on exact mutation/fingerprint replay. Reusing a
+mutation ID with another fingerprint remains rejected.
+
+Migration 00012 adds owner-scoped allocator state, card/conflict indexes,
+receipts, and change descriptors. It stores no title, body, link, plaintext,
+ciphertext, wrapped key, billing, or provider data. Encrypted payloads continue
+to belong to the migration 00005 immutable-object repository. The later T11c
+application service must use that repository and this journal rather than add
+a second content store.
+
+Each commit uses one serializable PostgreSQL transaction plus a Vault-scoped
+advisory lock. Card/conflict index changes, the receipt, ordered journal rows,
+and allocator advance either all commit or all roll back. Serialization and
+deadlock failures retry at most three attempts; exhausted concurrency is a
+visible `cas-conflict`, while unrelated database failures remain visible. A
+second Account cannot open a mismatched Vault, and every query uses the
+captured Account/Vault scope.
+
+The first read captures `next_change_sequence - 1`; continuations retain that
+high watermark and use a 501-row lookahead to return at most 500 descriptors.
+Invalid windows, malformed rows, and sequence gaps fail closed. Tests cover
+the complete seven-change lifecycle, response-loss replay, identical IDs in
+different Vaults, competing revisions, injected journal-insert rollback, an
+exact 500-item page, and exclusion of a new edit from an existing snapshot.
+
+This slice does not publish the Sync v2 route, hydrate encrypted content,
+connect authentication/entitlement/quota, backfill D1, run a production
+migration, or create a provider resource. Before a persistent apply, rollback
+is a reviewed code revert and disposable-schema recreation. After any future
+approved apply, first stop Sync v2 writes, preserve migration 00012 receipts
+and sequences together with migration 00005 objects and migration 00011 quota
+reservations, and restore a compatible artifact or reviewed forward migration.
+Dropping the journal or reusing sequences is not a safe rollback.
