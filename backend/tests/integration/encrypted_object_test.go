@@ -117,6 +117,17 @@ func TestEncryptedObjectPostgresCrashResumeIsolationAndOutbox(t *testing.T) {
 	if err != nil || len(ready) != 1 || ready[0].ObjectKey != orphanKey {
 		t.Fatalf("ready deletes = %#v, %v", ready, err)
 	}
+	staleConfirmation := ready[0]
+	staleConfirmation.AttemptCount++
+	if err := storeA.CompleteDelete(ctx, staleConfirmation); !errors.Is(err, postgresadapter.ErrEncryptedObjectDeleteConflict) {
+		t.Fatalf("stale delete confirmation error = %v", err)
+	}
+	staleReschedule := ready[0]
+	staleReschedule.AttemptCount += 2
+	staleReschedule.NextAttemptAt = 15_000
+	if err := storeA.RescheduleDelete(ctx, staleReschedule); !errors.Is(err, postgresadapter.ErrEncryptedObjectDeleteConflict) {
+		t.Fatalf("stale delete reschedule error = %v", err)
+	}
 	queuedKeyIntent := activeIntent
 	queuedKeyIntent.Object = encryptedobject.ObjectRef{Kind: cryptocontent.ObjectConflict, ObjectID: "01991f20-61d2-7000-8000-000000000004"}
 	queuedKeyIntent.WriteID = integrationWriteID(t, 506)

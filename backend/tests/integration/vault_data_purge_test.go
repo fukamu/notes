@@ -536,6 +536,7 @@ func assertRowCount(
 		"identities": {"account_id": true}, "vault_dek_versions": {"vault_id": true},
 		"billing_subscriptions": {"account_id": true}, "terms_consent_evidence": {"account_id": true},
 		"contract_evidence": {"account_id": true}, "privacy_requests": {"account_id": true},
+		"entitlement_projections":     {"vault_id": true},
 		"account_deletion_operations": {"account_id": true}, "vault_encrypted_objects": {"vault_id": true},
 		"vault_encrypted_write_intents": {"vault_id": true}, "vault_object_delete_outbox": {"vault_id": true},
 		"vault_sync_v2_states": {"vault_id": true}, "vault_sync_v2_cards": {"vault_id": true},

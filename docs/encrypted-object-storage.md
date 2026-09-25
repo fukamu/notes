@@ -1,5 +1,14 @@
 # Private encrypted object storage
 
+The Go repository and isolated memory-storage adapter were introduced by
+Issue #430. Issue #464 adds the disconnected account-deletion consumer for the
+PostgreSQL delete outbox. It verifies the exact owner, deletion operation, and
+prior receipt; selects only a bounded due batch; accepts storage `not-found` as
+idempotent success; and requires compare-and-swap confirmation plus a zero
+post-count. The generic Go outbox drain now also rejects zero-row completion or
+reschedule mutations. No production object-storage adapter or credential is
+configured.
+
 Issue #117 adds a provider-neutral, Vault-scoped storage boundary for immutable
 Envelope Encryption ciphertext. It is not connected to the legacy `/api/sync`
 route and does not configure or access a production R2 bucket.
