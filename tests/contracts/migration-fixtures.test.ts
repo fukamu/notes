@@ -79,6 +79,20 @@ import {
   type ReconciliationSnapshot,
   type VerifiedProviderFact,
 } from '@/server/billing/public';
+import {
+  contractOfferSnapshotDecoder,
+  parseContractEvidenceId,
+  parseContractOfferHash,
+} from '@/server/legal-checkout/public';
+import {
+  decodeStripeEventPlan,
+  planStripeCheckout,
+} from '@/server/stripe/core';
+import {
+  parseStripeBillingConfiguration,
+  parseStripeWebhookSecret,
+} from '@/server/stripe/public';
+import { createWebCryptoStripeWebhookVerifier } from '@/server/stripe/webhook-signature';
 
 const fixtureRoot = new URL('../../contracts/fixtures/', import.meta.url);
 
@@ -390,6 +404,65 @@ describe('Go migration shared contract fixtures', () => {
       offer: { serviceName: 'FUKAMU Notes', trialDays: 14 },
     });
     expect(field(fixtureValue, 'dependency')).toBe('issue-403-pr-404');
+  });
+
+  it('keeps Stripe Checkout planning and signed webhook decoding compatible', async () => {
+    const fixtureValue = record(await fixture('billing/stripe.json'));
+    const configuration = parseStripeBillingConfiguration(
+      field(fixtureValue, 'configuration'),
+    );
+    const commandValue = record(field(fixtureValue, 'command'));
+    const contractValue = record(field(commandValue, 'contract'));
+    const command = {
+      subscriptionId: parseBillingSubscriptionId(
+        field(commandValue, 'subscriptionId'),
+      ),
+      checkoutIntentId: parseCheckoutIntentId(
+        field(commandValue, 'checkoutIntentId'),
+      ),
+      createdAt: number(field(commandValue, 'createdAt')),
+      contract: {
+        evidenceId: parseContractEvidenceId(field(contractValue, 'evidenceId')),
+        offerHash: parseContractOfferHash(field(contractValue, 'offerHash')),
+        offer: decodeOrThrow(
+          contractOfferSnapshotDecoder,
+          field(contractValue, 'offer'),
+          'shared Stripe contract offer',
+        ),
+      },
+    };
+    const expectedCheckout = record(field(fixtureValue, 'expectedCheckout'));
+    const checkout = planStripeCheckout(configuration, command);
+    expect(checkout.idempotencyKey).toBe(
+      string(field(expectedCheckout, 'idempotencyKey')),
+    );
+    expect(Object.fromEntries(checkout.fields)).toEqual(
+      field(expectedCheckout, 'fields'),
+    );
+
+    const webhook = record(field(fixtureValue, 'webhook'));
+    const rawBody = new TextEncoder().encode(string(field(webhook, 'rawBody')));
+    const verifier = createWebCryptoStripeWebhookVerifier(
+      parseStripeWebhookSecret(field(webhook, 'secret')),
+    );
+    await expect(
+      verifier.verify({
+        rawBody,
+        signatureHeader: field(webhook, 'signatureHeader'),
+        receivedAt: number(field(webhook, 'receivedAt')),
+      }),
+    ).resolves.toEqual({ kind: 'verified', rawBody });
+    const event = decodeStripeEventPlan(
+      JSON.parse(new TextDecoder().decode(rawBody)),
+      {
+        mode: configuration.mode,
+        apiVersion: configuration.apiVersion,
+        receivedAt: number(field(webhook, 'receivedAt')),
+      },
+    );
+    expect(event.kind).toBe('fact');
+    if (event.kind !== 'fact') throw new Error('fixture event was not a fact');
+    expect(event.fact).toMatchObject(record(field(webhook, 'expected')));
   });
 
   it('keeps billing fact ordering and same-time reconciliation compatible', async () => {
