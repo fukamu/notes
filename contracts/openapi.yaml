@@ -102,6 +102,10 @@ paths:
       operationId: accountDeletionStartRoute
       x-fukamu-state: disconnected
       x-handler-contract: account-deletion-start
+      x-go-handler: backend/internal/httpapi/account_deletion.go
+      description: >-
+        The production route remains closed. The authenticated Go contract
+        stores the operation and capability before any deletion effect runs.
       responses:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
@@ -110,6 +114,11 @@ paths:
       operationId: accountDeletionResumeRoute
       x-fukamu-state: disconnected
       x-handler-contract: account-deletion-resume-one-step
+      x-go-handler: backend/internal/httpapi/account_deletion.go
+      description: >-
+        The production route remains closed. The same-origin Go continuation
+        contract consumes a capability sequence before at most one effect and
+        does not require the session that the first effect revokes.
       responses:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }

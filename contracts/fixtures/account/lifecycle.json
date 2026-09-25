@@ -5,6 +5,12 @@
       "status": "in-progress",
       "continuationToken": "ad1.SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS.0"
     },
+    "retryWait": {
+      "status": "retry-wait",
+      "retryAt": 2000,
+      "continuationToken": "ad1.SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS.1"
+    },
+    "failed": { "status": "failed" },
     "terminal": { "status": "completed" },
     "invalidTerminal": {
       "status": "completed",

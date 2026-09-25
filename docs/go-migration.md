@@ -50,6 +50,12 @@ delete existing resources.
   Sync v2 composition was integrated by #454 / PR #455. T12a Issue #456 starts
   from exact integration tip
   `68e8bc004bde27aed29ad7dd31017baaa9db2592`.
+- T12a privacy request journal and closed HTTP were integrated by #456 / PR
+  #457. T12b Issue #458 starts from exact integration tip
+  `0d5fc7160f66fe6f21b728c31703c6d2e530ab08` and ports the account-deletion
+  saga, continuation capability, PostgreSQL store, and disconnected HTTP
+  contract. Concrete destructive effect adapters remain a later reviewed
+  slice.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -67,53 +73,53 @@ State `A` means connected now, `B` means implemented/tested but disconnected,
 and `C` means absent or only a fake/provider gap. A disconnected handler is not
 the same contract as its closed route.
 
-| ID  | State | Capability                                  | Go evidence                     | Verification | Status                                       |
-| --- | ----- | ------------------------------------------- | ------------------------------- | ------------ | -------------------------------------------- |
-| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10      | integrated by #420 / PR #421                 |
-| F02 | B     | launch gate / private owner                 | T04                             | V02,V03      | signed gate #416; owner/origin enforced #418 |
-| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10  | Go/Postgres #418; Go-served UI #420          |
-| F04 | B     | session / CSRF                              | T06                             | V02,V03,V04  | Go core/Postgres integrated by #422          |
-| F05 | B     | Google OIDC                                 | T06                             | V03          | Go core/provider adapter #424; disconnected  |
-| F06 | B     | email OTP                                   | T06                             | V03          | Go core/HMAC/CAS #426; disconnected          |
-| F07 | B     | identity / vault context                    | T06                             | V03,V04      | session #422; persistent directories #426    |
-| F08 | B     | signup admission                            | T06,T10                         | V03,V07      | provisioning #426; Go terms adapter #442     |
-| F09 | B     | vault content                               | T11                             | V04,V05      | encrypted hydration composed by #454         |
-| F10 | B     | sync v2                                     | T11                             | V01,V04,V05  | Go application/closed HTTP #454              |
-| F11 | B     | envelope encryption                         | T07                             | V06          | Go AES-GCM/fixture implemented by #428       |
-| F12 | B     | KMS / DEK                                   | T07                             | V06,V09      | Go local boundary #428; external proof open  |
-| F13 | B     | key rotation                                | T08                             | V04,V06,V08  | Go state machine/Postgres #432; disconnected |
-| F14 | B     | immutable encrypted object                  | T08                             | V04,V06,V08  | Go core/Postgres #430; disconnected          |
-| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08      | reencryption #432; fixture recovery #434     |
-| F16 | B     | quota                                       | T11                             | V04,V05      | Go ledger #450; sync composition #454        |
-| F17 | B     | billing projection                          | T09                             | V04,V07      | Go core/Postgres #436; cancel awaits #404    |
-| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | Go core/SDK adapter #438; remains closed     |
-| F19 | B     | entitlement / offline lease                 | T09                             | V05,V07      | Go core/Postgres #440; disconnected          |
-| F20 | B     | legal checkout evidence                     | T10                             | V01,V07      | core/store #444; closed Go HTTP #446         |
-| F21 | B     | terms consent                               | T10                             | V01,V07      | core/store #442; closed Go HTTP #446         |
-| F22 | B     | normal cancellation                         | T09                             | V07          | blocked on #404                              |
-| F23 | B     | account deletion                            | T12                             | V03,V04,V08  | contract captured; #404 overlap pending      |
-| F24 | B     | privacy request journal                     | T12                             | V01,V03,V08  | Go journal/closed HTTP in #456               |
-| F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11      | core #414; legacy singleton seed #418        |
-| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09      | pending                                      |
-| F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10      | static runtime #420; legacy removal T14      |
-| F28 | C     | scheduler / realtime services               | none unless separately approved | V08          | intentionally not added                      |
+| ID  | State | Capability                                  | Go evidence                     | Verification | Status                                             |
+| --- | ----- | ------------------------------------------- | ------------------------------- | ------------ | -------------------------------------------------- |
+| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10      | integrated by #420 / PR #421                       |
+| F02 | B     | launch gate / private owner                 | T04                             | V02,V03      | signed gate #416; owner/origin enforced #418       |
+| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10  | Go/Postgres #418; Go-served UI #420                |
+| F04 | B     | session / CSRF                              | T06                             | V02,V03,V04  | Go core/Postgres integrated by #422                |
+| F05 | B     | Google OIDC                                 | T06                             | V03          | Go core/provider adapter #424; disconnected        |
+| F06 | B     | email OTP                                   | T06                             | V03          | Go core/HMAC/CAS #426; disconnected                |
+| F07 | B     | identity / vault context                    | T06                             | V03,V04      | session #422; persistent directories #426          |
+| F08 | B     | signup admission                            | T06,T10                         | V03,V07      | provisioning #426; Go terms adapter #442           |
+| F09 | B     | vault content                               | T11                             | V04,V05      | encrypted hydration composed by #454               |
+| F10 | B     | sync v2                                     | T11                             | V01,V04,V05  | Go application/closed HTTP #454                    |
+| F11 | B     | envelope encryption                         | T07                             | V06          | Go AES-GCM/fixture implemented by #428             |
+| F12 | B     | KMS / DEK                                   | T07                             | V06,V09      | Go local boundary #428; external proof open        |
+| F13 | B     | key rotation                                | T08                             | V04,V06,V08  | Go state machine/Postgres #432; disconnected       |
+| F14 | B     | immutable encrypted object                  | T08                             | V04,V06,V08  | Go core/Postgres #430; disconnected                |
+| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08      | reencryption #432; fixture recovery #434           |
+| F16 | B     | quota                                       | T11                             | V04,V05      | Go ledger #450; sync composition #454              |
+| F17 | B     | billing projection                          | T09                             | V04,V07      | Go core/Postgres #436; cancel awaits #404          |
+| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | Go core/SDK adapter #438; remains closed           |
+| F19 | B     | entitlement / offline lease                 | T09                             | V05,V07      | Go core/Postgres #440; disconnected                |
+| F20 | B     | legal checkout evidence                     | T10                             | V01,V07      | core/store #444; closed Go HTTP #446               |
+| F21 | B     | terms consent                               | T10                             | V01,V07      | core/store #442; closed Go HTTP #446               |
+| F22 | B     | normal cancellation                         | T09                             | V07          | blocked on #404                                    |
+| F23 | B     | account deletion                            | T12                             | V03,V04,V08  | Go saga/store/closed HTTP in #458; effects pending |
+| F24 | B     | privacy request journal                     | T12                             | V01,V03,V08  | Go journal/closed HTTP in #456                     |
+| F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11      | core #414; legacy singleton seed #418              |
+| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09      | pending                                            |
+| F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10      | static runtime #420; legacy removal T14            |
+| F28 | C     | scheduler / realtime services               | none unless separately approved | V08          | intentionally not added                            |
 
 ## Verification matrix
 
-| ID  | Required evidence                                       | Current evidence                                                                                                        |
-| --- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454; legal #442/#444/#446; privacy #456                                                                 |
-| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                            |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426; legal #446; privacy #456                                                  |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450; sync #452/#454; privacy #456 |
-| V05 | sync/quota paging, retry, conflict, limits              | quota #450; journal #452; authenticated encrypted composition #454                                                      |
-| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                                                                     |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; legal #442/#444/#446                                                          |
-| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434; privacy journal #456                                            |
-| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                               |
-| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                                           |
-| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                                                                         |
-| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                                                               |
+| ID  | Required evidence                                       | Current evidence                                                                                                                       |
+| --- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454; legal #442/#444/#446; privacy #456                                                                                |
+| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                                           |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426; legal #446; privacy #456; deletion #458                                                  |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450; sync #452/#454; privacy #456; deletion #458 |
+| V05 | sync/quota paging, retry, conflict, limits              | quota #450; journal #452; authenticated encrypted composition #454                                                                     |
+| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                                                                                    |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; legal #442/#444/#446                                                                         |
+| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434; privacy #456; deletion saga/continuation #458                                  |
+| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                              |
+| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                                                          |
+| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                                                                                        |
+| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                                                                              |
 
 ## Intentional security differences
 
@@ -1081,3 +1087,53 @@ request exists, first stop new submissions and processing, preserve migration
 reviewed forward fix, and resume from durable state. Never drop an accepted
 request or synthesize verification, execution, deletion, or completion
 evidence as rollback.
+
+## T12b account-deletion saga, capability, and closed HTTP
+
+Issue #458 ports the fixed five-step deletion state machine to
+`backend/internal/accountdeletion`. Pure plans own claims, lease recovery,
+bounded retry, terminal failure, exact prefix receipts, and public status.
+Strict codecs share the account lifecycle fixture with TypeScript and reject
+unknown or duplicate members, invalid UTF-8 or surrogate escapes, unsafe
+integers, forged owner fields, malformed tokens, and terminal responses that
+retain a capability.
+
+Migration 00014 adds PostgreSQL operations, step receipts, and digest-only
+continuations. New operations require an exact current Personal Vault owner,
+but the minimal operation journal has no live-owner foreign key so it survives
+the final live-state removal. Repository compare-and-swap consumes every fresh
+continuation sequence before work, permits only the immediately prior sequence
+as response-loss replay, and commits state plus a successful receipt in one
+transaction. Tests cover concurrent sequence and revision claims, cross-owner
+denial, credential conflict, replay, malformed rows, and journal survival.
+
+The application receives mandatory policy and one typed port for each ordered
+effect: all-session revocation, immediate subscription cancellation, Vault
+live-data purge, private-object purge, and account finalization. Only a newly
+applied step claim dispatches an effect. External errors are reduced to a
+non-sensitive failure code; operation ID plus step is the stable adapter
+idempotency identity. The HMAC credential adapter binds its derivation to the
+stored owner scope and never persists or logs the client secret.
+
+The start HTTP contract authenticates owner and CSRF before reading its bounded
+body, then persists the initial operation without revoking the session or
+clearing the cookie. The continuation contract requires CSRF but not the live
+session, consumes a sequence, runs at most one effect, and clears the stale
+cookie only for an accepted response. Both handlers remain outside
+`HandlerOptions`; production routes remain closed.
+
+This slice intentionally does not compose any destructive effect. Contract
+evidence currently provides a fail-closed foreign-key hold, and its retention
+or deletion policy still requires the legal/operational decision recorded in
+`docs/go-migration-decisions.md`. Immediate deletion cancellation remains
+distinct from the normal period-end cancellation in Draft PR #404. No Stripe,
+object store, KMS, email, production database, public route, or deployment is
+selected or changed.
+
+Before persistent use, rollback is a code revert and recreation of only the
+disposable test schema. After an accepted operation exists, stop new starts,
+preserve migration 00014 with every operation/receipt/continuation row, restore
+a compatible artifact or apply a reviewed forward migration, and resume from
+the durable capability. Code rollback cannot restore revoked sessions,
+cancelled subscriptions, deleted data, or finalized accounts and must never
+synthesize a receipt.

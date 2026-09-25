@@ -1,6 +1,38 @@
 # Account deletion HTTP boundary and continuation capability
 
-Issue #174 exposes provider-neutral handlers for starting and resuming the
+## Go migration status (T12b)
+
+`backend/internal/httpapi/account_deletion.go` now implements the same two
+contracts as disconnected Go handlers. Its runtime is deliberately absent from
+`HandlerOptions`; therefore the real routes keep their existing 404/503
+behavior and cannot select a fake or partial deletion composition.
+
+The start handler authenticates the secure session and same-origin metadata
+before reading the 2,048-byte bounded body. It stores only the operation and
+continuation and does not clear the cookie or execute `revoke-sessions`. The
+resume handler requires same-origin CSRF metadata but no live session, consumes
+the capability sequence, executes at most one step, and clears the stale
+session cookie only after an accepted response. Both use strict codecs and
+fixed, redacted errors; logs never include the continuation capability.
+
+`backend/internal/adapters/accountdeletioncredential` uses an injected
+minimum-256-bit HMAC key. Domain-separated, length-framed inputs bind the
+idempotency credential and derived continuation secret to the Account/Vault
+scope. PostgreSQL stores only the HMAC idempotency digest and SHA-256 secret
+digest. The adapter reads no environment and copies caller-owned key bytes.
+
+Go migration `00014_account_deletion_saga.sql` adds operation, receipt, and
+continuation storage together because no Go route is enabled between partial
+schema stages. Before persistent use, rollback may recreate only the disposable
+test database. Once an operation is accepted, rollback must first close new
+starts, preserve migration 00014 and all journal rows, restore a compatible
+artifact or apply a reviewed forward fix, and resume using the stored
+capability. It must never synthesize receipts or attempt to undo an external
+effect.
+
+The remainder documents the existing TypeScript/D1 compatibility contract.
+
+Issue #174 exposes the original provider-neutral handlers for starting and resuming the
 account-deletion saga. The public production routes remain fail closed until a
 composition root supplies every real D1, subscription cancellation, private
 object, encryption, and credential binding. Legacy test mode returns 404 and
