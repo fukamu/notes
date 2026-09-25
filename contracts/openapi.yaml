@@ -56,9 +56,12 @@ paths:
       operationId: syncV2Route
       x-fukamu-state: disconnected
       x-handler-contract: sync-v2
+      x-go-handler: backend/internal/httpapi/sync_v2.go
       description: >-
         The current route remains closed (404 in legacy-test, otherwise 503).
-        The 200/400/401/402/403/409/413 handler contract is tested separately.
+        The 200/400/401/402/403/409/413 Go handler contract is tested
+        separately with PostgreSQL, quota, and encrypted-object adapters and
+        is deliberately absent from the public HandlerOptions composition.
       responses:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
