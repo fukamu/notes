@@ -39,9 +39,12 @@ candidate, not an approved selection, and the effect remains outside runtime
 composition. Issue #468 connects a verified privacy deletion request only to
 the durable saga start. Its scoped deterministic identity makes a lost response
 replay one operation without executing any step, and `account-deletion-started`
-does not mean deletion completed. No provider, production migration, data
+does not mean deletion completed. Issue #474 adds an exact-owner read-only
+`notesctl account-deletion inspect` command. It reports durable state and timing
+without consuming the continuation, claiming a step, or invoking an effect;
+the mutating runner remains separate work. No provider, production migration, data
 deletion, cancellation, deployment, or public route is enabled by #458, #460,
-#462, #464, #466, or #468.
+#462, #464, #466, #468, or #474.
 The sections below describe the pre-existing TypeScript/D1 implementation that
 the Go port preserves as its compatibility oracle.
 

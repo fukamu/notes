@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fukamu/notes/backend/internal/accountdeletion"
 	"github.com/fukamu/notes/backend/internal/operations"
 	"github.com/fukamu/notes/backend/internal/quota"
 )
@@ -56,6 +57,10 @@ func TestRunMigratesOnlyTheExplicitAllowlistedEnvironment(t *testing.T) {
 			t.Fatal("quota commit must not run")
 			return operations.QuotaCommitResult{}, nil
 		},
+		func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			t.Fatal("account deletion audit must not run")
+			return operations.AccountDeletionAuditResult{}, nil
+		},
 	)
 	if code != 0 || !called || stdout.String() != "migration complete\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
@@ -85,6 +90,10 @@ func TestRunRefusesMigrationEnvironmentMismatchWithoutDisclosingURL(t *testing.T
 		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
 			t.Fatal("quota commit must not run")
 			return operations.QuotaCommitResult{}, nil
+		},
+		func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			t.Fatal("account deletion audit must not run")
+			return operations.AccountDeletionAuditResult{}, nil
 		},
 	)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "refused") {
@@ -125,6 +134,10 @@ func TestRunPreparesOnlyTheAllowlistedE2EDatabase(t *testing.T) {
 		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
 			t.Fatal("quota commit must not run")
 			return operations.QuotaCommitResult{}, nil
+		},
+		func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			t.Fatal("account deletion audit must not run")
+			return operations.AccountDeletionAuditResult{}, nil
 		},
 	)
 	if code != 0 || !called || stdout.String() != "e2e database prepared\n" || stderr.Len() != 0 {
@@ -377,6 +390,10 @@ func runQuotaAuditForTest(
 			t.Fatal("quota commit must not run")
 			return operations.QuotaCommitResult{}, nil
 		},
+		func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			t.Fatal("account deletion audit must not run")
+			return operations.AccountDeletionAuditResult{}, nil
+		},
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -570,6 +587,10 @@ func runQuotaCommitForTest(
 			return operations.QuotaAuditResult{}, nil
 		},
 		finalize,
+		func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			t.Fatal("account deletion audit must not run")
+			return operations.AccountDeletionAuditResult{}, nil
+		},
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -594,4 +615,207 @@ func removeCLIArgument(arguments []string, value string) []string {
 		}
 	}
 	return result
+}
+
+func TestRunInspectsAccountDeletionWithMinimalStableJSON(t *testing.T) {
+	t.Parallel()
+	values := quotaAuditEnvironment("test", "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test")
+	operationID := "01991f20-61d2-7000-8000-000000000301"
+	called := false
+	code, stdout, stderr := runAccountDeletionAuditForTest(
+		t, context.Background(), accountDeletionAuditCLIArguments("test"), values,
+		func(_ context.Context, databaseURL string, query operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			called = strings.Contains(databaseURL, "secret") && query.ObservedAt == 5_000
+			parsedOperationID, _ := accountdeletion.ParseOperationID(operationID)
+			return operations.AccountDeletionAuditResult{
+				Kind: operations.AccountDeletionAuditInspected, OperationID: parsedOperationID,
+				State: operations.AccountDeletionRetryDue, Step: accountdeletion.StepCancelSubscription,
+				ReadyToAdvance: true, RelevantAt: 4_900, ObservedAt: query.ObservedAt,
+			}, nil
+		},
+	)
+	if code != 0 || !called || stderr != "" {
+		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout, stderr)
+	}
+	var output struct {
+		Command        string `json:"command"`
+		OperationID    string `json:"operationId"`
+		State          string `json:"state"`
+		Step           string `json:"step"`
+		ReadyToAdvance bool   `json:"readyToAdvance"`
+		RelevantAt     int64  `json:"relevantAt"`
+		ObservedAt     int64  `json:"observedAt"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &output); err != nil ||
+		output.Command != "account-deletion-inspect" || output.OperationID != operationID ||
+		output.State != "retry-due" || output.Step != "cancel-subscription" ||
+		!output.ReadyToAdvance || output.RelevantAt != 4_900 || output.ObservedAt != 5_000 {
+		t.Fatalf("output = %#v, error = %v", output, err)
+	}
+	for _, forbidden := range []string{
+		"secret", "01991f20-61d2-7000-8000-000000000101", "01991f20-61d2-7000-8000-000000000201",
+	} {
+		if strings.Contains(stdout+stderr, forbidden) {
+			t.Fatalf("output disclosed %q: %q %q", forbidden, stdout, stderr)
+		}
+	}
+}
+
+func TestRunAccountDeletionAuditRejectsMalformedArgumentsBeforeDatabaseAccess(t *testing.T) {
+	t.Parallel()
+	valid := accountDeletionAuditCLIArguments("test")
+	tests := map[string][]string{
+		"missing":                valid[:len(valid)-1],
+		"duplicate":              append(append([]string(nil), valid...), "--observed-at-millis=5"),
+		"invalid account":        replaceCLIArgument(valid, "--account-id=", "--account-id=invalid"),
+		"invalid vault":          replaceCLIArgument(valid, "--vault-id=", "--vault-id=invalid"),
+		"invalid timestamp":      replaceCLIArgument(valid, "--observed-at-millis=", "--observed-at-millis=-1"),
+		"unknown":                append(append([]string(nil), valid...), "--other=value"),
+		"production unconfirmed": accountDeletionAuditCLIArguments("production"),
+		"test with confirmation": append(append([]string(nil), valid...), "--confirm-production-read-only"),
+	}
+	for name, arguments := range tests {
+		name, arguments := name, arguments
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			called := false
+			code, stdout, stderr := runAccountDeletionAuditForTest(
+				t, context.Background(), arguments, quotaAuditEnvironment(
+					"test", "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+				),
+				func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+					called = true
+					return operations.AccountDeletionAuditResult{}, nil
+				},
+			)
+			if code != 2 || called || stdout != "" || !strings.Contains(stderr, "usage:") {
+				t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestRunAccountDeletionAuditRefusesUnsafeTargetAndMapsFailures(t *testing.T) {
+	t.Parallel()
+	called := false
+	code, stdout, stderr := runAccountDeletionAuditForTest(
+		t, context.Background(), accountDeletionAuditCLIArguments("test"),
+		quotaAuditEnvironment("test", "postgres://notes:secret@database.example/fukamu_notes_go_test"),
+		func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			called = true
+			return operations.AccountDeletionAuditResult{}, nil
+		},
+	)
+	if code != 1 || called || stdout != "" || !strings.Contains(stderr, "target refused") ||
+		strings.Contains(stderr, "secret") {
+		t.Fatalf("unsafe target: code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout, stderr)
+	}
+
+	tests := []struct {
+		name    string
+		ctx     context.Context
+		inspect inspectAccountDeletionFunction
+		want    string
+	}{
+		{
+			name: "scope refusal", ctx: context.Background(), want: "account deletion scope refused\n",
+			inspect: func(_ context.Context, _ string, query operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+				return operations.AccountDeletionAuditResult{
+					Kind: operations.AccountDeletionAuditRefused, Reason: operations.AccountDeletionAuditOwnerMismatch,
+					ObservedAt: query.ObservedAt,
+				}, nil
+			},
+		},
+		{
+			name: "dependency failure", ctx: context.Background(), want: "account deletion audit failed\n",
+			inspect: func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+				return operations.AccountDeletionAuditResult{}, errors.New("PRIVATE-DB-FAILURE")
+			},
+		},
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	tests = append(tests, struct {
+		name    string
+		ctx     context.Context
+		inspect inspectAccountDeletionFunction
+		want    string
+	}{
+		name: "cancelled", ctx: cancelled, want: "account deletion audit failed\n",
+		inspect: func(ctx context.Context, _ string, _ operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			return operations.AccountDeletionAuditResult{}, ctx.Err()
+		},
+	})
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			code, stdout, stderr := runAccountDeletionAuditForTest(
+				t, test.ctx, accountDeletionAuditCLIArguments("test"),
+				quotaAuditEnvironment("test", "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test"),
+				test.inspect,
+			)
+			if code != 1 || stdout != "" || stderr != test.want || strings.Contains(stderr, "PRIVATE") {
+				t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestRunAccountDeletionAuditRequiresExplicitProductionConfirmation(t *testing.T) {
+	t.Parallel()
+	arguments := append(accountDeletionAuditCLIArguments("production"), "--confirm-production-read-only")
+	called := false
+	code, stdout, stderr := runAccountDeletionAuditForTest(
+		t, context.Background(), arguments,
+		quotaAuditEnvironment("production", "postgres://notes:secret@database.example/notes"),
+		func(_ context.Context, databaseURL string, query operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			called = strings.Contains(databaseURL, "database.example")
+			operationID, _ := accountdeletion.ParseOperationID("01991f20-61d2-7000-8000-000000000301")
+			return operations.AccountDeletionAuditResult{
+				Kind: operations.AccountDeletionAuditInspected, OperationID: operationID,
+				State: operations.AccountDeletionCompleted, RelevantAt: 4_000, ObservedAt: query.ObservedAt,
+			}, nil
+		},
+	)
+	if code != 0 || !called || stderr != "" || !strings.Contains(stdout, `"state":"completed"`) ||
+		strings.Contains(stdout+stderr, "secret") {
+		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout, stderr)
+	}
+}
+
+func runAccountDeletionAuditForTest(
+	t *testing.T,
+	ctx context.Context,
+	arguments []string,
+	values map[string]string,
+	inspect inspectAccountDeletionFunction,
+) (int, string, string) {
+	t.Helper()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithDependencies(
+		ctx, arguments, &stdout, &stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
+		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
+			t.Fatal("quota audit must not run")
+			return operations.QuotaAuditResult{}, nil
+		},
+		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			t.Fatal("quota commit must not run")
+			return operations.QuotaCommitResult{}, nil
+		},
+		inspect,
+	)
+	return code, stdout.String(), stderr.String()
+}
+
+func accountDeletionAuditCLIArguments(environment string) []string {
+	return []string{
+		"account-deletion", "inspect",
+		"--vault-id=01991f20-61d2-7000-8000-000000000201",
+		"--environment=" + environment,
+		"--observed-at-millis=5000",
+		"--account-id=01991f20-61d2-7000-8000-000000000101",
+	}
 }
