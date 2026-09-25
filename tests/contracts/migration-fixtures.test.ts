@@ -68,6 +68,7 @@ import {
   type BillingSubscriptionRecord,
 } from '@/server/billing/core';
 import {
+  billingVersionDecoder,
   parseBillingProvider,
   parseBillingSubscriptionId,
   parseCheckoutIntentId,
@@ -93,6 +94,17 @@ import {
   parseStripeWebhookSecret,
 } from '@/server/stripe/public';
 import { createWebCryptoStripeWebhookVerifier } from '@/server/stripe/webhook-signature';
+import {
+  authorizeOfflineLease,
+  evaluateSubscriptionFacts,
+  planEntitlementProjection,
+  planOfflineLease,
+} from '@/server/entitlement/core';
+import {
+  paidPersonalVaultLimits,
+  parseOfflineLeaseDuration,
+  parseOfflineLeaseId,
+} from '@/server/entitlement/public';
 
 const fixtureRoot = new URL('../../contracts/fixtures/', import.meta.url);
 
@@ -526,6 +538,110 @@ describe('Go migration shared contract fixtures', () => {
       lastDelinquencyAt: number(field(expected, 'lastDelinquencyAt')),
       lastReconciledAt: number(field(expected, 'lastReconciledAt')),
     });
+  });
+
+  it('keeps entitlement projection and the exclusive offline lease boundary compatible', async () => {
+    const fixtureValue = record(await fixture('billing/entitlement.json'));
+    const contextValue = record(field(fixtureValue, 'context'));
+    const factsValue = record(field(fixtureValue, 'facts'));
+    const lifecycleValue = record(field(factsValue, 'lifecycle'));
+    const leaseValue = record(field(fixtureValue, 'lease'));
+    const expected = record(field(fixtureValue, 'expected'));
+    const context = {
+      accountId: parseAccountId(field(contextValue, 'accountId')),
+      vaultId: parseVaultId(field(contextValue, 'vaultId')),
+      sessionId: parseSessionId(field(contextValue, 'sessionId')),
+      sessionEpoch: parseSessionEpoch(field(contextValue, 'sessionEpoch')),
+    };
+    const lifecycleKind = string(field(lifecycleValue, 'kind'));
+    if (lifecycleKind !== 'trialing') {
+      throw new Error('shared entitlement lifecycle must be trialing');
+    }
+    const facts = {
+      subscriptionId: parseBillingSubscriptionId(
+        field(factsValue, 'subscriptionId'),
+      ),
+      accountId: context.accountId,
+      vaultId: context.vaultId,
+      version: decodeOrThrow(
+        billingVersionDecoder,
+        field(factsValue, 'version'),
+        'shared entitlement billing version',
+      ),
+      lifecycle: {
+        kind: lifecycleKind,
+        trialStartedAt: number(field(lifecycleValue, 'trialStartedAt')),
+        trialEndsAt: number(field(lifecycleValue, 'trialEndsAt')),
+      },
+      paymentMethodReady: field(factsValue, 'paymentMethodReady') === true,
+      cancelAt:
+        field(factsValue, 'cancelAt') === null
+          ? null
+          : number(field(factsValue, 'cancelAt')),
+      updatedAt: number(field(factsValue, 'updatedAt')),
+    } as const;
+    const checkedAt = number(field(fixtureValue, 'projectionCheckedAt'));
+    const evaluation = evaluateSubscriptionFacts(facts, checkedAt);
+    expect(evaluation).toEqual({
+      kind: 'evaluated',
+      state: {
+        kind: string(field(expected, 'state')),
+        validUntil: number(field(expected, 'validUntil')),
+      },
+    });
+    if (evaluation.kind !== 'evaluated') {
+      throw new Error('shared entitlement facts were invalid');
+    }
+    const projection = planEntitlementProjection(
+      context,
+      facts,
+      evaluation.state,
+      checkedAt,
+      undefined,
+    );
+    expect(projection).toMatchObject({
+      kind: 'commit',
+      record: { version: number(field(expected, 'projectionVersion')) },
+    });
+    if (projection.kind !== 'commit') {
+      throw new Error('shared entitlement projection was not committed');
+    }
+    const lease = planOfflineLease(
+      context,
+      projection.record,
+      {
+        kind: 'configured',
+        duration: parseOfflineLeaseDuration(
+          field(leaseValue, 'policyDuration'),
+        ),
+      },
+      {
+        leaseId: parseOfflineLeaseId(field(leaseValue, 'leaseId')),
+        issuedAt: number(field(leaseValue, 'issuedAt')),
+      },
+    );
+    expect(lease).toMatchObject({
+      kind: 'issue',
+      lease: {
+        basis: string(field(expected, 'leaseBasis')),
+        expiresAt: number(field(expected, 'leaseExpiresAt')),
+      },
+    });
+    if (lease.kind !== 'issue') {
+      throw new Error('shared entitlement lease was not issued');
+    }
+    expect(
+      authorizeOfflineLease(
+        lease.lease,
+        context,
+        'notes-read',
+        lease.lease.expiresAt,
+      ),
+    ).toMatchObject({
+      kind: 'denied',
+      reason: string(field(expected, 'expiryReason')),
+    });
+    expect(paidPersonalVaultLimits).toEqual(field(expected, 'limits'));
   });
 
   it('keeps deletion terminal fields and privacy ownership data strict', async () => {

@@ -79,6 +79,17 @@ Stripe packages are not composed into the server: there is no route, API key,
 endpoint secret, provider request, webhook registration, scheduler, charge,
 cancellation mutation, entitlement grant, or production operation.
 
+T09c Issue #440 adds the disconnected Go Entitlement core, service, and
+PostgreSQL repository. Migration 00008 stores Account/Vault-scoped projections
+and Session/SessionEpoch-bound offline leases. Projection CAS and active-lease
+revocation are one serializable transaction; lease creation locks and validates
+the exact active projection. The explicit product policy caps leases at 24
+hours and at the Billing period boundary. Shared TypeScript/Go fixtures and
+disposable-PostgreSQL tests cover exclusive expiry, replay, cross-owner access,
+old/new paid ordering, issue/lock races, and rollback on revocation failure.
+Nothing is composed into an HTTP, notes, quota, or Sync v2 path, and no
+production migration or provider operation is performed.
+
 ## Local start
 
 ```bash
@@ -182,11 +193,15 @@ go -C backend test -race ./internal/cryptocontent/... ./internal/adapters/conten
 go -C backend test -race ./internal/encryptedobject/... ./internal/adapters/objectstorage/...
 go -C backend test -race ./internal/billing/...
 go -C backend test -race ./internal/stripebilling/... ./internal/adapters/stripe/...
+go -C backend test -race ./internal/entitlement/... ./internal/adapters/postgres/...
 NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
 go -C backend test -tags=integration ./tests/integration -run TestBillingProjectionAtomicityAndReplayPostgres -count=3
+NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend test -tags=integration ./tests/integration -run Entitlement -count=1
 ```
 
-The billing check uses only normalized provider facts and snapshots. Migration
-00007, the provider-neutral service, and the PostgreSQL adapter are not composed
-into an HTTP route and make no Stripe, cancellation, charge, entitlement, or
-production database call.
+The billing and entitlement checks use only normalized facts, fixtures, and the
+loopback disposable database. Migrations 00007 and 00008, their services, and
+their PostgreSQL adapters are not composed into an HTTP route and make no
+Stripe, cancellation, charge, entitlement-enforcement, or production database
+call.
