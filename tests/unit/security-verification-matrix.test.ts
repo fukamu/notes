@@ -21,6 +21,7 @@ const requirements = [
     evidence: [
       'tests/unit/session-boundary.test.ts',
       'tests/unit/sync-v2-http-handler.test.ts',
+      'backend/internal/httpapi/legal_test.go',
     ],
   },
   {
@@ -168,6 +169,14 @@ const requirements = [
     ],
   },
   {
+    id: 'SEC-BILLING-09',
+    evidence: [
+      'backend/internal/legal/terms_service_test.go',
+      'backend/internal/legal/contract_test.go',
+      'backend/internal/httpapi/legal_test.go',
+    ],
+  },
+  {
     id: 'SEC-LOG-01',
     evidence: [
       'tests/integration/auth-security-corpus.test.ts',
@@ -175,6 +184,7 @@ const requirements = [
       'tests/integration/sync-api-d1.test.ts',
       'tests/unit/account-deletion-http-handler.test.ts',
       'tests/unit/stripe-service.test.ts',
+      'backend/internal/httpapi/legal_test.go',
     ],
   },
 ] as const;

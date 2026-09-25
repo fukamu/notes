@@ -36,6 +36,10 @@ delete existing resources.
   consent remain disconnected; no credential, provider resource, real request,
   public route, charge, entitlement enforcement, or production data change is
   authorized by these slices.
+- T10a terms consent and signup evidence and T10b commercial evidence/checkout
+  orchestration were integrated by #442 / PR #443 and #444 / PR #445. T10c
+  Issue #446 starts from exact integration tip
+  `290fe7686e9751b197ad23cc3334dba72eb38c30`.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -74,8 +78,8 @@ the same contract as its closed route.
 | F17 | B     | billing projection                          | T09                             | V04,V07      | Go core/Postgres #436; cancel awaits #404    |
 | F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | Go core/SDK adapter #438; remains closed     |
 | F19 | B     | entitlement / offline lease                 | T09                             | V05,V07      | Go core/Postgres #440; disconnected          |
-| F20 | B     | legal checkout evidence                     | T10                             | V01,V07      | Go core/Postgres/orchestration #444          |
-| F21 | B     | terms consent                               | T10                             | V01,V07      | Go core/Postgres #442; disconnected          |
+| F20 | B     | legal checkout evidence                     | T10                             | V01,V07      | core/store #444; closed Go HTTP #446         |
+| F21 | B     | terms consent                               | T10                             | V01,V07      | core/store #442; closed Go HTTP #446         |
 | F22 | B     | normal cancellation                         | T09                             | V07          | blocked on #404                              |
 | F23 | B     | account deletion                            | T12                             | V03,V04,V08  | contract captured; #404 overlap pending      |
 | F24 | B     | privacy request journal                     | T12                             | V01,V03,V08  | contract captured in #410                    |
@@ -88,13 +92,13 @@ the same contract as its closed route.
 
 | ID  | Required evidence                                       | Current evidence                                                              |
 | --- | ------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418; terms #442; contract evidence #444                            |
+| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418; legal fixtures #442/#444; legal Go HTTP #446                  |
 | V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                  |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426                                  |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426; legal HTTP #446                 |
 | V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444 |
 | V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                                   |
 | V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                           |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; terms #442                          |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; legal #442/#444/#446                |
 | V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434                        |
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                                     |
 | V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                 |
@@ -148,6 +152,13 @@ the same contract as its closed route.
   owner enforcement without weakening signup ordering; evidence deletion is
   left to the explicit T12 account-deletion workflow rather than an implicit
   cascade.
+- Terms acceptance and commercial checkout keep independent submission IDs.
+  The TypeScript verifier incorrectly used the commercial idempotency key to
+  find a separate terms record even though the two UI boundaries generate
+  independent IDs. Go verifies the latest owner-scoped evidence against the
+  authoritative current terms, honors an explicitly reviewed notice-only
+  classification, and still rejects missing or reconsent-required evidence
+  before recording commercial evidence or calling a provider.
 - These protections are recorded as intentional boundary hardening rather than
   accidental wire compatibility changes.
 
@@ -809,16 +820,55 @@ approved production commerce source, Stripe credentials or network call,
 production schema apply, charge, deployment, or public availability. T10c owns
 the disconnected Go GET/POST handler and client wire contracts.
 
-One connection blocker remains explicit: the preserved checkout verifier looks
-up terms evidence by the checkout submission ID, while the existing terms and
-checkout UI boundaries generate independent submission IDs. T10c must make one
-reviewed wire contract authoritative—preferably accepting current owner-scoped
-terms evidence independently from commercial idempotency—before the route can
-open. The current disconnected implementation does not guess or bypass this
-gate.
+Issue #446 resolves the connection blocker without combining legal acts: the
+checkout verifier now evaluates the latest immutable evidence in the resolved
+Account/Vault scope against the authoritative current terms. The commercial
+submission ID remains solely the checkout/evidence/provider idempotency key.
+Missing consent and reconsent-required changes fail before commercial evidence
+or provider access; a qualified notice-only classification remains non-blocking.
 
 Before an approved persistent apply, rollback is a reviewed code revert plus
 disposable-schema recreation. After evidence exists, close new checkout writes,
 preserve migration 00010 and all evidence, and restore a compatible artifact or
 use a reviewed forward migration. Do not drop, rewrite, or synthesize evidence
 as rollback.
+
+## T10c legal HTTP and composition slice
+
+Issue #446 adds Go GET/POST handler factories for
+`/api/account/terms-consent` and `/api/billing/checkout`. They derive ownership
+only from the Secure session cookie, apply the existing same-origin CSRF rule
+before reading unsafe request bodies, enforce an independent 2,048-byte JSON
+limit, reject unknown fields and invalid UTF-8, inject clocks and identifiers,
+and return the existing fixed no-store/nosniff wire shapes. Dependency panics
+are reduced to a fixed log category and a generic unavailable response.
+
+The browser-safe legal identifiers and response decoders now live under
+`lib/contracts/`; the terms and billing clients no longer execute
+`server/terms-consent` or `server/legal-checkout` modules. The old server public
+modules re-export the contract during the comparison period, so existing
+reference tests remain usable until T14/T17 removes the TypeScript backend.
+
+`httpapi.HandlerOptions` accepts a separate `LegalRuntime`. A launch-gate
+runtime alone cannot expose legal or billing operations. When `LegalRuntime` is
+absent, the routes retain the existing legacy-test 404/configured 503 closure;
+an incomplete or invalid legal runtime returns 503. The production command does
+not construct this runtime because the public origin/auth path, legal source,
+pricing, Stripe configuration, and provider credentials are not approved.
+Consequently #446 verifies a complete local composition contract without
+publishing signup, terms acceptance, Checkout, or charging.
+
+Focused Go tests cover status/acceptance/offer/redirect JSON, owner derivation,
+anonymous and cross-site rejection before body reads, 2-KiB and strict-decode
+failures, clock/ID/dependency failure, fixed logging, and all stable error
+mappings. Legal service tests prove that independent terms and commercial IDs
+work, reconsent blocks, and notice-only changes remain allowed. Shared frontend
+decoder and architecture tests protect the same wire contract.
+
+Rollback before any approved persistent use removes the `LegalRuntime`
+composition and Go handler factories while keeping migrations 00009/00010 and
+all evidence. After evidence exists, first stop new terms and checkout writes,
+retain both ledgers, restore a compatible artifact or reviewed forward fix, and
+keep cancellation/recovery paths available. No rollback step deletes evidence,
+changes a legal classification, calls Stripe, or reuses the commercial
+submission ID as terms evidence.
