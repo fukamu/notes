@@ -1,5 +1,35 @@
 # Account deletion Vault live-data purge
 
+## Go migration status (T12d)
+
+Issue #462 implements the provider-neutral Go purge in
+`backend/internal/vaultdata`, its account-deletion effect mapping, and the
+PostgreSQL adapter. Migration `00015_account_deletion_write_gate.sql` closes
+the in-flight-write race by serializing mutable Vault inserts/updates and
+account-deletion start on the exact Personal Vault row. If a write commits
+first, the purge sees it; if deletion becomes durable first, the write is
+rejected by the database.
+
+The Go adapter uses one serializable transaction to lock the exact owner,
+verify the exact running operation and subscription-cancellation receipt,
+enqueue every committed or pending encrypted-object key with the stable prior
+receipt time, delete metadata only behind a matching Vault-scoped outbox row,
+remove scoped sync-v2/quota live rows, and verify zero remaining live rows. It
+fails closed on owner mismatch, cross-Vault key collision, malformed inventory,
+serialization failure, or a partial delete. Tests cover response-loss replay,
+stable outbox time, another owner, write/delete ordering, and injected rollback.
+
+Physical objects, outbox rows, wrapped keys and rotation state, live
+control-plane rows, Billing/Entitlement, legal evidence, privacy requests, and
+the deletion journal remain for later ordered barriers. The legacy v1 tables
+have no safe owner partition and are not deleted here. The effect remains
+uncomposed from the closed HTTP runtime, and no real storage/provider or
+production data is touched.
+
+The sections below remain the TypeScript/D1 compatibility oracle. PostgreSQL
+does not have the D1 partition-route table, so migration 00015 plus the retained
+Personal Vault lock provide the equivalent no-recreation barrier.
+
 Issue #171 adds the `delete-vault-data` effect after session revocation and
 subscription cancellation. It deletes only the selected Vault's live D1
 content and encrypted-object metadata while preserving durable private-object
@@ -63,7 +93,7 @@ The following remain intentionally intact for later barriers:
 - Accounts, Personal Vaults, identities, and account-deletion progress, until
   finalization in later Issues.
 
-## Migration and rollback
+## TypeScript migration and rollback
 
 No schema migration is added. The implementation uses the existing foreign
 keys and delete outbox. Rolling back stops new purge attempts but cannot restore
