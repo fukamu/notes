@@ -56,9 +56,10 @@ delete existing resources.
   T12d Vault live-data purge/write gate was integrated by #462 / PR #463. T12e
   private-object purge was integrated by #464 / PR #465. T12f policy-gated
   account finalization was integrated by #466 / PR #467 without selecting the
-  pending production legal-evidence decision. T12g Issue #468 starts from exact
-  integration tip `4d90d6a70d27125cd9632ac2ce63cb46139b4f6d` and composes only
-  the privacy deletion handoff with the durable saga start.
+  pending production legal-evidence decision. T12g privacy deletion handoff was
+  integrated by #468 / PR #469. T13a Issue #470 starts from exact integration
+  tip `223b15f1230af906671a088ca3c28b8daae06888` and adds only the scoped,
+  read-only quota reconciliation audit runner.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -103,7 +104,7 @@ the same contract as its closed route.
 | F23 | B     | account deletion                            | T12                             | V03,V04,V07,V08 | saga #458; effects #460/#462/#464; finalizer #466; handoff #468 |
 | F24 | B     | privacy request journal                     | T12                             | V01,V03,V08     | Go journal/closed HTTP #456; deletion handoff #468              |
 | F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11         | core #414; legacy singleton seed #418                           |
-| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | pending                                                         |
+| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | scoped quota audit #470; remaining runners pending              |
 | F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10         | static runtime #420; legacy removal T14                         |
 | F28 | C     | scheduler / realtime services               | none unless separately approved | V08             | intentionally not added                                         |
 
@@ -1333,3 +1334,33 @@ legal-evidence policy, and every production configuration remain undecided and
 closed. Rollback stops new privacy processing but preserves migrations
 00013-00016, both journals, continuation digests, receipts, and outbox state; it
 does not delete a started operation or synthesize a privacy completion.
+
+## T13a scoped quota reconciliation audit runner
+
+Issue #470 adds the first explicit non-HTTP operations entry point. The
+`notesctl quota reconcile-list` command requires an exact execution
+environment, Account/Vault scope, as-of timestamp, and limit from 1 through 100. The application validates those values before database access. The
+PostgreSQL adapter verifies the exact owner relation and lists only due
+`reserved` rows in stable `(reconcile_after, reservation_id)` order without
+creating quota usage, finalizing a reservation, or changing any row.
+
+Output is bounded JSON evidence containing the command kind, as-of timestamp,
+count, reservation IDs, and reconciliation timestamps. It intentionally omits
+the Account/Vault IDs, card IDs, fingerprints, quota values, content, database
+URL, credentials, and dependency error text. Repeating the command with the
+same scope, timestamp, and limit returns the same ordered snapshot unless an
+independent writer changes the ledger. Process interruption cancels the query
+and cannot become partial success.
+
+Local and test execution accepts only the existing loopback allowlisted
+disposable PostgreSQL database. Production command construction additionally
+requires `--confirm-production-read-only`, but that flag is an accidental-run
+guard, not authorization: connecting to or reading a production/shared
+database still requires the user's separate explicit approval. Quality and the
+Issue tests use only disposable PostgreSQL.
+
+This command never infers that an expired reservation should be committed or
+released. Evidence lookup, evidence-confirmed finalize, automatic release,
+scheduling, HTTP/UI exposure, and all other T13 runners remain separate work.
+Operational invocation and rollback details are in
+[`go-operations.md`](go-operations.md).
