@@ -76,3 +76,19 @@ must remain intact for evidence-based reconciliation rather than being deleted
 or released by age.
 
 Main is unchanged and production is not deployed by this integration.
+
+## Go and PostgreSQL migration status
+
+Issue #454 connects the Go quota ledger from #450 to the disconnected Go Sync
+v2 application. The Go order is the same reservation, immutable encrypted
+write, journal receipt, and finalization sequence documented above. A real
+PostgreSQL/encrypted-object vertical test interrupts the journal boundary,
+observes the still-reserved capacity, and proves an identical request resumes
+without another encryption or object upload. It also proves deletion commits
+the tombstone before active-card usage is reduced and that response-loss replay
+does not reduce it twice.
+
+The exact 10,000-card concurrent final-slot test remains at the shared
+PostgreSQL ledger boundary used by this application. The Go HTTP handler is
+still unmounted, so these checks do not enable quota enforcement for the
+existing v1 route or publish the paid v2 path.

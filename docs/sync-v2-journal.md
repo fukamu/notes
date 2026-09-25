@@ -93,10 +93,12 @@ failure to prove that card and receipt writes roll back, races two updates from
 the same predecessor revision, verifies cross-Vault isolation, and exercises a
 500-item page followed by a fixed-watermark continuation.
 
-The journal still contains descriptors only. T11c must hydrate upserts through
-the existing encrypted-object service and compose authentication,
-entitlement, quota, cursor authentication, and HTTP. Issue #452 neither exposes
-a route nor applies migration 00012 outside the disposable test database.
+The journal still contains descriptors only. Issue #454 now hydrates upserts
+through the existing encrypted-object service and composes authentication,
+Entitlement, quota, HMAC cursor authentication, and the strict Go HTTP
+contract. The constructor remains deliberately absent from the public Go
+handler composition, so `/api/v2/sync` is still closed. Neither Issue applies
+migration 00012 outside the disposable test database.
 
 Before persistent use, rollback may recreate only the disposable schema. Once
 accepted receipts exist, rollback must stop writes and preserve journal state,

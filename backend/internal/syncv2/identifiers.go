@@ -39,6 +39,13 @@ func ParseMutationID(value string) (MutationID, error) {
 	return MutationID(value), nil
 }
 
+func ParseDeviceID(value string) (DeviceID, error) {
+	if !uuidV7Pattern.MatchString(value) {
+		return "", ErrInvalidIdentifier
+	}
+	return DeviceID(value), nil
+}
+
 func ParseFingerprint(value string) (Fingerprint, error) {
 	if !fingerprintPattern.MatchString(value) {
 		return "", ErrInvalidIdentifier
