@@ -38,6 +38,16 @@ allows one write key per Vault. The production server does not compose these
 packages, no persistent nonce adapter is supplied, and no GCP resource,
 credential, request, or billing relationship is created.
 
+T08a Issue #430 adds the disconnected immutable encrypted-object repository.
+Migration 00005 stores only Vault-scoped metadata, durable write intents, and
+delete-outbox state; object bytes remain behind an injected immutable storage
+port. Lost-response replay has zero object/crypto calls, upload-plus-DB-failure
+reuses and authenticates the same object key, revision updates use CAS, and
+active intents are excluded from orphan deletion across all Vaults. The only
+storage adapter is an in-memory test/drill fake. No R2 bucket, credential,
+provider request, production route, persistent nonce store, or scheduler is
+configured.
+
 ## Local start
 
 ```bash
@@ -134,7 +144,9 @@ AES-GCM implementation. Focused Go checks are:
 
 ```bash
 go -C backend test ./internal/cryptocontent/... ./internal/adapters/contentcrypto/... ./internal/adapters/kms/...
+go -C backend test ./internal/encryptedobject/... ./internal/adapters/objectstorage/...
 NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
-go -C backend test -tags=integration ./tests/integration -run TestVaultDEKKeyringPostgres
+go -C backend test -tags=integration ./tests/integration -run 'Test(VaultDEKKeyring|EncryptedObject)Postgres'
 go -C backend test -race ./internal/cryptocontent/... ./internal/adapters/contentcrypto/... ./internal/adapters/kms/...
+go -C backend test -race ./internal/encryptedobject/... ./internal/adapters/objectstorage/...
 ```

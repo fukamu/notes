@@ -18,11 +18,13 @@ delete existing resources.
   in #420 / PR #421, and T06 in #422 / PR #423, #424 / PR #425, and #426 /
   PR #427. The integration tip before the current slice is
   `90789d9056fcd77f46ac81d1087f668380d4a65d`.
-- T07 envelope encryption, GCP Cloud KMS boundary, and wrapped-DEK keyring are
-  Issue #428 on `work/428-go-envelope-kms-keyring`, branched from that exact
-  integration commit. They remain disconnected and do not select a production
-  KMS resource, create credentials, expose content routes, or activate paid
-  provider use.
+- T07 envelope encryption, GCP Cloud KMS boundary, and wrapped-DEK keyring were
+  integrated by #428 / PR #429. The integration tip before the current slice
+  is `6cc1de6e5938f77a5930cd2301ca12399a6c5f0f`.
+- T08a immutable object metadata, write intents, and delete outbox are Issue
+  #430 on `work/430-go-encrypted-object-repository`, branched from that exact
+  integration commit. They remain disconnected and do not select or create an
+  object-storage resource, expose a content route, or run a production job.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -55,7 +57,7 @@ the same contract as its closed route.
 | F11 | B     | envelope encryption                         | T07                             | V06          | Go AES-GCM/fixture implemented by #428       |
 | F12 | B     | KMS / DEK                                   | T07                             | V06,V09      | Go local boundary #428; external proof open  |
 | F13 | B     | key rotation                                | T08                             | V04,V06,V08  | pending                                      |
-| F14 | B     | immutable encrypted object                  | T08                             | V04,V06,V08  | pending                                      |
+| F14 | B     | immutable encrypted object                  | T08                             | V04,V06,V08  | Go core/Postgres #430; disconnected          |
 | F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08      | pending                                      |
 | F16 | B     | quota                                       | T11                             | V04,V05      | pending                                      |
 | F17 | B     | billing projection                          | T09                             | V04,V07      | blocked on #404 where applicable             |
@@ -78,11 +80,11 @@ the same contract as its closed route.
 | V01 | shared JSON, strict decoding, black-box HTTP            | same fixture through TS #410 and Go unit/DB/HTTP #418         |
 | V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests  |
 | V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426                  |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418 plus signup atomicity/replay/conflict #426          |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object intent/CAS/outbox #430         |
 | V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                   |
 | V06 | crypto vectors, tamper/AAD/KMS failures                 | TS/Go vector, tamper/AAD/CRC/timeout in #428; T08 pending     |
 | V07 | billing/evidence duplicate/order/failure                | T01 browser decoder baseline; T09 pending                     |
-| V08 | resumable jobs/deletion fault injection                 | T12/T13 pending                                               |
+| V08 | resumable jobs/deletion fault injection                 | object lost-response/delete retry #430; T08b/T08c/T12 pending |
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                     |
 | V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips |
 | V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                               |
@@ -114,6 +116,11 @@ the same contract as its closed route.
   the successful in-process receipt. An idempotent retry rotates that hash and
   returns a fresh usable token rather than pretending plaintext can be
   recovered from storage.
+- Immutable object keys are globally unique in PostgreSQL and every orphan or
+  delete-outbox read excludes keys protected by any Vault. The TypeScript D1
+  indexes scoped key uniqueness to one Vault; retaining that shape with one
+  shared object namespace could let a colliding key be collected by another
+  Vault. Go therefore fails closed across the whole object namespace.
 - These protections are recorded as intentional boundary hardening rather than
   accidental wire compatibility changes.
 
@@ -433,6 +440,50 @@ migration: retain ciphertext and every referenced readable KEK version, stop
 new encrypted writes first, and never drop metadata or destroy provider keys
 as part of a code rollback.
 
+## T08a immutable encrypted object slice
+
+Issue #430 ports immutable encrypted-object metadata and its DB/object
+non-atomicity controls. The pure Go model preserves write-ID replay, initial
+and next-revision rules, timeline checks, pending-intent matching, ciphertext
+format/version/size checks, grace-period orphan selection, and deterministic
+delete retry. The application service reserves an opaque object key before
+encryption, uses put-if-absent, and commits metadata with revision CAS. A
+successful replay returns before key generation, encryption, KMS/nonce, or
+object-storage access.
+
+If object upload succeeds but the metadata call fails or its response is lost,
+the durable intent keeps the same object key. A restart reads that immutable
+object, validates its envelope, decrypts it with the exact Vault/object/revision
+AAD, compares the plaintext, and then retries only the metadata commit. It
+never generates a replacement nonce or DEK for that stored object. A CAS loser
+is placed on the delete outbox; object deletion is asynchronous and retries
+without treating not-found as failure.
+
+Migration 00005 stores metadata, write intents, and delete-outbox state only.
+It has no plaintext, ciphertext, title, body, or provider credential column.
+Committed and pending object keys are globally protected, while every content
+lookup and write ID remains Vault-scoped. Orphan collection lists all protected
+keys and the PostgreSQL adapter rechecks both committed metadata and active
+intents before exposing a ready deletion; a key already queued for deletion
+cannot be reserved by a new intent. Tests prove crash/restart resume,
+lost-response call counts, cross-Vault denial, ciphertext-swap rejection,
+active-intent protection, size ceilings, and retry timing.
+
+The only object-storage implementation in this slice is a copy-on-read/write
+in-memory fake for isolated tests and drills. A cryptographic opaque-key
+generator exists but is not composed into the running server. There is no R2
+adapter, bucket, credential, network call, persistent nonce store, production
+route, or scheduled collector. T08b adds DEK rotation/reencryption checkpoints;
+T08c adds recovery drills. Selecting a real storage provider remains an
+approval item with cost, retention, region, IAM, and shared-service impact.
+
+Rollback before any persistent apply removes this disconnected code and
+recreates only the disposable test schema. After a separately approved
+persistent apply, rollback must stop new encrypted writes, retain migration
+00005 rows and every referenced immutable object, and use a reviewed forward
+migration. It must not drop intents/outbox state, delete objects, or destroy
+keys as part of a code rollback.
+
 ## Build, cutover, and rollback status
 
 A local-only Go bootstrap, PostgreSQL schema and legacy sync route, signed test
@@ -460,3 +511,7 @@ T07 #428 similarly applies migration 00004 only to disposable local/test
 PostgreSQL and makes no provider call. A future persistent apply must preserve
 wrapped metadata and referenced KEK versions across rollback; key disable or
 destruction is a separate, explicitly approved recovery/retirement operation.
+T08a #430 applies migration 00005 only to the same disposable database and uses
+only in-memory object storage. A future rollback must preserve object metadata,
+pending intents, outbox entries, and immutable objects until the T08 recovery
+procedure proves their disposition.
