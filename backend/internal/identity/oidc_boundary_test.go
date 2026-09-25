@@ -110,9 +110,9 @@ type fakeOidcSignup struct {
 	calls  atomic.Int64
 }
 
-func (signup *fakeOidcSignup) AdmitGoogle(
+func (signup *fakeOidcSignup) Admit(
 	context.Context,
-	SignupGoogleIdentity,
+	VerifiedSignupIdentity,
 	SignupTermsConsent,
 ) (SignupAdmissionResult, error) {
 	signup.calls.Add(1)
@@ -128,7 +128,7 @@ func (directory *fakeOidcDirectory) FindByIssuerSubject(
 
 func (directory *fakeOidcDirectory) FindAccountIDByVerifiedEmail(
 	context.Context,
-	OidcEmailAddress,
+	VerifiedEmailAddress,
 ) (*AccountID, error) {
 	return directory.account, directory.err
 }
@@ -296,9 +296,16 @@ func TestGoogleOidcCompletionAdmitsSignupOnlyWithConsent(t *testing.T) {
 	signup := &fakeOidcSignup{result: SignupAdmissionResult{
 		Admitted: true,
 		Receipt: SignupAdmissionReceipt{
+			SubmissionID: fixtureIdentityID,
+			Identity: VerifiedSignupIdentity{
+				Kind: SignupIdentityGoogle, Issuer: mustOidcIssuer(t, fixtureOidcIssuer),
+				Subject: mustOidcSubject(t, fixtureOidcSubject), Email: VerifiedEmailAddress(fixtureOidcEmail),
+			},
 			AccountID: mustAccountID(t, fixtureAccountID), VaultID: mustVaultID(t, fixtureVaultID),
 			IdentityID: mustIdentityID(t, fixtureIdentityID), SessionID: mustSessionID(t, fixtureSessionID),
 			SessionEpoch: mustEpoch(t, 1), TermsConsentID: fixtureIdentityID,
+			SessionToken: mustToken(t, strings.Repeat("A", 43)), IssuedAt: 1_500,
+			ExpiresAt: 1_500 + SignupSessionLifetimeSeconds,
 		},
 	}}
 	completion := completeFixtureInput(
@@ -309,6 +316,43 @@ func TestGoogleOidcCompletionAdmitsSignupOnlyWithConsent(t *testing.T) {
 	if result.Kind != OidcCompletionAdmitted || signup.calls.Load() != 1 ||
 		result.Admission.AccountID != mustAccountID(t, fixtureAccountID) {
 		t.Fatalf("signup completion = %#v, calls=%d", result, signup.calls.Load())
+	}
+
+	for _, testCase := range []struct {
+		name   string
+		mutate func(*SignupAdmissionReceipt)
+	}{
+		{
+			name: "different identity",
+			mutate: func(receipt *SignupAdmissionReceipt) {
+				receipt.Identity.Subject = mustOidcSubject(t, "different-google-subject")
+			},
+		},
+		{
+			name: "different terms submission",
+			mutate: func(receipt *SignupAdmissionReceipt) {
+				receipt.SubmissionID = fixtureOtherIdentityID
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			freshStore := newMemoryOidcTransactions()
+			startInput := startFixtureInput(t, freshStore)
+			startInput.SignupTermsConsent = consent
+			if started := StartGoogleOidc(context.Background(), startInput); !started.Redirect {
+				t.Fatalf("signup start = %#v", started)
+			}
+			badResult := signup.result
+			testCase.mutate(&badResult.Receipt)
+			badSignup := &fakeOidcSignup{result: badResult}
+			completion := completeFixtureInput(
+				t, freshStore, &fakeOidcProvider{claims: fixtureRawOidcClaims()}, &fakeOidcDirectory{},
+			)
+			completion.Signup = badSignup
+			if completed := CompleteGoogleOidc(context.Background(), completion); completed.Kind != OidcCompletionFailed {
+				t.Fatalf("mismatched signup receipt accepted: %#v", completed)
+			}
+		})
 	}
 
 	store = newMemoryOidcTransactions()
@@ -420,7 +464,7 @@ func completeFixtureInput(
 	Transactions  OidcTransactionStore
 	Provider      OidcVerifiedClaimsPort
 	Identities    OidcIdentityDirectory
-	Signup        OidcSignupAdmitter
+	Signup        SignupAdmissionPort
 } {
 	t.Helper()
 	code := "google-code-1"
@@ -431,7 +475,7 @@ func completeFixtureInput(
 		Transactions  OidcTransactionStore
 		Provider      OidcVerifiedClaimsPort
 		Identities    OidcIdentityDirectory
-		Signup        OidcSignupAdmitter
+		Signup        SignupAdmissionPort
 	}{
 		Callback:      OidcCallbackInput{State: fixtureOidcState, Code: &code},
 		Configuration: fixtureOidcConfiguration(t), Clock: fixedOidcClock(1_500),

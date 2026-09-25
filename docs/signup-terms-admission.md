@@ -1,9 +1,10 @@
 # Signup terms admission
 
-Issue #246 connects the provider-neutral Google OIDC and Email OTP verification
-boundaries to one terms admission application. It does not add a real Google
-client, mail provider, public authentication route, production provisioning
-adapter, or deployment.
+Issue #246 connects the TypeScript provider-neutral Google OIDC and Email OTP
+verification boundaries to one terms admission application. Migration Issue
+#426 implements the Go admission core and PostgreSQL provisioning adapter. It
+does not add a real Google client, mail provider, public authentication route,
+production terms adapter, or deployment.
 
 ## Flow and trust boundary
 
@@ -24,8 +25,10 @@ IdentityId, initial SessionId, and epoch 1 idempotently by the terms submission
 ID. It records the current immutable terms snapshot under that reserved
 Account/Vault scope, then and only then calls the atomic provisioning finalizer.
 The reservation, evidence, identity, and receipt must all agree. A retry with
-the same identity and submission reuses the same identifiers and returns the
-same receipt, so it cannot create a second Account, Vault, identity, or session.
+the same identity and submission reuses the same identifiers, so it cannot
+create a second Account, Vault, identity, or session. Go cannot recover a raw
+bearer token from its stored hash: each successful retry therefore returns a
+fresh token and atomically replaces the hash for that same active session.
 
 The terms application accepts a narrow internal Account/Vault scope so a
 server-owned provisional reservation can record evidence before the first
@@ -47,16 +50,20 @@ and local-first behavior are unchanged.
 通常の Notes UI には追加しない、という表示方針をこの後の実provider UIにも
 引き継ぎます。
 
-Local Notes composition remains provider-free. The fake provisioning adapter
-uses injected deterministic identifiers and in-memory state, and fake Email
-OTP delivery sends no email. No Stripe, Google, email, D1, or production
-operation is performed.
+Local Notes composition remains provider-free. Go tests use injected
+deterministic identifiers, an in-memory terms adapter, disposable PostgreSQL,
+and fake Email OTP delivery. The PostgreSQL finalizer receives only a token
+hash. No Stripe, Google, email, D1, or production operation is performed.
 
 ## Migration and rollback
 
-There is no schema migration. Reverting the admission composition removes the
-new gate while retaining any immutable terms evidence and already finalized
-accounts. During rollback or an admission outage, new signup must remain
-disabled rather than bypassing the gate. Real provider UI/adapters and
-production provisioning require their own reviewed Issues and explicit
-provider/secret/deployment approval.
+Migration 00003 adds idempotent reservations and canonical verified-email
+ownership. Finalization inserts the account, personal vault, provider identity,
+email owner, and initial session in one serializable transaction; constraint
+conflicts roll the whole transaction back. Reverting before a production apply
+removes the disconnected code and recreates only the disposable test schema.
+After evidence or finalized accounts exist, rollback must retain them and use a
+reviewed forward migration. During rollback or an admission outage, new signup
+must remain disabled rather than bypassing the gate. Real provider UI/adapters,
+the T10 production terms adapter, and deployment require their own reviewed
+Issues and explicit provider/secret/deployment approval.

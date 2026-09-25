@@ -1,0 +1,18 @@
+{
+  "profile": "email-otp-core",
+  "challengeId": "01991f20-61d2-7000-8000-000000000501",
+  "address": "Person@Example.COM",
+  "code": "12345678",
+  "salt": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "digest": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBE",
+  "createdAtEpochSeconds": 1000,
+  "verifyAtEpochSeconds": 1500,
+  "resendAtEpochSeconds": 1060,
+  "expected": {
+    "canonicalAddress": "Person@example.com",
+    "expiresAtEpochSeconds": 1600,
+    "failedAttempts": 0,
+    "sendCount": 1,
+    "version": 1
+  }
+}

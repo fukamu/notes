@@ -14,13 +14,14 @@ delete existing resources.
 - Open overlapping work: #403 / Draft PR #404. T09 cancellation and the
   corresponding T12 deletion contract remain dependent on its resolution.
 - T01 completed in #410 / PR #411, T02 in #412 / PR #413, T03 in #414 /
-  PR #415, T04 part 1 in #416 / PR #417, T04 part 2 in #418 / PR #419, and
-  T05 in #420 / PR #421. The current integration tip before T06 is
-  `62da18763c92fc339aebc33cd61612bfb7ac883e`.
-- T06 session/CSRF work is Issue #422 on
-  `work/422-go-session-control-plane`, branched from that exact integration
-  commit. It does not expose an authentication route or select a production
-  identity provider.
+  PR #415, T04 part 1 in #416 / PR #417, T04 part 2 in #418 / PR #419, T05
+  in #420 / PR #421, and the first two T06 slices in #422 / PR #423 and
+  #424 / PR #425. The integration tip before the current slice is
+  `33f0032c5273044f4ef8ed5cc18857e3aec4022f`.
+- T06 Email OTP, verified-email ownership, and signup provisioning are Issue
+  #426 on `work/426-go-email-otp-signup`, branched from that exact integration
+  commit. They remain disconnected and do not select a mail provider, expose
+  an authentication route, or activate signup.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -45,9 +46,9 @@ the same contract as its closed route.
 | F03 | A     | legacy sync                                 | T04                             | V01,V04,V10  | Go/Postgres #418; Go-served UI #420          |
 | F04 | B     | session / CSRF                              | T06                             | V02,V03,V04  | Go core/Postgres integrated by #422          |
 | F05 | B     | Google OIDC                                 | T06                             | V03          | Go core/provider adapter #424; disconnected  |
-| F06 | B     | email OTP                                   | T06                             | V03          | pending                                      |
-| F07 | B     | identity / vault context                    | T06                             | V03,V04      | session-derived context #422; auth pending   |
-| F08 | B     | signup admission                            | T06,T10                         | V03,V07      | pending                                      |
+| F06 | B     | email OTP                                   | T06                             | V03          | Go core/HMAC/CAS #426; disconnected          |
+| F07 | B     | identity / vault context                    | T06                             | V03,V04      | session #422; persistent directories #426    |
+| F08 | B     | signup admission                            | T06,T10                         | V03,V07      | atomic Go provisioning #426; terms port open |
 | F09 | B     | vault content                               | T11                             | V04,V05      | pending                                      |
 | F10 | B     | sync v2                                     | T11                             | V01,V04,V05  | contract captured in #410                    |
 | F11 | B     | envelope encryption                         | T07                             | V06          | format/AAD captured in #410                  |
@@ -75,8 +76,8 @@ the same contract as its closed route.
 | --- | ------------------------------------------------------- | ------------------------------------------------------------- |
 | V01 | shared JSON, strict decoding, black-box HTTP            | same fixture through TS #410 and Go unit/DB/HTTP #418         |
 | V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests  |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP T06 slice pending           |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414 empty DB; #418 serial retry/concurrency/rollback/release |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426                  |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418 plus signup atomicity/replay/conflict #426          |
 | V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                   |
 | V06 | crypto vectors, tamper/AAD/KMS failures                 | T01 format/AAD baseline; full T07+ pending                    |
 | V07 | billing/evidence duplicate/order/failure                | T01 browser decoder baseline; T09 pending                     |
@@ -102,6 +103,16 @@ the same contract as its closed route.
   older than that card's creation timestamp.
 - The Go mutation route requires the JSON media type and a same-origin header,
   and it completes signed owner authorization before reading the request body.
+- Verified-email collision keys now preserve the local part and lowercase the
+  domain for both OIDC and Email OTP. The TypeScript OIDC path did not apply
+  that domain normalization, which could split one verified address by domain
+  case.
+- Signup finalization stores only a session-token hash. The TypeScript
+  provisioning seam exposed a session ID without a usable bearer token; Go
+  creates the token at the trusted boundary and returns the plaintext only in
+  the successful in-process receipt. An idempotent retry rotates that hash and
+  returns a fresh usable token rather than pretending plaintext can be
+  recovered from storage.
 - These protections are recorded as intentional boundary hardening rather than
   accidental wire compatibility changes.
 
@@ -331,6 +342,47 @@ short-lived browser binding remains a publication blocker; the session cookie
 policy is not weakened to compensate. `main`, deployment, production data, and
 external resources remain unchanged.
 
+## T06 Email OTP and signup control-plane slice
+
+Issue #426 ports the Email OTP state machine, abuse-policy decisions, identity
+resolution, and provider-neutral signup admission. The pure core fixes an
+eight-digit code, ten-minute lifetime, 60-second resend interval, five failed
+attempts, three total sends, and one-hour 5/30/5 address/network/account
+windows. Pending records are versioned; compare-and-swap makes correct-code
+completion single-use under concurrency. Start and resend are
+enumeration-resistant, completion exposes one generic failure, and a delivery
+failure invalidates the challenge.
+
+Concrete cryptographic adapters use unbiased operating-system entropy, UUIDv7
+challenge and control-plane IDs, 256-bit salts/tokens, framed HMAC-SHA-256 with
+a server-held pepper for OTP digests, constant-time comparison, and separate
+HMAC namespaces for address, trusted-network, and account rate keys. The only
+challenge store, rate-limit store, and delivery adapter in this slice are
+race-safe in-memory test doubles. No code, raw address-derived abuse key, or
+raw session token is persisted or logged.
+
+Migration 00003 adds a provider-neutral one-owner-per-canonical-email table and
+idempotent signup reservations. The PostgreSQL finalizer creates the account,
+personal vault, provider identity, verified-email owner, and initial session in
+one serializable transaction. It accepts only a session-token hash, checks all
+rows before replay, and rotates the replayed session hash while retaining the
+same reserved identifiers. Constraint collisions and partial writes roll back.
+OIDC and OTP both recheck that an admission receipt belongs to the exact
+verified identity and terms submission they supplied.
+
+The shared Email OTP fixture is decoded and executed by TypeScript and Go.
+Unit, race, and disposable-PostgreSQL tests cover normalization, expiry,
+five-failure lock, resend invariants, delivery failure, rate limits, replay,
+sixteen-way completion races, cross-provider email ownership, malformed rows,
+idempotent provisioning, raw-token non-persistence, conflict rollback, and
+connection return.
+
+This is still a disconnected capability. There is no auth HTTP/UI route,
+persistent production challenge or rate-limit backend, mail adapter, OTP
+pepper configuration, OIDC transaction store, callback-browser binding, or
+T10 production terms adapter. Those are publication blockers; the running Go
+server continues to keep the routes closed.
+
 ## Build, cutover, and rollback status
 
 A local-only Go bootstrap, PostgreSQL schema and legacy sync route, signed test
@@ -347,4 +399,10 @@ reverting the PR #421 merge as a reviewed integration change; it has no
 persistent schema or data effect. T06 #422 reuses the T03 session schema and is
 still disconnected, so its rollback removes Go code without migrating or
 deleting stored data. T06 #424 adds no schema or provider resource; rollback
-removes the disconnected Go OIDC core/adapter and its pinned dependencies.
+removes the disconnected Go OIDC core/adapter and its pinned dependencies. T06
+#426 adds migration 00003 only to disposable local/test PostgreSQL. Before any
+approved production apply, rollback is a reviewed code revert plus recreation
+of that disposable schema. After a future production apply, rollback must first
+disable new signup, retain verified-email ownership and terms evidence, and use
+a separately reviewed forward migration; it must not drop 00003 or expose the
+old TypeScript signup path against partially provisioned Go state.

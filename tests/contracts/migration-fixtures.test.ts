@@ -9,6 +9,13 @@ import { createTermsConsentUiHttpTransport } from '@/lib/client/terms-consent-ui
 import { parseCardId } from '@/lib/domain/id';
 import { parseVaultId } from '@/lib/domain/identity';
 import {
+  emailOtpAddressDecoder,
+  emailOtpChallengeIdDecoder,
+  emailOtpCodeDecoder,
+  emailOtpDigestDecoder,
+  emailOtpSaltDecoder,
+} from '@/lib/domain/email-otp';
+import {
   decodeSyncRequest,
   decodeSyncResponse,
   encodeSyncRequest,
@@ -26,6 +33,11 @@ import {
   validateOidcTransaction,
   verifiedOidcClaimsDecoder,
 } from '@/server/core/oidc';
+import {
+  createEmailOtpChallenge,
+  resendEmailOtpChallenge,
+  verifyEmailOtpChallenge,
+} from '@/server/core/email-otp';
 import {
   decodeEnvelopeCiphertext,
   parseCryptoObjectRevision,
@@ -150,6 +162,76 @@ describe('Go migration shared contract fixtures', () => {
         email: string(field(expected, 'email')),
       },
     );
+  });
+
+  it('keeps Email OTP expiry, one-time verification, and resend invariants executable', async () => {
+    const fixtureValue = record(await fixture('identity/email-otp.json'));
+    const expected = record(field(fixtureValue, 'expected'));
+    const challengeId = decodeOrThrow(
+      emailOtpChallengeIdDecoder,
+      field(fixtureValue, 'challengeId'),
+      'shared Email OTP challenge ID',
+    );
+    const address = decodeOrThrow(
+      emailOtpAddressDecoder,
+      field(fixtureValue, 'address'),
+      'shared Email OTP address',
+    );
+    const digest = decodeOrThrow(
+      emailOtpDigestDecoder,
+      field(fixtureValue, 'digest'),
+      'shared Email OTP digest',
+    );
+    const salt = decodeOrThrow(
+      emailOtpSaltDecoder,
+      field(fixtureValue, 'salt'),
+      'shared Email OTP salt',
+    );
+    const code = decodeOrThrow(
+      emailOtpCodeDecoder,
+      field(fixtureValue, 'code'),
+      'shared Email OTP code',
+    );
+    expect(code).toBe('12345678');
+    const created = createEmailOtpChallenge({
+      challengeId,
+      address,
+      digest,
+      salt,
+      purpose: { kind: 'sign-in' },
+      nowEpochSeconds: number(field(fixtureValue, 'createdAtEpochSeconds')),
+    });
+    expect(created.kind).toBe('created');
+    if (created.kind !== 'created') return;
+    expect(created.challenge).toMatchObject({
+      address: string(field(expected, 'canonicalAddress')),
+      expiresAtEpochSeconds: number(field(expected, 'expiresAtEpochSeconds')),
+      failedAttempts: number(field(expected, 'failedAttempts')),
+      sendCount: number(field(expected, 'sendCount')),
+      version: number(field(expected, 'version')),
+    });
+    expect(
+      verifyEmailOtpChallenge({
+        challenge: created.challenge,
+        digestMatches: true,
+        nowEpochSeconds: number(field(fixtureValue, 'verifyAtEpochSeconds')),
+      }),
+    ).toMatchObject({ kind: 'verified', challenge: { kind: 'consumed' } });
+    expect(
+      resendEmailOtpChallenge({
+        challenge: created.challenge,
+        digest,
+        salt,
+        nowEpochSeconds: number(field(fixtureValue, 'resendAtEpochSeconds')),
+      }),
+    ).toMatchObject({
+      kind: 'resent',
+      challenge: {
+        expiresAtEpochSeconds: number(field(expected, 'expiresAtEpochSeconds')),
+        failedAttempts: 0,
+        sendCount: 2,
+      },
+    });
   });
 
   it('fixes the envelope format and canonical AAD byte source', async () => {

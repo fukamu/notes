@@ -37,7 +37,7 @@ type OidcVerifiedClaimsPort interface {
 
 type OidcIdentityDirectory interface {
 	FindByIssuerSubject(context.Context, OidcIdentityKey) (*OidcIdentityRecord, error)
-	FindAccountIDByVerifiedEmail(context.Context, OidcEmailAddress) (*AccountID, error)
+	FindAccountIDByVerifiedEmail(context.Context, VerifiedEmailAddress) (*AccountID, error)
 }
 
 type OidcStartIntent string
@@ -232,37 +232,6 @@ func SerializeOidcAuthorizationRequest(request OidcAuthorizationRequest) (string
 	return endpoint.String(), nil
 }
 
-type SignupGoogleIdentity struct {
-	Issuer  OidcIssuer
-	Subject OidcSubject
-	Email   OidcEmailAddress
-}
-
-type SignupAdmissionReceipt struct {
-	AccountID      AccountID
-	VaultID        VaultID
-	IdentityID     IdentityID
-	SessionID      SessionID
-	SessionEpoch   SessionEpoch
-	TermsConsentID string
-}
-
-func (receipt SignupAdmissionReceipt) Valid() bool {
-	return validAccountID(receipt.AccountID) && validVaultID(receipt.VaultID) &&
-		validSessionID(receipt.SessionID) && validEpoch(receipt.SessionEpoch) &&
-		receipt.SessionEpoch == 1 && uuidV7Pattern.MatchString(string(receipt.IdentityID)) &&
-		uuidV7Pattern.MatchString(receipt.TermsConsentID)
-}
-
-type SignupAdmissionResult struct {
-	Admitted bool
-	Receipt  SignupAdmissionReceipt
-}
-
-type OidcSignupAdmitter interface {
-	AdmitGoogle(context.Context, SignupGoogleIdentity, SignupTermsConsent) (SignupAdmissionResult, error)
-}
-
 type OidcCompletionKind string
 
 const (
@@ -285,7 +254,7 @@ func CompleteGoogleOidc(ctx context.Context, input struct {
 	Transactions  OidcTransactionStore
 	Provider      OidcVerifiedClaimsPort
 	Identities    OidcIdentityDirectory
-	Signup        OidcSignupAdmitter
+	Signup        SignupAdmissionPort
 }) OidcCompletionResult {
 	failure := OidcCompletionResult{Kind: OidcCompletionFailed, Error: "authentication-failed"}
 	if input.Clock == nil || input.Transactions == nil || input.Provider == nil || input.Identities == nil ||
@@ -327,7 +296,7 @@ func CompleteGoogleOidc(ctx context.Context, input struct {
 	if err != nil || (existingIdentity != nil && !existingIdentity.Valid()) {
 		return failure
 	}
-	verifiedEmailAccountID, err := input.Identities.FindAccountIDByVerifiedEmail(ctx, claimsValidation.Email)
+	verifiedEmailAccountID, err := input.Identities.FindAccountIDByVerifiedEmail(ctx, claimsValidation.Email.Verified())
 	if err != nil || (verifiedEmailAccountID != nil && !validAccountID(*verifiedEmailAccountID)) {
 		return failure
 	}
@@ -349,11 +318,14 @@ func CompleteGoogleOidc(ctx context.Context, input struct {
 		if transaction.SignupTermsConsent == nil || input.Signup == nil {
 			return failure
 		}
-		admission, admitErr := input.Signup.AdmitGoogle(ctx, SignupGoogleIdentity{
+		verifiedIdentity := VerifiedSignupIdentity{
+			Kind:   SignupIdentityGoogle,
 			Issuer: resolution.IdentityKey.Issuer, Subject: resolution.IdentityKey.Subject,
-			Email: resolution.Email,
-		}, *transaction.SignupTermsConsent)
-		if admitErr != nil || !admission.Admitted || !admission.Receipt.Valid() {
+			Email: resolution.Email.Verified(),
+		}
+		admission, admitErr := input.Signup.Admit(ctx, verifiedIdentity, *transaction.SignupTermsConsent)
+		if admitErr != nil || !admission.Admitted ||
+			!signupAdmissionMatchesRequest(admission.Receipt, verifiedIdentity, *transaction.SignupTermsConsent) {
 			return failure
 		}
 		return OidcCompletionResult{Kind: OidcCompletionAdmitted, Admission: admission.Receipt}
