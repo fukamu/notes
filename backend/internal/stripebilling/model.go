@@ -157,6 +157,8 @@ type ProviderInvoice struct {
 	Object                string
 	Customer              string
 	Status                string
+	CreatedSeconds        int64
+	PaidAtSeconds         *int64
 	PeriodStartSeconds    int64
 	PeriodEndSeconds      int64
 	SubscriptionReference string

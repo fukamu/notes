@@ -61,8 +61,12 @@ delete existing resources.
   exact integration tip `223b15f1230af906671a088ca3c28b8daae06888` and adds
   only the scoped, read-only quota reconciliation audit runner. T13b Issue #472
   was integrated by PR #473 from exact integration tip
-  `3873f0d0ba3f00d22ead784924c9213d29b2a7ea`. T13c Issue #474 starts from exact
-  integration tip `9255296776ec269a5c741e17b0e2351b2a561db7`.
+  `3873f0d0ba3f00d22ead784924c9213d29b2a7ea`. T13c was integrated by #474 / PR
+  #475 from exact integration tip
+  `9255296776ec269a5c741e17b0e2351b2a561db7`. Billing evidence-time hardening
+  Issue #476 starts from exact integration tip
+  `0efe3917336f5b344a20c8c9a77962d546f7beb7` before the T13 billing runner is
+  composed.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -99,7 +103,7 @@ the same contract as its closed route.
 | F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08         | reencryption #432; fixture recovery #434                        |
 | F16 | B     | quota                                       | T11                             | V04,V05         | Go ledger #450; sync composition #454                           |
 | F17 | B     | billing projection                          | T09                             | V04,V07         | Go core/Postgres #436; deletion cancellation effect #460        |
-| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09         | Go core/SDK adapter #438; remains closed                        |
+| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09         | Go core/SDK #438; provider evidence time #476; remains closed   |
 | F19 | B     | entitlement / offline lease                 | T09                             | V05,V07         | Go core/Postgres #440; disconnected                             |
 | F20 | B     | legal checkout evidence                     | T10                             | V01,V07         | core/store #444; closed Go HTTP #446                            |
 | F21 | B     | terms consent                               | T10                             | V01,V07         | core/store #442; closed Go HTTP #446                            |
@@ -121,7 +125,7 @@ the same contract as its closed route.
 | V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450/#472; sync #452/#454; privacy #456; deletion #458/#460/#462/#464/#466/#468 |
 | V05 | sync/quota paging, retry, conflict, limits              | quota #450/#472; journal #452; authenticated encrypted composition #454                                                                                              |
 | V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                                                                                                                  |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; legal #442/#444/#446                                                                                                       |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438/#476; lease #440; legal #442/#444/#446                                                                                                  |
 | V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468                                    |
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                            |
 | V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                                                                                        |
@@ -164,6 +168,13 @@ the same contract as its closed route.
   Exact snapshot IDs remain durably deduplicated, older observations remain
   stale, and same-time delinquency still dominates paid evidence. The
   TypeScript oracle carries the same regression fix.
+- Billing reconciliation no longer treats the operator observation time as
+  provider payment or delinquency evidence. A paid Invoice uses Stripe's
+  `status_transitions.paid_at`, while a failed/action-required PaymentIntent
+  uses its provider `created` time. Missing, contradictory, reversed, or
+  future provider timestamps fail closed in both TypeScript and Go. This
+  prevents a later audit from making old paid evidence appear newer than a
+  delinquency and restoring access incorrectly.
 - The pinned Stripe Clover Invoice shape no longer contains the legacy `paid`
   boolean. TypeScript and Go derive paid state from the validated `paid` status
   instead of rejecting current provider payloads or trusting a contradictory
@@ -728,6 +739,16 @@ metadata and hosted redirect, and retrieves expanded Subscription state. The
 shared signed fixture executes through the existing TypeScript boundary and
 the Go boundary; HTTP-stub tests exercise exact headers/forms, expanded and
 unexpanded PaymentIntent paths, and provider errors without external calls.
+
+Issue #476 hardens the retrieved snapshot timeline before the T13 operations
+runner composes this boundary. Paid evidence comes from the Invoice's stable
+`status_transitions.paid_at`; delinquency comes from the latest
+PaymentIntent's stable `created` time. Subscription, SetupIntent, Invoice,
+payment transition, and PaymentIntent timestamps must not be later than the
+operator-supplied observation, and the paid transition must not precede its
+Invoice. A paid status without a transition timestamp, a transition on an
+unpaid Invoice, or any reversed/future timeline is malformed and grants
+nothing. `observedAt` remains checkpoint/audit metadata only.
 
 The slice deliberately has no server composition, public route, credential,
 Stripe object, webhook registration, scheduler, real charge, cancellation
@@ -1434,3 +1455,31 @@ separate composition review for Stripe cancellation, private object storage,
 and the production legal-evidence policy. Rollback stops the read-only command
 and reverts the application artifact; there is no data effect to undo and the
 durable saga journal must remain intact.
+
+## T13 billing reconciliation evidence-time prerequisite
+
+Issue #476 closes a security prerequisite discovered before composing the
+billing reconciliation runner. The existing TypeScript and Go snapshot
+decoders used the operator's later `observedAt` as the occurrence time of paid
+and delinquency evidence. Re-reading an old paid Invoice after a newer payment
+failure could therefore make that payment appear newest and unlock the
+subscription.
+
+Both implementations now preserve Stripe's stable evidence timestamps:
+`invoice.status_transitions.paid_at` for a paid Invoice and the latest
+PaymentIntent `created` timestamp for payment failure or required action. The
+Stripe SDK adapter carries those fields into the pure Go core. Provider
+creation and transition times must be present where required, internally
+consistent, and no later than the explicit observation time; malformed state
+fails before Billing is called.
+
+Unit parity covers late observation, duplicate/out-of-order evidence, absent
+and reversed transitions, and future Subscription, SetupIntent, Invoice, and
+PaymentIntent values. PostgreSQL integration proves that an older paid
+snapshot remains durably delinquent and that only a strictly newer paid
+transition restores active state. These tests use the fake TypeScript
+transport and local Go HTTP/PostgreSQL adapters only. No Stripe request,
+credential, charge, scheduler, public route, production database, or provider
+resource is introduced. Rollback is an application-code revert; existing
+Billing facts and reconciliation checkpoints remain authoritative and must not
+be deleted or rewritten.

@@ -98,7 +98,12 @@ Other events are acknowledged as unsupported without changing Billing.
 Duplicate event IDs and snapshot IDs are handled by Billing's existing atomic
 receipts/checkpoints. Stripe delivery order is not trusted; an older payment
 fact cannot replace a newer delinquency. Scheduled reconciliation decodes the
-same provider references and refuses mismatched internal metadata.
+same provider references and refuses mismatched internal metadata. The
+operator observation time is checkpoint metadata, not payment evidence. A
+paid Invoice uses `status_transitions.paid_at`, and failed/action-required
+state uses the latest PaymentIntent `created` time. Missing, contradictory,
+reversed, or future provider timestamps make the snapshot malformed and grant
+nothing.
 
 ## Local and production composition
 
@@ -155,6 +160,16 @@ updated to accept that pinned wire shape, and the Go pure core derives paid
 state from `status == paid` without carrying a redundant provider boolean.
 This corrects a stale provider-field assumption instead of preserving it as
 compatibility.
+
+Issue #476 also preserves stable provider evidence time during reconciliation.
+The SDK adapter maps Invoice `created` and `status_transitions.paid_at`, and
+maps the latest PaymentIntent `created` timestamp whether the PaymentIntent was
+expanded or fetched separately. TypeScript and Go reject a paid Invoice
+without a paid transition, an unpaid Invoice with one, a paid transition before
+Invoice creation, and any provider timestamp later than the explicit
+observation. Re-running reconciliation later therefore cannot make unchanged
+old evidence win ordering. The focused provider tests use a local HTTP stub;
+no Stripe endpoint is contacted.
 
 This implementation remains uncomposed: no HTTP route, endpoint secret, API
 key, webhook registration, scheduled reconciliation, cancellation mutation,

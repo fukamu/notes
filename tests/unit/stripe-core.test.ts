@@ -263,7 +263,10 @@ describe('Stripe adapter pure core', () => {
         snapshotPlan(8_000),
       ),
     ).toMatchObject({
-      latestPaidInvoice: { invoiceReference: stripeIds.invoice1 },
+      latestPaidInvoice: {
+        invoiceReference: stripeIds.invoice1,
+        paidAt: 3_000,
+      },
       delinquency: null,
     });
     expect(
@@ -275,6 +278,7 @@ describe('Stripe adapter pure core', () => {
       delinquency: {
         reason: 'payment-action-required',
         invoiceReference: stripeIds.invoice1,
+        occurredAt: 2_000,
       },
     });
     expect(
@@ -283,6 +287,72 @@ describe('Stripe adapter pure core', () => {
           billingSubscriptionId: billingIds.subscriptionB,
         }),
         snapshotPlan(),
+      ),
+    ).toBeUndefined();
+  });
+
+  it('rejects missing, inconsistent, and future provider evidence times', () => {
+    expect(
+      decodeStripeReconciliationSnapshot(
+        stripeSubscriptionSnapshot({
+          invoicePaid: true,
+          invoiceStatus: 'paid',
+          invoicePaidAt: null,
+        }),
+        snapshotPlan(8_000),
+      ),
+    ).toBeUndefined();
+    expect(
+      decodeStripeReconciliationSnapshot(
+        stripeSubscriptionSnapshot({ invoicePaidAt: 3 }),
+        snapshotPlan(8_000),
+      ),
+    ).toBeUndefined();
+    expect(
+      decodeStripeReconciliationSnapshot(
+        stripeSubscriptionSnapshot({ subscriptionCreated: 10 }),
+        snapshotPlan(9_000),
+      ),
+    ).toBeUndefined();
+    expect(
+      decodeStripeReconciliationSnapshot(
+        stripeSubscriptionSnapshot({ invoiceCreated: 10 }),
+        snapshotPlan(9_000),
+      ),
+    ).toBeUndefined();
+    expect(
+      decodeStripeReconciliationSnapshot(
+        stripeSubscriptionSnapshot({
+          invoicePaid: true,
+          invoiceStatus: 'paid',
+          invoicePaidAt: 9,
+        }),
+        snapshotPlan(8_000),
+      ),
+    ).toBeUndefined();
+    expect(
+      decodeStripeReconciliationSnapshot(
+        stripeSubscriptionSnapshot({
+          invoiceCreated: 3,
+          paymentIntentStatus: 'requires_action',
+          paymentIntentCreated: 2,
+        }),
+        snapshotPlan(9_000),
+      ),
+    ).toBeUndefined();
+    expect(
+      decodeStripeReconciliationSnapshot(
+        stripeSubscriptionSnapshot({
+          paymentIntentStatus: 'requires_action',
+          paymentIntentCreated: 10,
+        }),
+        snapshotPlan(9_000),
+      ),
+    ).toBeUndefined();
+    expect(
+      decodeStripeReconciliationSnapshot(
+        stripeSubscriptionSnapshot({ setupCreated: 10 }),
+        snapshotPlan(9_000),
       ),
     ).toBeUndefined();
   });

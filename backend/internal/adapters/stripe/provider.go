@@ -240,6 +240,11 @@ func mapInvoice(input *stripe.Invoice) *stripebilling.ProviderInvoice {
 	if input == nil {
 		return nil
 	}
+	var paidAt *int64
+	if input.StatusTransitions != nil && input.StatusTransitions.PaidAt > 0 {
+		value := input.StatusTransitions.PaidAt
+		paidAt = &value
+	}
 	providerSubscription := ""
 	metadataSubscriptionID := ""
 	if input.Parent != nil && input.Parent.SubscriptionDetails != nil {
@@ -248,7 +253,8 @@ func mapInvoice(input *stripe.Invoice) *stripebilling.ProviderInvoice {
 	}
 	return &stripebilling.ProviderInvoice{
 		ID: input.ID, Object: input.Object, Customer: customerID(input.Customer),
-		Status: string(input.Status), PeriodStartSeconds: input.PeriodStart, PeriodEndSeconds: input.PeriodEnd,
+		Status: string(input.Status), CreatedSeconds: input.Created, PaidAtSeconds: paidAt,
+		PeriodStartSeconds: input.PeriodStart, PeriodEndSeconds: input.PeriodEnd,
 		SubscriptionReference: providerSubscription, SubscriptionID: metadataSubscriptionID,
 	}
 }

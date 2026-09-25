@@ -136,8 +136,11 @@ func TestDecodeReconciliationSnapshotRequiresVerifiedMapping(t *testing.T) {
 func TestDecodeReconciliationSnapshotMapsPaidAndDelinquentStates(t *testing.T) {
 	paidInput := testProviderSnapshot()
 	paidInput.LatestInvoice.Status = "paid"
+	paidAt := int64(6)
+	paidInput.LatestInvoice.PaidAtSeconds = &paidAt
 	paid, ok := DecodeReconciliationSnapshot(paidInput, testSnapshotPlan(8_000))
-	if !ok || paid.LatestPaidInvoice == nil || paid.LatestPaidInvoice.InvoiceReference != "in_Fukamu1" || paid.Delinquency != nil {
+	if !ok || paid.LatestPaidInvoice == nil || paid.LatestPaidInvoice.InvoiceReference != "in_Fukamu1" ||
+		paid.LatestPaidInvoice.PaidAt != 6_000 || paid.Delinquency != nil {
 		t.Fatalf("paid snapshot = %#v, ok = %v", paid, ok)
 	}
 	delinquentInput := testProviderSnapshot()
@@ -145,8 +148,92 @@ func TestDecodeReconciliationSnapshotMapsPaidAndDelinquentStates(t *testing.T) {
 		ID: "pi_FukamuA", Object: "payment_intent", Status: "requires_action", Customer: "cus_FukamuA", Invoice: "in_Fukamu1", CreatedSeconds: 2,
 	}
 	delinquent, ok := DecodeReconciliationSnapshot(delinquentInput, testSnapshotPlan(9_000))
-	if !ok || delinquent.Delinquency == nil || delinquent.Delinquency.Reason != billing.DelinquencyPaymentActionRequired {
+	if !ok || delinquent.Delinquency == nil || delinquent.Delinquency.Reason != billing.DelinquencyPaymentActionRequired ||
+		delinquent.Delinquency.OccurredAt != 2_000 {
 		t.Fatalf("delinquent snapshot = %#v, ok = %v", delinquent, ok)
+	}
+}
+
+func TestDecodeReconciliationSnapshotRejectsUnstableOrFutureProviderEvidence(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*ProviderSubscriptionSnapshot)
+	}{
+		{
+			name: "paid without transition time",
+			mutate: func(value *ProviderSubscriptionSnapshot) {
+				value.LatestInvoice.Status = "paid"
+			},
+		},
+		{
+			name: "future paid transition",
+			mutate: func(value *ProviderSubscriptionSnapshot) {
+				value.LatestInvoice.Status = "paid"
+				paidAt := int64(9)
+				value.LatestInvoice.PaidAtSeconds = &paidAt
+			},
+		},
+		{
+			name: "paid transition before invoice",
+			mutate: func(value *ProviderSubscriptionSnapshot) {
+				value.LatestInvoice.Status = "paid"
+				paidAt := int64(1)
+				value.LatestInvoice.PaidAtSeconds = &paidAt
+			},
+		},
+		{
+			name: "unpaid invoice with paid transition",
+			mutate: func(value *ProviderSubscriptionSnapshot) {
+				paidAt := int64(3)
+				value.LatestInvoice.PaidAtSeconds = &paidAt
+			},
+		},
+		{
+			name: "future subscription",
+			mutate: func(value *ProviderSubscriptionSnapshot) {
+				value.Subscription.CreatedSeconds = 9
+			},
+		},
+		{
+			name: "future invoice",
+			mutate: func(value *ProviderSubscriptionSnapshot) {
+				value.LatestInvoice.CreatedSeconds = 9
+			},
+		},
+		{
+			name: "future payment intent",
+			mutate: func(value *ProviderSubscriptionSnapshot) {
+				value.LatestPaymentIntent = &ProviderPaymentIntent{
+					ID: "pi_FukamuA", Object: "payment_intent", Status: "requires_action",
+					Customer: "cus_FukamuA", Invoice: "in_Fukamu1", CreatedSeconds: 9,
+				}
+			},
+		},
+		{
+			name: "payment intent before invoice",
+			mutate: func(value *ProviderSubscriptionSnapshot) {
+				value.LatestInvoice.CreatedSeconds = 3
+				value.LatestPaymentIntent = &ProviderPaymentIntent{
+					ID: "pi_FukamuA", Object: "payment_intent", Status: "requires_action",
+					Customer: "cus_FukamuA", Invoice: "in_Fukamu1", CreatedSeconds: 2,
+				}
+			},
+		},
+		{
+			name: "future setup intent",
+			mutate: func(value *ProviderSubscriptionSnapshot) {
+				value.SetupIntent.CreatedSeconds = 9
+			},
+		},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			input := testProviderSnapshot()
+			testCase.mutate(&input)
+			if snapshot, ok := DecodeReconciliationSnapshot(input, testSnapshotPlan(8_000)); ok {
+				t.Fatalf("accepted snapshot = %#v", snapshot)
+			}
+		})
 	}
 }
 
@@ -249,7 +336,7 @@ func testProviderSnapshot() ProviderSubscriptionSnapshot {
 		},
 		LatestInvoice: &ProviderInvoice{
 			ID: "in_Fukamu1", Object: "invoice", Customer: "cus_FukamuA", Status: "open",
-			PeriodStartSeconds: 10, PeriodEndSeconds: 2_592_010,
+			CreatedSeconds: 2, PeriodStartSeconds: 10, PeriodEndSeconds: 2_592_010,
 			SubscriptionReference: "sub_FukamuA", SubscriptionID: testSubscriptionID,
 		},
 	}
