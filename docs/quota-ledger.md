@@ -73,3 +73,23 @@ disable new online mutations before changing ledger state and must preserve
 reservations for reconciliation.
 
 Main is unchanged and production is not deployed.
+
+## Go and PostgreSQL migration status
+
+Issue #450 ports this policy and ledger contract to `backend/internal/quota`
+and the PostgreSQL adapter. Migration `00011_vault_quota_ledger` keeps the same
+owner scope and durable fields. PostgreSQL finalization uses a serializable
+transaction with exact one-row checks for both usage and reservation updates;
+the D1 finalization assertion table is retained as an empty schema-parity table
+but is not part of the PostgreSQL atomicity mechanism.
+
+Admission and finalization lock the Vault usage row, retry only serialization
+failures and deadlocks a bounded number of times, and return an explicit
+`cas-conflict` on exhaustion. Reconciliation candidate reads remain bounded to
+100, owner scoped, and ordered by `reconcile_after` then reservation ID. No
+candidate read changes state or treats age as proof that capacity can be
+released.
+
+The Go ledger remains disconnected until the later T11 journal/content and
+Sync v2 composition Issue. No production migration, backfill, route, provider,
+automatic reconciler, or deployment is authorized by #450.
