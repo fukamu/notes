@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/fukamu/notes/backend/internal/accountdeletion"
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
 	"github.com/fukamu/notes/backend/internal/billing"
 	"github.com/fukamu/notes/backend/internal/identity"
@@ -78,6 +79,7 @@ func TestBillingProjectionAtomicityAndReplayPostgres(t *testing.T) {
 	if err != nil || current == nil || current.Version != 2 || current.Lifecycle.Kind != billing.LifecycleTrialing {
 		t.Fatalf("trial state = %#v, %v", current, err)
 	}
+	assertAccountDeletionBillingEffect(t, ctx, store, *current)
 	assertConcurrentBillingCAS(t, ctx, store, *current)
 	current, err = store.FindByID(ctx, recordA.SubscriptionID)
 	if err != nil || current == nil || current.Version != 3 {
@@ -134,6 +136,61 @@ func TestBillingProjectionAtomicityAndReplayPostgres(t *testing.T) {
 	if pool.Stat().AcquiredConns() != 0 {
 		t.Fatalf("database connections still acquired: %d", pool.Stat().AcquiredConns())
 	}
+}
+
+func assertAccountDeletionBillingEffect(
+	t *testing.T,
+	ctx context.Context,
+	store *postgresadapter.BillingStore,
+	current billing.SubscriptionRecord,
+) {
+	t.Helper()
+	provider := &integrationCancellationProvider{}
+	cancellation, err := billing.NewCancellationService(store, provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	effect, err := accountdeletion.NewBillingCancellationEffect(cancellation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operationID, err := accountdeletion.ParseOperationID("01991f20-61d2-7000-8000-000000002701")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := effect.CancelSubscriptionImmediately(ctx, accountdeletion.StepEffectInput{
+		Scope:       accountdeletion.Scope{AccountID: current.AccountID, VaultID: current.VaultID},
+		OperationID: operationID, Step: accountdeletion.StepCancelSubscription,
+		Attempt: 1, RequestedAt: 2_100, ExecutedAt: 2_200,
+	})
+	if err != nil || result.Kind != accountdeletion.EffectSucceeded || len(provider.commands) != 1 {
+		t.Fatalf("deletion cancellation = %#v commands=%#v err=%v", result, provider.commands, err)
+	}
+	command := provider.commands[0]
+	if command.ProviderSubscriptionReference != current.ProviderSubscriptionReference ||
+		string(command.IdempotencyKey) != string(operationID) || command.RequestedAt != 2_100 {
+		t.Fatalf("provider command = %#v", command)
+	}
+	after, err := store.FindByID(ctx, current.SubscriptionID)
+	if err != nil || after == nil || after.Version != current.Version || after.Lifecycle != current.Lifecycle {
+		t.Fatalf("projection changed = %#v, %v", after, err)
+	}
+}
+
+type integrationCancellationProvider struct {
+	commands []billing.ProviderCancellationCommand
+}
+
+func (provider *integrationCancellationProvider) CancelSubscription(
+	_ context.Context,
+	command billing.ProviderCancellationCommand,
+) (billing.ProviderCancellationObservation, error) {
+	provider.commands = append(provider.commands, command)
+	return billing.ProviderCancellationObservation{
+		Kind: billing.ProviderCancellationCancelled, Provider: command.Provider,
+		ProviderSubscriptionReference: command.ProviderSubscriptionReference,
+		IdempotencyKey:                command.IdempotencyKey, ObservedAt: command.RequestedAt,
+	}, nil
 }
 
 func assertConcurrentBillingCAS(

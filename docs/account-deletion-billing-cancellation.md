@@ -1,5 +1,30 @@
 # Account deletion subscription cancellation
 
+## Go migration status
+
+Issue #460 ports the provider-neutral cancellation plan, result validation,
+and account-deletion mapping to Go. The Billing service resolves the exact
+persisted owner record, never accepts a provider subscription reference from a
+request, and treats a locally verified `cancelled` lifecycle as an idempotent
+confirmation. Missing owner records, mismatched owners, and unlinked provider
+records remain terminal and fail closed.
+
+The deletion operation ID is the provider idempotency key. The completion time
+of the preceding session receipt is the stable request time, while the current
+attempt time remains the saga completion time. Provider observations must echo
+the provider, subscription reference, idempotency key, and a non-earlier
+observation time. A response-loss test applies one fake provider side effect
+across two commands and confirms that the local Billing projection remains
+unchanged until normal webhook or reconciliation ingestion.
+
+The official pinned `stripe-go` adapter now implements immediate subscription
+cancellation with explicit no-invoice/no-proration semantics. Tests use only a
+local HTTP stub and cover the method, path, pinned API version, idempotency
+header, response validation, retryable 429/5xx behavior, and terminal 4xx
+classification. No API key is configured by the Go runtime, the adapter is not
+composed into account deletion, and no real Stripe request is made by this
+slice.
+
 Issue #170 adds the second external effect used by the account-deletion saga:
 immediately cancelling the subscription owned by the persisted Account and
 Personal Vault. It does not add a Stripe adapter, contact a payment provider,
@@ -55,4 +80,7 @@ No schema migration is added. Rolling back the code stops new cancellation
 attempts, but it cannot and must not restore subscriptions already cancelled by
 a completed provider effect. Stripe adapter implementation, real provider
 credentials or calls, production webhooks, production data, deployment, and
-main remain separately approved actions outside #170.
+main remain separately approved actions. The final sentence in the historical
+#170 record that deferred the Stripe adapter is superseded only for local
+implementation and stub verification; connection and execution remain
+unapproved.

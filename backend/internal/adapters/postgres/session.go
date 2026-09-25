@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/fukamu/notes/backend/internal/accountdeletion"
 	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -18,11 +19,14 @@ var (
 	ErrSessionConflict         = errors.New("session identifier conflict")
 	ErrSessionOwnerMismatch    = errors.New("session owner mismatch")
 	ErrSessionConcurrentChange = errors.New("session changed concurrently")
+	ErrSessionDeletionPending  = errors.New("account deletion blocks session issuance")
 )
 
 type SessionStore struct {
 	pool *pgxpool.Pool
 }
+
+var _ accountdeletion.SessionRevocationPort = (*SessionStore)(nil)
 
 type StoredSession struct {
 	Session   identity.Session
@@ -119,30 +123,26 @@ func (store *SessionStore) CreateSession(
 	if err != nil {
 		return ErrInvalidSessionOperation
 	}
-	tag, err := store.pool.Exec(
-		ctx,
-		`INSERT INTO sessions(
-		   session_id, account_id, vault_id, token_hash, session_epoch,
-		   issued_at, expires_at, revoked_at, revocation_reason
-		 )
-		 SELECT $1, owner.account_id, owner.vault_id, $4, $5, $6, $7, NULL, NULL
-		   FROM personal_vaults owner
-		  WHERE owner.account_id = $2 AND owner.vault_id = $3`,
-		string(session.SessionID),
-		string(session.AccountID),
-		string(session.VaultID),
-		string(hash),
-		int64(session.SessionEpoch),
-		session.IssuedAt,
-		session.ExpiresAt,
-	)
-	if err != nil {
+	return store.withSessionTx(ctx, func(transaction pgx.Tx) error {
+		if err := lockSessionIssuanceScope(ctx, transaction, session.AccountID, session.VaultID); err != nil {
+			return err
+		}
+		_, err := transaction.Exec(
+			ctx,
+			`INSERT INTO sessions(
+			   session_id, account_id, vault_id, token_hash, session_epoch,
+			   issued_at, expires_at, revoked_at, revocation_reason
+			 ) VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL)`,
+			string(session.SessionID),
+			string(session.AccountID),
+			string(session.VaultID),
+			string(hash),
+			int64(session.SessionEpoch),
+			session.IssuedAt,
+			session.ExpiresAt,
+		)
 		return classifySessionWriteError(err)
-	}
-	if tag.RowsAffected() != 1 {
-		return ErrSessionOwnerMismatch
-	}
-	return nil
+	})
 }
 
 func (store *SessionStore) RotateSession(
@@ -162,6 +162,14 @@ func (store *SessionStore) RotateSession(
 		return ErrInvalidSessionOperation
 	}
 	return store.withSessionTx(ctx, func(transaction pgx.Tx) error {
+		if err := lockSessionIssuanceScope(
+			ctx,
+			transaction,
+			rotation.Previous.AccountID,
+			rotation.Previous.VaultID,
+		); err != nil {
+			return err
+		}
 		previous := rotation.Previous
 		tag, err := transaction.Exec(
 			ctx,
@@ -203,6 +211,43 @@ func (store *SessionStore) RotateSession(
 		)
 		return classifySessionWriteError(err)
 	})
+}
+
+func lockSessionIssuanceScope(
+	ctx context.Context,
+	transaction pgx.Tx,
+	accountID identity.AccountID,
+	vaultID identity.VaultID,
+) error {
+	var owner int
+	if err := transaction.QueryRow(
+		ctx,
+		`SELECT 1 FROM personal_vaults
+		  WHERE account_id = $1 AND vault_id = $2 FOR UPDATE`,
+		string(accountID),
+		string(vaultID),
+	).Scan(&owner); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrSessionOwnerMismatch
+		}
+		return err
+	}
+	var deletionPending bool
+	if err := transaction.QueryRow(
+		ctx,
+		`SELECT EXISTS (
+		   SELECT 1 FROM account_deletion_operations
+		    WHERE account_id = $1 AND vault_id = $2
+		 )`,
+		string(accountID),
+		string(vaultID),
+	).Scan(&deletionPending); err != nil {
+		return err
+	}
+	if deletionPending {
+		return ErrSessionDeletionPending
+	}
+	return nil
 }
 
 func (store *SessionStore) RevokeSession(
@@ -325,6 +370,45 @@ func (store *SessionStore) RevokeAccountSessions(
 		return 0, err
 	}
 	return revokedCount, nil
+}
+
+func (store *SessionStore) RevokeSessions(
+	ctx context.Context,
+	input accountdeletion.StepEffectInput,
+) (accountdeletion.StepEffectResult, error) {
+	if !accountdeletion.ValidStepEffectInput(input, accountdeletion.StepRevokeSessions) {
+		return accountDeletionTerminalEffect("session-revocation-contract-rejected"), nil
+	}
+	_, err := store.RevokeAccountSessions(
+		ctx,
+		input.Scope.AccountID,
+		input.Scope.VaultID,
+		input.ExecutedAt,
+	)
+	switch {
+	case err == nil:
+		return accountdeletion.StepEffectResult{Kind: accountdeletion.EffectSucceeded}, nil
+	case errors.Is(err, ErrSessionOwnerMismatch):
+		return accountDeletionTerminalEffect("session-owner-mismatch"), nil
+	case errors.Is(err, ErrSessionConcurrentChange):
+		return accountDeletionRetryableEffect("session-revocation-incomplete"), nil
+	default:
+		return accountDeletionRetryableEffect("session-revocation-unavailable"), nil
+	}
+}
+
+func accountDeletionRetryableEffect(code string) accountdeletion.StepEffectResult {
+	failureCode, _ := accountdeletion.ParseFailureCode(code)
+	return accountdeletion.StepEffectResult{
+		Kind: accountdeletion.EffectRetryableFailure, FailureCode: failureCode,
+	}
+}
+
+func accountDeletionTerminalEffect(code string) accountdeletion.StepEffectResult {
+	failureCode, _ := accountdeletion.ParseFailureCode(code)
+	return accountdeletion.StepEffectResult{
+		Kind: accountdeletion.EffectTerminalFailure, FailureCode: failureCode,
+	}
 }
 
 func (store *SessionStore) withSessionTx(

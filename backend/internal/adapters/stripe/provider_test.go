@@ -82,6 +82,89 @@ func TestProviderNormalizesExpandedSubscriptionSnapshot(t *testing.T) {
 	}
 }
 
+func TestProviderCancelsSubscriptionImmediatelyWithStableIdempotency(t *testing.T) {
+	var captured url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodDelete || request.URL.Path != "/v1/subscriptions/sub_FukamuA" {
+			http.NotFound(response, request)
+			return
+		}
+		assertStripeHeaders(t, request, "01991f20-61d2-7000-8000-000000009099")
+		if err := request.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		captured = request.PostForm
+		writeJSON(t, response, map[string]any{
+			"id": "sub_FukamuA", "object": "subscription", "status": "canceled",
+			"canceled_at": int64(2),
+		})
+	}))
+	defer server.Close()
+	provider := testProvider(t, server)
+	command := testCancellationCommand()
+	observation, err := provider.CancelSubscription(context.Background(), command)
+	if err != nil || observation.Kind != billing.ProviderCancellationCancelled ||
+		observation.ProviderSubscriptionReference != command.ProviderSubscriptionReference ||
+		observation.IdempotencyKey != command.IdempotencyKey || observation.ObservedAt != 2_000 {
+		t.Fatalf("observation = %#v, err = %v", observation, err)
+	}
+	for _, field := range []string{"invoice_now", "prorate"} {
+		if value := captured.Get(field); value != "" && value != "false" {
+			t.Fatalf("cancellation form %s = %q", field, value)
+		}
+	}
+}
+
+func TestProviderClassifiesCancellationFailuresWithoutLeakingProviderText(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    int
+		wantKind  billing.ProviderCancellationKind
+		wantError bool
+	}{
+		{name: "terminal request", status: http.StatusBadRequest, wantKind: billing.ProviderCancellationTerminalFailure},
+		{name: "provider unavailable", status: http.StatusServiceUnavailable, wantError: true},
+		{name: "rate limited", status: http.StatusTooManyRequests, wantError: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+				response.WriteHeader(test.status)
+				writeJSON(t, response, map[string]any{"error": map[string]any{
+					"message": "provider secret detail", "type": "invalid_request_error",
+				}})
+			}))
+			defer server.Close()
+			provider := testProvider(t, server)
+			observation, err := provider.CancelSubscription(context.Background(), testCancellationCommand())
+			if (err != nil) != test.wantError || observation.Kind != test.wantKind {
+				t.Fatalf("observation = %#v, err = %v", observation, err)
+			}
+		})
+	}
+}
+
+func TestProviderRejectsMalformedCancellationCommandsAndResponses(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, response, map[string]any{
+			"id": "sub_FukamuA", "object": "subscription", "status": "active",
+			"canceled_at": nil,
+		})
+	}))
+	defer server.Close()
+	provider := testProvider(t, server)
+	command := testCancellationCommand()
+	command.ProviderSubscriptionReference = "../customers/cus_FukamuA"
+	if _, err := provider.CancelSubscription(context.Background(), command); !errors.Is(err, ErrInvalidProviderCommand) {
+		t.Fatalf("invalid command error = %v", err)
+	}
+	command = testCancellationCommand()
+	observation, err := provider.CancelSubscription(context.Background(), command)
+	if err != nil || billing.ValidProviderCancellationObservation(observation) {
+		t.Fatalf("malformed response = %#v, %v", observation, err)
+	}
+}
+
 func TestProviderRetrievesUnexpandedPaymentIntentAndPropagatesFailures(t *testing.T) {
 	var mutex sync.Mutex
 	paths := make([]string, 0, 2)
@@ -188,6 +271,13 @@ func testCreateCommand() stripebilling.CheckoutCreateCommand {
 			Offer:      stripebilling.ContractOffer{OfferVersion: "legal-commerce-v1:2026-09-01", DisclosureVersion: "2026-09-01", BillingPeriod: stripebilling.BillingMonthly, RenewalChargeYen: 1_280},
 		},
 		SubmitMessage: "14日間は0円です。15日目から税込1280円を毎月自動課金します。",
+	}
+}
+
+func testCancellationCommand() billing.ProviderCancellationCommand {
+	return billing.ProviderCancellationCommand{
+		Provider: stripebilling.Provider, ProviderSubscriptionReference: "sub_FukamuA",
+		IdempotencyKey: "01991f20-61d2-7000-8000-000000009099", RequestedAt: 1_100,
 	}
 }
 

@@ -23,6 +23,19 @@ type StepEffectInput struct {
 	OperationID OperationID
 	Step        Step
 	Attempt     int64
+	RequestedAt int64
+	ExecutedAt  int64
+}
+
+func ValidStepEffectInput(input StepEffectInput, expected Step) bool {
+	if !ValidScope(input.Scope) || input.Step != expected || input.Attempt < 1 || input.Attempt > MaximumAttempt {
+		return false
+	}
+	if _, err := ParseOperationID(string(input.OperationID)); err != nil {
+		return false
+	}
+	return validTimestamp(input.RequestedAt) && validTimestamp(input.ExecutedAt) &&
+		input.ExecutedAt >= input.RequestedAt
 }
 
 type StepEffectResultKind string
@@ -241,6 +254,7 @@ func (service *Service) executeClaimedStep(
 	input := StepEffectInput{
 		Scope: snapshot.Operation.Scope, OperationID: snapshot.Operation.OperationID,
 		Step: running.Step, Attempt: running.Attempt,
+		RequestedAt: effectRequestedAt(snapshot), ExecutedAt: finishedAt,
 	}
 	effect := service.executeEffect(ctx, input)
 	result := StepResult{Step: running.Step, Attempt: running.Attempt, FinishedAt: finishedAt}
@@ -269,6 +283,13 @@ func (service *Service) executeClaimedStep(
 		return ApplicationResult{}, err
 	}
 	return service.resultFromCommit(committed, secret, sequence)
+}
+
+func effectRequestedAt(snapshot Snapshot) int64 {
+	if len(snapshot.Receipts) == 0 {
+		return snapshot.Operation.CreatedAt
+	}
+	return snapshot.Receipts[len(snapshot.Receipts)-1].CompletedAt
 }
 
 func (service *Service) executeEffect(ctx context.Context, input StepEffectInput) StepEffectResult {

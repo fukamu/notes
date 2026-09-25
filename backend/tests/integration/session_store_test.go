@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fukamu/notes/backend/internal/accountdeletion"
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
 	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/fukamu/notes/backend/migrations"
@@ -262,6 +263,136 @@ func assertAccountSessionRevocation(
 	}
 	if count, err := store.RevokeAccountSessions(ctx, accountID, vaultID, 5_600); err != nil || count != 0 {
 		t.Fatalf("idempotent account revoke = %d, %v", count, err)
+	}
+
+	late := sessionRecord(t, accountID, vaultID, "01991f20-61d2-7000-8000-000000000321", 1, 6_000, 7_000)
+	if err := store.CreateSession(ctx, late, sessionToken(t, 'L', 'k')); err != nil {
+		t.Fatalf("create late session: %v", err)
+	}
+	operationID, err := accountdeletion.ParseOperationID("01991f20-61d2-7000-8000-000000002801")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := accountdeletion.StepEffectInput{
+		Scope:       accountdeletion.Scope{AccountID: accountID, VaultID: vaultID},
+		OperationID: operationID, Step: accountdeletion.StepRevokeSessions,
+		Attempt: 1, RequestedAt: 1_000, ExecutedAt: 5_900,
+	}
+	result, err := store.RevokeSessions(ctx, input)
+	if err != nil || result.Kind != accountdeletion.EffectRetryableFailure ||
+		result.FailureCode != "session-revocation-incomplete" {
+		t.Fatalf("concurrent effect = %#v, %v", result, err)
+	}
+	input.Attempt = 2
+	input.ExecutedAt = 6_500
+	result, err = store.RevokeSessions(ctx, input)
+	if err != nil || result.Kind != accountdeletion.EffectSucceeded {
+		t.Fatalf("retried effect = %#v, %v", result, err)
+	}
+	result, err = store.RevokeSessions(ctx, input)
+	if err != nil || result.Kind != accountdeletion.EffectSucceeded {
+		t.Fatalf("replayed effect = %#v, %v", result, err)
+	}
+	input.Scope.AccountID = sessionAccountID(t, "01991f20-61d2-7000-8000-000000000109")
+	result, err = store.RevokeSessions(ctx, input)
+	if err != nil || result.Kind != accountdeletion.EffectTerminalFailure ||
+		result.FailureCode != "session-owner-mismatch" {
+		t.Fatalf("wrong-owner effect = %#v, %v", result, err)
+	}
+
+	assertDeletionStartBlocksSessionIssuance(t, ctx, pool, store, accountID, vaultID)
+}
+
+func assertDeletionStartBlocksSessionIssuance(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	sessions *postgresadapter.SessionStore,
+	accountID identity.AccountID,
+	vaultID identity.VaultID,
+) {
+	t.Helper()
+	sourceToken := sessionToken(t, 'M', 'o')
+	source := sessionRecord(t, accountID, vaultID, "01991f20-61d2-7000-8000-000000000322", 1, 6_500, 9_000)
+	if err := sessions.CreateSession(ctx, source, sourceToken); err != nil {
+		t.Fatalf("create deletion-race source: %v", err)
+	}
+
+	deletions, err := postgresadapter.NewAccountDeletionStore(pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := accountdeletion.Scope{AccountID: accountID, VaultID: vaultID}
+	operation := accountDeletionOperation(t, scope, 2_899, 6_600)
+	continuation := accountDeletionContinuation(t, operation, 'Q', 'R', 20_000)
+	raceSession := sessionRecord(t, accountID, vaultID, "01991f20-61d2-7000-8000-000000000323", 2, 6_600, 9_000)
+	raceToken := sessionToken(t, 'N', 's')
+
+	start := make(chan struct{})
+	var wait sync.WaitGroup
+	var startResult accountdeletion.StartResult
+	var startErr error
+	var sessionErr error
+	wait.Add(2)
+	go func() {
+		defer wait.Done()
+		<-start
+		startResult, startErr = deletions.Start(ctx, operation, continuation)
+	}()
+	go func() {
+		defer wait.Done()
+		<-start
+		sessionErr = sessions.CreateSession(ctx, raceSession, raceToken)
+	}()
+	close(start)
+	wait.Wait()
+	if startErr != nil || startResult.Kind != accountdeletion.StartCreated {
+		t.Fatalf("raced deletion start = %#v, %v", startResult, startErr)
+	}
+	if sessionErr != nil && !errors.Is(sessionErr, postgresadapter.ErrSessionDeletionPending) &&
+		!errors.Is(sessionErr, postgresadapter.ErrSessionConcurrentChange) {
+		t.Fatalf("raced session error = %v", sessionErr)
+	}
+
+	blocked := sessionRecord(t, accountID, vaultID, "01991f20-61d2-7000-8000-000000000324", 3, 6_700, 9_000)
+	if err := sessions.CreateSession(ctx, blocked, sessionToken(t, 'O', 'w')); !errors.Is(err, postgresadapter.ErrSessionDeletionPending) {
+		t.Fatalf("post-deletion session error = %v", err)
+	}
+	nextID, err := identity.ParseSessionID("01991f20-61d2-7000-8000-000000000325")
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextEpoch, err := identity.ParseSessionEpoch(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotation := identity.RotateSession(source, identity.RotationInput{
+		NextSessionID: nextID, NextSessionEpoch: nextEpoch,
+		CurrentToken: sourceToken, NextToken: sessionToken(t, 'P', '0'),
+		RotatedAt: 6_800, ExpiresAt: 10_000,
+	})
+	if !rotation.Rotated {
+		t.Fatalf("rotation fixture = %#v", rotation)
+	}
+	if err := sessions.RotateSession(ctx, sourceToken, rotation); !errors.Is(err, postgresadapter.ErrSessionDeletionPending) {
+		t.Fatalf("post-deletion rotation error = %v", err)
+	}
+
+	input := accountdeletion.StepEffectInput{
+		Scope: scope, OperationID: operation.OperationID, Step: accountdeletion.StepRevokeSessions,
+		Attempt: 1, RequestedAt: operation.CreatedAt, ExecutedAt: 7_000,
+	}
+	result, err := sessions.RevokeSessions(ctx, input)
+	if err != nil || result.Kind != accountdeletion.EffectSucceeded {
+		t.Fatalf("raced revocation = %#v, %v", result, err)
+	}
+	var active int64
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM sessions
+		  WHERE account_id = $1 AND vault_id = $2 AND revoked_at IS NULL`,
+		string(accountID), string(vaultID),
+	).Scan(&active); err != nil || active != 0 {
+		t.Fatalf("active sessions after deletion revoke = %d, %v", active, err)
 	}
 }
 

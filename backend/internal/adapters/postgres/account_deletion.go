@@ -69,6 +69,18 @@ func (store *AccountDeletionStore) Start(
 		return accountdeletion.StartResult{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	var owner int
+	if err := tx.QueryRow(
+		ctx,
+		`SELECT 1 FROM personal_vaults
+		  WHERE account_id = $1 AND vault_id = $2 FOR UPDATE`,
+		string(operation.Scope.AccountID), string(operation.Scope.VaultID),
+	).Scan(&owner); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return accountdeletion.StartResult{Kind: accountdeletion.StartRejected, Reason: accountdeletion.StartInvalid}, nil
+		}
+		return accountdeletion.StartResult{}, err
+	}
 
 	operationBindings := accountDeletionOperationBindings(operation)
 	_, err = tx.Exec(ctx, `INSERT INTO account_deletion_operations(
