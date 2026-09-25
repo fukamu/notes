@@ -48,6 +48,18 @@ storage adapter is an in-memory test/drill fake. No R2 bucket, credential,
 provider request, production route, persistent nonce store, or scheduler is
 configured.
 
+T08b Issue #432 adds disconnected Go DEK rotation and re-encryption services.
+Rotation persists `generating`, `promoting`, and `completed` revisions, destroys
+generated raw-key handles on every return path, and changes the PostgreSQL
+write-key pointer atomically while retaining old read keys. Re-encryption uses
+a durable per-Vault checkpoint, bounded batches, authenticated old ciphertext,
+fresh immutable replacement objects, and one transaction for metadata CAS,
+old-object outbox enqueue, and checkpoint advance. Old-version intent
+reservation and promotion share a Vault advisory lock, so rotation cannot race
+a newly reserved old-key write. These services remain uncomposed: no route,
+scheduler, real object provider, production KMS request, or key destruction is
+enabled.
+
 ## Local start
 
 ```bash

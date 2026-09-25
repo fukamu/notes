@@ -271,6 +271,8 @@ func assertCoreTables(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 		"vault_encrypted_objects",
 		"vault_encrypted_write_intents",
 		"vault_object_delete_outbox",
+		"vault_dek_rotation_operations",
+		"vault_reencryption_jobs",
 		"schema_migrations",
 		"launch_config",
 		"launch_allowed_users",

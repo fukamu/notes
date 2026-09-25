@@ -115,7 +115,15 @@ func (store *EncryptedObjectStore) ReserveIntent(
 	if store.invalid() || encryptedobject.ValidatePendingWrite(intent) != nil {
 		return encryptedobject.IntentReservation{}, ErrInvalidEncryptedObjectOperation
 	}
-	tag, err := store.pool.Exec(
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return encryptedobject.IntentReservation{}, errors.New("begin encrypted object write intent")
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 7308))`, string(store.vaultID)); err != nil {
+		return encryptedobject.IntentReservation{}, errors.New("lock encrypted object write intent")
+	}
+	tag, err := tx.Exec(
 		ctx,
 		`INSERT INTO vault_encrypted_write_intents(
 		   vault_id, write_id, object_type, object_id, expected_revision, object_revision,
@@ -123,6 +131,10 @@ func (store *EncryptedObjectStore) ReserveIntent(
 		 )
 		 SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
 		  WHERE EXISTS (SELECT 1 FROM personal_vaults WHERE vault_id = $1)
+		    AND EXISTS (
+		      SELECT 1 FROM vault_dek_versions
+		       WHERE vault_id = $1 AND dek_version = $10 AND is_write_key = true
+		    )
 		    AND NOT EXISTS (
 		      SELECT 1 FROM vault_encrypted_objects WHERE object_key = $7
 		    )
@@ -137,16 +149,28 @@ func (store *EncryptedObjectStore) ReserveIntent(
 	if err != nil {
 		return encryptedobject.IntentReservation{}, errors.New("reserve encrypted object write intent")
 	}
-	existing, err := store.FindIntent(ctx, intent.WriteID)
+	existing, err := scanPendingWrite(tx.QueryRow(
+		ctx,
+		`SELECT object_type, object_id, expected_revision, object_revision, write_id,
+		        object_key, plaintext_bytes, crypto_version, dek_version, created_at
+		   FROM vault_encrypted_write_intents WHERE vault_id = $1 AND write_id = $2`,
+		string(store.vaultID), string(intent.WriteID),
+	))
 	if err != nil {
 		return encryptedobject.IntentReservation{}, err
 	}
 	if existing == nil {
+		if err := tx.Commit(ctx); err != nil {
+			return encryptedobject.IntentReservation{}, errors.New("commit encrypted object write intent rejection")
+		}
 		return encryptedobject.IntentReservation{Kind: encryptedobject.IntentConflict}, nil
 	}
 	kind := encryptedobject.IntentExisting
 	if tag.RowsAffected() == 1 {
 		kind = encryptedobject.IntentReserved
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return encryptedobject.IntentReservation{}, errors.New("commit encrypted object write intent")
 	}
 	return encryptedobject.IntentReservation{Kind: kind, Intent: *existing}, nil
 }
