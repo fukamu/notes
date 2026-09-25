@@ -44,6 +44,13 @@ candidate evidence ID first reloads the original scoped evidence, then sends the
 same provider idempotency key and contract metadata. Provider response loss
 cannot create a second Billing aggregate or change the accepted offer.
 
+Go Issue #444 additionally derives the retry's Billing `createdAt` from the
+first immutable evidence rather than a later request clock. This makes the full
+Billing command stable after provider response loss. The disconnected
+TypeScript path passed the current handler clock and could therefore conflict
+with its existing checkout intent if a retry occurred later; that edge case is
+not preserved as compatibility behavior.
+
 Missing consent, stale hashes, cross-Vault repository results, and identifier
 conflicts stop before provider access. Provider response metadata must match the
 Billing subscription, Checkout intent, evidence ID, offer hash, offer version,
@@ -69,13 +76,24 @@ Terms-of-service version consent remains #132. This Issue does not enable
 Stripe Dashboard ToS consent or claim that its commercial-offer consent is the
 same legal act.
 
+The current terms verifier indexes evidence by the checkout submission ID, but
+the terms-consent and checkout clients generate separate identifiers. The Go
+port keeps the route disconnected and fail-closed until T10c replaces that
+unreachable composition with a reviewed contract. The recommended direction is
+to verify the latest current owner-scoped terms evidence while retaining the
+commercial submission ID solely for checkout idempotency; combining the two
+legal acts into one checkbox is not assumed.
+
 ## Rollback and verification
 
-There is no new migration beyond #223. Rollback stops new Checkout acceptance
-and reverts the handler/provider mapping while keeping the existing cancellation
-port available. Stored live evidence is not rewritten; account deletion still
-removes it through the #223 cascade. Production changes and real provider
-operations require separate approval.
+The TypeScript implementation has no migration beyond #223. Go Issue #444 adds
+PostgreSQL migration 00010 and keeps it disconnected. Rollback stops new
+Checkout acceptance and reverts handler/provider composition while keeping the
+existing cancellation port available. Once evidence exists, migration 00010 and
+stored rows are preserved and a compatible artifact or reviewed forward
+migration is used. T12 must explicitly execute the approved deletion/retention
+workflow; the Go foreign key does not silently cascade. Production changes and
+real provider operations require separate approval.
 
 Focused tests cover authentication, CSRF, body scope injection and limits,
 consent/stale-offer rejection, response-loss replay, contract metadata mismatch,
