@@ -1,0 +1,86 @@
+{
+  "profile": "billing-projection-v1",
+  "owner": {
+    "accountId": "01991f20-61d2-7000-8000-000000000101",
+    "vaultId": "01991f20-61d2-7000-8000-000000000201"
+  },
+  "command": {
+    "subscriptionId": "01991f20-61d2-7000-8000-000000000701",
+    "checkoutIntentId": "01991f20-61d2-7000-8000-000000000702",
+    "provider": "stripe",
+    "createdAt": 1000
+  },
+  "facts": [
+    {
+      "kind": "trial-started",
+      "eventId": "evt_trial",
+      "occurredAt": 2000,
+      "recordedAt": 2100,
+      "trialStartedAt": 2000,
+      "trialEndsAt": 1209602000
+    },
+    {
+      "kind": "invoice-paid",
+      "eventId": "evt_paid",
+      "occurredAt": 5000,
+      "recordedAt": 5100,
+      "invoiceReference": "in_paid",
+      "paidPeriodStartedAt": 5000,
+      "paidPeriodEndsAt": 15000
+    },
+    {
+      "kind": "invoice-payment-failed",
+      "eventId": "evt_failed",
+      "occurredAt": 5000,
+      "recordedAt": 5200,
+      "invoiceReference": "in_failed"
+    }
+  ],
+  "snapshots": [
+    {
+      "snapshotId": "snapshot-a",
+      "observedAt": 8000,
+      "recordedAt": 8100,
+      "paymentMethodReady": true,
+      "paymentMethodUpdatedAt": 8000,
+      "latestPaidInvoice": {
+        "invoiceReference": "in_snapshot",
+        "paidAt": 8000,
+        "periodStartedAt": 8000,
+        "periodEndsAt": 18000
+      },
+      "delinquency": null,
+      "cancelAt": null,
+      "cancellationUpdatedAt": 8000,
+      "cancelledAt": null
+    },
+    {
+      "snapshotId": "snapshot-b",
+      "observedAt": 8000,
+      "recordedAt": 8200,
+      "paymentMethodReady": true,
+      "paymentMethodUpdatedAt": 8000,
+      "latestPaidInvoice": null,
+      "delinquency": {
+        "reason": "payment-action-required",
+        "invoiceReference": "in_same_time",
+        "occurredAt": 8000
+      },
+      "cancelAt": null,
+      "cancellationUpdatedAt": 8000,
+      "cancelledAt": null
+    }
+  ],
+  "providerMapping": {
+    "customerReference": "cus_notes",
+    "subscriptionReference": "sub_notes"
+  },
+  "expected": {
+    "version": 6,
+    "lifecycle": "delinquent",
+    "delinquencyReason": "payment-action-required",
+    "lastPaidAt": 8000,
+    "lastDelinquencyAt": 8000,
+    "lastReconciledAt": 8000
+  }
+}

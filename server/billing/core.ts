@@ -146,7 +146,7 @@ export function planReconciliationSnapshot(
   }
   if (
     mapping.record.lastReconciledAt !== null &&
-    snapshot.observedAt <= mapping.record.lastReconciledAt
+    snapshot.observedAt < mapping.record.lastReconciledAt
   ) {
     return { kind: 'ignore', reason: 'stale', record: mapping.record };
   }

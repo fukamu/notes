@@ -103,3 +103,26 @@ Capabilities and the approved 24-hour offline entitlement lease belong to #119
 and its decision implementation #265.
 Price, refund, cancellation deadline, and application confirmation UI remain
 in their legal/product Issues and are not decided here.
+
+## Go T09a implementation
+
+Issue #436 implements the same provider-neutral boundary in
+`backend/internal/billing` and the PostgreSQL adapter. Migration 00007 owns the
+four billing tables in the Go schema. PostgreSQL uses one serializable
+transaction for aggregate CAS plus receipt/checkpoint insertion; it does not
+rely on an event timestamp as a uniqueness key. `last_delinquency_at` is a
+dedicated ordering-evidence column rather than overloading the current
+`delinquency_since` lifecycle field.
+
+The original reconciliation comparison treated `observedAt <= previous` as
+stale. Two independently identified snapshots observed in the same millisecond
+could therefore hide a newer failure state. The TypeScript oracle and Go core
+now reject only an older observation. The unique provider/snapshot receipt
+still makes exact replay idempotent, and per-evidence timestamps keep
+same-time delinquency dominant.
+
+The Go implementation is disconnected. It registers no billing route, Stripe
+webhook, SDK transport, checkout, cancellation, charge, entitlement, offline
+lease, or production migration. Draft PR #404 remains the authority for the
+normal period-end versus account-deletion cancellation contract; #436 neither
+copies nor supersedes that draft.

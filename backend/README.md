@@ -170,4 +170,12 @@ NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:554
 go -C backend test -tags=integration ./tests/integration -run 'Test(VaultDEKKeyring|EncryptedObject)Postgres'
 go -C backend test -race ./internal/cryptocontent/... ./internal/adapters/contentcrypto/... ./internal/adapters/kms/...
 go -C backend test -race ./internal/encryptedobject/... ./internal/adapters/objectstorage/...
+go -C backend test -race ./internal/billing/...
+NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend test -tags=integration ./tests/integration -run TestBillingProjectionAtomicityAndReplayPostgres -count=3
 ```
+
+The billing check uses only normalized provider facts and snapshots. Migration
+00007, the provider-neutral service, and the PostgreSQL adapter are not composed
+into an HTTP route and make no Stripe, cancellation, charge, entitlement, or
+production database call.

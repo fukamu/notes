@@ -7,7 +7,12 @@ import { createBillingUiHttpTransport } from '@/lib/client/http-billing-ui';
 import { createPrivacyRequestUiHttpTransport } from '@/lib/client/http-privacy-request';
 import { createTermsConsentUiHttpTransport } from '@/lib/client/terms-consent-ui';
 import { parseCardId } from '@/lib/domain/id';
-import { parseVaultId } from '@/lib/domain/identity';
+import {
+  parseAccountId,
+  parseSessionEpoch,
+  parseSessionId,
+  parseVaultId,
+} from '@/lib/domain/identity';
 import {
   emailOtpAddressDecoder,
   emailOtpChallengeIdDecoder,
@@ -56,6 +61,24 @@ import {
   decodeVaultRecoveryManifest,
   planVaultRecoveryDrill,
 } from '@/server/encrypted-object/recovery-core';
+import {
+  planCheckoutCreation,
+  planReconciliationSnapshot,
+  planVerifiedProviderFact,
+  type BillingSubscriptionRecord,
+} from '@/server/billing/core';
+import {
+  parseBillingProvider,
+  parseBillingSubscriptionId,
+  parseCheckoutIntentId,
+  parseProviderCustomerReference,
+  parseProviderEventId,
+  parseProviderInvoiceReference,
+  parseProviderSubscriptionReference,
+  parseReconciliationSnapshotId,
+  type ReconciliationSnapshot,
+  type VerifiedProviderFact,
+} from '@/server/billing/public';
 
 const fixtureRoot = new URL('../../contracts/fixtures/', import.meta.url);
 
@@ -369,6 +392,69 @@ describe('Go migration shared contract fixtures', () => {
     expect(field(fixtureValue, 'dependency')).toBe('issue-403-pr-404');
   });
 
+  it('keeps billing fact ordering and same-time reconciliation compatible', async () => {
+    const fixtureValue = record(await fixture('billing/projection.json'));
+    const owner = record(field(fixtureValue, 'owner'));
+    const commandValue = record(field(fixtureValue, 'command'));
+    const mapping = record(field(fixtureValue, 'providerMapping'));
+    const context = {
+      accountId: parseAccountId(field(owner, 'accountId')),
+      vaultId: parseVaultId(field(owner, 'vaultId')),
+      sessionId: parseSessionId('01991f20-61d2-7000-8000-000000000301'),
+      sessionEpoch: parseSessionEpoch(1),
+    };
+    const command = {
+      subscriptionId: parseBillingSubscriptionId(
+        field(commandValue, 'subscriptionId'),
+      ),
+      checkoutIntentId: parseCheckoutIntentId(
+        field(commandValue, 'checkoutIntentId'),
+      ),
+      provider: parseBillingProvider(field(commandValue, 'provider')),
+      createdAt: number(field(commandValue, 'createdAt')),
+    };
+    const checkout = planCheckoutCreation(context, command);
+    if (checkout.kind !== 'create')
+      throw new Error('fixture checkout rejected');
+    let current: BillingSubscriptionRecord = checkout.record;
+
+    const facts = field(fixtureValue, 'facts');
+    if (!Array.isArray(facts)) throw new Error('facts must be an array');
+    for (const value of facts) {
+      const plan = planVerifiedProviderFact(
+        current,
+        billingFact(record(value), command, mapping),
+      );
+      if (plan.kind !== 'apply') throw new Error('fixture fact rejected');
+      current = plan.record;
+    }
+
+    const snapshots = field(fixtureValue, 'snapshots');
+    if (!Array.isArray(snapshots)) {
+      throw new Error('snapshots must be an array');
+    }
+    for (const value of snapshots) {
+      const plan = planReconciliationSnapshot(
+        current,
+        billingSnapshot(record(value), command, mapping),
+      );
+      if (plan.kind !== 'apply') throw new Error('fixture snapshot rejected');
+      current = plan.record;
+    }
+
+    const expected = record(field(fixtureValue, 'expected'));
+    expect(current).toMatchObject({
+      version: number(field(expected, 'version')),
+      lifecycle: {
+        kind: string(field(expected, 'lifecycle')),
+        reason: string(field(expected, 'delinquencyReason')),
+      },
+      lastPaidAt: number(field(expected, 'lastPaidAt')),
+      lastDelinquencyAt: number(field(expected, 'lastDelinquencyAt')),
+      lastReconciledAt: number(field(expected, 'lastReconciledAt')),
+    });
+  });
+
   it('keeps deletion terminal fields and privacy ownership data strict', async () => {
     const fixtureValue = record(await fixture('account/lifecycle.json'));
     const deletion = record(field(fixtureValue, 'deletion'));
@@ -431,6 +517,140 @@ describe('Go migration shared contract fixtures', () => {
     });
   });
 });
+
+function billingFact(
+  value: Record<string, unknown>,
+  command: Parameters<typeof planCheckoutCreation>[1],
+  mapping: Record<string, unknown>,
+): VerifiedProviderFact {
+  const base = {
+    subscriptionId: command.subscriptionId,
+    provider: command.provider,
+    eventId: parseProviderEventId(field(value, 'eventId')),
+    providerCustomerReference: parseProviderCustomerReference(
+      field(mapping, 'customerReference'),
+    ),
+    providerSubscriptionReference: parseProviderSubscriptionReference(
+      field(mapping, 'subscriptionReference'),
+    ),
+    occurredAt: number(field(value, 'occurredAt')),
+    recordedAt: number(field(value, 'recordedAt')),
+  };
+  switch (string(field(value, 'kind'))) {
+    case 'trial-started':
+      return {
+        ...base,
+        kind: 'trial-started',
+        trialStartedAt: number(field(value, 'trialStartedAt')),
+        trialEndsAt: number(field(value, 'trialEndsAt')),
+      };
+    case 'payment-method-updated':
+      return { ...base, kind: 'payment-method-updated' };
+    case 'invoice-paid':
+      return {
+        ...base,
+        kind: 'invoice-paid',
+        invoiceReference: parseProviderInvoiceReference(
+          field(value, 'invoiceReference'),
+        ),
+        paidPeriodStartedAt: number(field(value, 'paidPeriodStartedAt')),
+        paidPeriodEndsAt: number(field(value, 'paidPeriodEndsAt')),
+      };
+    case 'invoice-payment-failed':
+      return {
+        ...base,
+        kind: 'invoice-payment-failed',
+        invoiceReference: parseProviderInvoiceReference(
+          field(value, 'invoiceReference'),
+        ),
+      };
+    case 'invoice-payment-action-required':
+      return {
+        ...base,
+        kind: 'invoice-payment-action-required',
+        invoiceReference: parseProviderInvoiceReference(
+          field(value, 'invoiceReference'),
+        ),
+      };
+    case 'cancellation-scheduled':
+      return {
+        ...base,
+        kind: 'cancellation-scheduled',
+        cancelAt: number(field(value, 'cancelAt')),
+      };
+    case 'subscription-cancelled':
+      return {
+        ...base,
+        kind: 'subscription-cancelled',
+        cancelledAt: number(field(value, 'cancelledAt')),
+      };
+    default:
+      throw new Error('unknown fixture billing fact');
+  }
+}
+
+function billingSnapshot(
+  value: Record<string, unknown>,
+  command: Parameters<typeof planCheckoutCreation>[1],
+  mapping: Record<string, unknown>,
+): ReconciliationSnapshot {
+  const paidValue = field(value, 'latestPaidInvoice');
+  const paid = paidValue === null ? null : record(paidValue);
+  const delinquencyValue = field(value, 'delinquency');
+  const delinquency =
+    delinquencyValue === null ? null : record(delinquencyValue);
+  const delinquencyReason =
+    delinquency === null ? null : string(field(delinquency, 'reason'));
+  if (
+    delinquencyReason !== null &&
+    delinquencyReason !== 'payment-failed' &&
+    delinquencyReason !== 'payment-action-required'
+  ) {
+    throw new Error('invalid fixture delinquency reason');
+  }
+  const cancelAt = field(value, 'cancelAt');
+  const cancelledAt = field(value, 'cancelledAt');
+  return {
+    snapshotId: parseReconciliationSnapshotId(field(value, 'snapshotId')),
+    subscriptionId: command.subscriptionId,
+    provider: command.provider,
+    providerCustomerReference: parseProviderCustomerReference(
+      field(mapping, 'customerReference'),
+    ),
+    providerSubscriptionReference: parseProviderSubscriptionReference(
+      field(mapping, 'subscriptionReference'),
+    ),
+    observedAt: number(field(value, 'observedAt')),
+    recordedAt: number(field(value, 'recordedAt')),
+    paymentMethodReady: field(value, 'paymentMethodReady') === true,
+    paymentMethodUpdatedAt: number(field(value, 'paymentMethodUpdatedAt')),
+    trial: null,
+    latestPaidInvoice:
+      paid === null
+        ? null
+        : {
+            invoiceReference: parseProviderInvoiceReference(
+              field(paid, 'invoiceReference'),
+            ),
+            paidAt: number(field(paid, 'paidAt')),
+            periodStartedAt: number(field(paid, 'periodStartedAt')),
+            periodEndsAt: number(field(paid, 'periodEndsAt')),
+          },
+    delinquency:
+      delinquency === null || delinquencyReason === null
+        ? null
+        : {
+            reason: delinquencyReason,
+            invoiceReference: parseProviderInvoiceReference(
+              field(delinquency, 'invoiceReference'),
+            ),
+            occurredAt: number(field(delinquency, 'occurredAt')),
+          },
+    cancelAt: cancelAt === null ? null : number(cancelAt),
+    cancellationUpdatedAt: number(field(value, 'cancellationUpdatedAt')),
+    cancelledAt: cancelledAt === null ? null : number(cancelledAt),
+  };
+}
 
 async function fixture(path: string): Promise<unknown> {
   const source = await readFile(new URL(path, fixtureRoot), 'utf8');
