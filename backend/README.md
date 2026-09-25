@@ -69,6 +69,16 @@ approved production-key-destruction requirement. Its only backup adapter is an
 isolated in-memory fake. No production backup provider, credential, route,
 scheduler, KMS disable/delete call, or recovery claim is configured.
 
+T09a Issue #436 adds the disconnected provider-neutral billing aggregate and
+PostgreSQL projection. T09b Issue #438 adds the pure Stripe Checkout/webhook/
+reconciliation boundary, exact raw-body HMAC verification, and an official
+`stripe-go/v84` v84.4.1 adapter pinned to API `2026-02-25.clover`. A shared
+signed fixture executes through TypeScript and Go, while local HTTP stubs verify
+SDK headers, forms, expansions, retrieval fallback, and provider failures. The
+Stripe packages are not composed into the server: there is no route, API key,
+endpoint secret, provider request, webhook registration, scheduler, charge,
+cancellation mutation, entitlement grant, or production operation.
+
 ## Local start
 
 ```bash
@@ -171,6 +181,7 @@ go -C backend test -tags=integration ./tests/integration -run 'Test(VaultDEKKeyr
 go -C backend test -race ./internal/cryptocontent/... ./internal/adapters/contentcrypto/... ./internal/adapters/kms/...
 go -C backend test -race ./internal/encryptedobject/... ./internal/adapters/objectstorage/...
 go -C backend test -race ./internal/billing/...
+go -C backend test -race ./internal/stripebilling/... ./internal/adapters/stripe/...
 NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
 go -C backend test -tags=integration ./tests/integration -run TestBillingProjectionAtomicityAndReplayPostgres -count=3
 ```

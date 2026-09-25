@@ -28,6 +28,11 @@ delete existing resources.
   All encrypted-object paths remain disconnected and do not select or create
   an object/backup resource, expose a content route, run a production job, or
   destroy a key.
+- T09a billing aggregate and PostgreSQL projection were integrated by #436 /
+  PR #437. T09b Issue #438 starts from exact integration tip
+  `c00095c1b4f370cb45ff4213891e2cc84fc5f9a8`. Stripe remains disconnected;
+  no credential, provider resource, real request, public route, charge, or
+  entitlement change is authorized by this slice.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -64,7 +69,7 @@ the same contract as its closed route.
 | F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08      | reencryption #432; fixture recovery #434     |
 | F16 | B     | quota                                       | T11                             | V04,V05      | pending                                      |
 | F17 | B     | billing projection                          | T09                             | V04,V07      | Go core/Postgres #436; cancel awaits #404    |
-| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | pending, remains closed                      |
+| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | Go core/SDK adapter #438; remains closed     |
 | F19 | B     | entitlement / offline lease                 | T09                             | V05,V07      | pending                                      |
 | F20 | B     | legal checkout evidence                     | T10                             | V01,V07      | contract captured in #410                    |
 | F21 | B     | terms consent                               | T10                             | V01,V07      | contract captured in #410                    |
@@ -86,7 +91,7 @@ the same contract as its closed route.
 | V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing CAS #436         |
 | V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                   |
 | V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434           |
-| V07 | billing/evidence duplicate/order/failure                | shared fixture/atomic projection #436; Stripe remains open    |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; signed Stripe fixture/provider stub #438     |
 | V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434        |
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                     |
 | V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips |
@@ -129,6 +134,10 @@ the same contract as its closed route.
   Exact snapshot IDs remain durably deduplicated, older observations remain
   stale, and same-time delinquency still dominates paid evidence. The
   TypeScript oracle carries the same regression fix.
+- The pinned Stripe Clover Invoice shape no longer contains the legacy `paid`
+  boolean. TypeScript and Go derive paid state from the validated `paid` status
+  instead of rejecting current provider payloads or trusting a contradictory
+  duplicate boolean. The shared signed fixture omits that removed field.
 - These protections are recorded as intentional boundary hardening rather than
   accidental wire compatibility changes.
 
@@ -646,3 +655,36 @@ mapping, version, and historical timestamp. Resume only with the matching
 artifact and schema. Never drop billing evidence, synthesize entitlement,
 cancel a provider subscription, or replay a provider event as part of code
 rollback.
+
+## T09b Stripe core and official SDK adapter slice
+
+Issue #438 ports the pinned Stripe Checkout, webhook, and reconciliation
+boundary to Go. The pure core validates test/live mode, API version, return
+URLs, contract evidence and metadata, provider identifiers, timestamps,
+subscription/customer mapping, trial duration, invoice periods, cancellation
+facts, and provider snapshots before calling the T09a Billing service. Checkout
+uses the same intent ID for the Stripe idempotency key, so a lost response can
+be retried without creating a second logical checkout.
+
+The HMAC verifier authenticates the exact raw request bytes with a bounded
+header/body and five-minute recency window. Supported events map to typed facts
+or a retrieve-and-reconcile plan; unsupported events are ignored without a
+Billing write. Billing's durable receipts, checkpoints, ordering, and CAS from
+#436 remain the only authority for duplicate or reordered delivery.
+
+The official `stripe-go/v84` v84.4.1 adapter pins
+`2026-02-25.clover`, emits the required Checkout fields, validates provider
+metadata and hosted redirect, and retrieves expanded Subscription state. The
+shared signed fixture executes through the existing TypeScript boundary and
+the Go boundary; HTTP-stub tests exercise exact headers/forms, expanded and
+unexpanded PaymentIntent paths, and provider errors without external calls.
+
+The slice deliberately has no server composition, public route, credential,
+Stripe object, webhook registration, scheduler, real charge, cancellation
+request, entitlement grant, production data change, or deployment. Rollback is
+a code revert of the disconnected packages and SDK dependency; it must not
+delete Billing evidence or Stripe resources. A future approved connection must
+first test the pinned endpoint version and provider object/expansion shapes in
+an isolated Stripe test environment, document redacted telemetry and replay,
+and preserve the closed route as the recovery path. Normal cancellation still
+depends on #403 / Draft PR #404.

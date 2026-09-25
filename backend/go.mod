@@ -6,6 +6,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/pressly/goose/v3 v3.27.3
+	github.com/stripe/stripe-go/v84 v84.4.1
 	golang.org/x/oauth2 v0.37.0
 )
 

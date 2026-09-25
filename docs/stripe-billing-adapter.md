@@ -126,3 +126,47 @@ approval recorded in parent #106.
 These references were checked on 2026-09-14. Before a real provider transport
 or endpoint is enabled, re-check the current GA API version and test the pinned
 version in Stripe test mode under a separately approved operation.
+
+## Go T09b implementation
+
+Issue #438 ports this boundary to the disconnected Go backend. The pure
+`internal/stripebilling` package owns configuration, Checkout planning,
+provider-response validation, raw-body event decoding, reconciliation mapping,
+and the application service. `internal/adapters/stripe` is the only package
+that imports the official Stripe SDK. It uses `stripe-go/v84` v84.4.1, whose
+pinned API version is exactly `2026-02-25.clover`; initialization fails if the
+SDK and application versions diverge or if a test/live key prefix disagrees
+with the configured mode. The version mismatch escape hatch is not enabled.
+SDK telemetry and its raw provider-error logger are disabled at the adapter;
+future composition must emit only the repository's bounded, redacted outcome.
+
+The Go HMAC verifier copies verified raw bytes, compares every `v1` signature
+in constant time, and applies the same five-minute timestamp and 256-KiB body
+limits. The shared `billing/stripe.json` fixture runs through both TypeScript
+and Go and fixes every Checkout field plus an exact signed `invoice.paid`
+payload. Local HTTP-stub tests inspect the SDK's Stripe-Version,
+Authorization, and Idempotency-Key headers, encoded form fields, required
+subscription expansions, unexpanded PaymentIntent retrieval, and provider
+failure propagation. They use no Stripe credential or network endpoint.
+
+The v84 Invoice model for the pinned Clover API has no legacy `paid` boolean;
+the authoritative invoice `status` is used instead. The TypeScript decoder was
+updated to accept that pinned wire shape, and the Go pure core derives paid
+state from `status == paid` without carrying a redundant provider boolean.
+This corrects a stale provider-field assumption instead of preserving it as
+compatibility.
+
+This implementation remains uncomposed: no HTTP route, endpoint secret, API
+key, webhook registration, scheduled reconciliation, cancellation mutation,
+charge, or entitlement grant is enabled. A real Stripe test-mode call must
+first be separately approved and must confirm the Checkout-hosted rendering,
+the selected Price, the nested expansion shape, 3DS flows, trial end, invoice
+events, and webhook endpoint API version. Production use requires a separate
+review of credentials, cost, merchant/PCI evidence, replay/recovery steps, and
+the exact resource changes.
+
+Primary references rechecked for #438 on 2026-09-25 were the official
+[stripe-go v84.4.1 release](https://github.com/stripe/stripe-go/releases/tag/v84.4.1)
+and the current [Invoice object](https://docs.stripe.com/api/invoices/object)
+reference. Local module source fixes the exact generated SDK shape used by the
+tests; no live provider response was requested.
