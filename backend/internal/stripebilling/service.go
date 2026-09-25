@@ -142,6 +142,7 @@ func (service *ReconciliationService) ReconcileSubscription(
 	}
 	return service.reconcile(ctx, SnapshotPlan{
 		SnapshotID: command.SnapshotID, SubscriptionID: command.SubscriptionID,
+		ProviderCustomerReference:     command.ProviderCustomerReference,
 		ProviderSubscriptionReference: command.ProviderSubscriptionReference,
 		ObservedAt:                    command.ObservedAt, RecordedAt: command.RecordedAt,
 	})

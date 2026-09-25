@@ -283,13 +283,13 @@ func checkoutCompletedPlan(event decodedEvent, receivedAt int64) EventPlan {
 		session.ClientReferenceID != string(metadata.CheckoutIntentID) {
 		return rejectedEvent(ReasonMalformedEvent)
 	}
-	_ = customer
 	snapshotID, err := billing.ParseReconciliationSnapshotID(string(event.ID) + ":checkout")
 	if err != nil {
 		return rejectedEvent(ReasonMalformedEvent)
 	}
 	return EventPlan{Kind: EventSnapshot, Snapshot: &SnapshotPlan{
 		SnapshotID: snapshotID, SubscriptionID: metadata.SubscriptionID,
+		ProviderCustomerReference:     customer,
 		ProviderSubscriptionReference: providerSubscription, ObservedAt: event.CreatedAt, RecordedAt: receivedAt,
 	}}
 }
@@ -409,7 +409,8 @@ func validateProviderSubscription(input ProviderSubscription, plan SnapshotPlan)
 	subscriptionID, subErr := billing.ParseSubscriptionID(subscriptionValue)
 	created, createdOK := millisFromSeconds(input.CreatedSeconds)
 	if !idOK || !customerOK || !metadataOK || subErr != nil || input.Object != "subscription" || !validSubscriptionStatus(input.Status) ||
-		id != plan.ProviderSubscriptionReference || subscriptionID != plan.SubscriptionID || !createdOK ||
+		id != plan.ProviderSubscriptionReference || customer != plan.ProviderCustomerReference ||
+		subscriptionID != plan.SubscriptionID || !createdOK ||
 		created <= 0 || created > plan.ObservedAt {
 		return normalizedSubscription{}, false
 	}

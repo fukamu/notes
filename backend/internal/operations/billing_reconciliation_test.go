@@ -15,6 +15,7 @@ func TestPlanBillingReconciliationDerivesProviderCommandAndReplaysExactCheckpoin
 	record := billingReconciliationRecord(t)
 	plan := PlanBillingReconciliation(command, &record, nil)
 	if plan.Kind != BillingReconciliationPlanExecute || plan.Command.SubscriptionID != record.SubscriptionID ||
+		plan.Command.ProviderCustomerReference != record.ProviderCustomerReference ||
 		plan.Command.ProviderSubscriptionReference != record.ProviderSubscriptionReference ||
 		plan.Command.SnapshotID != command.SnapshotID || plan.Command.ObservedAt != command.ObservedAt ||
 		plan.Command.RecordedAt != command.RecordedAt {
@@ -55,6 +56,15 @@ func TestPlanBillingReconciliationRefusesInvalidScopeAndProviderBeforeExecution(
 			record: func() *billing.SubscriptionRecord {
 				copy := record
 				copy.Provider = billing.Provider("other")
+				return &copy
+			}(),
+			reason: BillingReconciliationProviderNotLinked,
+		},
+		{
+			name: "invalid Stripe customer reference",
+			record: func() *billing.SubscriptionRecord {
+				copy := record
+				copy.ProviderCustomerReference = billing.ProviderCustomerReference("provider_reference")
 				return &copy
 			}(),
 			reason: BillingReconciliationProviderNotLinked,

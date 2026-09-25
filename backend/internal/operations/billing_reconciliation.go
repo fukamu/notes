@@ -153,6 +153,7 @@ func PlanBillingReconciliation(
 	}
 	providerCommand := stripebilling.ReconciliationCommand{
 		SnapshotID: command.SnapshotID, SubscriptionID: record.SubscriptionID,
+		ProviderCustomerReference:     record.ProviderCustomerReference,
 		ProviderSubscriptionReference: record.ProviderSubscriptionReference,
 		ObservedAt:                    command.ObservedAt, RecordedAt: command.RecordedAt,
 	}

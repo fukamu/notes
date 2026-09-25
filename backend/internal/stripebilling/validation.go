@@ -31,7 +31,8 @@ func ValidateReconciliationCommand(command ReconciliationCommand) error {
 	if _, err := billing.ParseSubscriptionID(string(command.SubscriptionID)); err != nil {
 		return ErrInvalidReconciliation
 	}
-	if !validStripeID(string(command.ProviderSubscriptionReference), "sub_") ||
+	if !validStripeID(string(command.ProviderCustomerReference), "cus_") ||
+		!validStripeID(string(command.ProviderSubscriptionReference), "sub_") ||
 		!validMillis(command.ObservedAt) || !validMillis(command.RecordedAt) ||
 		command.RecordedAt < command.ObservedAt {
 		return ErrInvalidReconciliation

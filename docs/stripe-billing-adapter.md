@@ -175,8 +175,10 @@ Issue #478 composes that retrieve-and-commit path only into the explicit
 `notesctl billing reconcile` operations command. The shared Go
 `ReconciliationService` needs only the Billing and provider ports, so the
 runner does not invent Checkout URLs, a Price, or a webhook secret. Its
-owner-scoped policy derives provider identifiers from PostgreSQL and checks an
-existing reconciliation checkpoint before the SDK can issue a request. There
+owner-scoped policy derives both provider identifiers from PostgreSQL and
+checks an existing reconciliation checkpoint before the SDK can issue a
+request. A returned subscription must match the stored customer and
+subscription references. There
 is no fake-provider fallback in command composition; tests inject their fake
 at the command boundary or use local HTTP stubs.
 

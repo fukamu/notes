@@ -1490,7 +1490,8 @@ be deleted or rewritten.
 Issue #478 adds `notesctl billing reconcile` for one exact Account/Vault scope,
 stable snapshot ID, observation time, and recording time. The operations
 policy loads the owner-scoped Billing projection first and derives the internal
-subscription and Stripe subscription reference from that record. Missing or
+subscription and Stripe customer/subscription references from that record. The
+provider snapshot must match both stored references. Missing or
 cross-owner scope, malformed stored state, a non-Stripe/unlinked provider, and
 a conflicting checkpoint all refuse before any provider request.
 

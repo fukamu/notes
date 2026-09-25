@@ -131,6 +131,11 @@ func TestDecodeReconciliationSnapshotRequiresVerifiedMapping(t *testing.T) {
 	if _, ok := DecodeReconciliationSnapshot(input, plan); ok {
 		t.Fatal("provider mapping mismatch accepted")
 	}
+	input = testProviderSnapshot()
+	input.Subscription.Customer = "cus_OtherCustomer"
+	if _, ok := DecodeReconciliationSnapshot(input, plan); ok {
+		t.Fatal("provider customer mismatch accepted")
+	}
 }
 
 func TestDecodeReconciliationSnapshotMapsPaidAndDelinquentStates(t *testing.T) {
@@ -316,6 +321,7 @@ func subscriptionObject(status string, cancelAt *int64, endedAt *int64) map[stri
 func testSnapshotPlan(observedAt int64) SnapshotPlan {
 	return SnapshotPlan{
 		SnapshotID: "stripe_snapshot_A", SubscriptionID: testSubscriptionID,
+		ProviderCustomerReference:     "cus_FukamuA",
 		ProviderSubscriptionReference: "sub_FukamuA", ObservedAt: observedAt, RecordedAt: observedAt + 100,
 	}
 }

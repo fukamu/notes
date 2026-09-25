@@ -61,6 +61,7 @@ func TestServiceRetrievesSnapshotForCheckoutWebhookAndReconciliation(t *testing.
 	billingFake.snapshotResult.Kind = billing.ResultIgnored
 	result = service.ReconcileSubscription(context.Background(), ReconciliationCommand{
 		SnapshotID: "stripe_snapshot_B", SubscriptionID: testSubscriptionID,
+		ProviderCustomerReference:     "cus_FukamuA",
 		ProviderSubscriptionReference: "sub_FukamuA", ObservedAt: 4_000, RecordedAt: 4_100,
 	})
 	if result.Kind != WebhookAccepted || result.Outcome != billing.ResultIgnored || billingFake.snapshotCalls != 2 {
@@ -77,6 +78,7 @@ func TestReconciliationServiceRequiresOnlyBillingAndProviderAndValidatesBeforeRe
 	}
 	valid := ReconciliationCommand{
 		SnapshotID: "stripe_snapshot_B", SubscriptionID: testSubscriptionID,
+		ProviderCustomerReference:     "cus_FukamuA",
 		ProviderSubscriptionReference: "sub_FukamuA", ObservedAt: 4_000, RecordedAt: 4_100,
 	}
 	result := reconciler.ReconcileSubscription(context.Background(), valid)
@@ -89,6 +91,12 @@ func TestReconciliationServiceRequiresOnlyBillingAndProviderAndValidatesBeforeRe
 	result = reconciler.ReconcileSubscription(context.Background(), invalid)
 	if result.Kind != WebhookRejected || result.Reason != ReasonInvalidInput || provider.retrieveCalls != 1 {
 		t.Fatalf("invalid result = %#v, provider calls = %d", result, provider.retrieveCalls)
+	}
+	invalid = valid
+	invalid.ProviderCustomerReference = "wrong_provider_reference"
+	result = reconciler.ReconcileSubscription(context.Background(), invalid)
+	if result.Kind != WebhookRejected || result.Reason != ReasonInvalidInput || provider.retrieveCalls != 1 {
+		t.Fatalf("invalid customer result = %#v, provider calls = %d", result, provider.retrieveCalls)
 	}
 	if _, err := NewReconciliationService(nil, provider); !errors.Is(err, ErrInvalidServiceConfiguration) {
 		t.Fatalf("nil billing error = %v", err)

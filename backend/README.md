@@ -80,8 +80,9 @@ endpoint secret, provider request, webhook registration, scheduler, charge,
 cancellation mutation, entitlement grant, or production operation.
 
 T13d Issue #478 composes only explicit `notesctl billing reconcile`: it
-derives provider mapping from an exact Account/Vault-owned PostgreSQL record,
-replays an exact checkpoint without a provider call, emits bounded redacted
+derives both provider mapping references from an exact Account/Vault-owned
+PostgreSQL record, requires the provider response to match both, replays an
+exact checkpoint without a provider call, emits bounded redacted
 JSON, and requires an invocation-supplied API key. It adds no server route,
 scheduler, stored credential, automatic provider request, or fake fallback.
 Its verification uses injected fakes, local HTTP stubs, and the disposable

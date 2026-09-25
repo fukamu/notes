@@ -210,6 +210,7 @@ func TestBillingReconciliationRunnerScopesAndReplaysBeforeProviderPostgres(t *te
 	}
 	result, err := service.Reconcile(ctx, command)
 	if err != nil || result.Kind != operations.BillingReconciliationApplied || executor.calls != 1 ||
+		executor.command.ProviderCustomerReference != "cus_notes" ||
 		executor.command.ProviderSubscriptionReference != "sub_notes" {
 		t.Fatalf("execute = %#v, %v; executor = %#v", result, err, executor)
 	}

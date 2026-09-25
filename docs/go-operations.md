@@ -142,8 +142,9 @@ go -C backend run ./cmd/notesctl billing reconcile \
 ```
 
 The stable snapshot ID and both timestamps are operator inputs. The command
-derives the internal subscription ID and Stripe subscription reference from
-the exact owner-scoped PostgreSQL record; neither is accepted as a flag. A
+derives the internal subscription ID and Stripe customer/subscription
+references from the exact owner-scoped PostgreSQL record; none is accepted as
+a flag. The returned subscription must match both stored Stripe references. A
 missing/cross-owner subscription, non-Stripe or malformed provider mapping,
 or conflicting use of an existing snapshot ID is refused before any Stripe
 request. An exact durable checkpoint returns `replayed` without contacting the
