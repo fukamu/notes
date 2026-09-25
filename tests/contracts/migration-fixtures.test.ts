@@ -26,6 +26,7 @@ import {
 } from '@/lib/sync/v2-protocol';
 import { authorizeSession, sessionRecordDecoder } from '@/server/core/session';
 import { evaluateCsrfRequest } from '@/server/core/csrf';
+import { createGcpCloudKmsKeyManagement } from '@/server/adapters/gcp-cloud-kms';
 import {
   oidcProviderConfigurationDecoder,
   pendingOidcTransactionDecoder,
@@ -44,6 +45,8 @@ import {
   parseDekVersion,
   serializeEnvelopeAad,
 } from '@/server/crypto/core';
+import { createDataEncryptionKey } from '@/server/crypto/key-material';
+import { webCryptoAes256Gcm } from '@/server/crypto/web-aes-gcm';
 import {
   parsePrivacyRequestId,
   parsePrivacyRequestSubmissionId,
@@ -236,29 +239,84 @@ describe('Go migration shared contract fixtures', () => {
 
   it('fixes the envelope format and canonical AAD byte source', async () => {
     const fixtureValue = record(await fixture('crypto/envelope.json'));
-    expect(decodeEnvelopeCiphertext(field(fixtureValue, 'ciphertext'))).toEqual(
+    const ciphertext = decodeEnvelopeCiphertext(
       field(fixtureValue, 'ciphertext'),
     );
+    expect(ciphertext).toEqual(field(fixtureValue, 'ciphertext'));
     expect(() =>
       decodeEnvelopeCiphertext(field(fixtureValue, 'tampered')),
     ).toThrow();
 
     const aad = record(field(fixtureValue, 'aad'));
-    expect(
-      serializeEnvelopeAad({
-        context: {
-          vaultId: parseVaultId(field(aad, 'vaultId')),
-          object: {
-            kind: 'card',
-            objectId: parseCardId(field(aad, 'objectId')),
-          },
-          objectRevision: parseCryptoObjectRevision(
-            field(aad, 'objectRevision'),
-          ),
+    const canonicalAad = serializeEnvelopeAad({
+      context: {
+        vaultId: parseVaultId(field(aad, 'vaultId')),
+        object: {
+          kind: 'card',
+          objectId: parseCardId(field(aad, 'objectId')),
         },
-        dekVersion: parseDekVersion(field(aad, 'dekVersion')),
+        objectRevision: parseCryptoObjectRevision(field(aad, 'objectRevision')),
+      },
+      dekVersion: parseDekVersion(field(aad, 'dekVersion')),
+    });
+    expect(canonicalAad).toBe(string(field(aad, 'canonical')));
+
+    const key = createDataEncryptionKey(
+      base64UrlBytes(string(field(fixtureValue, 'keyBase64Url'))),
+    );
+    const plaintext = base64UrlBytes(
+      string(field(fixtureValue, 'plaintextBase64Url')),
+    );
+    try {
+      await expect(
+        webCryptoAes256Gcm.seal({
+          key,
+          nonce: ciphertext.nonce,
+          aad: canonicalAad,
+          plaintext,
+        }),
+      ).resolves.toBe(ciphertext.sealedPayload);
+      await expect(
+        webCryptoAes256Gcm.open({
+          key,
+          nonce: ciphertext.nonce,
+          aad: canonicalAad,
+          sealedPayload: ciphertext.sealedPayload,
+        }),
+      ).resolves.toEqual(plaintext);
+    } finally {
+      key.destroy();
+    }
+
+    const wrappedAad = record(field(fixtureValue, 'wrappedDekAad'));
+    let observedWrappedAad: string | undefined;
+    const kms = createGcpCloudKmsKeyManagement({
+      cryptoKeyVersionResource: field(wrappedAad, 'keyVersionName'),
+      transport: {
+        async encrypt(command) {
+          observedWrappedAad = new TextDecoder().decode(
+            base64Bytes(command.additionalAuthenticatedData),
+          );
+          throw new Error('fixture transport stops after observing AAD');
+        },
+        async decrypt() {
+          throw new Error('unexpected decrypt');
+        },
+      },
+      entropy: {
+        async createDataKeyBytes() {
+          return base64UrlBytes(string(field(fixtureValue, 'keyBase64Url')));
+        },
+      },
+      clock: { now: () => 1_725_000_000_000 },
+    });
+    await expect(
+      kms.generateDataKey({
+        vaultId: parseVaultId(field(wrappedAad, 'vaultId')),
+        dekVersion: parseDekVersion(field(wrappedAad, 'dekVersion')),
       }),
-    ).toBe(string(field(aad, 'canonical')));
+    ).rejects.toThrow('GCP Cloud KMS operation failed');
+    expect(observedWrappedAad).toBe(string(field(wrappedAad, 'canonical')));
   });
 
   it('passes billing fixtures through the current browser decoder', async () => {
@@ -373,6 +431,18 @@ function number(value: unknown): number {
     throw new Error('expected fixture safe integer');
   }
   return value;
+}
+
+function base64UrlBytes(value: string): Uint8Array {
+  const base64 = value.replaceAll('-', '+').replaceAll('_', '/');
+  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function base64Bytes(value: string): Uint8Array {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
 function csrfInput(value: unknown) {
