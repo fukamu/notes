@@ -242,7 +242,7 @@ func (store *BillingStore) OpenCheckout(
 	if isUniqueViolation(err) {
 		return billing.CommitConflict, nil
 	}
-	return result, err
+	return normalizeBillingCommit(result, err)
 }
 
 func (store *BillingStore) FindProviderEventReceipt(
@@ -319,7 +319,7 @@ func (store *BillingStore) CommitProviderFact(
 		result = billing.CommitApplied
 		return nil
 	})
-	return result, err
+	return normalizeBillingCommit(result, err)
 }
 
 func (store *BillingStore) RecordIgnoredProviderFact(
@@ -340,7 +340,7 @@ func (store *BillingStore) RecordIgnoredProviderFact(
 		}
 		return nil
 	})
-	return result, err
+	return normalizeBillingCommit(result, err)
 }
 
 func (store *BillingStore) FindReconciliationCheckpoint(
@@ -416,7 +416,7 @@ func (store *BillingStore) CommitReconciliation(
 		result = billing.CommitApplied
 		return nil
 	})
-	return result, err
+	return normalizeBillingCommit(result, err)
 }
 
 func (store *BillingStore) RecordIgnoredReconciliation(
@@ -437,6 +437,13 @@ func (store *BillingStore) RecordIgnoredReconciliation(
 		}
 		return nil
 	})
+	return normalizeBillingCommit(result, err)
+}
+
+func normalizeBillingCommit(result billing.CommitKind, err error) (billing.CommitKind, error) {
+	if isRetryableTransactionError(err) {
+		return billing.CommitConflict, nil
+	}
 	return result, err
 }
 

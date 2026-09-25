@@ -872,3 +872,19 @@ retain both ledgers, restore a compatible artifact or reviewed forward fix, and
 keep cancellation/recovery paths available. No rollback step deletes evidence,
 changes a legal classification, calls Stripe, or reuses the commercial
 submission ID as terms evidence.
+
+## T09d PostgreSQL billing contention hardening
+
+Issue #448 records a timing-dependent defect exposed while verifying #446: a
+concurrent billing projection CAS could surface PostgreSQL `40001` directly
+instead of returning the repository's `conflict` result. The same commit passed
+the work-branch CI, the pull-request rerun, local full verification, and twenty
+focused repetitions, which distinguishes the defect from the legal HTTP
+changes without dismissing it as harmless test noise.
+
+All billing write methods whose contract returns `CommitKind` now normalize
+serialization failures and deadlocks to `conflict`. Their application services
+already handle that result as a retryable or stale projection outcome. Other
+database errors remain visible and fail closed. No retry loop, provider call,
+schema change, route publication, production operation, or relaxed test
+expectation is introduced.
