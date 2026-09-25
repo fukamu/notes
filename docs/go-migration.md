@@ -40,6 +40,9 @@ delete existing resources.
   orchestration were integrated by #442 / PR #443 and #444 / PR #445. T10c
   Issue #446 starts from exact integration tip
   `290fe7686e9751b197ad23cc3334dba72eb38c30`.
+- T10c legal HTTP/composition and T09d billing contention hardening were
+  integrated by #446 / PR #447 and #448 / PR #449. T11a Issue #450 starts from
+  exact integration tip `383587fb7acdcf54026c5cefa40811dd5a2b243f`.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -74,7 +77,7 @@ the same contract as its closed route.
 | F13 | B     | key rotation                                | T08                             | V04,V06,V08  | Go state machine/Postgres #432; disconnected |
 | F14 | B     | immutable encrypted object                  | T08                             | V04,V06,V08  | Go core/Postgres #430; disconnected          |
 | F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08      | reencryption #432; fixture recovery #434     |
-| F16 | B     | quota                                       | T11                             | V04,V05      | pending                                      |
+| F16 | B     | quota                                       | T11                             | V04,V05      | Go core/Postgres #450; sync composition open |
 | F17 | B     | billing projection                          | T09                             | V04,V07      | Go core/Postgres #436; cancel awaits #404    |
 | F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | Go core/SDK adapter #438; remains closed     |
 | F19 | B     | entitlement / offline lease                 | T09                             | V05,V07      | Go core/Postgres #440; disconnected          |
@@ -90,20 +93,20 @@ the same contract as its closed route.
 
 ## Verification matrix
 
-| ID  | Required evidence                                       | Current evidence                                                              |
-| --- | ------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418; legal fixtures #442/#444; legal Go HTTP #446                  |
-| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                  |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426; legal HTTP #446                 |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444 |
-| V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                                   |
-| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                           |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; legal #442/#444/#446                |
-| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434                        |
-| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                     |
-| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                 |
-| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                               |
-| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                     |
+| ID  | Required evidence                                       | Current evidence                                                                          |
+| --- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418; legal fixtures #442/#444; legal Go HTTP #446                              |
+| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                              |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426; legal HTTP #446                             |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450 |
+| V05 | sync/quota paging, retry, conflict, limits              | quota policy/ledger #450; sync paging/composition pending                                 |
+| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                                       |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; lease #440; legal #442/#444/#446                            |
+| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434                                    |
+| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                 |
+| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                             |
+| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                                           |
+| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                                 |
 
 ## Intentional security differences
 
@@ -888,3 +891,47 @@ already handle that result as a retryable or stale projection outcome. Other
 database errors remain visible and fail closed. No retry loop, provider call,
 schema change, route publication, production operation, or relaxed test
 expectation is introduced.
+
+## T11a Vault quota policy and PostgreSQL ledger slice
+
+Issue #450 ports the Personal Vault quota policy and durable reservation
+ledger to Go without connecting Sync v2 or exposing a route. The pure core
+keeps four independent measures: Unicode scalar display characters, exact
+serialized plaintext bytes, encoded ciphertext bytes, and HTTP request bytes.
+Go rejects invalid UTF-8 before rune counting; a link remains one logical
+display item, combining scalars remain separate, and exact documented limits
+remain accepted.
+
+Migration 00011 adds owner-scoped usage, reservation, and D1-schema-parity
+finalization-assertion tables. PostgreSQL does not need a transient assertion
+row: the usage CAS and exact reservation transition run in one serializable
+transaction, and either zero affected row rolls the entire transaction back.
+The parity table therefore remains empty. Each Vault usage row is locked before
+admission or finalization, retryable `40001`/`40P01` outcomes are retried at
+most three times, and exhaustion is returned as the stable `cas-conflict`
+result. Unrelated database failures remain visible.
+
+Effective usage is committed usage plus only positive pending reservations.
+Increasing changes reserve capacity immediately; decreasing updates and
+deletes release no capacity until their signed delta is explicitly committed.
+The same UUID and SHA-256 fingerprint replays, another fingerprint is rejected,
+and successful commit or release advances the usage revision exactly once.
+`reconcile_after` only orders owner-scoped investigation candidates; listing
+never expires, commits, or releases a reservation.
+
+Pure tests protect scalar counting, independent boundaries, exact limits,
+underflow/overflow, replay, release, and revision exhaustion. Disposable
+PostgreSQL tests protect owner isolation, the final active-card and byte slot
+under concurrent admission, concurrent finalization, decrease/delete timing,
+response-loss replay, bounded candidate ordering, malformed rows, and complete
+rollback when the reservation update is deliberately reduced to zero rows.
+
+This slice does not add the journal, encrypted-content composition, Sync v2
+HTTP handler, browser deletion protocol, automatic reconciler, production
+schema apply/backfill, external provider call, deployment, or route
+availability. Before any approved persistent apply, rollback is a reviewed
+code revert plus disposable-schema recreation. After persistent use, first
+stop online mutations, preserve migration 00011 and every pending reservation,
+restore a compatible artifact or reviewed forward fix, and reconcile only
+against durable content and journal evidence. Never delete or age-release
+pending reservations as rollback.
