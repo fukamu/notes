@@ -38,6 +38,7 @@ func run(ctx context.Context, arguments []string, stdout io.Writer, stderr io.Wr
 		prepareE2EDatabase,
 		listQuotaReconciliationCandidates,
 		finalizeQuotaReconciliationCommit,
+		inspectAccountDeletion,
 	)
 }
 
@@ -53,6 +54,11 @@ type finalizeQuotaCommitFunction func(
 	string,
 	operations.QuotaCommitCommand,
 ) (operations.QuotaCommitResult, error)
+type inspectAccountDeletionFunction func(
+	context.Context,
+	string,
+	operations.AccountDeletionAuditQuery,
+) (operations.AccountDeletionAuditResult, error)
 
 func runWithDependencies(
 	parent context.Context,
@@ -64,8 +70,9 @@ func runWithDependencies(
 	prepareE2E prepareE2EFunction,
 	listQuotaCandidates listQuotaCandidatesFunction,
 	finalizeQuotaCommit finalizeQuotaCommitFunction,
+	inspectDeletion inspectAccountDeletionFunction,
 ) int {
-	if parent == nil || listQuotaCandidates == nil || finalizeQuotaCommit == nil {
+	if parent == nil || listQuotaCandidates == nil || finalizeQuotaCommit == nil || inspectDeletion == nil {
 		_, _ = fmt.Fprintln(stderr, "operation dependencies invalid")
 		return 1
 	}
@@ -95,6 +102,16 @@ func runWithDependencies(
 		}
 		return runQuotaCommit(
 			parent, quotaCommit, stdout, stderr, lookup, finalizeQuotaCommit,
+		)
+	}
+	deletionAudit, deletionAuditRequested, deletionAuditErr := parseAccountDeletionAuditArguments(arguments)
+	if deletionAuditRequested {
+		if deletionAuditErr != nil {
+			printUsage(stderr)
+			return 2
+		}
+		return runAccountDeletionAudit(
+			parent, deletionAudit, stdout, stderr, lookup, inspectDeletion,
 		)
 	}
 	prepareE2ERequested := len(arguments) == 3 && arguments[0] == "prepare-e2e" &&
@@ -144,6 +161,133 @@ func runWithDependencies(
 		return 1
 	}
 	_, _ = fmt.Fprintln(stdout, "migration complete")
+	return 0
+}
+
+type accountDeletionAuditArguments struct {
+	environment config.Environment
+	production  bool
+	query       operations.AccountDeletionAuditQuery
+}
+
+func parseAccountDeletionAuditArguments(
+	arguments []string,
+) (accountDeletionAuditArguments, bool, error) {
+	if len(arguments) < 2 || arguments[0] != "account-deletion" || arguments[1] != "inspect" {
+		return accountDeletionAuditArguments{}, false, nil
+	}
+	values := make(map[string]string, 4)
+	confirmedProduction := false
+	for _, argument := range arguments[2:] {
+		if argument == "--confirm-production-read-only" {
+			if confirmedProduction {
+				return accountDeletionAuditArguments{}, true, operations.ErrAccountDeletionAudit
+			}
+			confirmedProduction = true
+			continue
+		}
+		name, value, found := strings.Cut(argument, "=")
+		if !found || value == "" ||
+			(name != "--environment" && name != "--account-id" && name != "--vault-id" &&
+				name != "--observed-at-millis") {
+			return accountDeletionAuditArguments{}, true, operations.ErrAccountDeletionAudit
+		}
+		if _, duplicate := values[name]; duplicate {
+			return accountDeletionAuditArguments{}, true, operations.ErrAccountDeletionAudit
+		}
+		values[name] = value
+	}
+	if len(values) != 4 {
+		return accountDeletionAuditArguments{}, true, operations.ErrAccountDeletionAudit
+	}
+	environment := config.Environment(values["--environment"])
+	if environment != config.EnvironmentLocal && environment != config.EnvironmentTest &&
+		environment != config.EnvironmentProduction {
+		return accountDeletionAuditArguments{}, true, operations.ErrAccountDeletionAudit
+	}
+	if (environment == config.EnvironmentProduction) != confirmedProduction {
+		return accountDeletionAuditArguments{}, true, operations.ErrAccountDeletionAudit
+	}
+	accountID, err := identity.ParseAccountID(values["--account-id"])
+	if err != nil {
+		return accountDeletionAuditArguments{}, true, operations.ErrAccountDeletionAudit
+	}
+	vaultID, err := identity.ParseVaultID(values["--vault-id"])
+	if err != nil {
+		return accountDeletionAuditArguments{}, true, operations.ErrAccountDeletionAudit
+	}
+	observedAt, err := strconv.ParseInt(values["--observed-at-millis"], 10, 64)
+	if err != nil {
+		return accountDeletionAuditArguments{}, true, operations.ErrAccountDeletionAudit
+	}
+	query := operations.AccountDeletionAuditQuery{
+		AccountID: accountID, VaultID: vaultID, ObservedAt: observedAt,
+	}
+	if operations.ValidateAccountDeletionAuditQuery(query) != nil {
+		return accountDeletionAuditArguments{}, true, operations.ErrAccountDeletionAudit
+	}
+	return accountDeletionAuditArguments{
+		environment: environment, production: confirmedProduction, query: query,
+	}, true, nil
+}
+
+func runAccountDeletionAudit(
+	parent context.Context,
+	arguments accountDeletionAuditArguments,
+	stdout io.Writer,
+	stderr io.Writer,
+	lookup func(string) (string, bool),
+	inspect inspectAccountDeletionFunction,
+) int {
+	databaseConfig, err := config.LoadDatabase(lookup)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "database configuration invalid")
+		return 1
+	}
+	if arguments.environment != databaseConfig.Environment ||
+		(arguments.environment == config.EnvironmentProduction && !arguments.production) {
+		_, _ = fmt.Fprintln(stderr, "account deletion audit environment refused")
+		return 1
+	}
+	if arguments.environment != config.EnvironmentProduction {
+		if err := postgresadapter.ValidateTestDatabaseURL(databaseConfig.URL); err != nil {
+			_, _ = fmt.Fprintln(stderr, "account deletion audit target refused")
+			return 1
+		}
+	}
+	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	defer cancel()
+	result, err := inspect(ctx, databaseConfig.URL, arguments.query)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "account deletion audit failed")
+		return 1
+	}
+	if result.Kind == operations.AccountDeletionAuditRefused {
+		_, _ = fmt.Fprintln(stderr, "account deletion scope refused")
+		return 1
+	}
+	if result.Kind != operations.AccountDeletionAuditInspected || result.OperationID == "" ||
+		result.State == "" || result.ObservedAt != arguments.query.ObservedAt {
+		_, _ = fmt.Fprintln(stderr, "account deletion audit failed")
+		return 1
+	}
+	output := struct {
+		Command        string `json:"command"`
+		OperationID    string `json:"operationId"`
+		State          string `json:"state"`
+		Step           string `json:"step,omitempty"`
+		ReadyToAdvance bool   `json:"readyToAdvance"`
+		RelevantAt     int64  `json:"relevantAt"`
+		ObservedAt     int64  `json:"observedAt"`
+	}{
+		Command: "account-deletion-inspect", OperationID: string(result.OperationID),
+		State: string(result.State), Step: string(result.Step), ReadyToAdvance: result.ReadyToAdvance,
+		RelevantAt: result.RelevantAt, ObservedAt: result.ObservedAt,
+	}
+	if err := json.NewEncoder(stdout).Encode(output); err != nil {
+		_, _ = fmt.Fprintln(stderr, "account deletion audit output failed")
+		return 1
+	}
 	return 0
 }
 
@@ -416,7 +560,7 @@ func runQuotaCommit(
 }
 
 func printUsage(output io.Writer) {
-	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation]")
+	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only]")
 }
 
 func prepareE2EDatabase(ctx context.Context, databaseURL string, allowedSubject string) error {
@@ -497,4 +641,25 @@ func finalizeQuotaReconciliationCommit(
 		return operations.QuotaCommitResult{}, err
 	}
 	return service.Commit(ctx, command)
+}
+
+func inspectAccountDeletion(
+	ctx context.Context,
+	databaseURL string,
+	query operations.AccountDeletionAuditQuery,
+) (operations.AccountDeletionAuditResult, error) {
+	pool, err := postgresadapter.OpenPool(ctx, databaseURL, 2)
+	if err != nil {
+		return operations.AccountDeletionAuditResult{}, err
+	}
+	defer pool.Close()
+	store, err := postgresadapter.NewAccountDeletionStore(pool)
+	if err != nil {
+		return operations.AccountDeletionAuditResult{}, err
+	}
+	service, err := operations.NewAccountDeletionAuditService(store)
+	if err != nil {
+		return operations.AccountDeletionAuditResult{}, err
+	}
+	return service.Inspect(ctx, query)
 }

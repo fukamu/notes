@@ -88,7 +88,42 @@ guards, not authorization. Do not connect to or mutate a production/shared
 database without separate explicit approval for the exact target, reservation,
 and operation.
 
-## Not implemented by this command
+## Account-deletion audit
+
+The T13c command inspects one exact durable account-deletion operation without
+consuming its continuation, claiming a step, or calling any effect:
+
+```bash
+NOTES_ENVIRONMENT=test \
+NOTES_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend run ./cmd/notesctl account-deletion inspect \
+  --environment=test \
+  --account-id=01991f20-61d2-7000-8000-000000000101 \
+  --vault-id=01991f20-61d2-7000-8000-000000000201 \
+  --observed-at-millis=1725000000000
+```
+
+The result distinguishes a due or waiting step, an active or expired lease, a
+retry wait or due retry, terminal failure, and completion. `readyToAdvance`
+means that the persisted timing permits the later reviewed runner to advance
+the state; it does not authorize or perform that advancement. `relevantAt` is
+the stored not-before, lease-expiry, retry, terminal-update, or completion
+timestamp for the reported state.
+
+Output includes only the command kind, operation ID, state, current step when
+one exists, readiness, relevant timestamp, and supplied observation timestamp.
+It omits Account/Vault IDs, continuation secret or digest, receipt contents,
+failure code, billing references, database configuration, and dependency error
+text. Unknown and cross-owner scopes use the same refusal. Repeating the same
+read against unchanged state returns the same result and does not change the
+operation revision, receipts, or continuation sequence.
+
+Local and test execution uses the same loopback disposable-database guard as
+the quota commands. Production-form syntax requires
+`--confirm-production-read-only`; the flag is not authorization to access a
+production or shared database. No production audit was run by this delivery.
+
+## Remaining operations boundaries
 
 - checking application/provider evidence for a reservation;
 - deriving release evidence or automatically releasing a reservation;
@@ -103,8 +138,9 @@ never evidence that a quota reservation is safe to release.
 ## Rollback
 
 Stop invoking the commands and roll back the application artifact to the prior
-integration commit. T13a and T13b add no schema. T13a writes no data. A T13b
-commit is an intentional quota-ledger transition backed by an existing Sync
-receipt and must not be reversed by deleting rows or synthesizing a release.
-Preserve emitted audit evidence and reconcile any in-flight invocation before
-application rollback.
+integration commit. T13a through T13c add no schema. T13a and T13c write no
+data. A T13b commit is an intentional quota-ledger transition backed by an
+existing Sync receipt and must not be reversed by deleting rows or
+synthesizing a release. Preserve emitted audit evidence and reconcile any
+in-flight invocation before application rollback. The T13c command can be
+stopped and repeated; it creates no effect to undo.
