@@ -65,9 +65,12 @@ delete existing resources.
   #475 from exact integration tip
   `9255296776ec269a5c741e17b0e2351b2a561db7`. Billing evidence-time hardening
   was integrated by #476 / PR #477 from exact integration tip
-  `0efe3917336f5b344a20c8c9a77962d546f7beb7`. T13d Issue #478 starts from exact
-  integration tip `4f5c6a75c98d69058eaf755e6d6335ea7c5c77a8` and composes only the explicit
-  owner-scoped billing reconciliation runner.
+  `0efe3917336f5b344a20c8c9a77962d546f7beb7`. T13d was integrated by #478 / PR
+  #479 from exact integration tip `4f5c6a75c98d69058eaf755e6d6335ea7c5c77a8`.
+  T13e Issue #480 starts from exact integration tip
+  `0201c3918c9571acad0c8d7a3d453b87dfce8844` and composes only the explicit
+  owner-scoped DEK rotation runner. No real KMS request or provider resource
+  change is part of the slice.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -99,7 +102,7 @@ the same contract as its closed route.
 | F10 | B     | sync v2                                     | T11                             | V01,V04,V05     | Go application/closed HTTP #454                                 |
 | F11 | B     | envelope encryption                         | T07                             | V06             | Go AES-GCM/fixture implemented by #428                          |
 | F12 | B     | KMS / DEK                                   | T07                             | V06,V09         | Go local boundary #428; external proof open                     |
-| F13 | B     | key rotation                                | T08                             | V04,V06,V08     | Go state machine/Postgres #432; disconnected                    |
+| F13 | B     | key rotation                                | T08,T13                         | V04,V06,V08     | state machine/Postgres #432; explicit runner #480               |
 | F14 | B     | immutable encrypted object                  | T08                             | V04,V06,V08     | Go core/Postgres #430; disconnected                             |
 | F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08         | reencryption #432; fixture recovery #434                        |
 | F16 | B     | quota                                       | T11                             | V04,V05         | Go ledger #450; sync composition #454                           |
@@ -112,26 +115,26 @@ the same contract as its closed route.
 | F23 | B     | account deletion                            | T12                             | V03,V04,V07,V08 | saga #458; effects #460/#462/#464; finalizer #466; handoff #468 |
 | F24 | B     | privacy request journal                     | T12                             | V01,V03,V08     | Go journal/closed HTTP #456; deletion handoff #468              |
 | F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11         | core #414; legacy singleton seed #418                           |
-| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | quota #470/#472; deletion audit #474; billing runner #478       |
+| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | quota #470/#472; deletion #474; billing #478; rotation #480     |
 | F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10         | static runtime #420; legacy removal T14                         |
 | F28 | C     | scheduler / realtime services               | none unless separately approved | V08             | intentionally not added                                         |
 
 ## Verification matrix
 
-| ID  | Required evidence                                       | Current evidence                                                                                                                                                     |
-| --- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454; legal #442/#444/#446; privacy #456                                                                                                              |
-| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                                                                         |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426; legal #446; privacy #456; deletion #458; privacy/deletion owner binding #468                                           |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450/#472; sync #452/#454; privacy #456; deletion #458/#460/#462/#464/#466/#468 |
-| V05 | sync/quota paging, retry, conflict, limits              | quota #450/#472; journal #452; authenticated encrypted composition #454                                                                                              |
-| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                                                                                                                  |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438/#476; lease #440; legal #442/#444/#446; scoped reconciliation #478                                                                      |
-| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468; reconciliation replay #478        |
-| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                            |
-| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                                                                                        |
-| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                                                                                                                      |
-| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                                                                                                            |
+| ID  | Required evidence                                       | Current evidence                                                                                                                                                      |
+| --- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454; legal #442/#444/#446; privacy #456                                                                                                               |
+| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                                                                          |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426; legal #446; privacy #456; deletion #458; privacy/deletion owner binding #468                                            |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450/#472; sync #452/#454; privacy #456; deletion #458/#460/#462/#464/#466/#468  |
+| V05 | sync/quota paging, retry, conflict, limits              | quota #450/#472; journal #452; authenticated encrypted composition #454                                                                                               |
+| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434                                                                                                                   |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438/#476; lease #440; legal #442/#444/#446; scoped reconciliation #478                                                                       |
+| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468; billing #478; rotation runner #480 |
+| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                             |
+| V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                                                                                         |
+| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                                                                                                                       |
+| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                                                                                                             |
 
 ## Intentional security differences
 
@@ -1516,3 +1519,37 @@ resource, or schema. Rollback stops the command and restores the prior
 artifact; any committed snapshot/checkpoint remains authoritative and must be
 preserved. Retrying an interrupted operation uses the exact same snapshot ID
 and timestamps.
+
+## T13e scoped DEK rotation runner
+
+Issue #480 adds `notesctl dek rotate` around the existing provider-neutral
+rotation service and PostgreSQL CAS repository. The command requires one exact
+Account/Vault scope, stable UUIDv7 operation ID, monotonic request/generation/
+completion timestamps, execution environment, and an explicit key-generation
+guard. It starts or resumes only that durable operation; a different ID cannot
+replace unfinished work.
+
+The runner inspects the durable phase before each effect. `generating` invokes
+the existing `KeyManagementPort`, `promoting` skips generation and commits the
+stored wrapped metadata, and `completed` returns `replayed` without contacting
+the provider. KMS failure leaves the prior write key authoritative and the
+operation at a resumable checkpoint. PostgreSQL integration covers failure and
+resume, raw-key destruction, exact replay, keyring promotion, and cross-owner
+refusal without another provider call. Existing concurrency tests retain the
+one-winner operation and promotion CAS behavior.
+
+The checked-in GCP adapter can be composed from an exact CryptoKeyVersion and
+short-lived access token, but this is only a reviewable candidate artifact.
+Tests use injected fakes and a disposable loopback PostgreSQL database; no real
+KMS request, credential, paid operation, provider resource, shared service,
+production database, deployment, route, or scheduler is used. Production-form
+syntax has an extra mutation guard, which is not authorization. Production
+identity, token delivery, key resource/region/protection, IAM, network,
+monitoring, cost, and retirement policy remain separate approval decisions.
+
+Rollback stops the command and restores the prior application artifact while
+retaining the durable operation, logical write pointer, and every wrapped key
+version. Resume uses the same operation ID and timestamps. Rollback must not
+delete a pending operation, rewrite the write pointer, or disable/destroy a KMS
+version; key destruction remains separately gated by recovery evidence and
+explicit production approval.

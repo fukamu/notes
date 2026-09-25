@@ -165,14 +165,69 @@ database, use of a Stripe credential, a live provider read, deployment, or
 cost. This delivery's tests inject fakes or local HTTP stubs; no real Stripe
 request was made.
 
+## Vault DEK rotation
+
+The T13e command starts or resumes one exact Account/Vault-scoped durable DEK
+rotation. The operation ID and all three monotonic timestamps are stable
+operator inputs and must be preserved for every retry:
+
+```bash
+NOTES_ENVIRONMENT=test \
+NOTES_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+NOTES_GCP_KMS_CRYPTO_KEY_VERSION='projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY/cryptoKeyVersions/VERSION' \
+NOTES_GCP_KMS_ACCESS_TOKEN='<separately-approved-short-lived-token>' \
+go -C backend run ./cmd/notesctl dek rotate \
+  --environment=test \
+  --account-id=01991f20-61d2-7000-8000-000000000101 \
+  --vault-id=01991f20-61d2-7000-8000-000000000201 \
+  --operation-id=01991f20-61d2-7000-8000-000000000401 \
+  --requested-at-millis=1725000000000 \
+  --generated-at-millis=1725000000100 \
+  --completed-at-millis=1725000000200 \
+  --confirm-kms-key-generation
+```
+
+The runner durably records `generating` before `KeyManagementPort` is called,
+records only wrapped metadata before promotion, and changes the logical write
+version only in the final PostgreSQL transaction. A provider failure therefore
+leaves the operation resumable. Retrying the exact command while `promoting`
+skips key generation; retrying after completion returns `replayed` without a
+KMS request. A different operation cannot replace unfinished work. Unknown and
+cross-owner scopes share the same refusal and cause no provider request.
+
+`generated-at-millis` is also the durable creation timestamp supplied to the
+provider-neutral key adapter, so it must be no earlier than the request time;
+the completion time must be no earlier than generation. Keeping these values
+stable makes retries reproducible rather than substituting a later process
+clock. Successful output contains only command kind, `completed` or `replayed`,
+operation ID, and those timestamps. It omits Account/Vault IDs, database URL,
+access token, KMS resource, wrapped/raw key material, and dependency errors.
+
+Local/test database access remains restricted to the disposable loopback
+database. The provider resource and access token are accepted only through the
+environment and are never printed. `--confirm-kms-key-generation` and the
+additional production-form `--confirm-production-kms-mutation` are accidental-
+run guards, not authorization. This delivery used injected fakes and the
+disposable PostgreSQL database only; it made no real KMS request.
+
+Production use remains unapproved. Before any invocation, separately review
+the runtime identity/token source, exact CryptoKeyVersion, region and protection
+level, IAM, network path, availability/quota monitoring, audit retention,
+per-operation KMS cost, and shared-service impact. Alternatives remain a
+dedicated project/key, a different provider behind `KeyManagementPort`, or
+keeping rotation stopped while all existing wrapped versions remain readable.
+No option permits key disablement or destruction; that remains behind the
+recovery and retirement approval gate.
+
 ## Remaining operations boundaries
 
 - checking application/provider evidence for a reservation;
 - deriving release evidence or automatically releasing a reservation;
 - pagination beyond the explicit bounded first page;
 - recurring scheduling or cron registration;
-- DEK rotation, re-encryption, orphan scan, delete outbox,
-  account-deletion advancement, or recovery drill runners.
+- re-encryption, orphan scan, delete outbox, account-deletion advancement, or
+  recovery drill runners;
+- production KMS identity/resource composition and recurring scheduling.
 
 Those effects require separate typed commands, tests, and review. Age alone is
 never evidence that a quota reservation is safe to release.
@@ -180,7 +235,7 @@ never evidence that a quota reservation is safe to release.
 ## Rollback
 
 Stop invoking the commands and roll back the application artifact to the prior
-integration commit. T13a through T13d add no schema. T13a and T13c write no
+integration commit. T13a through T13e add no schema. T13a and T13c write no
 data. A T13b commit is an intentional quota-ledger transition backed by an
 existing Sync receipt and must not be reversed by deleting rows or
 synthesizing a release. A T13d applied/ignored provider snapshot and its
@@ -188,3 +243,8 @@ checkpoint are authoritative Billing evidence and must likewise be preserved,
 not deleted or rewritten. Preserve emitted audit evidence and reconcile any
 in-flight invocation before application rollback. T13a/T13c can simply be
 stopped and repeated; T13d can be retried with the exact same snapshot inputs.
+A T13e rollback stops new rotation commands but preserves the operation row,
+every old/new wrapped key version, and the current logical write pointer. An
+interrupted operation resumes with the exact operation ID and timestamps;
+never delete a pending row, disable a referenced provider key, or restore the
+old write pointer by hand.

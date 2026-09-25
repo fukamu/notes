@@ -63,6 +63,7 @@ func TestRunMigratesOnlyTheExplicitAllowlistedEnvironment(t *testing.T) {
 			return operations.AccountDeletionAuditResult{}, nil
 		},
 		billingReconciliationMustNotRun(t),
+		dekRotationMustNotRun(t),
 	)
 	if code != 0 || !called || stdout.String() != "migration complete\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
@@ -98,6 +99,7 @@ func TestRunRefusesMigrationEnvironmentMismatchWithoutDisclosingURL(t *testing.T
 			return operations.AccountDeletionAuditResult{}, nil
 		},
 		billingReconciliationMustNotRun(t),
+		dekRotationMustNotRun(t),
 	)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "refused") {
 		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
@@ -143,6 +145,7 @@ func TestRunPreparesOnlyTheAllowlistedE2EDatabase(t *testing.T) {
 			return operations.AccountDeletionAuditResult{}, nil
 		},
 		billingReconciliationMustNotRun(t),
+		dekRotationMustNotRun(t),
 	)
 	if code != 0 || !called || stdout.String() != "e2e database prepared\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
@@ -399,6 +402,7 @@ func runQuotaAuditForTest(
 			return operations.AccountDeletionAuditResult{}, nil
 		},
 		billingReconciliationMustNotRun(t),
+		dekRotationMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -597,6 +601,7 @@ func runQuotaCommitForTest(
 			return operations.AccountDeletionAuditResult{}, nil
 		},
 		billingReconciliationMustNotRun(t),
+		dekRotationMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -813,6 +818,7 @@ func runAccountDeletionAuditForTest(
 		},
 		inspect,
 		billingReconciliationMustNotRun(t),
+		dekRotationMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -1078,6 +1084,7 @@ func runBillingReconciliationForTest(
 			return operations.AccountDeletionAuditResult{}, nil
 		},
 		reconcile,
+		dekRotationMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -1101,6 +1108,284 @@ func billingReconciliationEnvironment(environment, databaseURL, apiKey string) m
 	}
 }
 
+func TestRunDEKRotationUsesExactScopeStableTimesAndRedactedOutput(t *testing.T) {
+	arguments := dekRotationCLIArguments("test")
+	values := dekRotationEnvironment(
+		"test",
+		"postgres://notes:PRIVATE_DATABASE@127.0.0.1:55432/fukamu_notes_go_test",
+	)
+	called := 0
+	code, stdout, stderr := runDEKRotationForTest(
+		t,
+		context.Background(),
+		arguments,
+		values,
+		func(
+			_ context.Context,
+			databaseURL string,
+			keyVersion string,
+			accessToken string,
+			command operations.DEKRotationCommand,
+		) (operations.DEKRotationResult, error) {
+			called++
+			if !strings.Contains(databaseURL, "PRIVATE_DATABASE") ||
+				keyVersion != testKMSKeyVersion || accessToken != testKMSAccessToken ||
+				command.RequestedAtMilli != 2_000 || command.GeneratedAtMilli != 2_200 ||
+				command.CompletedAtMilli != 2_300 ||
+				string(command.AccountID) != "01991f20-61d2-7000-8000-000000000101" ||
+				string(command.VaultID) != "01991f20-61d2-7000-8000-000000000201" {
+				t.Fatalf("rotation inputs = %q, %q, %q, %#v", databaseURL, keyVersion, accessToken, command)
+			}
+			return operations.DEKRotationResult{
+				Kind: operations.DEKRotationCompleted, OperationID: command.OperationID,
+			}, nil
+		},
+	)
+	if code != 0 || called != 1 || stderr != "" ||
+		!strings.Contains(stdout, `"command":"dek-rotate"`) ||
+		!strings.Contains(stdout, `"outcome":"completed"`) ||
+		strings.Contains(stdout, "PRIVATE") || strings.Contains(stdout, testKMSKeyVersion) ||
+		strings.Contains(stdout, "000000000101") || strings.Contains(stdout, "000000000201") {
+		t.Fatalf("code = %d, called = %d, stdout = %q, stderr = %q", code, called, stdout, stderr)
+	}
+}
+
+func TestRunDEKRotationRejectsInvalidArgumentsBeforeDependencies(t *testing.T) {
+	valid := dekRotationCLIArguments("test")
+	tests := [][]string{
+		valid[:len(valid)-1],
+		append(append([]string{}, valid...), "--operation-id=01991f20-61d2-7000-8000-000000000499"),
+		func() []string {
+			value := append([]string{}, valid...)
+			for index := range value {
+				if strings.HasPrefix(value[index], "--completed-at-millis=") {
+					value[index] = "--completed-at-millis=2100"
+				}
+			}
+			return value
+		}(),
+	}
+	for _, arguments := range tests {
+		code, stdout, stderr := runDEKRotationForTest(
+			t,
+			context.Background(),
+			arguments,
+			dekRotationEnvironment("test", "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test"),
+			dekRotationMustNotRun(t),
+		)
+		if code != 2 || stdout != "" || !strings.Contains(stderr, "usage:") {
+			t.Fatalf("arguments = %#v, code = %d, stdout = %q, stderr = %q", arguments, code, stdout, stderr)
+		}
+	}
+}
+
+func TestRunDEKRotationEnforcesEnvironmentTargetAndProviderConfiguration(t *testing.T) {
+	valid := dekRotationCLIArguments("test")
+	tests := []struct {
+		name   string
+		values map[string]string
+		want   string
+	}{
+		{
+			name: "environment mismatch",
+			values: dekRotationEnvironment(
+				"local", "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+			),
+			want: "DEK rotation environment refused\n",
+		},
+		{
+			name: "remote test database",
+			values: dekRotationEnvironment(
+				"test", "postgres://notes:secret@database.example/fukamu_notes_go_test",
+			),
+			want: "DEK rotation target refused\n",
+		},
+		{
+			name: "missing provider token",
+			values: map[string]string{
+				"NOTES_ENVIRONMENT":                "test",
+				"NOTES_DATABASE_URL":               "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+				"NOTES_GCP_KMS_CRYPTO_KEY_VERSION": testKMSKeyVersion,
+			},
+			want: "DEK rotation provider configuration invalid\n",
+		},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			code, stdout, stderr := runDEKRotationForTest(
+				t, context.Background(), valid, testCase.values, dekRotationMustNotRun(t),
+			)
+			if code != 1 || stdout != "" || stderr != testCase.want || strings.Contains(stderr, "secret") {
+				t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestRunDEKRotationProductionSyntaxRequiresBothGuards(t *testing.T) {
+	withoutProductionGuard := dekRotationCLIArguments("production")
+	code, _, stderr := runDEKRotationForTest(
+		t,
+		context.Background(),
+		withoutProductionGuard,
+		dekRotationEnvironment("production", "postgres://notes:secret@database.example/notes"),
+		dekRotationMustNotRun(t),
+	)
+	if code != 2 || !strings.Contains(stderr, "usage:") {
+		t.Fatalf("unguarded code = %d, stderr = %q", code, stderr)
+	}
+
+	arguments := append(withoutProductionGuard, "--confirm-production-kms-mutation")
+	code, stdout, stderr := runDEKRotationForTest(
+		t,
+		context.Background(),
+		arguments,
+		dekRotationEnvironment("production", "postgres://notes:secret@database.example/notes"),
+		func(
+			_ context.Context,
+			_ string,
+			_ string,
+			_ string,
+			command operations.DEKRotationCommand,
+		) (operations.DEKRotationResult, error) {
+			return operations.DEKRotationResult{
+				Kind: operations.DEKRotationReplayed, OperationID: command.OperationID,
+			}, nil
+		},
+	)
+	if code != 0 || stderr != "" || !strings.Contains(stdout, `"outcome":"replayed"`) {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
+	}
+}
+
+func TestRunDEKRotationRedactsRefusalFailureCancellationAndOutputError(t *testing.T) {
+	values := dekRotationEnvironment(
+		"test", "postgres://notes:PRIVATE_DATABASE@127.0.0.1:55432/fukamu_notes_go_test",
+	)
+	arguments := dekRotationCLIArguments("test")
+	parsed, requested, err := parseDEKRotationArguments(arguments)
+	if err != nil || !requested {
+		t.Fatalf("parse = %#v, %t, %v", parsed, requested, err)
+	}
+	tests := []struct {
+		name   string
+		ctx    context.Context
+		rotate rotateDEKFunction
+		want   string
+	}{
+		{
+			name: "refused", ctx: context.Background(), want: "DEK rotation scope refused\n",
+			rotate: func(context.Context, string, string, string, operations.DEKRotationCommand) (operations.DEKRotationResult, error) {
+				return operations.DEKRotationResult{
+					Kind: operations.DEKRotationRefused, OperationID: parsed.command.OperationID,
+				}, nil
+			},
+		},
+		{
+			name: "dependency", ctx: context.Background(), want: "DEK rotation failed\n",
+			rotate: func(context.Context, string, string, string, operations.DEKRotationCommand) (operations.DEKRotationResult, error) {
+				return operations.DEKRotationResult{}, errors.New("PRIVATE KMS FAILURE")
+			},
+		},
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	tests = append(tests, struct {
+		name   string
+		ctx    context.Context
+		rotate rotateDEKFunction
+		want   string
+	}{
+		name: "cancelled", ctx: cancelled, want: "DEK rotation failed\n",
+		rotate: func(ctx context.Context, _ string, _ string, _ string, _ operations.DEKRotationCommand) (operations.DEKRotationResult, error) {
+			return operations.DEKRotationResult{}, ctx.Err()
+		},
+	})
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			code, stdout, stderr := runDEKRotationForTest(
+				t, testCase.ctx, arguments, values, testCase.rotate,
+			)
+			if code != 1 || stdout != "" || stderr != testCase.want || strings.Contains(stderr, "PRIVATE") {
+				t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
+			}
+		})
+	}
+	var stderr bytes.Buffer
+	code := runDEKRotation(
+		context.Background(), parsed, rejectingWriter{}, &stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string, string, string, operations.DEKRotationCommand) (operations.DEKRotationResult, error) {
+			return operations.DEKRotationResult{
+				Kind: operations.DEKRotationCompleted, OperationID: parsed.command.OperationID,
+			}, nil
+		},
+	)
+	if code != 1 || stderr.String() != "DEK rotation output failed\n" {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+}
+
+func runDEKRotationForTest(
+	t *testing.T,
+	ctx context.Context,
+	arguments []string,
+	values map[string]string,
+	rotate rotateDEKFunction,
+) (int, string, string) {
+	t.Helper()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithDependencies(
+		ctx, arguments, &stdout, &stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
+		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
+			t.Fatal("quota audit must not run")
+			return operations.QuotaAuditResult{}, nil
+		},
+		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			t.Fatal("quota commit must not run")
+			return operations.QuotaCommitResult{}, nil
+		},
+		func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			t.Fatal("account deletion audit must not run")
+			return operations.AccountDeletionAuditResult{}, nil
+		},
+		billingReconciliationMustNotRun(t),
+		rotate,
+	)
+	return code, stdout.String(), stderr.String()
+}
+
+const (
+	testKMSKeyVersion  = "projects/fukamu-test/locations/asia-northeast1/keyRings/notes/cryptoKeys/vault/cryptoKeyVersions/7"
+	testKMSAccessToken = "test-access-token-value"
+)
+
+func dekRotationCLIArguments(environment string) []string {
+	return []string{
+		"dek", "rotate",
+		"--vault-id=01991f20-61d2-7000-8000-000000000201",
+		"--environment=" + environment,
+		"--operation-id=01991f20-61d2-7000-8000-000000000401",
+		"--completed-at-millis=2300",
+		"--account-id=01991f20-61d2-7000-8000-000000000101",
+		"--generated-at-millis=2200",
+		"--requested-at-millis=2000",
+		"--confirm-kms-key-generation",
+	}
+}
+
+func dekRotationEnvironment(environment, databaseURL string) map[string]string {
+	return map[string]string{
+		"NOTES_ENVIRONMENT": environment, "NOTES_DATABASE_URL": databaseURL,
+		"NOTES_GCP_KMS_CRYPTO_KEY_VERSION": testKMSKeyVersion,
+		"NOTES_GCP_KMS_ACCESS_TOKEN":       testKMSAccessToken,
+	}
+}
+
 func billingReconciliationMustNotRun(t *testing.T) reconcileBillingFunction {
 	t.Helper()
 	return func(
@@ -1112,6 +1397,20 @@ func billingReconciliationMustNotRun(t *testing.T) reconcileBillingFunction {
 	) (operations.BillingReconciliationResult, error) {
 		t.Fatal("billing reconciliation must not run")
 		return operations.BillingReconciliationResult{}, nil
+	}
+}
+
+func dekRotationMustNotRun(t *testing.T) rotateDEKFunction {
+	t.Helper()
+	return func(
+		context.Context,
+		string,
+		string,
+		string,
+		operations.DEKRotationCommand,
+	) (operations.DEKRotationResult, error) {
+		t.Fatal("DEK rotation must not run")
+		return operations.DEKRotationResult{}, nil
 	}
 }
 
