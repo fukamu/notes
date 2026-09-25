@@ -67,6 +67,10 @@ paths:
       operationId: billingCheckoutOfferRoute
       x-fukamu-state: disconnected
       x-handler-contract: billing-checkout-offer
+      x-go-handler: backend/internal/httpapi/legal.go
+      description: >-
+        The production route remains closed. The authenticated Go handler is
+        tested separately and requires a complete explicitly composed LegalRuntime.
       responses:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
@@ -74,6 +78,10 @@ paths:
       operationId: billingCheckoutRoute
       x-fukamu-state: disconnected
       x-handler-contract: billing-checkout-submit
+      x-go-handler: backend/internal/httpapi/legal.go
+      description: >-
+        The production route remains closed. The Go contract keeps commercial
+        idempotency separate from owner-scoped current terms evidence.
       responses:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
@@ -123,6 +131,10 @@ paths:
       operationId: termsConsentStatusRoute
       x-fukamu-state: disconnected
       x-handler-contract: terms-consent-status
+      x-go-handler: backend/internal/httpapi/legal.go
+      description: >-
+        The production route remains closed. The authenticated Go handler is
+        tested separately and requires a complete explicitly composed LegalRuntime.
       responses:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
@@ -130,6 +142,10 @@ paths:
       operationId: termsConsentSubmitRoute
       x-fukamu-state: disconnected
       x-handler-contract: terms-consent-submit
+      x-go-handler: backend/internal/httpapi/legal.go
+      description: >-
+        The production route remains closed. The Go handler strictly decodes a
+        bounded command after session and same-origin checks.
       responses:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }

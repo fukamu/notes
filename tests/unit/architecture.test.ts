@@ -2366,6 +2366,27 @@ describe('terms consent presentation architecture', () => {
     expect(documentation).toContain('/account/terms');
     expect(documentation).toContain('通常の Notes UI には追加しない');
   });
+
+  it('keeps browser legal contract decoders independent from server modules', async () => {
+    const [termsClient, billingClient, termsContract, checkoutContract] =
+      await Promise.all([
+        readFile('lib/client/terms-consent-ui.ts', 'utf8'),
+        readFile('lib/client/http-billing-ui.ts', 'utf8'),
+        readFile('lib/contracts/terms-consent.ts', 'utf8'),
+        readFile('lib/contracts/contract-checkout.ts', 'utf8'),
+      ]);
+
+    expect(termsClient).toContain('@/lib/contracts/terms-consent');
+    expect(billingClient).toContain('@/lib/contracts/contract-checkout');
+    for (const source of [termsClient, billingClient]) {
+      expect(source).not.toMatch(
+        /@\/server\/(?:terms-consent|legal-checkout)\//,
+      );
+    }
+    for (const source of [termsContract, checkoutContract]) {
+      expect(source).not.toMatch(/@\/server\/|\.\.\/\.\.\/server\//);
+    }
+  });
 });
 
 describe('signup terms admission architecture', () => {

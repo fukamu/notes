@@ -148,13 +148,68 @@ func TestTermsConsentServiceRecordsReplaysAndVerifiesCheckout(t *testing.T) {
 		SessionID:    mustSessionID(t, "01991f20-61d2-7000-8000-000000000401"),
 		SessionEpoch: mustSessionEpoch(t, 1),
 	}
-	verified := service.VerifyCheckout(context.Background(), vaultContext, fixture.SubmissionID)
+	verified := service.VerifyCheckout(context.Background(), vaultContext)
 	if verified.Kind != CheckoutTermsAccepted || verified.ConsentID != consentID {
 		t.Fatalf("checkout verification = %#v", verified)
 	}
-	missing := service.VerifyCheckout(context.Background(), vaultContext, "01991f20-61d2-7000-8000-000000002699")
+}
+
+func TestCheckoutVerificationUsesLatestOwnerConsentNotCommercialSubmissionID(t *testing.T) {
+	fixture := readTermsFixture(t)
+	source := &fakeTermsSource{value: CurrentTermsSourceValue{
+		Disclosure: fixture.Disclosure, AcceptancePolicy: AcceptancePolicy{Kind: AcceptanceInitialRelease},
+	}}
+	repository := &fakeTermsRepository{}
+	service, err := NewTermsConsentService(source, &fakeTermsHasher{}, repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vaultContext := identity.VaultContext{
+		AccountID: fixture.termsScope(t).AccountID, VaultID: fixture.termsScope(t).VaultID,
+		SessionID:    mustSessionID(t, "01991f20-61d2-7000-8000-000000000401"),
+		SessionEpoch: mustSessionEpoch(t, 1),
+	}
+
+	missing := service.VerifyCheckout(context.Background(), vaultContext)
 	if missing.Kind != CheckoutTermsRejected || missing.Reason != CheckoutTermsConsentRequired {
-		t.Fatalf("missing checkout consent = %#v", missing)
+		t.Fatalf("missing consent = %#v", missing)
+	}
+
+	command := fixtureTermsCommand(t, fixture)
+	accepted := service.Accept(
+		context.Background(), fixture.termsScope(t), command,
+		mustConsentID(t, fixture.ConsentID), fixture.AcceptedAt,
+	)
+	if accepted.Kind != ApplicationAccepted {
+		t.Fatalf("accept = %#v", accepted)
+	}
+	verified := service.VerifyCheckout(context.Background(), vaultContext)
+	if verified.Kind != CheckoutTermsAccepted || string(verified.ConsentID) != fixture.ConsentID {
+		t.Fatalf("current consent = %#v", verified)
+	}
+
+	source.value.Disclosure.TermsVersion = "terms-v1:2026-10-01"
+	source.value.Disclosure.EffectiveDate = "2026-10-01"
+	source.value.AcceptancePolicy = AcceptancePolicy{
+		Kind: AcceptanceReconsentRequired, LegalReviewID: "legal-review:2026-10-01",
+	}
+	reconsent := service.VerifyCheckout(context.Background(), vaultContext)
+	if reconsent.Kind != CheckoutTermsRejected || reconsent.Reason != CheckoutTermsChanged {
+		t.Fatalf("reconsent verification = %#v", reconsent)
+	}
+
+	source.value.AcceptancePolicy = AcceptancePolicy{
+		Kind: AcceptanceNoticeOnly, LegalReviewID: "legal-review:2026-10-01",
+	}
+	noticeOnly := service.VerifyCheckout(context.Background(), vaultContext)
+	if noticeOnly.Kind != CheckoutTermsAccepted || string(noticeOnly.ConsentID) != fixture.ConsentID {
+		t.Fatalf("notice-only verification = %#v", noticeOnly)
+	}
+
+	repository.readErr = errTermsTestUnavailable
+	unavailable := service.VerifyCheckout(context.Background(), vaultContext)
+	if unavailable.Kind != CheckoutTermsRejected || unavailable.Reason != CheckoutTermsUnavailable {
+		t.Fatalf("unavailable verification = %#v", unavailable)
 	}
 }
 

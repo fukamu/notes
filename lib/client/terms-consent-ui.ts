@@ -20,7 +20,7 @@ import {
   termsConsentSubmissionIdDecoder,
   termsDocumentHashDecoder,
   termsVersionDecoder,
-} from '@/server/terms-consent/public';
+} from '@/lib/contracts/terms-consent';
 
 type FetchRequest = (
   input: RequestInfo | URL,

@@ -12,7 +12,7 @@ import (
 var ErrInvalidContractCheckoutConfiguration = errors.New("invalid contract checkout configuration")
 
 type ContractCheckoutTermsVerifier interface {
-	VerifyCheckout(context.Context, identity.VaultContext, string) CheckoutVerification
+	VerifyCheckout(context.Context, identity.VaultContext) CheckoutVerification
 }
 
 var _ ContractCheckoutTermsVerifier = (*TermsConsentService)(nil)
@@ -80,7 +80,7 @@ func (application *ContractCheckoutApplication) Confirm(
 	if _, err := ParseContractEvidenceID(string(evidenceID)); err != nil {
 		return rejectedContractCheckout(ContractInvalidCommand)
 	}
-	terms := application.terms.VerifyCheckout(ctx, vaultContext, string(command.SubmissionID))
+	terms := application.terms.VerifyCheckout(ctx, vaultContext)
 	if terms.Kind != CheckoutTermsAccepted {
 		switch terms.Reason {
 		case CheckoutTermsConsentRequired:

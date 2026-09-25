@@ -342,13 +342,13 @@ func (repository *memoryContractRepository) count() int {
 
 type acceptedContractTerms struct{}
 
-func (acceptedContractTerms) VerifyCheckout(context.Context, identity.VaultContext, string) CheckoutVerification {
+func (acceptedContractTerms) VerifyCheckout(context.Context, identity.VaultContext) CheckoutVerification {
 	return CheckoutVerification{Kind: CheckoutTermsAccepted}
 }
 
 type rejectedContractTerms struct{}
 
-func (rejectedContractTerms) VerifyCheckout(context.Context, identity.VaultContext, string) CheckoutVerification {
+func (rejectedContractTerms) VerifyCheckout(context.Context, identity.VaultContext) CheckoutVerification {
 	return CheckoutVerification{Kind: CheckoutTermsRejected, Reason: CheckoutTermsConsentRequired}
 }
 

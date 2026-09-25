@@ -24,6 +24,7 @@ type HandlerOptions struct {
 	BodyLimit           int64
 	Logger              *slog.Logger
 	PrivateRuntime      *PrivateRuntime
+	LegalRuntime        *LegalRuntime
 	EnableLocalFixtures bool
 }
 
@@ -92,11 +93,11 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 	)
 	mux.HandleFunc(
 		"/api/billing/checkout",
-		exact("/api/billing/checkout", disconnectedProtectedAPI(options.PrivateRuntime, options.EnableLocalFixtures, http.MethodGet, http.MethodPost)),
+		exact("/api/billing/checkout", checkoutRoute(options)),
 	)
 	mux.HandleFunc(
 		"/api/account/terms-consent",
-		exact("/api/account/terms-consent", disconnectedProtectedAPI(options.PrivateRuntime, options.EnableLocalFixtures, http.MethodGet, http.MethodPost)),
+		exact("/api/account/terms-consent", termsConsentRoute(options)),
 	)
 	for _, path := range []string{
 		"/api/account/deletion",

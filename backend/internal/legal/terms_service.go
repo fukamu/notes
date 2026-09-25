@@ -160,14 +160,9 @@ func (service *TermsConsentService) Accept(
 func (service *TermsConsentService) VerifyCheckout(
 	ctx context.Context,
 	vaultContext identity.VaultContext,
-	rawSubmissionID string,
 ) CheckoutVerification {
 	if service == nil || !validVaultContext(vaultContext) {
 		return CheckoutVerification{Kind: CheckoutTermsRejected, Reason: CheckoutTermsUnavailable}
-	}
-	submissionID, err := ParseTermsConsentSubmissionID(rawSubmissionID)
-	if err != nil {
-		return CheckoutVerification{Kind: CheckoutTermsRejected, Reason: CheckoutTermsConsentRequired}
 	}
 	scope := TermsScope{AccountID: vaultContext.AccountID, VaultID: vaultContext.VaultID}
 	status := service.Status(ctx, scope)
@@ -178,21 +173,19 @@ func (service *TermsConsentService) VerifyCheckout(
 		}
 		return CheckoutVerification{Kind: CheckoutTermsRejected, Reason: reason}
 	}
-	record, err := service.repository.FindBySubmission(ctx, scope, submissionID)
-	if err != nil {
+	switch status.Status.Kind {
+	case TermsStatusCurrent:
+		return CheckoutVerification{Kind: CheckoutTermsRejected, Reason: CheckoutTermsConsentRequired}
+	case TermsStatusReconsentRequired:
+		return CheckoutVerification{Kind: CheckoutTermsRejected, Reason: CheckoutTermsChanged}
+	case TermsStatusAccepted, TermsStatusNoticeOnly:
+		if status.Status.AcceptanceRequired || status.Status.Accepted == nil {
+			return CheckoutVerification{Kind: CheckoutTermsRejected, Reason: CheckoutTermsUnavailable}
+		}
+		return CheckoutVerification{Kind: CheckoutTermsAccepted, ConsentID: status.Status.Accepted.ConsentID}
+	default:
 		return CheckoutVerification{Kind: CheckoutTermsRejected, Reason: CheckoutTermsUnavailable}
 	}
-	if record == nil {
-		return CheckoutVerification{Kind: CheckoutTermsRejected, Reason: CheckoutTermsConsentRequired}
-	}
-	if record.Scope != scope {
-		return CheckoutVerification{Kind: CheckoutTermsRejected, Reason: CheckoutTermsOwnerMismatch}
-	}
-	if record.Snapshot.TermsVersion != status.Status.Current.TermsVersion ||
-		record.Snapshot.TermsHash != status.Status.Current.TermsHash {
-		return CheckoutVerification{Kind: CheckoutTermsRejected, Reason: CheckoutTermsChanged}
-	}
-	return CheckoutVerification{Kind: CheckoutTermsAccepted, ConsentID: record.ConsentID}
 }
 
 type preparedCurrentTerms struct {

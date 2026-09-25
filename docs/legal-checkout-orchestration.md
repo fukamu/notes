@@ -76,13 +76,21 @@ Terms-of-service version consent remains #132. This Issue does not enable
 Stripe Dashboard ToS consent or claim that its commercial-offer consent is the
 same legal act.
 
-The current terms verifier indexes evidence by the checkout submission ID, but
-the terms-consent and checkout clients generate separate identifiers. The Go
-port keeps the route disconnected and fail-closed until T10c replaces that
-unreachable composition with a reviewed contract. The recommended direction is
-to verify the latest current owner-scoped terms evidence while retaining the
-commercial submission ID solely for checkout idempotency; combining the two
-legal acts into one checkbox is not assumed.
+The TypeScript terms verifier indexes evidence by the checkout submission ID,
+but the terms-consent and checkout clients generate separate identifiers. Go
+Issue #446 deliberately does not reproduce that unreachable composition. It
+verifies the latest immutable evidence in the resolved Account/Vault scope
+against the authoritative current terms. Missing or reconsent-required evidence
+stops before commercial evidence and provider access; an explicitly reviewed
+notice-only change is non-blocking. The commercial submission ID remains solely
+the checkout/provider idempotency key, and the two legal acts remain separate.
+
+Issue #446 also ports the authenticated GET/POST wire contracts to Go. The
+handler factories require a complete, separately supplied `LegalRuntime`, use
+Cookie session ownership, same-origin CSRF, strict 2-KiB JSON, server-generated
+IDs and clocks, and fixed no-store errors. The production command supplies no
+legal runtime, so the existing 404/503 route closure remains and no provider is
+called.
 
 ## Rollback and verification
 
@@ -95,7 +103,7 @@ migration is used. T12 must explicitly execute the approved deletion/retention
 workflow; the Go foreign key does not silently cascade. Production changes and
 real provider operations require separate approval.
 
-Focused tests cover authentication, CSRF, body scope injection and limits,
+Focused TypeScript and Go tests cover authentication, CSRF, body scope injection and limits,
 consent/stale-offer rejection, response-loss replay, contract metadata mismatch,
 secret-safe errors, and cancellation during payment lock. Repository gates are:
 

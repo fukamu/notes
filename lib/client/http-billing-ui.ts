@@ -21,7 +21,7 @@ import {
   contractOfferHashDecoder,
   contractOfferSnapshotDecoder,
   parseContractSubmissionId,
-} from '@/server/legal-checkout/public';
+} from '@/lib/contracts/contract-checkout';
 
 type FetchRequest = (
   input: RequestInfo | URL,
