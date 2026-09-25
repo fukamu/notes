@@ -116,6 +116,35 @@ func TestBillingProjectionAtomicityAndReplayPostgres(t *testing.T) {
 		t.Fatalf("same-millisecond reconciliation = %s, %v", result, err)
 	}
 
+	current, _ = store.FindByID(ctx, recordA.SubscriptionID)
+	oldPaidSnapshot := integrationSnapshot(recordA.SubscriptionID, "snapshot-old-paid", 9_000, false)
+	oldPaidSnapshot.LatestPaidInvoice.PaidAt = 7_000
+	oldPaidPlan := billing.PlanReconciliationSnapshot(*current, oldPaidSnapshot)
+	if oldPaidPlan.Kind != billing.ProviderFactApply || oldPaidPlan.Record.Lifecycle.Kind != billing.LifecycleDelinquent {
+		t.Fatalf("old paid reconciliation plan = %#v", oldPaidPlan)
+	}
+	if result, err := store.CommitReconciliation(
+		ctx, *current, oldPaidPlan.Record, integrationCheckpoint(oldPaidSnapshot, oldPaidPlan.Record),
+	); err != nil || result != billing.CommitApplied {
+		t.Fatalf("old paid reconciliation = %s, %v", result, err)
+	}
+	storedOldPaid, _ := store.FindByID(ctx, recordA.SubscriptionID)
+	if storedOldPaid == nil || storedOldPaid.Lifecycle.Kind != billing.LifecycleDelinquent {
+		t.Fatalf("old paid evidence unlocked subscription = %#v", storedOldPaid)
+	}
+
+	newPaidSnapshot := integrationSnapshot(recordA.SubscriptionID, "snapshot-new-paid", 11_000, false)
+	newPaidSnapshot.LatestPaidInvoice.PaidAt = 10_000
+	newPaidPlan := billing.PlanReconciliationSnapshot(*storedOldPaid, newPaidSnapshot)
+	if newPaidPlan.Kind != billing.ProviderFactApply || newPaidPlan.Record.Lifecycle.Kind != billing.LifecycleActive {
+		t.Fatalf("new paid reconciliation plan = %#v", newPaidPlan)
+	}
+	if result, err := store.CommitReconciliation(
+		ctx, *storedOldPaid, newPaidPlan.Record, integrationCheckpoint(newPaidSnapshot, newPaidPlan.Record),
+	); err != nil || result != billing.CommitApplied {
+		t.Fatalf("new paid reconciliation = %s, %v", result, err)
+	}
+
 	recordB, intentB := integrationBillingCheckout(t, accountB, vaultB, 711, 712)
 	if result, err := store.CreateCheckout(ctx, recordB, intentB); err != nil || result.Kind != billing.CheckoutCreated {
 		t.Fatalf("second owner checkout = %#v, %v", result, err)

@@ -135,6 +135,8 @@ export function stripeInvoiceObject(input: {
   readonly periodStart?: number;
   readonly periodEnd?: number;
   readonly subscriptionId?: string;
+  readonly created?: number;
+  readonly paidAt?: number | null;
 }): unknown {
   return {
     id: input.id ?? stripeIds.invoice1,
@@ -142,6 +144,11 @@ export function stripeInvoiceObject(input: {
     customer: stripeIds.customer,
     paid: input.paid,
     status: input.status,
+    created: input.created ?? 2,
+    status_transitions: {
+      paid_at:
+        input.paidAt === undefined ? (input.paid ? 3 : null) : input.paidAt,
+    },
     period_start: input.periodStart ?? 10,
     period_end: input.periodEnd ?? 2_592_010,
     parent: {
@@ -199,6 +206,11 @@ export function stripeSubscriptionSnapshot(
     readonly paymentIntentStatus?: string | null;
     readonly billingSubscriptionId?: string;
     readonly providerSubscriptionId?: string;
+    readonly invoiceCreated?: number;
+    readonly invoicePaidAt?: number | null;
+    readonly paymentIntentCreated?: number;
+    readonly setupCreated?: number;
+    readonly subscriptionCreated?: number;
   } = {},
 ): unknown {
   const invoicePaid = input.invoicePaid ?? false;
@@ -208,6 +220,12 @@ export function stripeSubscriptionSnapshot(
     paid: invoicePaid,
     status: invoiceStatus,
     subscriptionId: input.billingSubscriptionId ?? billingIds.subscriptionA,
+    ...(input.invoiceCreated === undefined
+      ? {}
+      : { created: input.invoiceCreated }),
+    ...(input.invoicePaidAt === undefined
+      ? {}
+      : { paidAt: input.invoicePaidAt }),
   });
   return {
     subscription: {
@@ -215,7 +233,7 @@ export function stripeSubscriptionSnapshot(
       object: 'subscription',
       customer: stripeIds.customer,
       status: input.status ?? 'trialing',
-      created: 2,
+      created: input.subscriptionCreated ?? 2,
       metadata: {
         billing_subscription_id:
           input.billingSubscriptionId ?? billingIds.subscriptionA,
@@ -234,7 +252,7 @@ export function stripeSubscriptionSnapshot(
       usage: 'off_session',
       customer: stripeIds.customer,
       payment_method: 'pm_FukamuA',
-      created: 2,
+      created: input.setupCreated ?? 2,
     },
     latest_invoice: invoice,
     latest_payment_intent:
@@ -246,7 +264,7 @@ export function stripeSubscriptionSnapshot(
             status: paymentIntentStatus,
             customer: stripeIds.customer,
             invoice: stripeIds.invoice1,
-            created: 2,
+            created: input.paymentIntentCreated ?? 2,
           },
   };
 }

@@ -68,6 +68,7 @@ func TestProviderNormalizesExpandedSubscriptionSnapshot(t *testing.T) {
 	if snapshot.Subscription.ID != "sub_FukamuA" || snapshot.Subscription.Customer != "cus_FukamuA" ||
 		snapshot.SetupIntent == nil || snapshot.SetupIntent.Status != "succeeded" ||
 		snapshot.LatestInvoice == nil || snapshot.LatestInvoice.Status != "paid" ||
+		snapshot.LatestInvoice.CreatedSeconds != 2 || snapshot.LatestInvoice.PaidAtSeconds == nil || *snapshot.LatestInvoice.PaidAtSeconds != 3 ||
 		snapshot.LatestPaymentIntent == nil || snapshot.LatestPaymentIntent.Status != "succeeded" || snapshot.LatestPaymentIntent.Invoice != "in_Fukamu1" {
 		t.Fatalf("snapshot = %#v", snapshot)
 	}
@@ -305,7 +306,8 @@ func subscriptionResponseJSON() map[string]any {
 			"customer": "cus_FukamuA", "payment_method": "pm_FukamuA",
 		},
 		"latest_invoice": map[string]any{
-			"id": "in_Fukamu1", "object": "invoice", "customer": "cus_FukamuA", "status": "paid", "period_start": int64(10), "period_end": int64(2_592_010),
+			"id": "in_Fukamu1", "object": "invoice", "customer": "cus_FukamuA", "status": "paid", "created": int64(2),
+			"status_transitions": map[string]any{"paid_at": int64(3)}, "period_start": int64(10), "period_end": int64(2_592_010),
 			"parent": map[string]any{"type": "subscription_details", "subscription_details": map[string]any{
 				"subscription": "sub_FukamuA", "metadata": map[string]string{"billing_subscription_id": "01991f20-61d2-7000-8000-000000009001"},
 			}},

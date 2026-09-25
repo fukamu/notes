@@ -73,6 +73,25 @@ func TestReconciliationAllowsDistinctSameMillisecondSnapshots(t *testing.T) {
 	}
 }
 
+func TestReconciliationUsesProviderEvidenceTimeInsteadOfObservationTime(t *testing.T) {
+	failed := requireApplied(t, checkoutRecord(t), providerFact(FactInvoicePaymentFailed, 5_000))
+	oldPaid := reconciliationSnapshot("snapshot-old-paid", 9_000)
+	oldPaid.LatestPaidInvoice.PaidAt = 4_000
+	oldPlan := PlanReconciliationSnapshot(failed, oldPaid)
+	if oldPlan.Kind != ProviderFactApply || oldPlan.Record.Lifecycle.Kind != LifecycleDelinquent ||
+		oldPlan.Record.LastPaidAt == nil || *oldPlan.Record.LastPaidAt != 4_000 {
+		t.Fatalf("old paid reconciliation = %#v", oldPlan)
+	}
+
+	newPaid := reconciliationSnapshot("snapshot-new-paid", 10_000)
+	newPaid.LatestPaidInvoice.PaidAt = 7_000
+	newPlan := PlanReconciliationSnapshot(oldPlan.Record, newPaid)
+	if newPlan.Kind != ProviderFactApply || newPlan.Record.Lifecycle.Kind != LifecycleActive ||
+		newPlan.Record.LastPaidAt == nil || *newPlan.Record.LastPaidAt != 7_000 {
+		t.Fatalf("new paid reconciliation = %#v", newPlan)
+	}
+}
+
 func TestCancellationIsTerminalAndMappingsAreFailClosed(t *testing.T) {
 	trial := requireApplied(t, checkoutRecord(t), providerFact(FactTrialStarted, 2_000))
 	scheduled := requireApplied(t, trial, providerFact(FactCancellationScheduled, 7_000))

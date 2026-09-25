@@ -116,6 +116,11 @@ type StripeInvoice = {
   readonly periodEnd: number;
 };
 
+type StripeReconciliationInvoice = StripeInvoice & {
+  readonly createdAt: number;
+  readonly paidAt: number | null;
+};
+
 const unknownDecoder: Decoder<unknown> = {
   decode(input) {
     return { ok: true, value: input };
@@ -220,33 +225,46 @@ const eventEnvelopeDecoder = objectDecoder(
   },
   { unknownFields: 'allow' },
 );
-const invoiceDecoder = objectDecoder(
+const invoiceFields = {
+  id: invoiceReferenceDecoder,
+  object: literalDecoder('invoice'),
+  customer: customerReferenceDecoder,
+  status: stripeObjectStatusDecoder,
+  period_start: epochSecondsDecoder,
+  period_end: epochSecondsDecoder,
+  parent: objectDecoder(
+    {
+      type: literalDecoder('subscription_details'),
+      subscription_details: objectDecoder(
+        {
+          subscription: subscriptionReferenceDecoder,
+          metadata: billingMetadataDecoder,
+        },
+        { unknownFields: 'allow' },
+      ),
+    },
+    { unknownFields: 'allow' },
+  ),
+} as const;
+const invoiceDecoder = objectDecoder(invoiceFields, { unknownFields: 'allow' });
+const normalizedInvoiceDecoder = transformDecoder(
+  invoiceDecoder,
+  normalizeInvoice,
+);
+const reconciliationInvoiceInputDecoder = objectDecoder(
   {
-    id: invoiceReferenceDecoder,
-    object: literalDecoder('invoice'),
-    customer: customerReferenceDecoder,
-    status: stripeObjectStatusDecoder,
-    period_start: epochSecondsDecoder,
-    period_end: epochSecondsDecoder,
-    parent: objectDecoder(
-      {
-        type: literalDecoder('subscription_details'),
-        subscription_details: objectDecoder(
-          {
-            subscription: subscriptionReferenceDecoder,
-            metadata: billingMetadataDecoder,
-          },
-          { unknownFields: 'allow' },
-        ),
-      },
+    ...invoiceFields,
+    created: epochSecondsDecoder,
+    status_transitions: objectDecoder(
+      { paid_at: nullableDecoder(epochSecondsDecoder) },
       { unknownFields: 'allow' },
     ),
   },
   { unknownFields: 'allow' },
 );
-const normalizedInvoiceDecoder = transformDecoder(
-  invoiceDecoder,
-  normalizeInvoice,
+const reconciliationInvoiceDecoder = transformDecoder(
+  reconciliationInvoiceInputDecoder,
+  normalizeReconciliationInvoice,
 );
 const checkoutSessionDecoder = objectDecoder(
   {
@@ -346,7 +364,7 @@ const subscriptionSnapshotDecoder = objectDecoder(
         { unknownFields: 'allow' },
       ),
     ),
-    latest_invoice: nullableDecoder(normalizedInvoiceDecoder),
+    latest_invoice: nullableDecoder(reconciliationInvoiceDecoder),
     latest_payment_intent: nullableDecoder(
       objectDecoder(
         {
@@ -554,20 +572,43 @@ export function decodeStripeReconciliationSnapshot(
     return undefined;
   }
 
-  const latestPaidInvoice =
-    invoice !== null && invoice.paid && invoice.status === 'paid'
-      ? {
-          invoiceReference: invoice.id,
-          paidAt: plan.observedAt,
-          periodStartedAt: invoice.periodStart,
-          periodEndsAt: invoice.periodEnd,
-        }
-      : null;
-  const delinquency = delinquencyFromSnapshot(
-    invoice,
-    paymentIntent,
-    plan.observedAt,
-  );
+  const subscriptionCreatedAt = toMilliseconds(subscription.created);
+  const setupCreatedAt =
+    setup === null ? subscriptionCreatedAt : toMilliseconds(setup.created);
+  const paymentIntentCreatedAt =
+    paymentIntent === null ? null : toMilliseconds(paymentIntent.created);
+  if (
+    subscriptionCreatedAt <= 0 ||
+    subscriptionCreatedAt > plan.observedAt ||
+    setupCreatedAt <= 0 ||
+    setupCreatedAt > plan.observedAt ||
+    (invoice !== null &&
+      (invoice.createdAt <= 0 ||
+        invoice.createdAt > plan.observedAt ||
+        invoice.paid !== (invoice.paidAt !== null) ||
+        (invoice.paidAt !== null &&
+          (invoice.paidAt <= 0 ||
+            invoice.paidAt < invoice.createdAt ||
+            invoice.paidAt > plan.observedAt)))) ||
+    (paymentIntentCreatedAt !== null &&
+      (paymentIntentCreatedAt <= 0 ||
+        (invoice !== null && paymentIntentCreatedAt < invoice.createdAt) ||
+        paymentIntentCreatedAt > plan.observedAt))
+  ) {
+    return undefined;
+  }
+
+  let latestPaidInvoice: ReconciliationSnapshot['latestPaidInvoice'] = null;
+  if (invoice !== null && invoice.paid && invoice.status === 'paid') {
+    if (invoice.paidAt === null) return undefined;
+    latestPaidInvoice = {
+      invoiceReference: invoice.id,
+      paidAt: invoice.paidAt,
+      periodStartedAt: invoice.periodStart,
+      periodEndsAt: invoice.periodEnd,
+    };
+  }
+  const delinquency = delinquencyFromSnapshot(invoice, paymentIntent);
   const cancelledAt =
     subscription.status === 'canceled'
       ? toMilliseconds(
@@ -586,10 +627,7 @@ export function decodeStripeReconciliationSnapshot(
     observedAt: plan.observedAt,
     recordedAt: plan.recordedAt,
     paymentMethodReady,
-    paymentMethodUpdatedAt:
-      setup === null
-        ? toMilliseconds(subscription.created)
-        : toMilliseconds(setup.created),
+    paymentMethodUpdatedAt: setupCreatedAt,
     trial,
     latestPaidInvoice,
     delinquency,
@@ -777,6 +815,19 @@ function normalizeInvoice(
   };
 }
 
+function normalizeReconciliationInvoice(
+  invoice: InferDecoder<typeof reconciliationInvoiceInputDecoder>,
+): StripeReconciliationInvoice {
+  return {
+    ...normalizeInvoice(invoice),
+    createdAt: toMilliseconds(invoice.created),
+    paidAt:
+      invoice.status_transitions.paid_at === null
+        ? null
+        : toMilliseconds(invoice.status_transitions.paid_at),
+  };
+}
+
 function buildTrial(
   subscription: {
     readonly status: string;
@@ -831,8 +882,8 @@ function delinquencyFromSnapshot(
       | 'requires_capture'
       | 'canceled'
       | 'succeeded';
+    readonly created: number;
   } | null,
-  observedAt: number,
 ): ReconciliationSnapshot['delinquency'] {
   if (
     invoice === null ||
@@ -846,14 +897,14 @@ function delinquencyFromSnapshot(
     return {
       reason: 'payment-action-required',
       invoiceReference: invoice.id,
-      occurredAt: observedAt,
+      occurredAt: toMilliseconds(paymentIntent.created),
     };
   }
   return paymentIntent.status === 'requires_payment_method'
     ? {
         reason: 'payment-failed',
         invoiceReference: invoice.id,
-        occurredAt: observedAt,
+        occurredAt: toMilliseconds(paymentIntent.created),
       }
     : null;
 }

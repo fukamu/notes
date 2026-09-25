@@ -149,6 +149,61 @@ describe('Stripe Billing adapter with fake provider boundary', () => {
     });
   });
 
+  it('does not make old paid evidence newer when reconciliation runs later', async () => {
+    const setup = testAdapter({
+      snapshot: stripeSubscriptionSnapshot({
+        invoicePaid: true,
+        invoiceStatus: 'paid',
+        invoiceCreated: 1,
+        invoicePaidAt: 2,
+        setupCreated: 1,
+        subscriptionCreated: 1,
+      }),
+    });
+    await setup.adapter.beginHostedCheckout(
+      billingContext(),
+      checkoutCommand(),
+    );
+    await setup.adapter.ingestWebhook(
+      webhook(
+        stripeEvent(
+          'checkout.session.completed',
+          stripeCheckoutCompletedObject(),
+        ),
+        3_000,
+      ),
+    );
+    await setup.adapter.ingestWebhook(
+      webhook(
+        stripeEvent(
+          'invoice.payment_failed',
+          stripeInvoiceObject({ paid: false, status: 'open' }),
+          { id: 'evt_failed_after_paid', created: 7 },
+        ),
+        7_100,
+      ),
+    );
+
+    await expect(
+      setup.adapter.reconcileSubscription({
+        snapshotId: stripeIds.snapshot,
+        subscriptionId: billingIds.subscriptionA,
+        providerSubscriptionReference: stripeIds.subscription,
+        observedAt: 9_000,
+        recordedAt: 9_100,
+      }),
+    ).resolves.toEqual({ kind: 'accepted', outcome: 'applied' });
+    await expect(
+      setup.billing.api.readSubscription(billingContext()),
+    ).resolves.toMatchObject({
+      lifecycle: { kind: 'delinquent', reason: 'payment-failed' },
+    });
+    expect(setup.billing.repository.inspect().subscriptions[0]).toMatchObject({
+      lastPaidAt: 2_000,
+      lastDelinquencyAt: 7_000,
+    });
+  });
+
   it('rejects invalid signatures, malformed provider snapshots, and mapping mismatch', async () => {
     const invalidSignature = testAdapter();
     await expect(

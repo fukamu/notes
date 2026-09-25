@@ -109,7 +109,7 @@ func DecodeReconciliationSnapshot(input ProviderSubscriptionSnapshot, plan Snaps
 	if !ok {
 		return billing.ReconciliationSnapshot{}, false
 	}
-	paymentReady, paymentUpdatedAt, setupOK := validateSetupIntent(input.SetupIntent, subscription)
+	paymentReady, paymentUpdatedAt, setupOK := validateSetupIntent(input.SetupIntent, subscription, plan.ObservedAt)
 	if !setupOK {
 		return billing.ReconciliationSnapshot{}, false
 	}
@@ -121,14 +121,17 @@ func DecodeReconciliationSnapshot(input ProviderSubscriptionSnapshot, plan Snaps
 	if !invoiceOK {
 		return billing.ReconciliationSnapshot{}, false
 	}
-	paymentIntent, paymentIntentOK := validatePaymentIntent(input.LatestPaymentIntent, invoice, subscription)
+	paymentIntent, paymentIntentOK := validatePaymentIntent(input.LatestPaymentIntent, invoice, subscription, plan.ObservedAt)
 	if !paymentIntentOK {
 		return billing.ReconciliationSnapshot{}, false
 	}
 	var paidInvoice *billing.ReconciliationPaidInvoice
 	if invoice != nil && invoice.Paid && invoice.Status == "paid" {
+		if invoice.PaidAt == nil {
+			return billing.ReconciliationSnapshot{}, false
+		}
 		paidInvoice = &billing.ReconciliationPaidInvoice{
-			InvoiceReference: invoice.ID, PaidAt: plan.ObservedAt,
+			InvoiceReference: invoice.ID, PaidAt: *invoice.PaidAt,
 			PeriodStartedAt: invoice.PeriodStart, PeriodEndsAt: invoice.PeriodEnd,
 		}
 	}
@@ -136,9 +139,9 @@ func DecodeReconciliationSnapshot(input ProviderSubscriptionSnapshot, plan Snaps
 	if invoice != nil && paymentIntent != nil && !invoice.Paid && invoice.Status == "open" {
 		switch paymentIntent.Status {
 		case "requires_action":
-			delinquency = &billing.ReconciliationDelinquency{Reason: billing.DelinquencyPaymentActionRequired, InvoiceReference: invoice.ID, OccurredAt: plan.ObservedAt}
+			delinquency = &billing.ReconciliationDelinquency{Reason: billing.DelinquencyPaymentActionRequired, InvoiceReference: invoice.ID, OccurredAt: paymentIntent.CreatedAt}
 		case "requires_payment_method":
-			delinquency = &billing.ReconciliationDelinquency{Reason: billing.DelinquencyPaymentFailed, InvoiceReference: invoice.ID, OccurredAt: plan.ObservedAt}
+			delinquency = &billing.ReconciliationDelinquency{Reason: billing.DelinquencyPaymentFailed, InvoiceReference: invoice.ID, OccurredAt: paymentIntent.CreatedAt}
 		}
 	}
 	var cancelledAt *int64
@@ -256,12 +259,15 @@ type normalizedInvoice struct {
 	Customer    billing.ProviderCustomerReference
 	Paid        bool
 	Status      string
+	CreatedAt   int64
+	PaidAt      *int64
 	PeriodStart int64
 	PeriodEnd   int64
 }
 
 type normalizedPaymentIntent struct {
-	Status string
+	Status    string
+	CreatedAt int64
 }
 
 func checkoutCompletedPlan(event decodedEvent, receivedAt int64) EventPlan {
@@ -403,7 +409,8 @@ func validateProviderSubscription(input ProviderSubscription, plan SnapshotPlan)
 	subscriptionID, subErr := billing.ParseSubscriptionID(subscriptionValue)
 	created, createdOK := millisFromSeconds(input.CreatedSeconds)
 	if !idOK || !customerOK || !metadataOK || subErr != nil || input.Object != "subscription" || !validSubscriptionStatus(input.Status) ||
-		id != plan.ProviderSubscriptionReference || subscriptionID != plan.SubscriptionID || !createdOK {
+		id != plan.ProviderSubscriptionReference || subscriptionID != plan.SubscriptionID || !createdOK ||
+		created <= 0 || created > plan.ObservedAt {
 		return normalizedSubscription{}, false
 	}
 	trialStart, trialStartOK := optionalSeconds(input.TrialStartSeconds)
@@ -428,13 +435,14 @@ func validateProviderSubscription(input ProviderSubscription, plan SnapshotPlan)
 	}, true
 }
 
-func validateSetupIntent(input *ProviderSetupIntent, subscription normalizedSubscription) (bool, int64, bool) {
+func validateSetupIntent(input *ProviderSetupIntent, subscription normalizedSubscription, observedAt int64) (bool, int64, bool) {
 	if input == nil {
 		return false, subscription.CreatedAt, true
 	}
 	createdAt, createdOK := millisFromSeconds(input.CreatedSeconds)
 	if !validStripeID(input.ID, "seti_") || input.Object != "setup_intent" || !validSetupStatus(input.Status) ||
-		input.Usage != "off_session" || input.Customer != string(subscription.Customer) || !createdOK {
+		input.Usage != "off_session" || input.Customer != string(subscription.Customer) || !createdOK ||
+		createdAt <= 0 || createdAt > observedAt {
 		return false, 0, false
 	}
 	paymentMethod := ""
@@ -469,24 +477,37 @@ func validateProviderInvoice(input *ProviderInvoice, subscription normalizedSubs
 	subscriptionID, subErr := billing.ParseSubscriptionID(input.SubscriptionID)
 	periodStart, startOK := millisFromSeconds(input.PeriodStartSeconds)
 	periodEnd, endOK := millisFromSeconds(input.PeriodEndSeconds)
+	createdAt, createdOK := millisFromSeconds(input.CreatedSeconds)
+	paidAt, paidOK := optionalSeconds(input.PaidAtSeconds)
+	paid := input.Status == "paid"
 	if !idOK || !customerOK || !providerOK || subErr != nil || input.Object != "invoice" || !validInvoiceStatus(input.Status) ||
 		customer != subscription.Customer || providerSubscription != subscription.ID || subscriptionID != plan.SubscriptionID ||
-		!startOK || !endOK || periodEnd <= periodStart {
+		!startOK || !endOK || !createdOK || !paidOK || periodEnd <= periodStart || createdAt <= 0 || createdAt > plan.ObservedAt ||
+		paid != (paidAt != nil) || (paidAt != nil && (*paidAt <= 0 || *paidAt < createdAt || *paidAt > plan.ObservedAt)) {
 		return nil, false
 	}
-	return &normalizedInvoice{ID: id, Customer: customer, Paid: input.Status == "paid", Status: input.Status, PeriodStart: periodStart, PeriodEnd: periodEnd}, true
+	return &normalizedInvoice{
+		ID: id, Customer: customer, Paid: paid, Status: input.Status, CreatedAt: createdAt,
+		PaidAt: paidAt, PeriodStart: periodStart, PeriodEnd: periodEnd,
+	}, true
 }
 
-func validatePaymentIntent(input *ProviderPaymentIntent, invoice *normalizedInvoice, subscription normalizedSubscription) (*normalizedPaymentIntent, bool) {
+func validatePaymentIntent(
+	input *ProviderPaymentIntent,
+	invoice *normalizedInvoice,
+	subscription normalizedSubscription,
+	observedAt int64,
+) (*normalizedPaymentIntent, bool) {
 	if input == nil {
 		return nil, true
 	}
-	_, createdOK := millisFromSeconds(input.CreatedSeconds)
+	createdAt, createdOK := millisFromSeconds(input.CreatedSeconds)
 	if invoice == nil || !validStripeID(input.ID, "pi_") || input.Object != "payment_intent" || !validPaymentIntentStatus(input.Status) ||
-		input.Customer != string(subscription.Customer) || input.Invoice != string(invoice.ID) || !createdOK {
+		input.Customer != string(subscription.Customer) || input.Invoice != string(invoice.ID) || !createdOK ||
+		createdAt <= 0 || createdAt < invoice.CreatedAt || createdAt > observedAt {
 		return nil, false
 	}
-	return &normalizedPaymentIntent{Status: input.Status}, true
+	return &normalizedPaymentIntent{Status: input.Status, CreatedAt: createdAt}, true
 }
 
 func decodeEventInvoice(input json.RawMessage) (normalizedInvoice, bool) {
