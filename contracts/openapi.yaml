@@ -118,6 +118,11 @@ paths:
       operationId: privacyRequestSubmitRoute
       x-fukamu-state: disconnected
       x-handler-contract: privacy-request-submit
+      x-go-handler: backend/internal/httpapi/privacy_request.go
+      description: >-
+        The production route remains closed. The authenticated Go contract
+        handler is tested separately and requires an explicit provider-neutral
+        privacy runtime composition.
       responses:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
@@ -126,6 +131,10 @@ paths:
       operationId: privacyRequestStatusRoute
       x-fukamu-state: disconnected
       x-handler-contract: privacy-request-status
+      x-go-handler: backend/internal/httpapi/privacy_request.go
+      description: >-
+        The production route remains closed. The Go handler derives the owner
+        from the secure session and never accepts Account or Vault identifiers.
       responses:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
