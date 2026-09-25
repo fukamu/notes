@@ -10,6 +10,7 @@ const fixtureRoot = resolve(repositoryRoot, 'contracts/fixtures');
 const requiredProfiles = new Set([
   'account-handler-contracts',
   'billing-handler-current-main',
+  'entitlement-offline-lease-v1',
   'envelope-aes-256-gcm-v1',
   'legacy-sync-v1',
   'legacy-sync-v1-rejections',

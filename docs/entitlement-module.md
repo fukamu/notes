@@ -1,5 +1,10 @@
 # Entitlement module boundary
 
+T09c Issue #440 ports this boundary to the disconnected Go package
+`backend/internal/entitlement` and PostgreSQL migration 00008. The TypeScript
+module remains the pre-migration reference until T11 connects the Go notes,
+quota, and Sync v2 paths; no route or production schema is changed by T09c.
+
 Issue #119 introduces the provider-neutral authorization boundary between
 Billing facts and feature code. Billing remains the owner of subscription and
 payment facts. Entitlement alone turns the public `BillingApi.readSubscription`
@@ -79,16 +84,28 @@ older checks cannot overwrite a newer projection. Lease creation checks the
 exact projection and Billing versions so a concurrent locked projection cannot
 issue a lease.
 
-The D1 adapter decodes all rows from `unknown`. The fake repository is injected
-only by explicit test/local composition and has the same CAS, scope, replay,
-and revocation behavior. Neither adapter selects itself from environment
-variables. Production composition must explicitly supply D1, Control Plane,
-Billing, and an offline lease policy.
+The D1 and PostgreSQL adapters decode all rows at the boundary. The fake
+repository is injected only by explicit test/local composition and has the
+same CAS, scope, replay, and revocation behavior. No adapter selects itself
+from environment variables. Production composition must explicitly supply the
+repository, ownership and Billing ports, and an offline lease policy.
 
-The additive migration targets a fresh production schema and is not applied by
-this Issue. There is no migration of current Sites data. Before v2/paid gates
-are enabled, rollback is a revert of this module and its integration commit;
-destructive production migration or deployment requires separate approval.
+In PostgreSQL, a projection is foreign-keyed to both the Account/Vault owner
+and an existing Billing subscription. Reads also verify that the Billing
+subscription owner exactly matches the projection owner. Projection changes
+and active-lease revocation commit together in a serializable transaction;
+lease issuance locks the projection and rechecks its exact version, Billing
+source, active state, and period cap. Tests inject a revocation failure to prove
+that neither half commits alone and race lease issuance against a lock update.
+
+The additive PostgreSQL migration targets a fresh schema and is not applied to
+production by this Issue. There is no migration of current Sites/D1 data.
+Before v2/paid gates are enabled, rollback is a revert of the disconnected Go
+module and its integration commit plus recreation of disposable local schemas.
+After any future persistent apply, consumers must be closed while migration
+00008, projections, and leases are preserved and the matching artifact is
+restored. Destructive migration, production deployment, or evidence deletion
+requires separate approval.
 
 Main is unchanged, and no production deployment, real charge, Stripe webhook,
-or production D1 operation is part of #119.
+or production database operation is part of #119 or #440.

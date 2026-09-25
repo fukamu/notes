@@ -29,10 +29,12 @@ delete existing resources.
   an object/backup resource, expose a content route, run a production job, or
   destroy a key.
 - T09a billing aggregate and PostgreSQL projection were integrated by #436 /
-  PR #437. T09b Issue #438 starts from exact integration tip
-  `c00095c1b4f370cb45ff4213891e2cc84fc5f9a8`. Stripe remains disconnected;
-  no credential, provider resource, real request, public route, charge, or
-  entitlement change is authorized by this slice.
+  PR #437, and the disconnected Stripe boundary was integrated by #438 / PR
+  #439. T09c Issue #440 starts from exact integration tip
+  `bd58c7345dcf430e26421840a76db262043e9e48`. Stripe and Entitlement remain
+  disconnected; no credential, provider resource, real request, public route,
+  charge, entitlement enforcement, or production data change is authorized by
+  these slices.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -70,7 +72,7 @@ the same contract as its closed route.
 | F16 | B     | quota                                       | T11                             | V04,V05      | pending                                      |
 | F17 | B     | billing projection                          | T09                             | V04,V07      | Go core/Postgres #436; cancel awaits #404    |
 | F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09      | Go core/SDK adapter #438; remains closed     |
-| F19 | B     | entitlement / offline lease                 | T09                             | V05,V07      | pending                                      |
+| F19 | B     | entitlement / offline lease                 | T09                             | V05,V07      | Go core/Postgres #440; disconnected          |
 | F20 | B     | legal checkout evidence                     | T10                             | V01,V07      | contract captured in #410                    |
 | F21 | B     | terms consent                               | T10                             | V01,V07      | contract captured in #410                    |
 | F22 | B     | normal cancellation                         | T09                             | V07          | blocked on #404                              |
@@ -88,10 +90,10 @@ the same contract as its closed route.
 | V01 | shared JSON, strict decoding, black-box HTTP            | same fixture through TS #410 and Go unit/DB/HTTP #418         |
 | V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests  |
 | V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; OIDC #424; OTP/owner #426                  |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing CAS #436         |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440  |
 | V05 | sync/quota paging, retry, conflict, limits              | pending T11                                                   |
 | V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434           |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; signed Stripe fixture/provider stub #438     |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438; entitlement/lease #440          |
 | V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432; recovery #434        |
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                     |
 | V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips |
@@ -688,3 +690,44 @@ first test the pinned endpoint version and provider object/expansion shapes in
 an isolated Stripe test environment, document redacted telemetry and replay,
 and preserve the closed route as the recovery path. Normal cancellation still
 depends on #403 / Draft PR #404.
+
+## T09c Entitlement and offline-lease slice
+
+Issue #440 ports the provider-neutral Entitlement core and application service
+to Go. Billing remains the sole source of subscription facts; Entitlement turns
+validated facts into Account/Vault-scoped trial, paid, or locked projections.
+Notes read/write/sync fail closed when ownership, Billing, projection, or
+storage is unavailable. Billing recovery, cancellation, account deletion, and
+support remain reachable only after ownership succeeds. An old paid fact never
+overwrites a newer delinquency state, while a strictly newer verified paid
+period can restore content access.
+
+Migration 00008 adds `entitlement_projections` and
+`entitlement_offline_leases`. Projection version-CAS and active-lease
+revocation share one serializable transaction. Lease creation locks the exact
+projection and checks its version, Billing source, owner, active state, and
+period boundary before insert. A concurrent lock therefore either prevents a
+lease or atomically records its revocation; a failed revocation rolls back the
+projection update. PostgreSQL foreign keys additionally ensure that a
+projection references an existing Billing subscription, while the adapter
+verifies that the subscription owner exactly matches the projection owner.
+
+The product policy is passed explicitly and caps a lease at 24 hours or the
+trial/paid-period end, whichever comes first. Leases bind Account, Vault,
+Session, and SessionEpoch, authorize only offline notes read/write, and expire
+at the exact `expiresAt` boundary. The shared `billing/entitlement.json`
+fixture executes through both TypeScript and Go. Unit and
+disposable-PostgreSQL tests cover owner and session isolation, exclusive
+expiry, policy/period capping, replay and identifier conflict, missing or
+malformed data, CAS retry, old/new paid ordering, payment-failure revocation,
+lock/issue races, and rollback on injected revocation failure.
+
+This slice has no server composition, HTTP route, Sync v2 or quota enforcement,
+Stripe call, charge, cancellation mutation, production schema apply, or
+deployment. Before an approved persistent apply, rollback is a reviewed code
+revert plus disposable-schema recreation. After any future persistent apply,
+close the entitlement consumers, preserve migration 00008 and every projection
+and lease record, restore the matching artifact, and verify Billing source
+versions before reopening. Never drop entitlement evidence or manufacture an
+active projection as part of rollback. T11 owns composition with notes, quota,
+and Sync v2; normal cancellation remains dependent on #403 / Draft PR #404.
