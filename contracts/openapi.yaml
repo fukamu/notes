@@ -54,15 +54,52 @@ paths:
   /api/v2/sync:
     post:
       operationId: syncV2Route
-      x-fukamu-state: disconnected
+      x-fukamu-state: connected-local-fixture-production-closed
       x-handler-contract: sync-v2
       x-go-handler: backend/internal/httpapi/sync_v2.go
       description: >-
-        The current route remains closed (404 in legacy-test, otherwise 503).
-        The 200/400/401/402/403/409/413 Go handler contract is tested
-        separately with PostgreSQL, quota, and encrypted-object adapters and
-        is deliberately absent from the public HandlerOptions composition.
+        The exact local-fixture profile authenticates a scoped hash-only
+        session before reading the bounded body, then uses PostgreSQL journal,
+        quota, encrypted metadata, and guarded AES-GCM filesystem adapters.
+        The legacy route is closed in that profile. Production/default remain
+        closed because they supply no SyncV2Runtime.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncV2Request' }
       responses:
+        '200':
+          description: Authenticated encrypted Sync v2 result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncV2Response' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '402': { $ref: '#/components/responses/OnlineAccessLocked' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/SyncV2RequestTooLarge' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/session-context:
+    get:
+      operationId: sessionContextRoute
+      x-fukamu-state: connected-local-fixture-production-closed
+      x-handler-contract: authenticated-session-context
+      x-go-handler: backend/internal/httpapi/session_context.go
+      description: >-
+        Returns only the authenticated local-fixture Account/Vault/session
+        context required to construct browser-local storage. It never returns
+        the bearer token and is closed in production/default composition.
+      responses:
+        '200':
+          description: Authenticated Vault-scoped browser bootstrap context.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionContext' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
   /api/billing/checkout:
@@ -273,6 +310,12 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: forbidden }
+    OnlineAccessLocked:
+      description: The seeded entitlement does not permit online synchronization.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: online-access-locked }
     InvalidRequest:
       description: Strict request decoding or an application precondition failed.
       content:
@@ -286,6 +329,12 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
     RequestTooLarge:
       description: More than 2,048 request bytes.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: request-too-large }
+    SyncV2RequestTooLarge:
+      description: More than the configured limit or 4,000,000 request bytes.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -579,6 +628,84 @@ components:
           maxItems: 500
           uniqueItems: true
           items: { $ref: '#/components/schemas/UuidV7' }
+    SyncV2Mutation:
+      oneOf:
+        - $ref: '#/components/schemas/SyncV2UpsertMutation'
+        - $ref: '#/components/schemas/SyncV2ResolveMutation'
+      discriminator:
+        propertyName: kind
+        mapping:
+          upsert: '#/components/schemas/SyncV2UpsertMutation'
+          resolve: '#/components/schemas/SyncV2ResolveMutation'
+    SyncV2UpsertMutation:
+      type: object
+      additionalProperties: false
+      required:
+        - mutationId
+        - cardId
+        - baseServerRevision
+        - title
+        - body
+        - createdAt
+        - updatedAt
+        - kind
+        - conflictIds
+      properties:
+        mutationId: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        baseServerRevision:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 2147483647
+        title: { type: string, maxLength: 10000 }
+        body:
+          type: array
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        kind: { type: string, enum: [upsert] }
+        conflictIds:
+          type: array
+          maxItems: 0
+          items: { $ref: '#/components/schemas/UuidV7' }
+      description: createdAt must be less than or equal to updatedAt.
+    SyncV2ResolveMutation:
+      type: object
+      additionalProperties: false
+      required:
+        - mutationId
+        - cardId
+        - baseServerRevision
+        - title
+        - body
+        - createdAt
+        - updatedAt
+        - kind
+        - conflictIds
+      properties:
+        mutationId: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        baseServerRevision:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        title: { type: string, maxLength: 10000 }
+        body:
+          type: array
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        kind: { type: string, enum: [resolve] }
+        conflictIds:
+          type: array
+          minItems: 1
+          maxItems: 500
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/UuidV7' }
+      description: createdAt must be less than or equal to updatedAt.
     SyncRequest:
       type: object
       additionalProperties: false
@@ -589,6 +716,35 @@ components:
           type: array
           maxItems: 500
           items: { $ref: '#/components/schemas/Mutation' }
+    SyncV2Cursor:
+      type: string
+      minLength: 24
+      maxLength: 2048
+      pattern: '^[A-Za-z0-9._~-]+$'
+    SyncV2Request:
+      type: object
+      additionalProperties: false
+      required: [version, deviceId, cursor, mutations]
+      properties:
+        version: { type: string, enum: [sync/v2] }
+        deviceId: { $ref: '#/components/schemas/UuidV7' }
+        cursor:
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/SyncV2Cursor' }]
+        mutations:
+          type: array
+          maxItems: 500
+          description: mutationId values must be unique within the request.
+          items: { $ref: '#/components/schemas/SyncV2Mutation' }
+    SessionContext:
+      type: object
+      additionalProperties: false
+      required: [accountId, vaultId, sessionId, sessionEpoch]
+      properties:
+        accountId: { $ref: '#/components/schemas/UuidV7' }
+        vaultId: { $ref: '#/components/schemas/UuidV7' }
+        sessionId: { $ref: '#/components/schemas/UuidV7' }
+        sessionEpoch: { type: integer, minimum: 1, maximum: 9007199254740991 }
     ServerCard:
       type: object
       additionalProperties: false
@@ -633,6 +789,115 @@ components:
           type: array
           items: { $ref: '#/components/schemas/BodySegment' }
         createdAt: { $ref: '#/components/schemas/SafeInteger' }
+    SyncV2ServerCard:
+      type: object
+      additionalProperties: false
+      required:
+        [id, officialDisplayId, title, body, createdAt, updatedAt, revision]
+      properties:
+        id: { $ref: '#/components/schemas/UuidV7' }
+        officialDisplayId:
+          { type: integer, minimum: 1, maximum: 9007199254740991 }
+        title: { type: string, maxLength: 10000 }
+        body:
+          type: array
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        revision: { type: integer, minimum: 1, maximum: 2147483647 }
+    SyncV2Conflict:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          cardId,
+          serverRevision,
+          localTitle,
+          localBody,
+          serverTitle,
+          serverBody,
+          createdAt,
+        ]
+      properties:
+        id: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        serverRevision: { type: integer, minimum: 1, maximum: 2147483647 }
+        localTitle: { type: string, maxLength: 10000 }
+        localBody:
+          type: array
+          items: { $ref: '#/components/schemas/BodySegment' }
+        serverTitle: { type: string, maxLength: 10000 }
+        serverBody:
+          type: array
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+    SyncV2Change:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [kind, sequence, card]
+          properties:
+            kind: { type: string, enum: [card-upsert] }
+            sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            card: { $ref: '#/components/schemas/SyncV2ServerCard' }
+        - type: object
+          additionalProperties: false
+          required: [kind, sequence, conflict]
+          properties:
+            kind: { type: string, enum: [conflict-upsert] }
+            sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            conflict: { $ref: '#/components/schemas/SyncV2Conflict' }
+        - type: object
+          additionalProperties: false
+          required: [kind, sequence, cardId, revision, deletedAt]
+          properties:
+            kind: { type: string, enum: [card-tombstone] }
+            sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            cardId: { $ref: '#/components/schemas/UuidV7' }
+            revision: { type: integer, minimum: 1, maximum: 2147483647 }
+            deletedAt: { $ref: '#/components/schemas/SafeInteger' }
+        - type: object
+          additionalProperties: false
+          required: [kind, sequence, conflictId, cardId, deletedAt]
+          properties:
+            kind: { type: string, enum: [conflict-tombstone] }
+            sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            conflictId: { $ref: '#/components/schemas/UuidV7' }
+            cardId: { $ref: '#/components/schemas/UuidV7' }
+            deletedAt: { $ref: '#/components/schemas/SafeInteger' }
+    SyncV2MutationReceipt:
+      type: object
+      additionalProperties: false
+      required: [mutationId, cardId, appliedRevision]
+      properties:
+        mutationId: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        appliedRevision: { type: integer, minimum: 1, maximum: 2147483647 }
+    SyncV2Page:
+      type: object
+      additionalProperties: false
+      required: [kind, nextCursor]
+      properties:
+        kind: { type: string, enum: [more, complete] }
+        nextCursor: { $ref: '#/components/schemas/SyncV2Cursor' }
+    SyncV2Response:
+      type: object
+      additionalProperties: false
+      required: [version, highWatermark, changes, receipts, page]
+      properties:
+        version: { type: string, enum: [sync/v2] }
+        highWatermark: { $ref: '#/components/schemas/SafeInteger' }
+        changes:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/SyncV2Change' }
+        receipts:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/SyncV2MutationReceipt' }
+        page: { $ref: '#/components/schemas/SyncV2Page' }
     SyncResponse:
       type: object
       additionalProperties: false

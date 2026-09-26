@@ -34,7 +34,7 @@ func NewBillingCancellationContractHandler(
 	if !billingCancellationRuntimeComplete(runtime) || logger == nil {
 		return nil, errors.New("complete billing cancellation runtime and logger are required")
 	}
-	return http.HandlerFunc(billingCancellationHandler(runtime, logger)), nil
+	return http.HandlerFunc(billingCancellationHandler(runtime, logger, legalRequestBodyLimitBytes)), nil
 }
 
 func billingCancellationRoute(options HandlerOptions) http.HandlerFunc {
@@ -48,14 +48,22 @@ func billingCancellationRoute(options HandlerOptions) http.HandlerFunc {
 			}
 		}
 	}
-	return billingCancellationHandler(options.BillingCancellationRuntime, options.Logger)
+	return billingCancellationHandler(
+		options.BillingCancellationRuntime,
+		options.Logger,
+		effectiveLegalBodyLimit(options.BodyLimit),
+	)
 }
 
 type billingCancellationBody struct {
 	IdempotencyKey string `json:"idempotencyKey"`
 }
 
-func billingCancellationHandler(runtime *BillingCancellationRuntime, logger *slog.Logger) http.HandlerFunc {
+func billingCancellationHandler(
+	runtime *BillingCancellationRuntime,
+	logger *slog.Logger,
+	bodyLimit int64,
+) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		if !allowMethods(response, request, http.MethodPost) {
 			return
@@ -65,7 +73,7 @@ func billingCancellationHandler(runtime *BillingCancellationRuntime, logger *slo
 			return
 		}
 		var body billingCancellationBody
-		switch readLegalJSON(response, request, &body) {
+		switch readLegalJSON(response, request, &body, bodyLimit) {
 		case legalBodyTooLarge:
 			writeBillingCancellationError(response, request, http.StatusRequestEntityTooLarge, "request-too-large")
 			return

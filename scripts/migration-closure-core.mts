@@ -18,7 +18,7 @@ export type MigrationClosure = Readonly<{
 
 export type FeatureEvidence = Readonly<{
   id: string;
-  state: 'A' | 'B' | 'C' | 'A/B' | 'B/C';
+  state: 'A' | 'B' | 'C' | 'A/B' | 'B/C' | 'A/B/C';
   migration: 'migrated' | 'blocked-existing-work' | 'intentionally-absent';
   verification: readonly string[];
   goEvidence: readonly string[];
@@ -143,6 +143,7 @@ function decodeFeature(candidate: unknown): FeatureEvidence {
     'C',
     'A/B',
     'B/C',
+    'A/B/C',
   ] as const);
   const migration = enumValue(value.migration, 'feature migration', [
     'migrated',

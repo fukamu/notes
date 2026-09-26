@@ -8,15 +8,18 @@ import {
 import { CONNECTIONS_ZOOM_PREFERENCE_KEY } from '@/lib/client/connections-zoom-preference';
 import { selectConnectionsViewModel } from '@/lib/application/view-models';
 import type { CardRecord } from '@/lib/domain/types';
-import { decodeSyncRequest } from '@/lib/sync/protocol';
 import { connectionsBenchmarkFixtures } from '@/tests/fixtures/connections-layout';
 import { createClientPerformanceFixture } from '@/tests/fixtures/client-performance';
 import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
 import {
   assertionForSubject,
+  e2eFixtureAccountId,
+  e2eFixtureVaultId,
   e2eOwnerSubject,
+  e2eSessionStorageState,
   localAssertionHeader,
 } from './identity-fixture';
+import { createSyncV2Fixture } from './sync-v2-fixture';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -25,6 +28,7 @@ function approvedBrowserContext(browser: Browser) {
     extraHTTPHeaders: {
       [localAssertionHeader]: assertionForSubject(e2eOwnerSubject),
     },
+    storageState: e2eSessionStorageState(),
   });
 }
 
@@ -52,23 +56,23 @@ async function expectVisibleButtonsToBeNonSelectable(page: Page) {
 }
 
 async function serveSyncCards(page: Page, cards: LocalFixtureCard[]) {
-  await page.route('**/api/sync', async (route) => {
+  const fixture = createSyncV2Fixture({
+    cards: cards.map((card) => ({
+      id: card.id,
+      officialDisplayId: card.displayId.value,
+      title: card.title,
+      body: card.body,
+      createdAt: card.createdAt,
+      updatedAt: card.updatedAt,
+      revision: card.serverRevision ?? 1,
+    })),
+  });
+  await page.route('**/api/v2/sync', async (route) => {
+    const { response } = fixture.respond(route.request().postDataJSON());
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
-        cards: cards.map((card) => ({
-          id: card.id,
-          officialDisplayId: card.displayId.value,
-          title: card.title,
-          body: card.body,
-          createdAt: card.createdAt,
-          updatedAt: card.updatedAt,
-          revision: card.serverRevision ?? 1,
-        })),
-        conflicts: [],
-        acknowledgedMutationIds: [],
-      }),
+      body: JSON.stringify(response),
     });
   });
 }
@@ -89,7 +93,7 @@ async function serveInitialPerformanceCards(
         : segment,
     ),
   }));
-  const responseBody = JSON.stringify({
+  const fixture = createSyncV2Fixture({
     cards: servedCards.map((card) => ({
       id: card.id,
       officialDisplayId: card.displayId.value,
@@ -99,19 +103,14 @@ async function serveInitialPerformanceCards(
       updatedAt: card.updatedAt,
       revision: card.serverRevision ?? 1,
     })),
-    conflicts: [],
-    acknowledgedMutationIds: [],
   });
-  const emptyResponseBody = JSON.stringify({
-    cards: [],
-    conflicts: [],
-    acknowledgedMutationIds: [],
-  });
-  let initialResponsePending = true;
-  await page.route('**/api/sync', async (route) => {
-    const body = initialResponsePending ? responseBody : emptyResponseBody;
-    initialResponsePending = false;
-    await route.fulfill({ status: 200, contentType: 'application/json', body });
+  await page.route('**/api/v2/sync', async (route) => {
+    const { response } = fixture.respond(route.request().postDataJSON());
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(response),
+    });
   });
   return servedCards;
 }
@@ -320,55 +319,70 @@ async function expectMapNodeFullyVisible(node: Locator, graph: Locator) {
 }
 
 async function replaceLocalCards(page: Page, cards: LocalFixtureCard[]) {
-  await page.evaluate(async (fixtureCards) => {
-    await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open('fukamu-notes', 2);
-      request.addEventListener('error', () => reject(request.error), {
-        once: true,
-      });
-      request.addEventListener(
-        'success',
-        () => {
-          const database = request.result;
-          const transaction = database.transaction(
-            ['cards', 'mutations', 'conflicts'],
-            'readwrite',
-          );
-          transaction.objectStore('cards').clear();
-          transaction.objectStore('mutations').clear();
-          transaction.objectStore('conflicts').clear();
-          for (const card of fixtureCards)
-            transaction.objectStore('cards').put(card);
-          transaction.addEventListener(
-            'complete',
-            () => {
-              database.close();
-              resolve();
-            },
-            { once: true },
-          );
-          transaction.addEventListener(
-            'error',
-            () => reject(transaction.error),
-            {
-              once: true,
-            },
-          );
-          transaction.addEventListener(
-            'abort',
-            () => reject(transaction.error),
-            {
-              once: true,
-            },
-          );
-        },
-        { once: true },
-      );
+  const fixture = createSyncV2Fixture({ cards: [] });
+  await page.route('**/api/v2/sync', async (route) => {
+    const { response } = fixture.respond(route.request().postDataJSON());
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(response),
     });
-  }, cards);
+  });
+  await page.evaluate(
+    async (fixtureCards) => {
+      await new Promise<void>((resolve, reject) => {
+        const databaseName = `fukamu-notes:v1:vault:${fixtureCards.accountId}:${fixtureCards.vaultId}`;
+        const request = indexedDB.open(databaseName, 2);
+        request.addEventListener('error', () => reject(request.error), {
+          once: true,
+        });
+        request.addEventListener(
+          'success',
+          () => {
+            const database = request.result;
+            const transaction = database.transaction(
+              ['cards', 'mutations', 'conflicts', 'meta', 'sync-v2'],
+              'readwrite',
+            );
+            transaction.objectStore('cards').clear();
+            transaction.objectStore('mutations').clear();
+            transaction.objectStore('conflicts').clear();
+            transaction.objectStore('meta').clear();
+            transaction.objectStore('sync-v2').clear();
+            for (const card of fixtureCards.cards)
+              transaction.objectStore('cards').put(card);
+            transaction.addEventListener(
+              'complete',
+              () => {
+                database.close();
+                resolve();
+              },
+              { once: true },
+            );
+            transaction.addEventListener(
+              'error',
+              () => reject(transaction.error),
+              {
+                once: true,
+              },
+            );
+            transaction.addEventListener(
+              'abort',
+              () => reject(transaction.error),
+              {
+                once: true,
+              },
+            );
+          },
+          { once: true },
+        );
+      });
+    },
+    { accountId: e2eFixtureAccountId, vaultId: e2eFixtureVaultId, cards },
+  );
 }
 
-test('offline creation, automatic save, reload, reconnect and another device sync', async ({
+test('offline creation fails closed before session validation, then reconnects and syncs to another device', async ({
   page,
   context,
   browser,
@@ -398,6 +412,11 @@ test('offline creation, automatic save, reload, reconnect and another device syn
   );
 
   await page.reload();
+  await expect(
+    page.getByText('セッションを確認できませんでした。'),
+  ).toBeVisible();
+  await context.setOffline(false);
+  await page.getByRole('button', { name: '再試行' }).click();
   await expect(page.getByTestId('card-title')).toHaveValue(title);
   await expect(page.getByTestId('body-editor')).toContainText(
     '通信がなくても、この本文は端末に残る。',
@@ -407,7 +426,6 @@ test('offline creation, automatic save, reload, reconnect and another device syn
     'provisional',
   );
 
-  await context.setOffline(false);
   await expect(page.getByTestId('display-id')).toHaveAttribute(
     'data-kind',
     'official',
@@ -914,6 +932,7 @@ test('the current card keeps one inactive editor session across view tabs', asyn
   await page.getByRole('button', { name: 'カード', exact: true }).click();
   await expect(page.getByTestId('link-candidate-scroll')).toHaveCount(0);
 
+  await context.setOffline(false);
   await page.goto(`${cardPath}/history`);
   await expect(page.getByTestId('history-list')).toBeVisible();
   await expect(page.getByTestId('body-editor')).toHaveCount(0);
@@ -1059,7 +1078,6 @@ test('headless editor preserves IME, candidate keyboard, link activation and ide
     state: 'attached',
     timeout: 15_000,
   });
-  await context.setOffline(true);
   await replaceLocalCards(page, []);
   await page.reload();
   await expect(page.getByTestId('new-card')).toBeVisible();
@@ -1165,7 +1183,6 @@ test('link candidates are descending, prefix-filtered, scroll-following and expl
     state: 'attached',
     timeout: 15_000,
   });
-  await context.setOffline(true);
   const cards: LocalFixtureCard[] = Array.from({ length: 101 }, (_, index) => ({
     id: fixtureCardId(`candidate-prefix-${index + 1}`),
     displayId: { kind: 'official', value: index + 1 },
@@ -1389,7 +1406,6 @@ test('link candidates are descending, prefix-filtered, scroll-following and expl
 
 test('global directed graph is safe and operable for the reported and cyclic fixtures', async ({
   page,
-  context,
 }, testInfo) => {
   const suffix = unique('graph', testInfo.project.name);
   const ids = {
@@ -1432,7 +1448,6 @@ test('global directed graph is safe and operable for the reported and cyclic fix
     state: 'attached',
     timeout: 15_000,
   });
-  await context.setOffline(true);
   await replaceLocalCards(page, [
     fixture(ids.reportA, 1, titles.reportA, [ids.reportB]),
     fixture(ids.reportB, 2, titles.reportB, []),
@@ -1612,7 +1627,6 @@ test('connections map supports viewport keyboard, touch gestures and drag-safe s
     state: 'attached',
     timeout: 15_000,
   });
-  await context.setOffline(true);
   await replaceLocalCards(page, cards);
   await page.reload();
   await openFromHistory(page, current.title);
@@ -2418,7 +2432,6 @@ test('connections map supports viewport keyboard, touch gestures and drag-safe s
 
 test('connections zoom persists across app views and reloads', async ({
   page,
-  context,
 }) => {
   const cards = largeConnectionsBenchmarkCards();
   const current = cards[0];
@@ -2432,7 +2445,6 @@ test('connections zoom persists across app views and reloads', async ({
     state: 'attached',
     timeout: 15_000,
   });
-  await context.setOffline(true);
   await replaceLocalCards(page, cards);
   await page.reload();
   await openFromHistory(page, current.title);
@@ -2515,7 +2527,6 @@ test('connections zoom persists across app views and reloads', async ({
 
 test('connections readiness records reproducible large-fixture browser timing', async ({
   page,
-  context,
 }, testInfo) => {
   await page.addInitScript(() => {
     const root = document.documentElement;
@@ -2542,7 +2553,6 @@ test('connections readiness records reproducible large-fixture browser timing', 
     state: 'attached',
     timeout: 15_000,
   });
-  await context.setOffline(true);
   await replaceLocalCards(page, cards);
   await page.reload();
   await openFromHistory(page, current.title);
@@ -2620,14 +2630,19 @@ test('malformed 2xx sync response preserves local edits and remains retryable', 
   page,
 }, testInfo) => {
   const title = unique('不正応答保持', testInfo.project.name);
-  await page.route('**/api/sync', async (route) => {
+  await page.route('**/api/v2/sync', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        cards: null,
-        conflicts: [],
-        acknowledgedMutationIds: [],
+        version: 'sync/v2',
+        highWatermark: 0,
+        changes: null,
+        receipts: [],
+        page: {
+          kind: 'complete',
+          nextCursor: 'sync.v2.fixture.aaaaaaaaaaaaaaaaaaaaaaaa',
+        },
       }),
     });
   });
@@ -2645,7 +2660,7 @@ test('malformed 2xx sync response preserves local edits and remains retryable', 
     '同期失敗・端末に保存済み',
     { timeout: 15_000 },
   );
-  await page.unroute('**/api/sync');
+  await page.unroute('**/api/v2/sync');
   await page.getByTestId('save-sync-status').click();
   await expect(page.getByTestId('display-id')).toHaveAttribute(
     'data-kind',
@@ -2657,17 +2672,10 @@ test('malformed 2xx sync response preserves local edits and remains retryable', 
 
 test('semantic navigation preserves availability, current context and accessible state', async ({
   page,
-  context,
 }, testInfo) => {
   const title = unique('画面契約', testInfo.project.name);
+  await serveSyncCards(page, []);
   await ready(page);
-  await page.locator('html[data-offline-ready=true]').waitFor({
-    state: 'attached',
-    timeout: 15_000,
-  });
-  await context.setOffline(true);
-  await replaceLocalCards(page, []);
-  await page.reload();
 
   const cardNavigation = page.getByRole('button', {
     name: 'カード',
@@ -3803,9 +3811,8 @@ test('all layout engine failure leaves app navigation available', async ({
   await expect(page.getByTestId('card-title')).toHaveValue(cardBTitle);
 });
 
-test('canonical URLs restore cards and views through direct, back, forward and offline navigation', async ({
+test('canonical URLs restore cards and views through direct, back and forward navigation', async ({
   page,
-  context,
 }, testInfo) => {
   const ids = {
     cardA: '01991f20-61d2-7000-8000-000000000601',
@@ -3964,7 +3971,6 @@ test('canonical URLs restore cards and views through direct, back, forward and o
   }
   await expectPathname(page, `/cards/${ids.cardB}`);
 
-  await context.setOffline(true);
   await page.goto(`/cards/${ids.cardB}/connections`);
   await expectPathname(page, `/cards/${ids.cardB}/connections`);
   await expect(page.locator('section[aria-label="つながり"]')).toBeVisible();
@@ -4080,17 +4086,14 @@ test('invalid and unresolved card URLs normalize without a history loop', async 
 }) => {
   const syncGate = Promise.withResolvers<void>();
   let gateSync = false;
-  const emptySyncResponse = JSON.stringify({
-    cards: [],
-    conflicts: [],
-    acknowledgedMutationIds: [],
-  });
-  await page.route('**/api/sync', async (route) => {
+  const fixture = createSyncV2Fixture({ cards: [] });
+  await page.route('**/api/v2/sync', async (route) => {
     if (gateSync) await syncGate.promise;
+    const { response } = fixture.respond(route.request().postDataJSON());
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: emptySyncResponse,
+      body: JSON.stringify(response),
     });
   });
 
@@ -4180,78 +4183,56 @@ test('current input resolves every visible conflict from the notice close action
   const firstConflictId = fixtureConflictId('e2e-current-conflict-first');
   const secondConflictId = fixtureConflictId('e2e-current-conflict-second');
   const currentTitle = '現在入力を最終内容として残す';
-  let resolved = false;
   let observedConflictIds: readonly string[] = [];
-  await page.route('**/api/sync', async (route) => {
-    const request = decodeSyncRequest(route.request().postDataJSON());
+  const fixture = createSyncV2Fixture({
+    cards: [
+      {
+        id: cardId,
+        officialDisplayId: 29,
+        title: '同期済みの現在カード',
+        body: [],
+        createdAt: 1,
+        updatedAt: 3,
+        revision: 3,
+      },
+    ],
+    conflicts: [
+      {
+        id: firstConflictId,
+        cardId,
+        serverRevision: 1,
+        localTitle: '編集案A-1',
+        localBody: [],
+        serverTitle: '編集案B-1',
+        serverBody: [],
+        createdAt: 2,
+      },
+      {
+        id: secondConflictId,
+        cardId,
+        serverRevision: 2,
+        localTitle: '編集案A-2',
+        localBody: [],
+        serverTitle: '編集案B-2',
+        serverBody: [],
+        createdAt: 3,
+      },
+    ],
+  });
+  await page.route('**/api/v2/sync', async (route) => {
+    const { request, response } = fixture.respond(
+      route.request().postDataJSON(),
+    );
     const resolveMutation = request.mutations.find(
       (mutation) => mutation.kind === 'resolve',
     );
     if (resolveMutation) {
       observedConflictIds = resolveMutation.conflictIds;
-      resolved = true;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          cards: [
-            {
-              id: cardId,
-              officialDisplayId: 29,
-              title: resolveMutation.title,
-              body: resolveMutation.body,
-              createdAt: 1,
-              updatedAt: resolveMutation.updatedAt,
-              revision: 4,
-            },
-          ],
-          conflicts: [],
-          acknowledgedMutationIds: [resolveMutation.mutationId],
-        }),
-      });
-      return;
     }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
-        cards: [
-          {
-            id: cardId,
-            officialDisplayId: 29,
-            title: resolved ? currentTitle : '同期済みの現在カード',
-            body: [],
-            createdAt: 1,
-            updatedAt: resolved ? 4 : 3,
-            revision: resolved ? 4 : 3,
-          },
-        ],
-        conflicts: resolved
-          ? []
-          : [
-              {
-                id: firstConflictId,
-                cardId,
-                serverRevision: 1,
-                localTitle: '編集案A-1',
-                localBody: [],
-                serverTitle: '編集案B-1',
-                serverBody: [],
-                createdAt: 2,
-              },
-              {
-                id: secondConflictId,
-                cardId,
-                serverRevision: 2,
-                localTitle: '編集案A-2',
-                localBody: [],
-                serverTitle: '編集案B-2',
-                serverBody: [],
-                createdAt: 3,
-              },
-            ],
-        acknowledgedMutationIds: [],
-      }),
+      body: JSON.stringify(response),
     });
   });
 

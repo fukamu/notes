@@ -39,6 +39,7 @@ export const SYNC_V2_LIMITS = {
   mutationsPerRequest: CONTRACT_LIMITS.mutations,
   changesPerPage: 500,
   receiptsPerPage: CONTRACT_LIMITS.mutations,
+  maximumRevision: 2_147_483_647,
 } as const;
 
 declare const syncV2CursorBrand: unique symbol;
@@ -76,24 +77,41 @@ const positiveSyncSequenceDecoder: Decoder<SyncSequence> = transformDecoder(
   (value) => value as SyncSequence,
 );
 
+const syncV2RevisionDecoder = safeIntegerDecoder({
+  minimum: 1,
+  maximum: SYNC_V2_LIMITS.maximumRevision,
+});
+
+const syncV2ServerCardDecoder = refineDecoder(
+  serverCardDecoder,
+  (card) => card.revision <= SYNC_V2_LIMITS.maximumRevision,
+  'revision exceeds the Sync v2 server maximum',
+);
+
+const syncV2ConflictRecordDecoder = refineDecoder(
+  conflictRecordDecoder,
+  (conflict) => conflict.serverRevision <= SYNC_V2_LIMITS.maximumRevision,
+  'serverRevision exceeds the Sync v2 server maximum',
+);
+
 const cardTombstoneDecoder = objectDecoder({
   kind: literalDecoder('card-tombstone'),
   sequence: positiveSyncSequenceDecoder,
   cardId: cardIdDecoder,
-  revision: safeIntegerDecoder({ minimum: 1 }),
+  revision: syncV2RevisionDecoder,
   deletedAt: safeIntegerDecoder({ minimum: 0 }),
 });
 
 const cardUpsertDecoder = objectDecoder({
   kind: literalDecoder('card-upsert'),
   sequence: positiveSyncSequenceDecoder,
-  card: serverCardDecoder,
+  card: syncV2ServerCardDecoder,
 });
 
 const conflictUpsertDecoder = objectDecoder({
   kind: literalDecoder('conflict-upsert'),
   sequence: positiveSyncSequenceDecoder,
-  conflict: conflictRecordDecoder,
+  conflict: syncV2ConflictRecordDecoder,
 });
 
 const conflictTombstoneDecoder = objectDecoder({
@@ -114,7 +132,7 @@ export const syncV2ChangeDecoder = unionDecoder(
 export const syncV2MutationReceiptDecoder = objectDecoder({
   mutationId: mutationIdDecoder,
   cardId: cardIdDecoder,
-  appliedRevision: safeIntegerDecoder({ minimum: 1 }),
+  appliedRevision: syncV2RevisionDecoder,
 });
 
 const morePageDecoder = objectDecoder({
@@ -132,11 +150,19 @@ export const syncV2PageDecoder = unionDecoder(
   completePageDecoder,
 );
 
+const syncV2PendingMutationDecoder = refineDecoder(
+  pendingMutationDecoder,
+  (mutation) =>
+    mutation.baseServerRevision === null ||
+    mutation.baseServerRevision <= SYNC_V2_LIMITS.maximumRevision,
+  'baseServerRevision exceeds the Sync v2 server maximum',
+);
+
 export const syncV2RequestDecoder = objectDecoder({
   version: literalDecoder(SYNC_V2_VERSION),
   deviceId: deviceIdDecoder,
   cursor: nullableDecoder(syncV2CursorDecoder),
-  mutations: arrayDecoder(pendingMutationDecoder, {
+  mutations: arrayDecoder(syncV2PendingMutationDecoder, {
     maxLength: SYNC_V2_LIMITS.mutationsPerRequest,
     uniqueBy: (mutation) => mutation.mutationId,
   }),
@@ -350,12 +376,12 @@ export function encodeSyncV2Request(request: {
   readonly cursor: SyncV2Cursor | null;
   readonly mutations: readonly PendingMutation[];
 }) {
-  return {
+  return decodeSyncV2Request({
     version: SYNC_V2_VERSION,
     deviceId: wireString(request.deviceId),
     cursor: request.cursor === null ? null : wireString(request.cursor),
     mutations: request.mutations.map(encodeMutation),
-  };
+  });
 }
 
 export function encodeSyncV2Response(response: SyncV2Response) {

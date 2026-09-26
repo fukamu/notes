@@ -164,10 +164,11 @@ missing configuration stops the process before it listens.
 
 `/healthz` reports process health. With private mode disabled, `/readyz` and
 `/api/launch-status` fail closed. `/api` and API routes other than
-`/api/launch-status` and the conditionally configured `/api/sync` remain
-closed. Known disconnected routes return the legacy local/test fixture
-response only in non-production environments and a 503 in production; they
-never execute billing, deletion, privacy, terms, or Sync v2 business effects.
+`/api/launch-status`, the conditionally configured `/api/sync`, and the exact
+`local-fixture` routes described below remain closed. Known disconnected routes
+return the legacy local/test fixture response only in non-production
+environments and a 503 in production; they never execute billing, deletion,
+privacy, or terms effects.
 
 ## Local signed identity and launch gate
 
@@ -248,30 +249,53 @@ Account/Vault scope fails closed. The server opens one PostgreSQL pool, shares
 one session resolver, and requires schema, seed, exclusive scope, directory,
 and DEK checks to pass before listening and on readiness checks.
 
-This foundation does not mount Sync v2, deletion, crypto, or object-storage
-business routes, and it constructs or contacts no external or remote Stripe,
-KMS, identity, mail, object, or backup provider. Issue #510 adds only the
-local-fixture legal/commerce routes: terms consent, URL-free no-charge checkout
-confirmation, and no-effect period-end cancellation. Their provider reads and
-validates the exact seeded active Billing and Entitlement rows without changing
-them. Local directory adapters remain guarded by the fixture root, and the
-profile-disabled path remains closed. See
+Issue #509 established this foundation without mounting a business route.
+Issue #510 uses it for local-fixture terms consent, URL-free no-charge checkout
+confirmation, and no-effect period-end cancellation. Issue #511 uses the same
+pool, scoped hash-only session resolver, and real HTTP clock to mount
+`GET /api/session-context` and `POST /api/v2/sync`, closing `/api/sync` in that
+profile. PostgreSQL supplies Billing/Entitlement, Sync v2 journal,
+encrypted-object metadata, quota, and DEK stores. Guarded fixture directories
+supply immutable objects, nonce reservations, and the fixture key; content is
+sealed with AES-256-GCM. Entitlement evaluation alone is pinned to the
+deterministic fixture timestamp. No external or remote Stripe, KMS, identity,
+mail, object, or backup provider is constructed or contacted. See
 [`docs/local-commerce-runtime.md`](../docs/local-commerce-runtime.md). This is
 local/CI evidence, not production configuration, legal/price approval,
-deployment, charging, or cutover approval. V11 is complete separately for
-checked-in source retirement and the Go-only runtime artifact.
+deployment, charging, or cutover approval.
 
-The real-PostgreSQL adapter integration test covers migration, exact closed
+The live notes layout first fetches the strict, private, no-store session
+context and constructs the Vault-scoped IndexedDB and Sync v2 runtime only after
+authentication. It has no legacy fallback and never returns the bearer token to
+browser code. An offline reload therefore remains closed until the session
+context can be validated again; already saved local content is opened only
+after reconnection. Playwright supplies the deterministic fixture token only as
+a host-only `Secure`, `HttpOnly`, `SameSite=Strict` cookie.
+
+No Stripe, GCP KMS, OIDC/mail, remote object, or backup provider is constructed
+or contacted. Billing is read only as the seeded local entitlement and commerce
+source; checkout never charges and cancellation never contacts a provider. No
+login/session issuance, delete wire operation, or legacy-data migration is
+enabled. Default and production composition pass none of the local-fixture
+Sync v2, session-context, legal, or cancellation runtimes to the HTTP handler,
+so those routes stay closed. This is local/CI composition evidence, not
+production configuration, deployment, or cutover approval.
+
+The real-PostgreSQL foundation test covers migration, exact closed
 `launch_config` (`singleton = 1`, public access disabled, `updated_at = 0`),
-seed retry, readiness, session resolution, and key unwrap. It does not call the
-unexported `composeRuntime` entry point: that function cannot reach successful
-composition without a live PostgreSQL server. Configuration preflight and each
-constructed adapter are covered independently. The serial Playwright server
-now selects `local-fixture`, creates an owner-private disposable fixture root,
-installs only the seeded hash-only session cookie, and requires real 200
-responses from terms acceptance, URL-free checkout, and period-end
-cancellation. This whole-process check uses the same disposable PostgreSQL
-guard and loopback port; it never selects a production provider or deployment.
+seed retry, readiness, session resolution, and key unwrap. The Issue #511
+composition test additionally calls `composeRuntime`, sends authenticated HTTP
+through the mounted route, verifies filesystem ciphertext contains no
+plaintext, reconstructs the process graph, decrypts the persisted card, and
+checks direct application deletion replay plus the next Sync v2 tombstone.
+The Issue #510 PostgreSQL and whole-process tests exercise terms acceptance,
+URL-free checkout, period-end cancellation, cross-owner refusal without writes,
+and zero external HTTP(S) requests. Serial Playwright coverage requires real
+200 responses from both the commerce and Sync v2 local-fixture routes.
+The existing Sync v2 integration suite remains the evidence for
+object-before-journal retry, cursor/device/owner isolation, conflicts, quota
+admission, dependency failures, and replay. These tests use only the allowlisted
+disposable PostgreSQL database and private temporary directories.
 
 Filesystem validation is path-based rather than descriptor-relative. This is
 accepted only for an owner-private local/test root on a trusted host; do not

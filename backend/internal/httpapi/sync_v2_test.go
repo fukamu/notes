@@ -114,6 +114,7 @@ func TestSyncV2ContractHandlerBoundaryAndFailClosedMappings(t *testing.T) {
 		wantBody   string
 	}{
 		{name: "malformed json", body: `{`, wantStatus: http.StatusBadRequest, wantBody: `{"error":"invalid-request"}`},
+		{name: "wrong media type", body: validSyncV2EmptyRequest(), wantStatus: http.StatusBadRequest, wantBody: `{"error":"invalid-request"}`},
 		{name: "declared too large", body: `{}`, length: "4000001", wantStatus: http.StatusRequestEntityTooLarge, wantBody: `{"error":"request-too-large"}`},
 		{name: "unknown entitlement denial", body: validSyncV2EmptyRequest(), wantStatus: http.StatusServiceUnavailable, wantBody: `{"error":"unavailable"}`,
 			configure: func(access *syncV2EntitlementStub, _ *syncV2ApplicationStub) {
@@ -140,6 +141,9 @@ func TestSyncV2ContractHandlerBoundaryAndFailClosedMappings(t *testing.T) {
 				test.configure(access, application)
 			}
 			request := authenticatedSyncV2Request(test.body)
+			if test.name == "wrong media type" {
+				request.Header.Set("Content-Type", "text/plain")
+			}
 			if test.length != "" {
 				request.Header["Content-Length"] = []string{test.length}
 			}
@@ -206,6 +210,7 @@ func newSyncV2HTTPTestHandler(
 
 func authenticatedSyncV2Request(body string) *http.Request {
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/sync", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Cookie", identity.SessionCookieName+"="+syncV2TestToken)
 	request.Header.Set("Origin", syncV2TestOrigin)
 	request.Header.Set("Sec-Fetch-Site", "same-origin")

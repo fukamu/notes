@@ -60,6 +60,10 @@ describe('Go migration closure evidence', () => {
       migration: 'migrated',
       dependencies: [],
     });
+    expect(closure.features.find(({ id }) => id === 'F12')).toMatchObject({
+      state: 'A/B/C',
+      migration: 'migrated',
+    });
     expect(closure.features.find(({ id }) => id === 'F28')).toMatchObject({
       migration: 'intentionally-absent',
     });

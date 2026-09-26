@@ -24,6 +24,7 @@ type HandlerOptions struct {
 	BodyLimit                  int64
 	Logger                     *slog.Logger
 	PrivateRuntime             *PrivateRuntime
+	SyncV2Runtime              *SyncV2Runtime
 	LegalRuntime               *LegalRuntime
 	BillingCancellationRuntime *BillingCancellationRuntime
 	EnableDisconnectedFixtures bool
@@ -72,6 +73,9 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 	if options.BodyLimit < 1 {
 		return nil, errors.New("body limit must be positive")
 	}
+	if options.SyncV2Runtime != nil && !syncV2RuntimeComplete(options.SyncV2Runtime) {
+		return nil, errors.New("Sync v2 runtime is incomplete")
+	}
 	staticSite, err := loadStaticSite(options.StaticDirectory)
 	if err != nil {
 		return nil, err
@@ -84,13 +88,27 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 		"/api/launch-status",
 		exact("/api/launch-status", launchStatus(options.PrivateRuntime)),
 	)
-	mux.HandleFunc(
-		"/api/sync",
-		exact("/api/sync", legacySync(options.PrivateRuntime, options.BodyLimit)),
+	legacyHandler := legacySync(options.PrivateRuntime, options.BodyLimit)
+	syncV2Handler := disconnectedProtectedAPI(
+		options.PrivateRuntime, options.EnableDisconnectedFixtures, http.MethodPost,
 	)
+	sessionContextHandler := disconnectedProtectedAPI(
+		options.PrivateRuntime, options.EnableDisconnectedFixtures, http.MethodGet,
+	)
+	if options.SyncV2Runtime != nil {
+		legacyHandler = closedAPI
+		syncV2Handler = syncV2ContractHandler(
+			options.SyncV2Runtime,
+			options.Logger,
+			effectiveSyncV2BodyLimit(options.BodyLimit),
+		)
+		sessionContextHandler = sessionContext(options.SyncV2Runtime)
+	}
+	mux.HandleFunc("/api/sync", exact("/api/sync", legacyHandler))
+	mux.HandleFunc("/api/v2/sync", exact("/api/v2/sync", syncV2Handler))
 	mux.HandleFunc(
-		"/api/v2/sync",
-		exact("/api/v2/sync", disconnectedProtectedAPI(options.PrivateRuntime, options.EnableDisconnectedFixtures, http.MethodPost)),
+		"/api/session-context",
+		exact("/api/session-context", sessionContextHandler),
 	)
 	mux.HandleFunc(
 		"/api/billing/checkout",
@@ -429,7 +447,7 @@ func limitBody(limit int64, next http.Handler) http.Handler {
 
 func authorizesBeforeBody(path string) bool {
 	switch path {
-	case "/api/sync", "/api/v2/sync", "/api/billing/checkout", "/api/account/terms-consent", "/api/billing/cancel":
+	case "/api/sync", "/api/v2/sync", "/api/session-context", "/api/billing/checkout", "/api/account/terms-consent", "/api/billing/cancel":
 		return true
 	default:
 		return false

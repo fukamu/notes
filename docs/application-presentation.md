@@ -23,11 +23,12 @@ rules.
 5. `lib/client/use-notes-application.ts` observes the browser-history navigator
    and connects the data store to the application contracts. Pathname parsing
    remains a pure application codec; the `window` adapter stays in `lib/client`.
-6. `components/notes-app.tsx` is the composition root. It creates the legacy
-   runtime adapter set and is the only module that selects the concrete notes,
-   editor, and connections renderers and connects them to feature adapters. A
-   renderer receives only the typed presentation model, semantic actions, and
-   feature render callbacks.
+6. `components/notes-app.tsx` selects the concrete notes, editor, and
+   connections renderers and connects them to injected runtime ports.
+   `components/authenticated-notes-bootstrap.tsx` is the live composition root:
+   it validates the Go session context before constructing Vault storage,
+   Sync v2, or the logout fence. A renderer receives only the typed
+   presentation model, semantic actions, and feature render callbacks.
 
 The five supported application pages share `app/(notes)/layout.tsx`. That
 layout mounts the composition root once while its empty route children change,
@@ -39,25 +40,30 @@ database bindings, or API routes. Application code must not select icons,
 classes, colors, or DOM structure. The architecture test enforces these
 boundaries alongside the existing trust-boundary and unsafe-lint checks.
 
-## Runtime data ports and legacy compatibility
+## Authenticated runtime data ports and legacy compatibility
 
-The default composition uses `createLegacyNotesRuntimePorts`. It binds the
-unchanged `fukamu-notes` IndexedDB database, `/api/sync` v1 endpoint, browser
-clock and UUIDv7 generator, online/offline events, and Service Worker
-preparation to one explicit scope. `NotesProvider` imports none of those
-concrete adapters; tests and future authenticated composition roots can supply
-another complete port set.
+The live layout loads the strict Go `/api/session-context` boundary and, only
+after authentication, uses `createVaultNotesRuntimePorts`. It binds the
+Account/Vault-scoped IndexedDB database, `/api/v2/sync`, browser clock and
+UUIDv7 generator, online/offline events, and Service Worker preparation to one
+trusted session generation. `NotesProvider` imports none of those concrete
+adapters. `SessionNotesApp` also enters the logout runtime fence before it
+constructs the ports and rejects any scope mismatch.
 
-The IndexedDB adapter still opens schema version 1 with the same four stores,
-decodes all values from `unknown`, and performs the same read/write transaction
-plans. The HTTP adapter sends the same POST, content type, and JSON field order.
-No storage migration or wire migration occurs in this extraction. Account and
-Vault ownership is represented by a session-derived `VaultContext` and
-scope-bound runtime, not by adding fields to `CardRecord` or its body.
-`SessionNotesApp` refuses to construct or mount the runtime while anonymous;
-the current route names `LegacyNotesApp` explicitly as the local compatibility
-harness until authenticated vault adapters replace it. The session boundary is
-documented in [`session-boundary.md`](session-boundary.md).
+The IndexedDB adapter opens schema version 2 with cards, mutations, conflicts,
+metadata, and the transactional Sync v2 checkpoint/outgoing-batch store. Every
+external value is decoded from `unknown`. Account and Vault ownership remains
+in `VaultContext` and the scope-bound database/transport, not in `CardRecord`
+or its body. No legacy `fukamu-notes` data is read or migrated into the Vault
+database. `LegacyNotesApp` and its v1 port factory remain only as explicit
+compatibility/test code; the route has no fallback to them and local-fixture
+closes `/api/sync`.
+
+The session bootstrap performs no IndexedDB, sync, Service Worker, or logout
+runtime work before successful authentication. Consequently an offline reload
+cannot reopen cached Vault content until `/api/session-context` can be
+validated again; reconnection reuses the already saved scoped database. The
+session boundary is documented in [`session-boundary.md`](session-boundary.md).
 
 ## Navigation contract
 

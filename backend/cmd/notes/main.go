@@ -22,6 +22,8 @@ import (
 	recoverykeyadapter "github.com/fukamu/notes/backend/internal/adapters/recoverykey"
 	"github.com/fukamu/notes/backend/internal/billing"
 	"github.com/fukamu/notes/backend/internal/config"
+	"github.com/fukamu/notes/backend/internal/cryptocontent"
+	"github.com/fukamu/notes/backend/internal/entitlement"
 	"github.com/fukamu/notes/backend/internal/httpapi"
 	"github.com/fukamu/notes/backend/internal/legal"
 	"github.com/fukamu/notes/backend/internal/localfixture"
@@ -73,6 +75,7 @@ func run() int {
 		ShutdownTimeout:            configuration.ShutdownTimeout,
 		Logger:                     logger,
 		PrivateRuntime:             runtime.private,
+		SyncV2Runtime:              runtime.syncV2,
 		LegalRuntime:               runtime.legal,
 		BillingCancellationRuntime: runtime.billingCancellation,
 		EnableDisconnectedFixtures: disconnectedFixturesEnabled(configuration.Environment),
@@ -89,6 +92,8 @@ type runtimeComposition struct {
 	legal               *httpapi.LegalRuntime
 	billingCancellation *httpapi.BillingCancellationRuntime
 	localFixture        *runtimefoundation.LocalFixture
+	syncV2              *httpapi.SyncV2Runtime
+	syncV2Application   *syncv2.Application
 }
 
 func disconnectedFixturesEnabled(environment config.Environment) bool {
@@ -199,6 +204,14 @@ func composeRuntime(
 			closeRuntime()
 			return runtimeComposition{}, func() {}, errors.New("configure local fixture sessions")
 		}
+		scopedSessions, scopedSessionErr := runtimefoundation.NewScopedSessionResolver(
+			seed.Context,
+			sessionResolver,
+		)
+		if scopedSessionErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("scope local fixture sessions")
+		}
 		objects, objectErr := objectstorageadapter.NewDirectory(fixtureLayout.ObjectDirectory)
 		if objectErr != nil {
 			closeRuntime()
@@ -245,7 +258,7 @@ func composeRuntime(
 		}
 		foundation, foundationErr := runtimefoundation.NewLocalFixture(
 			runtimefoundation.LocalFixtureOptions{
-				Context: seed.Context, Sessions: sessionResolver, Objects: objects,
+				Context: seed.Context, Sessions: scopedSessions, Objects: objects,
 				NonceReservations: nonces, Keys: keys, Cursors: cursors,
 				DeletionCredentials: deletionCredentials,
 			},
@@ -289,6 +302,30 @@ func composeRuntime(
 			closeRuntime()
 			return runtimeComposition{}, func() {}, errors.New("configure local fixture entitlement")
 		}
+		billingService, billingServiceErr := billing.NewService(entitlementStore, billingStore)
+		if billingServiceErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture billing")
+		}
+		entitlementService, entitlementServiceErr := entitlement.NewService(
+			billingService,
+			entitlementStore,
+			entitlementStore,
+			entitlement.FukamuOfflineLeasePolicy(),
+		)
+		if entitlementServiceErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture entitlement")
+		}
+		scopedEntitlement, scopedEntitlementErr := runtimefoundation.NewScopedEntitlement(
+			seed.Context,
+			localfixture.FixtureTimestamp,
+			entitlementService,
+		)
+		if scopedEntitlementErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("scope local fixture entitlement")
+		}
 		commerceProvider, providerErr := localcommerceadapter.NewProvider(
 			seed, billingStore, entitlementStore,
 		)
@@ -308,18 +345,78 @@ func composeRuntime(
 			closeRuntime()
 			return runtimeComposition{}, func() {}, errors.New("configure local fixture cancellation")
 		}
+		journalDirectory, journalErr := postgresadapter.NewSyncV2JournalDirectory(pool)
+		if journalErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture Sync v2 journal")
+		}
+		metadataDirectory, metadataErr := postgresadapter.NewSyncV2MetadataDirectory(pool)
+		if metadataErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture encrypted metadata")
+		}
+		quotaDirectory, quotaErr := postgresadapter.NewQuotaLedgerDirectory(pool)
+		if quotaErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture quota")
+		}
+		keyrings, keyringErr := postgresadapter.NewVaultDEKStore(pool)
+		if keyringErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture keyring")
+		}
+		encryption, encryptionErr := cryptocontent.NewService(
+			keys,
+			contentcryptoadapter.NewSecureRandomNonceGenerator(),
+			nonces,
+			contentcryptoadapter.AES256GCM{},
+		)
+		if encryptionErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture encryption")
+		}
+		contents, contentsErr := syncv2.NewEncryptedContentDirectory(
+			metadataDirectory,
+			objects,
+			objectstorageadapter.NewRandomObjectKeyGenerator(),
+			encryption,
+			keyrings,
+		)
+		if contentsErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture encrypted content")
+		}
+		application, applicationErr := syncv2.NewApplication(
+			journalDirectory,
+			contents,
+			cursors,
+			quotaDirectory,
+			60_000,
+		)
+		if applicationErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture Sync v2 application")
+		}
 		identifiers := otpadapter.NewProductionSecrets()
 		fixtureClock := func() int64 { return time.Now().UnixMilli() }
 		composition.legal = &httpapi.LegalRuntime{
 			ExpectedOrigin: fixtureConfig.PublicOrigin.String(), Clock: fixtureClock,
-			Sessions: sessionResolver, Terms: termsService, Checkout: checkout,
+			Sessions: scopedSessions, Terms: termsService, Checkout: checkout,
 			NewTermsConsentID:     legalIdentifierGenerator(identifiers),
 			NewContractEvidenceID: legalIdentifierGenerator(identifiers),
 		}
 		composition.billingCancellation = &httpapi.BillingCancellationRuntime{
 			ExpectedOrigin: fixtureConfig.PublicOrigin.String(), Clock: fixtureClock,
-			Sessions: sessionResolver, Cancellation: cancellation,
+			Sessions: scopedSessions, Cancellation: cancellation,
 		}
+		composition.syncV2 = &httpapi.SyncV2Runtime{
+			ExpectedOrigin: fixtureConfig.PublicOrigin.String(),
+			Clock:          fixtureClock,
+			Sessions:       scopedSessions,
+			Entitlement:    scopedEntitlement,
+			Application:    application,
+		}
+		composition.syncV2Application = application
 		readiness = aggregate
 	}
 	composition.private = &httpapi.PrivateRuntime{

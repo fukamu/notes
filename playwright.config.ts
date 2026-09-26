@@ -2,10 +2,16 @@ import { defineConfig, devices } from '@playwright/test';
 import {
   configureE2EIdentity,
   e2eAudience,
+  e2eFixtureAccountId,
+  e2eFixtureCursorHmacKey,
+  e2eFixtureDeletionHmacKey,
+  e2eFixtureSessionEpoch,
+  e2eFixtureSessionId,
+  e2eFixtureSessionToken,
+  e2eFixtureVaultId,
   e2eIssuer,
   e2eOwnerSubject,
-  e2eSessionCookieName,
-  e2eSessionToken,
+  e2eSessionStorageState,
   localAssertionHeader,
 } from './tests/e2e/identity-fixture';
 
@@ -23,21 +29,7 @@ export default defineConfig({
     extraHTTPHeaders: {
       [localAssertionHeader]: identity.ownerAssertion,
     },
-    storageState: {
-      cookies: [
-        {
-          name: e2eSessionCookieName,
-          value: e2eSessionToken,
-          domain: 'localhost',
-          path: '/',
-          expires: -1,
-          httpOnly: true,
-          secure: true,
-          sameSite: 'Strict',
-        },
-      ],
-      origins: [],
-    },
+    storageState: e2eSessionStorageState(),
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
@@ -55,6 +47,13 @@ export default defineConfig({
       NOTES_LOCAL_AUTH_AUDIENCE: e2eAudience,
       NOTES_LOCAL_AUTH_ISSUER: e2eIssuer,
       NOTES_LEGACY_OWNER_SUBJECT: e2eOwnerSubject,
+      NOTES_LOCAL_FIXTURE_ACCOUNT_ID: e2eFixtureAccountId,
+      NOTES_LOCAL_FIXTURE_VAULT_ID: e2eFixtureVaultId,
+      NOTES_LOCAL_FIXTURE_SESSION_ID: e2eFixtureSessionId,
+      NOTES_LOCAL_FIXTURE_SESSION_EPOCH: e2eFixtureSessionEpoch,
+      NOTES_LOCAL_FIXTURE_SESSION_TOKEN: e2eFixtureSessionToken,
+      NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY: e2eFixtureCursorHmacKey,
+      NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY: e2eFixtureDeletionHmacKey,
     },
   },
 });

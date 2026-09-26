@@ -8,6 +8,7 @@ import (
 	accountdeletioncredentialadapter "github.com/fukamu/notes/backend/internal/adapters/accountdeletioncredential"
 	"github.com/fukamu/notes/backend/internal/cryptocontent"
 	"github.com/fukamu/notes/backend/internal/encryptedobject"
+	"github.com/fukamu/notes/backend/internal/entitlement"
 	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/fukamu/notes/backend/internal/runtimefoundation"
 	"github.com/fukamu/notes/backend/internal/syncv2"
@@ -77,10 +78,111 @@ func TestNewLocalFixtureRequiresACompleteTypedFoundation(t *testing.T) {
 	}
 }
 
+func TestScopedSessionResolverAllowsOnlyTheFixtureGeneration(t *testing.T) {
+	t.Parallel()
+	expected := fixtureContext(t)
+	matching := fixtureSession(expected)
+	resolver, err := runtimefoundation.NewScopedSessionResolver(
+		expected,
+		&sessionResolverStub{session: &matching},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := resolver.FindSessionByToken(context.Background(), fixtureToken(t))
+	if err != nil || resolved == nil || !identity.SessionMatchesContext(expected, *resolved) {
+		t.Fatalf("matching session = %#v, %v", resolved, err)
+	}
+	resolved.SessionEpoch++
+	again, err := resolver.FindSessionByToken(context.Background(), fixtureToken(t))
+	if err != nil || again == nil || again.SessionEpoch != expected.SessionEpoch {
+		t.Fatalf("resolver leaked caller mutation = %#v, %v", again, err)
+	}
+
+	foreign := matching
+	foreign.SessionEpoch++
+	foreignResolver, err := runtimefoundation.NewScopedSessionResolver(
+		expected,
+		&sessionResolverStub{session: &foreign},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err = foreignResolver.FindSessionByToken(context.Background(), fixtureToken(t))
+	if err != nil || resolved != nil {
+		t.Fatalf("foreign generation = %#v, %v", resolved, err)
+	}
+}
+
+func TestScopedEntitlementPinsEvaluationAndRejectsForeignScope(t *testing.T) {
+	t.Parallel()
+	expected := fixtureContext(t)
+	delegate := &entitlementStub{}
+	access, err := runtimefoundation.NewScopedEntitlement(expected, 1, delegate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision := access.AuthorizeCapability(
+		context.Background(), expected, entitlement.CapabilityNotesSync, 5_000,
+	)
+	limits := access.ReadLimits(context.Background(), expected, 6_000)
+	if decision.Kind != entitlement.DecisionAllowed || limits.Kind != entitlement.LimitsAvailable ||
+		delegate.authorizationTimestamp != 1 || delegate.limitsTimestamp != 1 {
+		t.Fatalf("decisions = %#v %#v, delegate = %#v", decision, limits, delegate)
+	}
+	foreign := expected
+	foreign.SessionEpoch++
+	decision = access.AuthorizeCapability(
+		context.Background(), foreign, entitlement.CapabilityNotesSync, 7_000,
+	)
+	limits = access.ReadLimits(context.Background(), foreign, 8_000)
+	if decision.Kind != entitlement.DecisionDenied || decision.Reason != entitlement.DenialOwnerMismatch ||
+		limits.Kind != entitlement.LimitsDenied || limits.Reason != entitlement.DenialOwnerMismatch ||
+		delegate.authorizationCalls != 1 || delegate.limitsCalls != 1 {
+		t.Fatalf("foreign decisions = %#v %#v, delegate = %#v", decision, limits, delegate)
+	}
+}
+
 type fakeSessions struct{}
 
 func (fakeSessions) FindSessionByToken(context.Context, identity.SessionToken) (*identity.Session, error) {
 	return nil, nil
+}
+
+type sessionResolverStub struct{ session *identity.Session }
+
+func (stub *sessionResolverStub) FindSessionByToken(context.Context, identity.SessionToken) (*identity.Session, error) {
+	return stub.session, nil
+}
+
+type entitlementStub struct {
+	authorizationCalls     int
+	authorizationTimestamp int64
+	limitsCalls            int
+	limitsTimestamp        int64
+}
+
+func (stub *entitlementStub) AuthorizeCapability(
+	_ context.Context,
+	_ identity.VaultContext,
+	capability entitlement.Capability,
+	checkedAt int64,
+) entitlement.Decision {
+	stub.authorizationCalls++
+	stub.authorizationTimestamp = checkedAt
+	return entitlement.Decision{Kind: entitlement.DecisionAllowed, Capability: capability}
+}
+
+func (stub *entitlementStub) ReadLimits(
+	_ context.Context,
+	_ identity.VaultContext,
+	checkedAt int64,
+) entitlement.LimitDecision {
+	stub.limitsCalls++
+	stub.limitsTimestamp = checkedAt
+	return entitlement.LimitDecision{
+		Kind: entitlement.LimitsAvailable, Limits: entitlement.PaidPersonalVaultLimits(),
+	}
 }
 
 type fakeObjects struct{}
@@ -122,4 +224,22 @@ func fixtureContext(t *testing.T) identity.VaultContext {
 	return identity.VaultContext{
 		AccountID: accountID, VaultID: vaultID, SessionID: sessionID, SessionEpoch: epoch,
 	}
+}
+
+func fixtureSession(vaultContext identity.VaultContext) identity.Session {
+	return identity.Session{
+		Kind: identity.SessionActive, AccountID: vaultContext.AccountID,
+		VaultID: vaultContext.VaultID, SessionID: vaultContext.SessionID,
+		SessionEpoch: vaultContext.SessionEpoch, IssuedAt: 1,
+		ExpiresAt: identity.MaximumSafeInteger,
+	}
+}
+
+func fixtureToken(t *testing.T) identity.SessionToken {
+	t.Helper()
+	token, err := identity.ParseSessionToken("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token
 }

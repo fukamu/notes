@@ -9,8 +9,39 @@ export const localAssertionHeader = 'X-Fukamu-Local-Identity-Assertion';
 export const e2eIssuer = 'https://issuer.test';
 export const e2eAudience = 'notes-e2e';
 export const e2eOwnerSubject = 'fukamu-notes-e2e-user';
+export const e2eFixtureAccountId = '01999c20-9e33-7000-8000-000000000001';
+export const e2eFixtureVaultId = '01999c20-9e33-7000-8000-000000000002';
+export const e2eFixtureSessionId = '01999c20-9e33-7000-8000-000000000003';
+export const e2eFixtureSessionEpoch = '1';
+export const e2eFixtureSessionToken = Buffer.alloc(32, 0x41).toString(
+  'base64url',
+);
+export const e2eFixtureCursorHmacKey = Buffer.alloc(32, 0x42).toString(
+  'base64url',
+);
+export const e2eFixtureDeletionHmacKey = Buffer.alloc(32, 0x43).toString(
+  'base64url',
+);
 export const e2eSessionCookieName = '__Host-fukamu_session';
-export const e2eSessionToken = 'QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE';
+export const e2eSessionToken = e2eFixtureSessionToken;
+
+export function e2eSessionStorageState() {
+  return {
+    cookies: [
+      {
+        name: e2eSessionCookieName,
+        value: e2eSessionToken,
+        domain: 'localhost',
+        path: '/',
+        expires: -1,
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Strict' as const,
+      },
+    ],
+    origins: [],
+  };
+}
 
 const privateKeyEnvironment = 'FUKAMU_E2E_LOCAL_AUTH_PRIVATE_KEY';
 

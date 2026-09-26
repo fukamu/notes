@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { LegacyNotesApp } from '@/components/notes-app';
+import { AuthenticatedNotesBootstrap } from '@/components/authenticated-notes-bootstrap';
 import { ProductionLaunchGate } from './production-launch-gate';
 
 export default function NotesRouteLayout({
@@ -9,7 +9,7 @@ export default function NotesRouteLayout({
 }) {
   return (
     <ProductionLaunchGate>
-      <LegacyNotesApp />
+      <AuthenticatedNotesBootstrap />
       {children}
     </ProductionLaunchGate>
   );

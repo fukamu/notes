@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"strconv"
 
@@ -27,9 +28,8 @@ var (
 	_ SyncV2Application = (*syncv2.Application)(nil)
 )
 
-// SyncV2Runtime is deliberately not part of HandlerOptions. Building this
-// reviewed composition must not publish /api/v2/sync; NewHandler continues to
-// install the closed 404/503 route until a separate public-enablement change.
+// SyncV2Runtime is mounted only by the exact local-fixture composition. A nil
+// runtime preserves the closed default/production route.
 type SyncV2Runtime struct {
 	ExpectedOrigin string
 	Clock          func() int64
@@ -38,17 +38,19 @@ type SyncV2Runtime struct {
 	Application    SyncV2Application
 }
 
-// NewSyncV2ContractHandler returns the disconnected handler used by contract
-// and integration tests. Callers must not mount it in the public mux without a
-// separately reviewed route-enablement change.
+// NewSyncV2ContractHandler exposes the same strict boundary for focused tests.
 func NewSyncV2ContractHandler(runtime *SyncV2Runtime, logger *slog.Logger) (http.Handler, error) {
 	if !syncV2RuntimeComplete(runtime) || logger == nil {
 		return nil, errors.New("complete Sync v2 runtime and logger are required")
 	}
-	return http.HandlerFunc(syncV2ContractHandler(runtime, logger)), nil
+	return http.HandlerFunc(syncV2ContractHandler(runtime, logger, syncv2.MaximumRequestBytes)), nil
 }
 
-func syncV2ContractHandler(runtime *SyncV2Runtime, logger *slog.Logger) http.HandlerFunc {
+func syncV2ContractHandler(
+	runtime *SyncV2Runtime,
+	logger *slog.Logger,
+	bodyLimit int64,
+) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		if !allowMethods(response, request, http.MethodPost) {
 			return
@@ -62,7 +64,12 @@ func syncV2ContractHandler(runtime *SyncV2Runtime, logger *slog.Logger) http.Han
 		if handled {
 			return
 		}
-		body, status := readSyncV2Body(response, request)
+		mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+		if err != nil || mediaType != "application/json" {
+			writeSyncV2Error(response, request, http.StatusBadRequest, "invalid-request")
+			return
+		}
+		body, status := readSyncV2Body(response, request, bodyLimit)
 		if status != 0 {
 			code := "invalid-request"
 			if status == http.StatusRequestEntityTooLarge {
@@ -164,7 +171,14 @@ func authenticateSyncV2Request(
 	return identity.VaultContext{}, true
 }
 
-func readSyncV2Body(response http.ResponseWriter, request *http.Request) ([]byte, int) {
+func effectiveSyncV2BodyLimit(configured int64) int64 {
+	if configured < syncv2.MaximumRequestBytes {
+		return configured
+	}
+	return syncv2.MaximumRequestBytes
+}
+
+func readSyncV2Body(response http.ResponseWriter, request *http.Request, limit int64) ([]byte, int) {
 	declared := request.Header.Values("Content-Length")
 	if len(declared) > 1 {
 		return nil, http.StatusBadRequest
@@ -174,11 +188,11 @@ func readSyncV2Body(response http.ResponseWriter, request *http.Request) ([]byte
 		if err != nil || length < 0 {
 			return nil, http.StatusBadRequest
 		}
-		if length > syncv2.MaximumRequestBytes {
+		if length > limit {
 			return nil, http.StatusRequestEntityTooLarge
 		}
 	}
-	limited := http.MaxBytesReader(response, request.Body, syncv2.MaximumRequestBytes)
+	limited := http.MaxBytesReader(response, request.Body, limit)
 	body, err := io.ReadAll(limited)
 	if err != nil {
 		var maximum *http.MaxBytesError

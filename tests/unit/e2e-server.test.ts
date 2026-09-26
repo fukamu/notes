@@ -64,6 +64,18 @@ async function createHarness(options: {
           NOTES_LOCAL_AUTH_ISSUER: 'https://issuer.test',
           NOTES_LOCAL_AUTH_AUDIENCE: 'notes-e2e',
           NOTES_LEGACY_OWNER_SUBJECT: 'fukamu-notes-e2e-user',
+          NOTES_LOCAL_FIXTURE_ACCOUNT_ID:
+            '01999c20-9e33-7000-8000-000000000001',
+          NOTES_LOCAL_FIXTURE_VAULT_ID: '01999c20-9e33-7000-8000-000000000002',
+          NOTES_LOCAL_FIXTURE_SESSION_ID:
+            '01999c20-9e33-7000-8000-000000000003',
+          NOTES_LOCAL_FIXTURE_SESSION_EPOCH: '1',
+          NOTES_LOCAL_FIXTURE_SESSION_TOKEN:
+            'QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE',
+          NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY:
+            'QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI',
+          NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY:
+            'Q0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0M',
           NOTES_TEST_DATABASE_URL: options.testDatabaseUrl ?? '',
         },
         stdio: ['ignore', 'ignore', 'pipe'],
@@ -90,14 +102,24 @@ describe('Go E2E server', () => {
       readFile('tests/e2e/identity-fixture.ts', 'utf8'),
       readFile('playwright.config.ts', 'utf8'),
     ]);
-    const token = server.match(
-      /export NOTES_LOCAL_FIXTURE_SESSION_TOKEN=([A-Za-z0-9_-]{43})/,
-    )?.[1];
-    expect(token).toBeDefined();
-    expect(identity).toContain(`'${token}'`);
-    expect(identity).toContain("'__Host-fukamu_session'");
-    expect(playwright).toContain('e2eSessionCookieName');
-    expect(playwright).toContain('e2eSessionToken');
+    expect(server).toContain(
+      '${NOTES_LOCAL_FIXTURE_SESSION_TOKEN:?E2E fixture session token is required}',
+    );
+    expect(server).not.toContain(
+      'export NOTES_LOCAL_FIXTURE_SESSION_TOKEN=QUFB',
+    );
+    expect(identity).toContain(
+      'export const e2eSessionToken = e2eFixtureSessionToken',
+    );
+    expect(identity).toContain(
+      "e2eSessionCookieName = '__Host-fukamu_session'",
+    );
+    expect(identity).toContain('httpOnly: true');
+    expect(identity).toContain('secure: true');
+    expect(playwright).toContain('storageState: e2eSessionStorageState()');
+    expect(playwright).toContain(
+      'NOTES_LOCAL_FIXTURE_SESSION_TOKEN: e2eFixtureSessionToken',
+    );
     expect(server).toContain('NOTES_APPLICATION_PROFILE=local-fixture');
     expect(server).not.toContain('NOTES_APPLICATION_PROFILE=disabled');
   });

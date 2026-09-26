@@ -3,8 +3,8 @@
 > Historical composition note: references below to `LegacyNotesApp`, the
 > TypeScript server, Sites, and D1 describe the pre-T17 runtime. The browser
 > client remains TypeScript, while request-time server execution and durable
-> server persistence are Go/PostgreSQL. Full local Go route connection is a
-> separate integration step.
+> server persistence are Go/PostgreSQL. Issue #511 now connects the full route
+> only inside the isolated local-fixture profile.
 
 Issue #122 connects the authenticated Vault browser runtime to the incremental
 Sync v2 protocol and the transactional local replica introduced by #165. It
@@ -17,7 +17,7 @@ union and `LegacyNotesApp` constructed the fixed legacy scope with the v1
 `/api/sync` transport. That is compatibility history, not a remaining
 TypeScript server or Sites deployment path.
 
-An authenticated `SessionNotesApp` may construct
+The live local-fixture `SessionNotesApp` constructs
 `createVaultNotesRuntimePorts` from its server-derived `VaultContext`. That
 factory binds a per-Vault IndexedDB repository to the v2 `/api/v2/sync`
 transport. The Vault runtime type only permits v2, so a public paid runtime
@@ -78,7 +78,9 @@ rules.
 
 ## Rollback
 
-The change can be reverted by removing the v2 Vault composition and client
-orchestrator. The fixed legacy runtime and v1 wire compatibility remain intact.
-Rollback must not enable v1 for an authenticated paid runtime. Storage schema
-rollback and checkpoint handling belong to #165.
+The local connection can be reverted by stopping the fixture and removing the
+v2 Vault composition/bootstrap. The legacy factory remains compatibility code,
+but rollback must not route authenticated data through v1. Existing Vault
+checkpoints and server journal/ciphertext/quota state must be preserved as one
+consistency set; storage schema rollback and checkpoint handling belong to
+#165.
