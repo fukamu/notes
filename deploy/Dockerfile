@@ -15,6 +15,10 @@ COPY backend/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -buildid=" -o /out/notes ./cmd/notes
 
 FROM scratch
+ARG NOTES_SOURCE_REVISION
+LABEL org.opencontainers.image.source="https://github.com/fukamu/notes" \
+      org.opencontainers.image.revision="${NOTES_SOURCE_REVISION}" \
+      org.opencontainers.image.title="FUKAMU Notes"
 COPY --from=go-build --chown=65532:65532 /out/notes /notes
 COPY --from=frontend-build --chown=65532:65532 /source/dist/frontend/ /app/static/
 USER 65532:65532
