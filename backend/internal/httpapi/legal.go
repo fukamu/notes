@@ -457,11 +457,15 @@ type contractCheckoutResponse struct {
 	EvidenceID      legal.ContractEvidenceID         `json:"evidenceId"`
 	OfferHash       legal.ContractOfferHash          `json:"offerHash"`
 	OfferVersion    string                           `json:"offerVersion"`
-	CheckoutURL     string                           `json:"checkoutUrl"`
+	CheckoutURL     string                           `json:"checkoutUrl,omitempty"`
 }
 
 func writeContractCheckoutResult(response http.ResponseWriter, request *http.Request, result legal.ContractCheckoutResult) {
-	if result.Kind == legal.ContractCheckoutRedirect {
+	if result.Kind == legal.ContractCheckoutRedirect || result.Kind == legal.ContractCheckoutLocalConfirmed {
+		if result.Kind == legal.ContractCheckoutLocalConfirmed && result.CheckoutURL != "" {
+			writeLegalError(response, request, http.StatusServiceUnavailable, "unavailable")
+			return
+		}
 		writeJSON(response, request, http.StatusOK, contractCheckoutResponse{
 			Kind: result.Kind, EvidenceOutcome: result.Outcome,
 			EvidenceID: result.Evidence.EvidenceID, OfferHash: result.Evidence.OfferHash,

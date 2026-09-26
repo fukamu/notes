@@ -24,8 +24,9 @@ type ContractCheckoutProvider interface {
 type ContractCheckoutResultKind string
 
 const (
-	ContractCheckoutRedirect ContractCheckoutResultKind = "redirect"
-	ContractCheckoutRejected ContractCheckoutResultKind = "rejected"
+	ContractCheckoutRedirect       ContractCheckoutResultKind = "redirect"
+	ContractCheckoutLocalConfirmed ContractCheckoutResultKind = "local-confirmed"
+	ContractCheckoutRejected       ContractCheckoutResultKind = "rejected"
 )
 
 type ContractCheckoutResult struct {
@@ -111,12 +112,27 @@ func (application *ContractCheckoutApplication) Confirm(
 		return rejectedContractCheckout(ContractInvalidCommand)
 	}
 	provider := application.provider.BeginHostedCheckout(ctx, vaultContext, checkout)
-	if provider.Kind != stripebilling.HostedCheckoutRedirect {
+	switch provider.Kind {
+	case stripebilling.HostedCheckoutLocalConfirmed:
+		if provider.CheckoutURL != "" || provider.ProviderCheckoutReference != "" || provider.Reason != "" {
+			return rejectedContractCheckout(ContractMalformedProvider)
+		}
+		return ContractCheckoutResult{
+			Kind: ContractCheckoutLocalConfirmed, Outcome: confirmation.Outcome,
+			Evidence: confirmation.Evidence,
+		}
+	case stripebilling.HostedCheckoutRedirect:
+		if provider.CheckoutURL == "" {
+			return rejectedContractCheckout(ContractMalformedProvider)
+		}
+		return ContractCheckoutResult{
+			Kind: ContractCheckoutRedirect, Outcome: confirmation.Outcome,
+			Evidence: confirmation.Evidence, CheckoutURL: provider.CheckoutURL,
+		}
+	case stripebilling.HostedCheckoutRejected:
 		return rejectedContractCheckout(mapContractProviderReason(provider.Reason))
-	}
-	return ContractCheckoutResult{
-		Kind: ContractCheckoutRedirect, Outcome: confirmation.Outcome,
-		Evidence: confirmation.Evidence, CheckoutURL: provider.CheckoutURL,
+	default:
+		return rejectedContractCheckout(ContractMalformedProvider)
 	}
 }
 

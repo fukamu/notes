@@ -15,6 +15,8 @@ type ServerOptions struct {
 	ShutdownTimeout            time.Duration
 	Logger                     *slog.Logger
 	PrivateRuntime             *PrivateRuntime
+	LegalRuntime               *LegalRuntime
+	BillingCancellationRuntime *BillingCancellationRuntime
 	EnableDisconnectedFixtures bool
 }
 
@@ -24,6 +26,8 @@ func Run(ctx context.Context, options ServerOptions) error {
 		BodyLimit:                  options.BodyLimit,
 		Logger:                     options.Logger,
 		PrivateRuntime:             options.PrivateRuntime,
+		LegalRuntime:               options.LegalRuntime,
+		BillingCancellationRuntime: options.BillingCancellationRuntime,
 		EnableDisconnectedFixtures: options.EnableDisconnectedFixtures,
 	})
 	if err != nil {

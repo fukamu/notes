@@ -261,6 +261,22 @@ export function createLocalTermsConsentUiTransport(
   };
 }
 
+export function createRemoteFirstTermsConsentUiTransport(
+  fallback: TermsConsentUiTransport,
+  remote: TermsConsentUiTransport = createTermsConsentUiHttpTransport(),
+): TermsConsentUiTransport {
+  return {
+    async loadStatus() {
+      const result = await remote.loadStatus();
+      return result.kind === 'not-found' ? fallback.loadStatus() : result;
+    },
+    async accept(input) {
+      const result = await remote.accept(input);
+      return result.kind === 'not-found' ? fallback.accept(input) : result;
+    },
+  };
+}
+
 export function createTermsConsentSubmissionId(): string {
   const decoded = termsConsentSubmissionIdDecoder.decode(uuidv7());
   if (!decoded.ok) throw new Error('generated invalid terms submission ID');

@@ -45,7 +45,7 @@ export function BillingAccountBoundary({
       case 'confirmed':
         dispatch({
           type: 'confirmed',
-          source: 'server',
+          source: source === 'local-fixture' ? 'local-fixture' : 'server',
           confirmedAt: result.confirmedAt,
         });
         return;

@@ -12,6 +12,7 @@ import {
 } from '@/lib/application/terms-consent-ui';
 import {
   createLocalTermsConsentUiTransport,
+  createRemoteFirstTermsConsentUiTransport,
   createTermsConsentSubmissionId,
   createTermsConsentUiHttpTransport,
 } from '@/lib/client/terms-consent-ui';
@@ -28,11 +29,15 @@ export function TermsConsentBoundary({
 }: {
   readonly source: TermsConsentSource;
 }) {
-  const [transport] = useState(() =>
-    source.kind === 'local-fixture'
-      ? createLocalTermsConsentUiTransport(source.current)
-      : createTermsConsentUiHttpTransport(),
-  );
+  const [transport] = useState(() => {
+    const remote = createTermsConsentUiHttpTransport();
+    return source.kind === 'local-fixture'
+      ? createRemoteFirstTermsConsentUiTransport(
+          createLocalTermsConsentUiTransport(source.current),
+          remote,
+        )
+      : remote;
+  });
   const [state, dispatch] = useReducer(
     termsConsentUiReducer,
     initialTermsConsentUiState,

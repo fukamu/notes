@@ -13,12 +13,17 @@ import (
 	accessadapter "github.com/fukamu/notes/backend/internal/adapters/access"
 	accountdeletioncredentialadapter "github.com/fukamu/notes/backend/internal/adapters/accountdeletioncredential"
 	contentcryptoadapter "github.com/fukamu/notes/backend/internal/adapters/contentcrypto"
+	legalhashadapter "github.com/fukamu/notes/backend/internal/adapters/legalhash"
+	localcommerceadapter "github.com/fukamu/notes/backend/internal/adapters/localcommerce"
 	localfixtureadapter "github.com/fukamu/notes/backend/internal/adapters/localfixture"
 	objectstorageadapter "github.com/fukamu/notes/backend/internal/adapters/objectstorage"
+	otpadapter "github.com/fukamu/notes/backend/internal/adapters/otp"
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
 	recoverykeyadapter "github.com/fukamu/notes/backend/internal/adapters/recoverykey"
+	"github.com/fukamu/notes/backend/internal/billing"
 	"github.com/fukamu/notes/backend/internal/config"
 	"github.com/fukamu/notes/backend/internal/httpapi"
+	"github.com/fukamu/notes/backend/internal/legal"
 	"github.com/fukamu/notes/backend/internal/localfixture"
 	"github.com/fukamu/notes/backend/internal/runtimefoundation"
 	"github.com/fukamu/notes/backend/internal/syncv2"
@@ -68,6 +73,8 @@ func run() int {
 		ShutdownTimeout:            configuration.ShutdownTimeout,
 		Logger:                     logger,
 		PrivateRuntime:             runtime.private,
+		LegalRuntime:               runtime.legal,
+		BillingCancellationRuntime: runtime.billingCancellation,
 		EnableDisconnectedFixtures: disconnectedFixturesEnabled(configuration.Environment),
 	}); err != nil {
 		logger.Error("server stopped", "error_code", "server_failure")
@@ -78,8 +85,10 @@ func run() int {
 }
 
 type runtimeComposition struct {
-	private      *httpapi.PrivateRuntime
-	localFixture *runtimefoundation.LocalFixture
+	private             *httpapi.PrivateRuntime
+	legal               *httpapi.LegalRuntime
+	billingCancellation *httpapi.BillingCancellationRuntime
+	localFixture        *runtimefoundation.LocalFixture
 }
 
 func disconnectedFixturesEnabled(environment config.Environment) bool {
@@ -246,6 +255,71 @@ func composeRuntime(
 			return runtimeComposition{}, func() {}, errors.New("configure local fixture foundation")
 		}
 		composition.localFixture = foundation
+		termsStore, termsStoreErr := postgresadapter.NewTermsConsentStore(pool)
+		if termsStoreErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture terms store")
+		}
+		termsService, termsErr := legal.NewTermsConsentService(
+			localcommerceadapter.TermsSource{}, legalhashadapter.SHA256Hasher{}, termsStore,
+		)
+		if termsErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture terms")
+		}
+		evidenceStore, evidenceStoreErr := postgresadapter.NewContractEvidenceStore(pool)
+		if evidenceStoreErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture contract evidence")
+		}
+		evidenceService, evidenceErr := legal.NewContractEvidenceService(
+			evidenceStore, legalhashadapter.OfferSHA256Hasher{},
+		)
+		if evidenceErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture contract evidence")
+		}
+		billingStore, billingStoreErr := postgresadapter.NewBillingStore(pool)
+		if billingStoreErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture billing")
+		}
+		entitlementStore, entitlementStoreErr := postgresadapter.NewEntitlementStore(pool)
+		if entitlementStoreErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture entitlement")
+		}
+		commerceProvider, providerErr := localcommerceadapter.NewProvider(
+			seed, billingStore, entitlementStore,
+		)
+		if providerErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture commerce provider")
+		}
+		checkout, checkoutErr := legal.NewContractCheckoutApplication(
+			evidenceService, localcommerceadapter.OfferSource{}, termsService, commerceProvider,
+		)
+		if checkoutErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture checkout")
+		}
+		cancellation, cancellationErr := billing.NewCancellationService(billingStore, commerceProvider)
+		if cancellationErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture cancellation")
+		}
+		identifiers := otpadapter.NewProductionSecrets()
+		fixtureClock := func() int64 { return time.Now().UnixMilli() }
+		composition.legal = &httpapi.LegalRuntime{
+			ExpectedOrigin: fixtureConfig.PublicOrigin.String(), Clock: fixtureClock,
+			Sessions: sessionResolver, Terms: termsService, Checkout: checkout,
+			NewTermsConsentID:     legalIdentifierGenerator(identifiers),
+			NewContractEvidenceID: legalIdentifierGenerator(identifiers),
+		}
+		composition.billingCancellation = &httpapi.BillingCancellationRuntime{
+			ExpectedOrigin: fixtureConfig.PublicOrigin.String(), Clock: fixtureClock,
+			Sessions: sessionResolver, Cancellation: cancellation,
+		}
 		readiness = aggregate
 	}
 	composition.private = &httpapi.PrivateRuntime{
@@ -258,6 +332,23 @@ func composeRuntime(
 		Clock:        time.Now,
 	}
 	return composition, closeRuntime, nil
+}
+
+type legalIdentifierSource interface {
+	CreateChallengeID(context.Context) (string, error)
+}
+
+func legalIdentifierGenerator(source legalIdentifierSource) func() string {
+	return func() string {
+		if source == nil {
+			return ""
+		}
+		identifier, err := source.CreateChallengeID(context.Background())
+		if err != nil {
+			return ""
+		}
+		return identifier
+	}
 }
 
 func validateRuntimeConfiguration(configuration config.Config) error {

@@ -25,6 +25,7 @@ type HandlerOptions struct {
 	Logger                     *slog.Logger
 	PrivateRuntime             *PrivateRuntime
 	LegalRuntime               *LegalRuntime
+	BillingCancellationRuntime *BillingCancellationRuntime
 	EnableDisconnectedFixtures bool
 }
 
@@ -99,12 +100,15 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 		"/api/account/terms-consent",
 		exact("/api/account/terms-consent", termsConsentRoute(options)),
 	)
+	mux.HandleFunc(
+		"/api/billing/cancel",
+		exact("/api/billing/cancel", billingCancellationRoute(options)),
+	)
 	for _, path := range []string{
 		"/api/account/deletion",
 		"/api/account/deletion/status",
 		"/api/account/privacy-requests",
 		"/api/account/privacy-requests/status",
-		"/api/billing/cancel",
 	} {
 		mux.HandleFunc(path, exact(path, disconnectedPublicAPI(options.EnableDisconnectedFixtures, http.MethodGet, http.MethodPost)))
 	}
@@ -425,7 +429,7 @@ func limitBody(limit int64, next http.Handler) http.Handler {
 
 func authorizesBeforeBody(path string) bool {
 	switch path {
-	case "/api/sync", "/api/v2/sync", "/api/billing/checkout", "/api/account/terms-consent":
+	case "/api/sync", "/api/v2/sync", "/api/billing/checkout", "/api/account/terms-consent", "/api/billing/cancel":
 		return true
 	default:
 		return false

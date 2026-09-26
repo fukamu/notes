@@ -82,19 +82,53 @@ describe('billing UI HTTP adapter', () => {
     await expect(missingTerms.submitCheckout(review())).resolves.toEqual({
       kind: 'terms-changed',
     });
+
+    const localConfirmed = createBillingUiHttpTransport(async () =>
+      Response.json({
+        kind: 'local-confirmed',
+        evidenceOutcome: 'recorded',
+        evidenceId: billingUiContractIds.evidenceA,
+        offerHash: billingUiContractIds.offerHashA,
+        offerVersion: contractOffer().offerVersion,
+      }),
+    );
+    await expect(localConfirmed.submitCheckout(review())).resolves.toEqual({
+      kind: 'local-confirmed',
+      evidenceOutcome: 'recorded',
+    });
+
+    const localWithUrl = createBillingUiHttpTransport(async () =>
+      Response.json({
+        kind: 'local-confirmed',
+        evidenceOutcome: 'recorded',
+        evidenceId: billingUiContractIds.evidenceA,
+        offerHash: billingUiContractIds.offerHashA,
+        offerVersion: contractOffer().offerVersion,
+        checkoutUrl: 'https://checkout.stripe.com/unexpected',
+      }),
+    );
+    await expect(localWithUrl.submitCheckout(review())).resolves.toEqual({
+      kind: 'unavailable',
+    });
   });
 
   it('keeps cancellation confirmation, retry, and local not-found distinct', async () => {
     const confirmed = createBillingUiHttpTransport(async () =>
       Response.json({
-        status: 'cancelled',
-        outcome: 'already-cancelled',
+        status: 'cancellation-scheduled',
+        outcome: 'scheduled',
         confirmedAt: 2_000,
+        accessEndsAt: 9_000,
       }),
     );
     await expect(
       confirmed.cancelSubscription(createBillingCancellationIdempotencyKey()),
-    ).resolves.toEqual({ kind: 'confirmed', confirmedAt: 2_000 });
+    ).resolves.toEqual({
+      kind: 'confirmed',
+      outcome: 'scheduled',
+      confirmedAt: 2_000,
+      accessEndsAt: 9_000,
+    });
 
     const unavailable = createBillingUiHttpTransport(async () =>
       Response.json({ error: 'unavailable' }, { status: 503 }),

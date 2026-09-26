@@ -44,6 +44,10 @@ export type BillingCheckoutSubmitResult =
       readonly checkoutUrl: string;
       readonly evidenceOutcome: 'recorded' | 'replayed';
     }
+  | {
+      readonly kind: 'local-confirmed';
+      readonly evidenceOutcome: 'recorded' | 'replayed';
+    }
   | { readonly kind: 'offer-changed' }
   | { readonly kind: 'terms-changed' }
   | { readonly kind: 'authentication-required' }
@@ -55,6 +59,8 @@ export type BillingCancellationResult =
   | {
       readonly kind: 'confirmed';
       readonly confirmedAt: number;
+      readonly accessEndsAt: number;
+      readonly outcome: 'scheduled' | 'already-cancelled';
     }
   | { readonly kind: 'authentication-required' }
   | { readonly kind: 'cancellation-unavailable' }
@@ -76,7 +82,7 @@ const offerResponseDecoder = objectDecoder({
   offerHash: contractOfferHashDecoder,
 });
 
-const checkoutResponseDecoder = objectDecoder({
+const redirectCheckoutResponseDecoder = objectDecoder({
   kind: literalDecoder('redirect'),
   evidenceOutcome: unionDecoder(
     literalDecoder('recorded'),
@@ -92,14 +98,36 @@ const checkoutResponseDecoder = objectDecoder({
   ),
 });
 
-const cancellationResponseDecoder = objectDecoder({
-  status: literalDecoder('cancelled'),
-  outcome: unionDecoder(
-    literalDecoder('cancelled'),
-    literalDecoder('already-cancelled'),
+const localCheckoutResponseDecoder = objectDecoder({
+  kind: literalDecoder('local-confirmed'),
+  evidenceOutcome: unionDecoder(
+    literalDecoder('recorded'),
+    literalDecoder('replayed'),
   ),
-  confirmedAt: safeIntegerDecoder({ minimum: 0 }),
+  evidenceId: contractEvidenceIdDecoder,
+  offerHash: contractOfferHashDecoder,
+  offerVersion: stringDecoder({ minLength: 1, maxLength: 128 }),
 });
+
+const checkoutResponseDecoder = unionDecoder(
+  redirectCheckoutResponseDecoder,
+  localCheckoutResponseDecoder,
+);
+
+const cancellationResponseDecoder = unionDecoder(
+  objectDecoder({
+    status: literalDecoder('cancellation-scheduled'),
+    outcome: literalDecoder('scheduled'),
+    confirmedAt: safeIntegerDecoder({ minimum: 0 }),
+    accessEndsAt: safeIntegerDecoder({ minimum: 0 }),
+  }),
+  objectDecoder({
+    status: literalDecoder('cancelled'),
+    outcome: literalDecoder('already-cancelled'),
+    confirmedAt: safeIntegerDecoder({ minimum: 0 }),
+    accessEndsAt: safeIntegerDecoder({ minimum: 0 }),
+  }),
+);
 
 const errorResponseDecoder = objectDecoder({
   error: unionDecoder(
@@ -161,11 +189,16 @@ export function createBillingUiHttpTransport(
       ) {
         return { kind: 'unavailable' };
       }
-      return {
-        kind: 'provider-ready',
-        checkoutUrl: decoded.value.checkoutUrl,
-        evidenceOutcome: decoded.value.evidenceOutcome,
-      };
+      return decoded.value.kind === 'redirect'
+        ? {
+            kind: 'provider-ready',
+            checkoutUrl: decoded.value.checkoutUrl,
+            evidenceOutcome: decoded.value.evidenceOutcome,
+          }
+        : {
+            kind: 'local-confirmed',
+            evidenceOutcome: decoded.value.evidenceOutcome,
+          };
     },
 
     async cancelSubscription(idempotencyKey) {
@@ -180,7 +213,12 @@ export function createBillingUiHttpTransport(
       }
       const decoded = cancellationResponseDecoder.decode(await body(response));
       return decoded.ok
-        ? { kind: 'confirmed', confirmedAt: decoded.value.confirmedAt }
+        ? {
+            kind: 'confirmed',
+            confirmedAt: decoded.value.confirmedAt,
+            accessEndsAt: decoded.value.accessEndsAt,
+            outcome: decoded.value.outcome,
+          }
         : { kind: 'unavailable' };
     },
   };

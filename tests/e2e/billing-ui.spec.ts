@@ -406,9 +406,10 @@ test('account billing cancellation uses an accessible dialog, focus return, and 
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        status: 'cancelled',
-        outcome: 'cancelled',
+        status: 'cancellation-scheduled',
+        outcome: 'scheduled',
         confirmedAt: 2_000,
+        accessEndsAt: 9_000,
       }),
     });
   });

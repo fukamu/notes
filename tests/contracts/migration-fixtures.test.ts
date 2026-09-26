@@ -1,8 +1,16 @@
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { accountDeletionWireStatusDecoder } from '@/lib/application/account-deletion-handoff';
-import { decodeLegalCommerceDisclosure } from '@/lib/application/legal-commerce';
-import { decodeLegalTermsDisclosure } from '@/lib/application/legal-terms';
+import { billingUiOfferFromDisclosure } from '@/lib/application/billing-ui';
+import {
+  decodeLegalCommerceDisclosure,
+  localLegalCommerceFixture,
+} from '@/lib/application/legal-commerce';
+import {
+  decodeLegalTermsDisclosure,
+  localLegalTermsFixture,
+} from '@/lib/application/legal-terms';
 import { createBillingUiHttpTransport } from '@/lib/client/http-billing-ui';
 import { createPrivacyRequestUiHttpTransport } from '@/lib/client/http-privacy-request';
 import { createTermsConsentUiHttpTransport } from '@/lib/client/terms-consent-ui';
@@ -84,6 +92,22 @@ describe('Go migration browser wire fixtures', () => {
         authentication: { password: false, sharedVault: false },
       },
     });
+  });
+
+  it('keeps browser and Go local commerce fixtures on one reviewed hash contract', async () => {
+    const contract = record(await fixture('legal/local-commerce-runtime.json'));
+    const offer = billingUiOfferFromDisclosure(localLegalCommerceFixture);
+    if (offer === undefined) throw new Error('local offer must be valid');
+
+    expect(text(field(contract, 'classification'))).toBe(
+      'local-test-data-not-production-approval',
+    );
+    expect(canonicalSha256(localLegalTermsFixture)).toBe(
+      text(field(contract, 'termsCanonicalSha256')),
+    );
+    expect(canonicalSha256({ schemaVersion: 1, ...offer })).toBe(
+      text(field(contract, 'offerCanonicalSha256')),
+    );
   });
 
   it('decodes billing and rejects an untrusted checkout destination', async () => {
@@ -181,4 +205,10 @@ function text(value: unknown): string {
   if (typeof value !== 'string')
     throw new TypeError('fixture value must be text');
   return value;
+}
+
+function canonicalSha256(value: unknown): string {
+  return `sha256:${createHash('sha256')
+    .update(JSON.stringify(value))
+    .digest('hex')}`;
 }

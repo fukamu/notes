@@ -216,8 +216,9 @@ type EventPlan struct {
 type HostedCheckoutResultKind string
 
 const (
-	HostedCheckoutRedirect HostedCheckoutResultKind = "redirect"
-	HostedCheckoutRejected HostedCheckoutResultKind = "rejected"
+	HostedCheckoutRedirect       HostedCheckoutResultKind = "redirect"
+	HostedCheckoutLocalConfirmed HostedCheckoutResultKind = "local-confirmed"
+	HostedCheckoutRejected       HostedCheckoutResultKind = "rejected"
 )
 
 type HostedCheckoutResult struct {
