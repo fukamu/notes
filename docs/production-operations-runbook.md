@@ -40,9 +40,9 @@ An eventual adapter must strictly decode external evidence before constructing
 Go `operations.LaunchGateEvidence`, then pass that typed value to
 `operations.EvaluateLaunchGate`. The pure core independently rejects an unknown
 enum, unsupported schema version, malformed rollback-window state, or timestamp
-outside the non-negative JavaScript-safe integer range. The frozen TypeScript
-`decodeLaunchGateEvidence` remains comparison evidence only until T17 removes
-the old backend.
+outside the non-negative JavaScript-safe integer range. T17 removed the frozen
+TypeScript decoder; its immutable revision remains historical comparison
+evidence only.
 
 The gate requires a confirmed target, the environment-appropriate change
 approval, an open rollback window, ready telemetry, and resolved operational
@@ -62,7 +62,8 @@ Run only against an isolated staging target with fake or approved staging
 adapters. The source inventory and restore destination must never be a live
 production target under this procedure.
 
-1. **Inventory** — freeze the drill manifest; enumerate D1 metadata, private R2
+1. **Inventory** — freeze the drill manifest; enumerate PostgreSQL metadata,
+   private object-storage
    object metadata, wrapped DEK versions, session revocation state, billing
    projection, migration version, capture time, and delete-after time. Reject an
    incomplete inventory and any backup retention window over 30 days.
@@ -103,10 +104,11 @@ snapshot consistency, production IAM, quota, latency, or an achievable RTO/RPO.
 ### Observe
 
 Compare canary and baseline for auth denials, Sync V2 success/no-change/failure,
-billing locks, D1/R2/KMS dependency failure, cursor/receipt replay, and cross-tenant
-denial. Use approved staging-derived thresholds only. No-change sync must not call
-R2 or KMS. Record whether each signal is healthy, failed, or unavailable; an
-unavailable required signal blocks promotion.
+billing locks, PostgreSQL/object-storage/KMS dependency failure, cursor/receipt
+replay, and cross-tenant denial. Use approved staging-derived thresholds only.
+No-change sync must not call object storage or KMS. Record whether each signal
+is healthy, failed, or unavailable; an unavailable required signal blocks
+promotion.
 
 ### Promote
 
@@ -154,8 +156,8 @@ this document, a CI result, a merge, or a passing launch gate.
 
 | Failure                                                 | Immediate operator action                                                            | Preserve / verify                                                                        | Escalation                             |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------- |
-| D1 unavailable, conflict, or migration mismatch         | stop promote; retry only idempotent reads/commands per policy                        | metadata revision, migration version, receipts; never run ad-hoc DDL                     | service operations and data owner      |
-| R2 unavailable, missing, or ciphertext size mismatch    | stop affected write/restore and keep metadata pending                                | immutable object key/version and delete outbox state; no plaintext fallback              | service operations and storage owner   |
+| PostgreSQL unavailable, conflict, or migration mismatch | stop promote; retry only idempotent reads/commands per policy                        | metadata revision, migration version, receipts; never run ad-hoc DDL                     | service operations and data owner      |
+| object storage unavailable, missing, or size mismatch   | stop affected write/restore and keep metadata pending                                | immutable object key/version and delete outbox state; no plaintext fallback              | service operations and storage owner   |
 | KMS unavailable or authentication failure               | fail closed; stop decrypt/encrypt/promotion                                          | wrapped-key and crypto versions, integrity result; never log key material                | security operations and KMS owner      |
 | Stripe webhook/API unavailable or out of order          | keep/reconcile durable event state; preserve online lock on failure/action-required  | event dedupe/reconcile status and invoice state; redirect/card update is not entitlement | billing operations and billing owner   |
 | auth Google/OTP/session anomaly                         | stop affected authentication path; rotate/revoke only through approved state machine | bounded failure category, epoch/revocation result; never log OTP/token/cookie            | security operations and identity owner |
@@ -171,12 +173,13 @@ obtain the separately required explicit user approval.
 
 - **RTO: Decision Required** — choose only after a provider-specific staging
   restore drill measures inventory, restore, verification, and cleanup.
-- **RPO: Decision Required** — choose only after D1/R2/wrapped-key snapshot
+- **RPO: Decision Required** — choose only after
+  PostgreSQL/object-storage/wrapped-key snapshot
   consistency and billing/session projection recovery semantics are known.
 - **SLO: Decision Required** — choose availability and latency objectives plus
   Issue #217 alert thresholds from measured staging evidence and business needs.
-- Production D1/R2/KMS/backup providers, regions, IAM, retention, quota, and
-  restore consistency: Decision Required.
+- Production PostgreSQL/object-storage/KMS/backup providers, regions, IAM,
+  retention, quota, and restore consistency: Decision Required.
 - Telemetry provider, retention, sampling, dashboard, alert routes, and on-call
   ownership: Decision Required.
 - Stripe webhook replay procedure, Google/Email provider recovery, canary cohort,
@@ -196,13 +199,14 @@ Run the focused Go policy and import-boundary tests with:
 go -C backend test ./internal/operations -run 'LaunchPolicy|EnvironmentAction|LaunchGate|ConcreteEffects'
 ```
 
-While the frozen TypeScript comparison remains checked in, its focused tests
-may also be run with:
+Run the retained frontend architecture checks with:
 
 ```sh
-npx vitest run tests/unit/operations-launch-gate.test.ts tests/unit/architecture.test.ts
+npx vitest run tests/unit/architecture.test.ts
 ```
 
-Then run `git diff --check` and `npm run verify`. Rollback of Issue #502 is one
-PR revert of the pure Go policy, tests, closure evidence, and documentation; it
-has no schema, data migration, operation executor, or external effect to undo.
+Then run `git diff --check` and `npm run verify`. Reverting Issue #502's pure Go
+policy is a repository change only and has no schema, data migration, operation
+executor, or external effect to undo. T17 must not be rolled back by restoring
+the retired TypeScript server roots; production recovery uses only the reviewed
+immutable release units and datastore procedure described above.

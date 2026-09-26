@@ -96,6 +96,13 @@ export function decodeMigrationClosure(candidate: unknown): MigrationClosure {
   if (retirement.sourceRevision !== baseline.legacyRetirementRevision) {
     throw new TypeError('retirement revision does not match the baseline');
   }
+  const retirementVerification = verifications.find(({ id }) => id === 'V11');
+  if (
+    retirement.phase === 'retired' &&
+    retirementVerification?.status !== 'complete'
+  ) {
+    throw new TypeError('retired phase requires complete V11 verification');
+  }
   const knownFeatures = new Set(featureIDs);
   for (const group of retirement.groups) {
     for (const id of group.features) {

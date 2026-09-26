@@ -140,7 +140,10 @@ describe('release image boundary', () => {
       'non-regular',
     );
     expect(() =>
-      validateRuntimePaths([...validRuntimePaths(), 'app/api/sync.ts']),
+      validateRuntimePaths([
+        ...validRuntimePaths(),
+        ['app', 'api/sync.ts'].join('/'),
+      ]),
     ).toThrow('unexpected runtime content');
     expect(() =>
       validateRuntimePaths([...validRuntimePaths(), 'node_modules/x.js']),

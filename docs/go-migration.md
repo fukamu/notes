@@ -87,7 +87,8 @@ delete existing resources.
   tip `11c892069fb9719db0a08e9883f7e9b7fff8d200`. It adds only the fail-closed
   local/CI fixture composition and seed foundation described below. Business
   routes and external providers remain disconnected, the feature matrix states
-  remain unchanged, and V11 remains incomplete pending reviewed T17 removal.
+  remain unchanged. T17 Issue #498 subsequently retired the legacy server and
+  completed V11; V09 remains approval-pending.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -105,36 +106,36 @@ State `A` means connected now, `B` means implemented/tested but disconnected,
 and `C` means absent or only a fake/provider gap. A disconnected handler is not
 the same contract as its closed route.
 
-| ID  | State | Capability                                  | Go evidence                     | Verification    | Status                                                                     |
-| --- | ----- | ------------------------------------------- | ------------------------------- | --------------- | -------------------------------------------------------------------------- |
-| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10         | integrated by #420 / PR #421                                               |
-| F02 | B     | launch gate / private owner                 | T04                             | V02,V03         | signed gate #416; owner/origin enforced #418                               |
-| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10     | Go/Postgres #418; Go-served UI #420                                        |
-| F04 | B     | session / CSRF                              | T06                             | V02,V03,V04     | Go core/Postgres integrated by #422                                        |
-| F05 | B     | Google OIDC                                 | T06                             | V03             | Go core/provider adapter #424; disconnected                                |
-| F06 | B     | email OTP                                   | T06                             | V03             | Go core/HMAC/CAS #426; disconnected                                        |
-| F07 | B     | identity / vault context                    | T06                             | V03,V04         | session #422; persistent directories #426                                  |
-| F08 | B     | signup admission                            | T06,T10                         | V03,V07         | provisioning #426; Go terms adapter #442                                   |
-| F09 | B     | vault content                               | T11                             | V04,V05         | encrypted hydration composed by #454                                       |
-| F10 | B     | sync v2                                     | T11                             | V01,V04,V05     | Go application/closed HTTP #454                                            |
-| F11 | B     | envelope encryption                         | T07                             | V06             | Go AES-GCM/fixture implemented by #428                                     |
-| F12 | B     | KMS / DEK                                   | T07                             | V06,V09         | Go local boundary #428; external proof open                                |
-| F13 | B     | key rotation                                | T08,T13                         | V04,V06,V08     | state machine/Postgres #432; explicit runner #480                          |
-| F14 | B     | immutable encrypted object                  | T08,T13                         | V04,V06,V08     | core/Postgres #430; orphan/delete runners #486/#488                        |
-| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08         | reencryption #432/#482; fixture recovery #434/#490                         |
-| F16 | B     | quota                                       | T11                             | V04,V05         | Go ledger #450; sync composition #454                                      |
-| F17 | B     | billing projection                          | T09                             | V04,V07         | Go core/Postgres #436; deletion cancellation effect #460                   |
-| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09         | Go core/SDK #438; provider evidence time #476; remains closed              |
-| F19 | B     | entitlement / offline lease                 | T09                             | V05,V07         | Go core/Postgres #440; disconnected                                        |
-| F20 | B     | legal checkout evidence                     | T10                             | V01,V07         | core/store #444; closed Go HTTP #446                                       |
-| F21 | B     | terms consent                               | T10                             | V01,V07         | core/store #442; closed Go HTTP #446                                       |
-| F22 | B     | normal cancellation                         | T09                             | V01,V07         | period-end/immediate split, Stripe stub, closed HTTP #496                  |
-| F23 | B     | account deletion                            | T12                             | V03,V04,V07,V08 | saga #458; effects #460/#462/#464; finalizer #466; handoff #468            |
-| F24 | B     | privacy request journal                     | T12                             | V01,V03,V08     | Go journal/closed HTTP #456; deletion handoff #468                         |
-| F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11         | core #414; legacy singleton seed #418                                      |
-| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | quota #470/#472; deletion #474; billing #478; DEK #480/#482; recovery #490 |
-| F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10,V11     | static runtime #420; artifact #492; closure evidence #494; removal is T17  |
-| F28 | C     | scheduler / realtime services               | none unless separately approved | V08             | intentionally not added                                                    |
+| ID  | State | Capability                                  | Go evidence                     | Verification    | Status                                                                                           |
+| --- | ----- | ------------------------------------------- | ------------------------------- | --------------- | ------------------------------------------------------------------------------------------------ |
+| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10         | integrated by #420 / PR #421                                                                     |
+| F02 | B     | launch gate / private owner                 | T04                             | V02,V03         | signed gate #416; owner/origin enforced #418                                                     |
+| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10     | Go/Postgres #418; Go-served UI #420                                                              |
+| F04 | B     | session / CSRF                              | T06                             | V02,V03,V04     | Go core/Postgres integrated by #422                                                              |
+| F05 | B     | Google OIDC                                 | T06                             | V03             | Go core/provider adapter #424; disconnected                                                      |
+| F06 | B     | email OTP                                   | T06                             | V03             | Go core/HMAC/CAS #426; disconnected                                                              |
+| F07 | B     | identity / vault context                    | T06                             | V03,V04         | session #422; persistent directories #426                                                        |
+| F08 | B     | signup admission                            | T06,T10                         | V03,V07         | provisioning #426; Go terms adapter #442                                                         |
+| F09 | B     | vault content                               | T11                             | V04,V05         | encrypted hydration composed by #454                                                             |
+| F10 | B     | sync v2                                     | T11                             | V01,V04,V05     | Go application/closed HTTP #454                                                                  |
+| F11 | B     | envelope encryption                         | T07                             | V06             | Go AES-GCM/fixture implemented by #428                                                           |
+| F12 | B     | KMS / DEK                                   | T07                             | V06,V09         | Go local boundary #428; external proof open                                                      |
+| F13 | B     | key rotation                                | T08,T13                         | V04,V06,V08     | state machine/Postgres #432; explicit runner #480                                                |
+| F14 | B     | immutable encrypted object                  | T08,T13                         | V04,V06,V08     | core/Postgres #430; orphan/delete runners #486/#488                                              |
+| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08         | reencryption #432/#482; fixture recovery #434/#490                                               |
+| F16 | B     | quota                                       | T11                             | V04,V05         | Go ledger #450; sync composition #454                                                            |
+| F17 | B     | billing projection                          | T09                             | V04,V07         | Go core/Postgres #436; deletion cancellation effect #460                                         |
+| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09         | Go core/SDK #438; provider evidence time #476; remains closed                                    |
+| F19 | B     | entitlement / offline lease                 | T09                             | V05,V07         | Go core/Postgres #440; disconnected                                                              |
+| F20 | B     | legal checkout evidence                     | T10                             | V01,V07         | core/store #444; closed Go HTTP #446                                                             |
+| F21 | B     | terms consent                               | T10                             | V01,V07         | core/store #442; closed Go HTTP #446                                                             |
+| F22 | B     | normal cancellation                         | T09                             | V01,V07         | period-end/immediate split, Stripe stub, closed HTTP #496                                        |
+| F23 | B     | account deletion                            | T12                             | V03,V04,V07,V08 | saga #458; effects #460/#462/#464; finalizer #466; handoff #468                                  |
+| F24 | B     | privacy request journal                     | T12                             | V01,V03,V08     | Go journal/closed HTTP #456; deletion handoff #468                                               |
+| F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11         | core #414; legacy singleton seed #418                                                            |
+| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | quota #470/#472; deletion #474; billing #478; DEK #480/#482; recovery #490                       |
+| F27 | A/B   | frontend wire contracts                     | T01,T05,T14,T17                 | V01,V10,V11     | static runtime #420; artifact #492; server retired #498; 11 browser and 4 tooling tests retained |
+| F28 | C     | scheduler / realtime services               | none unless separately approved | V08             | intentionally not added                                                                          |
 
 ## Verification matrix
 
@@ -150,7 +151,7 @@ the same contract as its closed route.
 | V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432/#482; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468; billing #478; rotation runner #480 |
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                                  |
 | V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                                                                                              |
-| V11 | clean build/migrate/image and server-runtime removal    | Node-free image/config/layer/smoke gate #492; legacy source removal remains T17                                                                                            |
+| V11 | clean build/migrate/image and server-runtime removal    | Node-free image/config/layer/smoke gate #492; legacy source/config/dependency retirement #498                                                                              |
 | V12 | isolated reference/Go performance comparison            | loopback-only typed runner and isolated D1/PostgreSQL observation in #494                                                                                                  |
 
 ## Intentional security differences
@@ -188,18 +189,21 @@ the same contract as its closed route.
   because it has the same millisecond `observedAt` as the prior snapshot.
   Exact snapshot IDs remain durably deduplicated, older observations remain
   stale, and same-time delinquency still dominates paid evidence. The
-  TypeScript oracle carries the same regression fix.
+  frozen TypeScript oracle recorded the same regression fix before T17 removed
+  it; the current executable enforcement is Go.
 - Billing reconciliation no longer treats the operator observation time as
   provider payment or delinquency evidence. A paid Invoice uses Stripe's
   `status_transitions.paid_at`, while a failed/action-required PaymentIntent
   uses its provider `created` time. Missing, contradictory, reversed, or
-  future provider timestamps fail closed in both TypeScript and Go. This
-  prevents a later audit from making old paid evidence appear newer than a
-  delinquency and restoring access incorrectly.
+  future provider timestamps failed closed in the frozen TypeScript oracle and
+  fail closed in current Go. This prevents a later audit from making old paid
+  evidence appear newer than a delinquency and restoring access incorrectly.
 - The pinned Stripe Clover Invoice shape no longer contains the legacy `paid`
-  boolean. TypeScript and Go derive paid state from the validated `paid` status
-  instead of rejecting current provider payloads or trusting a contradictory
-  duplicate boolean. The shared signed fixture omits that removed field.
+  boolean. The retired TypeScript implementation and current Go replacement
+  derive paid state from the validated `paid` status instead of rejecting
+  current provider payloads or trusting a contradictory duplicate boolean. The
+  shared signed fixture omits that removed field and remains executable Go
+  evidence.
 - PostgreSQL terms evidence may be inserted either for an exact existing
   Account/Vault owner or for the exact pre-finalization signup reservation.
   The TypeScript D1 table's immediate Vault foreign key cannot represent its
@@ -335,8 +339,9 @@ commit, and failed batches roll back. Integration tests cover an empty
 database, two-device stale edits, duplicate delivery, concurrent display-ID
 allocation, competing conflict resolution, partial-batch rollback, corrupted
 stored data, and pool connection return. The shared `legacy-v1.json` fixture is
-decoded by the TypeScript contract test and produces the same semantic response
-through Go and PostgreSQL.
+decoded by the retained TypeScript browser wire-contract test and produces the
+same semantic response through Go and PostgreSQL. No TypeScript server executes
+that fixture.
 
 This completes the server portion of T04. T05 connects the browser portion.
 No D1 data was copied, no production database was created, and no production
@@ -400,8 +405,9 @@ back. Single-session revocation distinguishes an applied write from an already
 identical revoked record. Account-wide revocation verifies the owner and rolls
 back if any active session cannot be covered by the supplied revocation time.
 
-The shared T01 session/CSRF fixture is decoded by both TypeScript and Go tests.
-Go unit and disposable-PostgreSQL integration tests cover expiry, scope denial,
+The shared T01 session/CSRF fixture recorded the frozen TypeScript/Go migration
+comparison. T17 removed the TypeScript server decoder and its tests; current Go
+unit and disposable-PostgreSQL integration tests cover expiry, scope denial,
 cookie ambiguity, CSRF-before-lookup, raw-token non-persistence, duplicate
 constraints, rotation rollback, idempotent revoke, concurrent one-winner
 rotation, and all-or-nothing account revocation.
@@ -477,8 +483,9 @@ same reserved identifiers. Constraint collisions and partial writes roll back.
 OIDC and OTP both recheck that an admission receipt belongs to the exact
 verified identity and terms submission they supplied.
 
-The shared Email OTP fixture is decoded and executed by TypeScript and Go.
-Unit, race, and disposable-PostgreSQL tests cover normalization, expiry,
+The shared Email OTP fixture recorded the frozen TypeScript/Go migration
+comparison. T17 removed the TypeScript server decoder and tests. Current Go
+unit, race, and disposable-PostgreSQL tests cover normalization, expiry,
 five-failure lock, resend invariants, delivery failure, rate limits, replay,
 sixteen-way completion races, cross-provider email ownership, malformed rows,
 idempotent provisioning, raw-token non-persistence, conflict rollback, and
@@ -494,8 +501,8 @@ server continues to keep the routes closed.
 
 Issue #428 ports the existing `fukamu-envelope-aes-256-gcm/v1` contract to Go.
 The pure model validates Vault/object/revision/version binding and serializes
-the same canonical JSON AAD tuple as TypeScript. The effect adapters use a
-32-byte DEK, 96-bit nonce, and 128-bit AES-GCM tag. Reads authenticate Vault,
+the canonical JSON AAD tuple frozen by the retired TypeScript oracle. The Go
+effect adapters use a 32-byte DEK, 96-bit nonce, and 128-bit AES-GCM tag. Reads authenticate Vault,
 object kind and ID, object revision, crypto format, and DEK version; relabeling
 or ciphertext modification fails closed. Encryption requires an injected
 nonce reservation and retries collisions at most four times. Only test fakes
@@ -521,9 +528,10 @@ Deletion follows the existing personal-Vault foreign key, but T07 does not run
 deletion or add the T08 rotation/recovery workflow.
 
 The shared fixture contains a deterministic key, nonce, plaintext, canonical
-AAD, and ciphertext. TypeScript Web Crypto and Go independently seal to the
-same bytes and open them. Go unit/race tests also cover tamper, object/revision
-swap, cross-Vault access, unknown versions, nonce collision, KMS transport and
+AAD, and ciphertext. It records the former TypeScript Web Crypto/Go comparison;
+after T17, only the Go decoder and crypto tests execute that server contract.
+Go unit/race tests cover seal/open parity, tamper, object/revision swap,
+cross-Vault access, unknown versions, nonce collision, KMS transport and
 checksum failures, timeout, redaction, and destroyed key handles. Disposable
 PostgreSQL tests cover Vault isolation, mixed-version reads, the single-write
 constraint, foreign-key rejection, cascade behavior, and the exact metadata
@@ -590,13 +598,15 @@ A local-only Go bootstrap, PostgreSQL schema and legacy sync route, signed test
 identity boundary, launch-status route, static frontend artifact, and
 reviewable Dockerfile now exist. The old production routing is unchanged. No
 managed PostgreSQL instance, pushed image, staging environment, cutover
-rehearsal, or production operation exists yet. The eventual release
-unit must bind one frontend hash, Go image digest, schema version, public
-configuration, secret version references, and identity mapping. Rollback
-restores the matching old Sites artifact, configuration, D1, and identity entry
-together; it never points the old TypeScript backend at the new PostgreSQL
-database or copies writes in both directions. T05 rollback now requires
-reverting the PR #421 merge as a reviewed integration change; it has no
+rehearsal, or production operation exists yet. The eventual release unit must
+bind one frontend hash, Go image digest, schema version, public
+configuration, secret version references, and identity mapping. T17 removed
+the old server source, so it cannot be rebuilt as a rollback from this tree. A
+separately approved first-cutover plan may retain only an exact immutable
+pre-cutover Sites artifact with its matching configuration, D1, and identity
+entry as a time-bounded emergency route; it never points that artifact at the
+new PostgreSQL database or copies writes in both directions. T05 rollback now
+requires reverting the PR #421 merge as a reviewed integration change; it has no
 persistent schema or data effect. T06 #422 reuses the T03 session schema and is
 still disconnected, so its rollback removes Go code without migrating or
 deleting stored data. T06 #424 adds no schema or provider resource; rollback
@@ -666,9 +676,10 @@ back application code.
 ## T08c recovery drill and retirement evidence gate
 
 Issue #434 ports the versioned recovery manifest, drill decisions, application
-service, and key-retirement evidence gate to Go. A shared fixture passes through
-both the TypeScript and Go strict decoders. The Go decoder rejects unknown
-fields, foreign scope, inconsistent rotation/keyring/checkpoint state,
+service, and key-retirement evidence gate to Go. A shared fixture records the
+frozen TypeScript/Go decoder comparison; T17 removed the TypeScript decoder and
+current executable coverage is Go. The Go decoder rejects unknown fields,
+foreign scope, inconsistent rotation/keyring/checkpoint state,
 duplicate object identities or keys, unavailable DEK versions, and retention
 beyond 30 days before object access.
 
@@ -719,11 +730,12 @@ an event or snapshot ID for a different subscription is rejected. The schema
 stores historical `last_delinquency_at` separately from the current lifecycle
 shape so a terminal transition does not erase ordering evidence.
 
-The shared `billing/projection.json` fixture runs through both the TypeScript
-and Go cores. Unit and disposable-PostgreSQL tests cover owner rejection,
-mapping mismatch, duplicate/lost-response replay, same-second event ordering,
-same-millisecond distinct snapshots, cross-subscription ID collision, and
-concurrent CAS. This slice has no Stripe SDK or HTTP transport, signature
+The shared `billing/projection.json` fixture records the frozen TypeScript/Go
+migration comparison and now runs through the Go core only. Go unit and
+disposable-PostgreSQL tests cover owner rejection, mapping mismatch,
+duplicate/lost-response replay, same-second event ordering, same-millisecond
+distinct snapshots, cross-subscription ID collision, and concurrent CAS. This
+slice has no Stripe SDK or HTTP transport, signature
 verification, provider call, public route, charge, cancellation request,
 entitlement grant, offline lease, deployment, or production schema apply.
 T09b owns the disconnected Stripe adapter and T09c owns Entitlement. This
@@ -757,9 +769,10 @@ Billing write. Billing's durable receipts, checkpoints, ordering, and CAS from
 The official `stripe-go/v84` v84.4.1 adapter pins
 `2026-02-25.clover`, emits the required Checkout fields, validates provider
 metadata and hosted redirect, and retrieves expanded Subscription state. The
-shared signed fixture executes through the existing TypeScript boundary and
-the Go boundary; HTTP-stub tests exercise exact headers/forms, expanded and
-unexpanded PaymentIntent paths, and provider errors without external calls.
+shared signed fixture records the removed TypeScript boundary's comparison and
+executes through the current Go boundary; Go HTTP-stub tests exercise exact
+headers/forms, expanded and unexpanded PaymentIntent paths, and provider errors
+without external calls.
 
 Issue #476 hardens the retrieved snapshot timeline before the T13 operations
 runner composes this boundary. Paid evidence comes from the Invoice's stable
@@ -806,11 +819,11 @@ The product policy is passed explicitly and caps a lease at 24 hours or the
 trial/paid-period end, whichever comes first. Leases bind Account, Vault,
 Session, and SessionEpoch, authorize only offline notes read/write, and expire
 at the exact `expiresAt` boundary. The shared `billing/entitlement.json`
-fixture executes through both TypeScript and Go. Unit and
-disposable-PostgreSQL tests cover owner and session isolation, exclusive
-expiry, policy/period capping, replay and identifier conflict, missing or
-malformed data, CAS retry, old/new paid ordering, payment-failure revocation,
-lock/issue races, and rollback on injected revocation failure.
+fixture records the frozen TypeScript/Go comparison and now executes through Go
+only. Go unit and disposable-PostgreSQL tests cover owner and session isolation,
+exclusive expiry, policy/period capping, replay and identifier conflict,
+missing or malformed data, CAS retry, old/new paid ordering, payment-failure
+revocation, lock/issue races, and rollback on injected revocation failure.
 
 This slice has no server composition, HTTP route, Sync v2 or quota enforcement,
 Stripe call, charge, cancellation mutation, production schema apply, or
@@ -864,8 +877,10 @@ Issue #444 ports the strict legal-commerce decoder, authoritative offer
 derivation, JavaScript-compatible canonical JSON and SHA-256 boundary,
 affirmative commercial consent plan, immutable evidence application service,
 and checkout mapping to Go. The shared `legal/contract-evidence.json` fixture
-proves identical TypeScript/Go bytes for Japanese text, `<>&`, and U+2028/U+2029,
-as well as the evidence-to-Billing subscription and checkout-intent identifiers.
+records the frozen TypeScript/Go byte comparison for Japanese text, `<>&`, and
+U+2028/U+2029. Current Go tests execute canonical serialization and the
+evidence-to-Billing subscription and checkout-intent identifiers; retained
+TypeScript browser tests decode only the public disclosure/wire shape.
 
 Migration 00010 stores the complete canonical offer under an Account/Vault
 scope, enforces UUID/hash/version/timestamp shape, and rejects UPDATE. The
@@ -916,10 +931,10 @@ and return the existing fixed no-store/nosniff wire shapes. Dependency panics
 are reduced to a fixed log category and a generic unavailable response.
 
 The browser-safe legal identifiers and response decoders now live under
-`lib/contracts/`; the terms and billing clients no longer execute
-`server/terms-consent` or `server/legal-checkout` modules. The old server public
-modules re-export the contract during the comparison period, so existing
-reference tests remain usable until T14/T17 removes the TypeScript backend.
+`lib/contracts/`; the terms and billing clients do not execute server modules.
+During the comparison period the old `server/terms-consent` and
+`server/legal-checkout` public modules re-exported these contracts. T17 removed
+those modules and their server tests after binding replacement evidence.
 
 `httpapi.HandlerOptions` accepts a separate `LegalRuntime`. A launch-gate
 runtime alone cannot expose legal or billing operations. When `LegalRuntime` is
@@ -1143,10 +1158,11 @@ evidence as rollback.
 Issue #458 ports the fixed five-step deletion state machine to
 `backend/internal/accountdeletion`. Pure plans own claims, lease recovery,
 bounded retry, terminal failure, exact prefix receipts, and public status.
-Strict codecs share the account lifecycle fixture with TypeScript and reject
-unknown or duplicate members, invalid UTF-8 or surrogate escapes, unsafe
-integers, forged owner fields, malformed tokens, and terminal responses that
-retain a capability.
+Strict Go codecs share the account lifecycle fixture with the retained
+TypeScript browser status decoder and reject unknown or duplicate members,
+invalid UTF-8 or surrogate escapes, unsafe integers, forged owner fields,
+malformed tokens, and terminal responses that retain a capability. No
+TypeScript saga server remains.
 
 Migration 00014 adds PostgreSQL operations, step receipts, and digest-only
 continuations. New operations require an exact current Personal Vault owner,
@@ -1481,13 +1497,15 @@ durable saga journal must remain intact.
 ## T13 billing reconciliation evidence-time prerequisite
 
 Issue #476 closes a security prerequisite discovered before composing the
-billing reconciliation runner. The existing TypeScript and Go snapshot
-decoders used the operator's later `observedAt` as the occurrence time of paid
+billing reconciliation runner. The former TypeScript and Go snapshot decoders
+originally used the operator's later `observedAt` as the occurrence time of paid
 and delinquency evidence. Re-reading an old paid Invoice after a newer payment
 failure could therefore make that payment appear newest and unlock the
-subscription.
+subscription. T17 later removed the corrected TypeScript decoder; Go is the
+current executable implementation.
 
-Both implementations now preserve Stripe's stable evidence timestamps:
+The frozen TypeScript parity record and the current Go implementation preserve
+Stripe's stable evidence timestamps:
 `invoice.status_transitions.paid_at` for a paid Invoice and the latest
 PaymentIntent `created` timestamp for payment failure or required action. The
 Stripe SDK adapter carries those fields into the pure Go core. Provider
@@ -1499,8 +1517,8 @@ Unit parity covers late observation, duplicate/out-of-order evidence, absent
 and reversed transitions, and future Subscription, SetupIntent, Invoice, and
 PaymentIntent values. PostgreSQL integration proves that an older paid
 snapshot remains durably delinquent and that only a strictly newer paid
-transition restores active state. These tests use the fake TypeScript
-transport and local Go HTTP/PostgreSQL adapters only. No Stripe request,
+transition restores active state. Current tests use Go fakes and local Go
+HTTP/PostgreSQL adapters only. No Stripe request,
 credential, charge, scheduler, public route, production database, or provider
 resource is introduced. Rollback is an application-code revert; existing
 Billing facts and reconciliation checkpoints remain authoritative and must not
@@ -1744,7 +1762,7 @@ randomness, clock, and `internal/adapters` packages. Exhaustive Go tests cover
 the 44 environment/action combinations, every launch action, production
 approval separation, recovery and canary failures, blocker ordering, and every
 invalid evidence field. The closure manifest names this policy and its tests as
-F26/V08 evidence before T17 removes the frozen TypeScript source.
+F26/V08 evidence. T17 has since removed the frozen TypeScript source.
 
 This slice adds no command, HTTP route, provider adapter, credential,
 production approval, deployment, canary traffic, restore, data mutation, or
@@ -1754,8 +1772,8 @@ there is no state or provider effect to reverse.
 
 ## T13k provider-neutral telemetry policy
 
-Issue #503 ports the frozen `server/telemetry` decision layer into typed Go
-before T17 retires the TypeScript server. The pure policy fixes the schema-1
+Issue #503 ported the frozen telemetry decision layer into typed Go before T17
+retired the TypeScript server. The pure policy fixes the schema-1
 operation, outcome, failure, duration, and work-count vocabularies; enforces
 success/failure-category coherence; reduces raw finite measurements to stable
 bounded buckets; and derives exactly three low-cardinality metric samples. The
@@ -1809,9 +1827,8 @@ rollback.
 This slice proves the production-shaped artifact without pushing it. Registry,
 hosting, database, identity, domain/TLS, resource/cost, staging, deployment,
 production migration, and traffic cutover remain separate decisions and
-approvals. Legacy TypeScript server source remains for compatibility evidence
-until the later T17 removal slice; it is not copied into or executed by this
-image.
+approvals. T17 has since removed the legacy TypeScript server source; the
+frozen ledger and Git revisions retain compatibility evidence.
 
 ## T14b migration closure and retirement evidence
 
@@ -1826,26 +1843,54 @@ The draft itself remains untouched and unapproved. F28 remains intentionally
 absent rather than silently becoming a scheduler or realtime service.
 
 `npm run verify:migration-closure` and
-`npm run verify:legacy-retirement` are part of the shared gate. While the
-reference implementation remains checked in, they bind `app/api`, `server`,
-`db`, and `drizzle` to the exact T14a integration revision and Git tree IDs,
-assign every source file to one retirement group, and bind each of the 138
-legacy-dependent test files to its own path, digest, feature rows, disposition,
-and executable evidence. The legacy source snapshot and later test-corpus
-snapshot have separate recorded revisions. Any unrecorded feature ID, evidence
-path, source file, test drift, revision drift, overlap, or unsafe path fails
-verification. T17 must change the phase and retained evidence deliberately in
-the same reviewed removal, rather than merely deleting directories until
-checks pass.
+`npm run verify:legacy-retirement` are part of the shared gate. The frozen
+manifest binds the historical `app/api`, `server`, `db`, and `drizzle` trees
+to exact revisions and binds each of the 142 legacy-dependent test files to its
+path, digest, feature rows, disposition, and executable evidence. T17 changed
+the phase to `retired`: 127 Go-replaced paths must be absent, 11 retained
+frontend and four retained tooling paths must be free of legacy references,
+and all named Go evidence must remain executable. A residual guard rejects retired roots, config files,
+scripts, package dependencies, and lockfile entries.
 
-The typed migration benchmark accepts only a root loopback HTTP URL, requires a
-unique disposable-store label, uses the same checked-in legacy sync fixture,
-and never prints identity material. The reference and Go observations use
-separate D1 and PostgreSQL stores and execute no provider effect. Timing is
+The T14b typed migration benchmark accepted only a root loopback HTTP URL,
+required a unique disposable-store label, used the same checked-in legacy sync
+fixture, and never printed identity material. The reference and Go observations
+used separate D1 and PostgreSQL stores and executed no provider effect. Timing is
 diagnostic evidence from one local host, not a capacity target, production SLO,
 or permission to provision hosting. Exact procedure, observations, source
 identities, T17 preconditions, and recovery limits are in
 [`legacy-typescript-retirement.md`](legacy-typescript-retirement.md).
+
+## T17 legacy TypeScript backend retirement
+
+Issue #498 removes the checked-in request-time TypeScript/JavaScript backend
+after the frozen F01-F28 and 142-test ledger established replacement evidence.
+The removed surface is `app/api`, `server`, `db`, `drizzle`, the Sites
+repository hosting descriptor, API/Drizzle/Vitest server-load configs, and the
+associated lint/typecheck/schema-generation scripts and dependencies. Exactly
+127 ledger entries classified as `go-replacement` are removed. Exactly 11
+`retained-frontend` paths remain and test browser wire decoding or disclosure
+behavior; four `retained-tooling` paths continue to enforce architecture,
+typecheck, closure, and release contracts. Mixed tests point to executable Go
+parity evidence.
+
+The React frontend, Service Worker, SSR/prerender build tooling, and their
+TypeScript tests remain. SSR here is build-time static generation only. The
+production-shaped runtime artifact is still the scratch image containing one
+Go binary and static files; there is no Node/Workers/RSC request-time runtime.
+Go AST tests keep domain/application packages independent from concrete
+adapters and composition roots, while the retirement verifier prevents the old
+server layout or D1 toolchain from returning unnoticed. V11 is complete for
+these repository/artifact claims. V09 remains approval-pending and F28 remains
+intentionally absent.
+
+This retirement does not modify or delete any external Sites or D1 resource,
+does not migrate production data, does not provision hosting/database/auth,
+does not call a provider, and does not deploy or switch traffic. The frozen Git
+revisions are read-only investigation evidence, not a deployable rollback
+artifact. Production cutover and recovery still require reviewed immutable
+artifacts, configuration and secret versions, database backup/migration
+evidence, smoke/canary steps, traffic controls, and explicit approval.
 
 ## Local fixture composition foundation
 
@@ -1886,8 +1931,10 @@ backup provider is constructed or contacted. The existing profile-disabled
 subject-only E2E preparation remains compatible. The active subscription seed
 can conflict with a later checkout fixture; Issue #510 must use a separate
 scope or define explicit local-provider behavior and must not weaken this
-exact-state guard. This slice does not change any A/B/C feature state, complete
-V11, remove legacy TypeScript, deploy, or authorize production configuration.
+exact-state guard. That slice did not change any A/B/C feature state or by
+itself complete V11; the later T17 retirement completes only the source and
+runtime-artifact claim. Neither slice deploys or authorizes production
+configuration.
 
 The real-PostgreSQL adapter integration test exercises the migrated schema,
 seed/readiness store, session lookup, and key unwrap, including mutated

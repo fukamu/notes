@@ -1,5 +1,11 @@
 # Google OIDC boundary
 
+The TypeScript contract discussed below is historical migration-source
+evidence. T17 removed its server code and the leftover TypeScript-only OIDC
+domain types. The executable provider-neutral boundary is now
+`backend/internal/identity`, with the concrete provider adapter isolated under
+`backend/internal/adapters/oidc`; route/provider activation remains separate.
+
 Issue #111 defines the TypeScript provider-neutral Google sign-in boundary.
 Migration Issue #424 implements its Go replacement without creating a Google
 Cloud client, adding a repository secret, calling Google, adding a login route,
@@ -68,9 +74,10 @@ never reuses the previous session ID, bearer token, or epoch.
 
 ## Local development, migration, and rollback
 
-The current static route continues to mount the legacy notes UI; local notes,
-offline editing, and E2E do not require Google or billing configuration. Go
-boundary tests use fake entropy, atomic in-memory transaction, provider, and
+The Go static handler continues to mount the unchanged React notes UI; local
+notes, offline editing, and E2E do not require Google or billing configuration.
+There is no request-time TypeScript authentication or page server. Go boundary
+tests use fake entropy, atomic in-memory transaction, provider, and
 identity-directory adapters. Adapter tests use an ephemeral local TLS discovery,
 token, and JWKS server and verify the RFC 7636 S256 vector. No real provider
 request or email is sent.

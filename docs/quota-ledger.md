@@ -1,5 +1,11 @@
 # Vault quota ledger
 
+> Historical migration-source note: the D1 adapter and Sites migration details
+> below are compatibility evidence, not current runtime instructions. The
+> executable ledger is `backend/internal/quota` with
+> `backend/internal/adapters/postgres`; its schema is delivered by the embedded
+> PostgreSQL migrations.
+
 Issue #195 adds the provider-neutral reservation contract, fake, and D1 adapter
 used to make the Personal Vault limits authoritative under concurrent writes.
 Issue #196 connects it to the authenticated Sync v2 application; see

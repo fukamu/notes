@@ -6,11 +6,6 @@ import {
   decodeCardPaymentSecurityManifest,
   evaluateCardPaymentSecurityReadiness,
 } from '@/lib/application/card-payment-security';
-import { planStripeCheckout } from '@/server/stripe/core';
-import {
-  stripeConfiguration,
-  stripeHostedCheckoutCommand,
-} from '@/tests/fixtures/stripe';
 
 describe('card payment security contract', () => {
   it('keeps a complete, decodable control inventory while launch evidence is pending', () => {
@@ -52,29 +47,14 @@ describe('card payment security contract', () => {
     ).toMatchObject({ kind: 'invalid' });
   });
 
-  it('uses hosted Checkout, requests 3DS and never accepts cardholder fields', async () => {
-    const command = planStripeCheckout(
-      stripeConfiguration,
-      stripeHostedCheckoutCommand(),
-    );
-    const fields = new Map(command.fields);
-    expect(fields.get('mode')).toBe('subscription');
-    expect(fields.get('payment_method_collection')).toBe('always');
-    expect(
-      fields.get('payment_method_options[card][request_three_d_secure]'),
-    ).toBe('any');
-
+  it('keeps browser and Go Checkout boundaries hosted-only and card-data-free', async () => {
     const boundaryFiles = [
-      'app/api/billing/http.ts',
-      'app/api/billing/checkout/handler.ts',
       'lib/application/billing-ui.ts',
       'lib/client/http-billing-ui.ts',
-      'server/legal-checkout/checkout-core.ts',
-      'server/legal-checkout/public.ts',
-      'server/stripe/core.ts',
-      'server/stripe/ports.ts',
-      'server/stripe/public.ts',
-      'server/stripe/service.ts',
+      'components/billing-checkout-boundary.tsx',
+      'backend/internal/httpapi/legal.go',
+      'backend/internal/stripebilling/core.go',
+      'backend/internal/adapters/stripe/provider.go',
     ];
     const forbiddenCardFields =
       /\b(?:card_?number|cardNumber|primaryAccountNumber|pan|cvc|cvv|exp(?:iry)?Month|exp(?:iry)?Year)\b/iu;
@@ -84,6 +64,26 @@ describe('card payment security contract', () => {
       if (forbiddenCardFields.test(source)) violations.push(file);
     }
     expect(violations).toEqual([]);
+
+    const [browserTransport, goCheckoutHandler, goProvider, goProviderTest] =
+      await Promise.all([
+        readFile('lib/client/http-billing-ui.ts', 'utf8'),
+        readFile('backend/internal/httpapi/legal.go', 'utf8'),
+        readFile('backend/internal/adapters/stripe/provider.go', 'utf8'),
+        readFile('backend/internal/adapters/stripe/provider_test.go', 'utf8'),
+      ]);
+    expect(browserTransport).toContain(
+      "decideBrowserExternalDestination('stripe-checkout'",
+    );
+    expect(goProvider).toContain(
+      'PaymentMethodCollection: stripe.String("always")',
+    );
+    expect(goProvider).toContain('RequestThreeDSecure: stripe.String("any")');
+    expect(goCheckoutHandler).toContain('contractCheckoutHandler');
+    expect(goCheckoutHandler).toContain('ContractCheckoutApplication');
+    expect(goProviderTest).toContain(
+      'func TestProviderUsesPinnedSDKCheckoutContract',
+    );
   });
 
   it('runs the card boundary drift check in every build', async () => {

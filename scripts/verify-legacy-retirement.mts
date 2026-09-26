@@ -6,7 +6,10 @@ import {
   selectLegacyTestCorpus,
   validateExecutableEvidence,
   validateLedgerClosure,
+  validateNamedGoTestEvidence,
   validateReferenceCorpus,
+  validateRetiredPackageLock,
+  validateRetiredRepository,
   validateRetiredTree,
 } from './legacy-retirement-core.mts';
 import { decodeMigrationClosure } from './migration-closure-core.mts';
@@ -43,6 +46,12 @@ const testSources = await Promise.all(
   })),
 );
 const currentLegacyCorpus = selectLegacyTestCorpus(testSources);
+const trackedTypeScriptSources = await Promise.all(
+  [...trackedPaths]
+    .filter((name) => /\.[cm]?[jt]sx?$/u.test(name))
+    .sort()
+    .map(async (path) => ({ path, content: await readFile(path, 'utf8') })),
+);
 
 const relevantPaths = evidencePaths(ledger);
 const currentSources = new Map<string, string>();
@@ -70,6 +79,15 @@ for (const entry of ledger.entries) {
     }
     validateExecutableEvidence(evidencePath, source);
   }
+  for (const anchor of entry.disposition.evidenceAnchors) {
+    const source = currentSources.get(anchor.path);
+    if (source === undefined) {
+      throw new TypeError(
+        `legacy retirement anchored evidence is unreadable: ${anchor.path}`,
+      );
+    }
+    validateNamedGoTestEvidence(anchor.path, source, anchor.testName);
+  }
 }
 
 if (closure.retirement.phase === 'reference-present') {
@@ -81,10 +99,25 @@ if (closure.retirement.phase === 'reference-present') {
     trackedPaths,
     currentSources,
   );
+  const packageCandidate: unknown = JSON.parse(
+    await readFile('package.json', 'utf8'),
+  );
+  validateRetiredRepository(
+    trackedPaths,
+    packageCandidate,
+    trackedTypeScriptSources,
+  );
+  const packageLockCandidate: unknown = JSON.parse(
+    await readFile('package-lock.json', 'utf8'),
+  );
+  validateRetiredPackageLock(packageLockCandidate);
 }
 
 const retained = ledger.entries.filter(
   ({ disposition }) => disposition.kind === 'retained-frontend',
+).length;
+const retainedTooling = ledger.entries.filter(
+  ({ disposition }) => disposition.kind === 'retained-tooling',
 ).length;
 const replaced = ledger.entries.filter(
   ({ disposition }) => disposition.kind === 'go-replacement',
@@ -93,7 +126,7 @@ const historical = ledger.entries.filter(
   ({ disposition }) => disposition.kind === 'historical-only',
 ).length;
 process.stdout.write(
-  `Legacy test retirement verified: ${ledger.files} frozen files, ${retained} retained frontend, ${replaced} Go replacements, ${historical} historical-only\n`,
+  `Legacy test retirement verified: ${ledger.files} frozen files, ${retained} retained frontend, ${retainedTooling} retained tooling, ${replaced} Go replacements, ${historical} historical-only\n`,
 );
 
 function gitOutput(arguments_: readonly string[]): string {

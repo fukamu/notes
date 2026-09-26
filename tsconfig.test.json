@@ -2,7 +2,7 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "lib": ["dom", "dom.iterable", "esnext"],
-    "types": ["node", "@cloudflare/workers-types"],
+    "types": ["node"],
     "jsx": "react-jsx"
   },
   "include": ["tests/**/*.ts"],

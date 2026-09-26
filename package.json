@@ -11,22 +11,20 @@
     "build:frontend": "npm run build:service-worker && vite build --config vite.frontend.config.ts && vite build --config vite.frontend.ssr.config.ts && node --experimental-strip-types scripts/prerender-public.mts",
     "build:service-worker": "node scripts/build-service-worker.mjs",
     "start": "go -C backend run ./cmd/notes",
-    "lint": "npm run lint:app && npm run lint:api && npm run lint:service-worker && npm run lint:tooling && npm run lint:test",
-    "lint:app": "oxlint --tsconfig=tsconfig.json app/layout.tsx 'app/(notes)' 'app/(public)' components hooks lib",
-    "lint:api": "oxlint --tsconfig=tsconfig.api.json app/api db server",
+    "lint": "npm run lint:app && npm run lint:service-worker && npm run lint:tooling && npm run lint:test",
+    "lint:app": "oxlint --tsconfig=tsconfig.json app/layout.tsx 'app/(notes)' 'app/(public)' components frontend hooks lib",
     "lint:service-worker": "oxlint --tsconfig=tsconfig.service-worker.json service-worker",
-    "lint:tooling": "oxlint --tsconfig=tsconfig.tooling.json drizzle.config.ts playwright.config.ts scripts vite.config.ts vite.frontend.config.ts vite.frontend.ssr.config.ts vitest.config.ts vitest.benchmark.config.ts vitest.client-benchmark.config.ts vitest.server-load.config.ts",
+    "lint:tooling": "oxlint --tsconfig=tsconfig.tooling.json playwright.config.ts scripts vite.config.ts vite.frontend.config.ts vite.frontend.ssr.config.ts vitest.config.ts vitest.benchmark.config.ts vitest.client-benchmark.config.ts",
     "lint:test": "oxlint --tsconfig=tsconfig.test.json tests",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "typecheck": "npm run typecheck:app && npm run typecheck:api && npm run typecheck:service-worker && npm run typecheck:tooling && npm run typecheck:test",
+    "typecheck": "npm run typecheck:app && npm run typecheck:service-worker && npm run typecheck:tooling && npm run typecheck:test",
     "typecheck:app": "tsc -p tsconfig.json --noEmit",
-    "typecheck:api": "tsc -p tsconfig.api.json --noEmit",
     "typecheck:service-worker": "tsc -p tsconfig.service-worker.json --noEmit",
     "typecheck:tooling": "tsc -p tsconfig.tooling.json --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
-    "test:architecture": "vitest run tests/unit/architecture.test.ts tests/unit/schema-drift.test.ts tests/unit/environment.test.ts",
+    "test:architecture": "vitest run tests/unit/architecture.test.ts && go -C backend test ./internal/architecture",
     "test:integration": "vitest run tests/integration",
     "test:unit": "vitest run tests/unit",
     "test:coverage": "vitest run --coverage",
@@ -56,8 +54,7 @@
     "verify:migration-closure": "node --experimental-strip-types scripts/verify-migration-closure.mts",
     "verify:legacy-retirement": "node --experimental-strip-types scripts/verify-legacy-retirement.mts",
     "verify:release": "node --experimental-strip-types scripts/verify-release-artifact.mts",
-    "verify": "npm run contracts:check && npm run verify:migration-closure && npm run verify:legacy-retirement && npm run format:check && npm run check && npm run go:check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e && npm run verify:release",
-    "db:generate": "drizzle-kit generate"
+    "verify": "npm run contracts:check && npm run verify:migration-closure && npm run verify:legacy-retirement && npm run format:check && npm run check && npm run go:check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e && npm run verify:release"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
@@ -67,7 +64,6 @@
     "@tiptap/starter-kit": "^3.31.3",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
-    "drizzle-orm": "0.45.2",
     "elkjs": "^0.12.0",
     "lucide-react": "1.31.0",
     "react": "19.2.6",
@@ -77,7 +73,6 @@
     "uuid": "^14.0.2"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "4.20260515.1",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
@@ -85,10 +80,8 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
     "@vitest/coverage-v8": "^5.0.0",
-    "drizzle-kit": "0.31.10",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.14.5",
-    "miniflare": "4.20260730.0",
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "7.0.2001",
@@ -98,12 +91,6 @@
     "typescript": "5.9.3",
     "vite": "8.3.1",
     "vitest": "^5.0.0"
-  },
-  "overrides": {
-    "miniflare": {
-      "sharp": "0.35.4",
-      "undici": "7.29.1"
-    }
   },
   "type": "module"
 }

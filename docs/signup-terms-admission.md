@@ -1,10 +1,11 @@
 # Signup terms admission
 
-Issue #246 connects the TypeScript provider-neutral Google OIDC and Email OTP
-verification boundaries to one terms admission application. Migration Issue
-#426 implements the Go admission core and PostgreSQL provisioning adapter. It
-does not add a real Google client, mail provider, public authentication route,
-production terms adapter, or deployment.
+Issue #246 historically connected the TypeScript provider-neutral Google OIDC
+and Email OTP verification boundaries to one terms admission application.
+Migration Issue #426 implemented the current Go admission core and PostgreSQL
+provisioning adapter, and T17 removed the TypeScript server implementation and
+tests. The Go boundary does not add a real Google client, mail provider, public
+authentication route, production terms source, or deployment.
 
 ## Flow and trust boundary
 
@@ -50,7 +51,7 @@ and local-first behavior are unchanged.
 通常の Notes UI には追加しない、という表示方針をこの後の実provider UIにも
 引き継ぎます。
 
-Local Notes composition remains provider-free. Go tests use injected
+Local Notes composition remains provider-free. Current Go tests use injected
 deterministic identifiers, an in-memory terms adapter, disposable PostgreSQL,
 and fake Email OTP delivery. The PostgreSQL finalizer receives only a token
 hash. No Stripe, Google, email, D1, or production operation is performed.

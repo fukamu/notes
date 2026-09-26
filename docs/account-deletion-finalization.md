@@ -65,11 +65,12 @@ or key reference is accepted from a request body by these ports.
   barriers recognize the completely absent Account/Vault as an
   already-finalized success. Partial or cross-tenant absence is an owner
   mismatch, not success.
-- The TypeScript compatibility tests cover triggered D1 failures and duplicate
-  execution. Go tests inject a PostgreSQL trigger failure and cover transaction
-  rollback, response-loss replay, policy/write races, missing receipts, and
-  another owner. Results and receipts contain no identity subject, token,
-  email, object key, wrapped DEK, KEK reference, or content.
+- The frozen TypeScript compatibility tests established triggered D1 failure
+  and duplicate-execution behavior before T17 removed them. Current Go tests
+  inject a PostgreSQL trigger failure and cover transaction rollback,
+  response-loss replay, policy/write races, missing receipts, and another
+  owner. Results and receipts contain no identity subject, token, email, object
+  key, wrapped DEK, KEK reference, or content.
 
 After success, old issuer/subject and session-token lookups fail closed. The Go
 path also explicitly deletes `signup_admission_reservations`; the TypeScript

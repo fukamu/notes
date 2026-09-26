@@ -1,7 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import {
+  legacyTestCorpusDigest,
+  selectLegacyTestCorpus,
+} from './legacy-retirement-core.mts';
 import {
   decodeMigrationClosure,
   validateLegacyCoverage,
@@ -112,22 +115,17 @@ async function legacyTestCorpus(): Promise<{
     .split(/\r?\n/u)
     .filter((name) => name.length > 0)
     .sort();
-  const matcher = /@\/(?:server|db|app\/api)|Miniflare|cloudflare:workers/u;
-  const selected: { name: string; digest: string }[] = [];
-  for (const name of names) {
-    const content = await readFile(name, 'utf8');
-    if (!matcher.test(content)) continue;
-    selected.push({
-      name,
-      digest: createHash('sha256').update(content).digest('hex'),
-    });
-  }
-  const encoded = selected
-    .map(({ name, digest }) => `${digest}  ${name}\n`)
-    .join('');
+  const selected = selectLegacyTestCorpus(
+    await Promise.all(
+      names.map(async (name) => ({
+        path: name,
+        content: await readFile(name, 'utf8'),
+      })),
+    ),
+  );
   return {
     files: selected.length,
-    sha256: createHash('sha256').update(encoded).digest('hex'),
+    sha256: legacyTestCorpusDigest(selected),
   };
 }
 

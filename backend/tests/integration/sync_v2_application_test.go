@@ -24,7 +24,7 @@ import (
 
 var errInjectedSyncV2JournalCommit = errors.New("injected Sync v2 journal commit failure")
 
-func TestSyncV2HTTPApplicationPostgresCrashResumeEncryptionAndCursorIsolation(t *testing.T) {
+func TestSyncV2HTTPApplicationPostgresCrashResumeEncryptionNoChangeAndCursorIsolation(t *testing.T) {
 	ctx, pool := openIdentitySignupDatabase(t)
 	owner := seedEntitlementOwner(t, ctx, pool, 151, 251, 351)
 	other := seedEntitlementOwner(t, ctx, pool, 152, 252, 352)
@@ -183,9 +183,22 @@ func TestSyncV2HTTPApplicationPostgresCrashResumeEncryptionAndCursorIsolation(t 
 
 	emptyWithCursor := `{"version":"sync/v2","deviceId":"01991f20-61d2-7000-8000-000000000451","cursor":"` +
 		response.Page.NextCursor + `","mutations":[]}`
+	objectCallsBeforeNoChange := objects.Calls()
+	encryptCallsBeforeNoChange := encryption.encrypt
+	decryptCallsBeforeNoChange := encryption.decrypt
+	keyCallsBeforeNoChange := objectKeys.calls
 	terminal := serveSyncV2(handler, ownerToken, emptyWithCursor)
 	if terminal.Code != http.StatusOK || !strings.Contains(terminal.Body.String(), `"changes":[]`) {
 		t.Fatalf("terminal cursor response = %d %s", terminal.Code, terminal.Body.String())
+	}
+	if objects.Calls() != objectCallsBeforeNoChange ||
+		encryption.encrypt != encryptCallsBeforeNoChange ||
+		encryption.decrypt != decryptCallsBeforeNoChange ||
+		objectKeys.calls != keyCallsBeforeNoChange {
+		t.Fatalf(
+			"no-change sync performed content effects: objects=%#v encrypt=%d decrypt=%d keys=%d",
+			objects.Calls(), encryption.encrypt, encryption.decrypt, objectKeys.calls,
+		)
 	}
 	tamperedCursor := response.Page.NextCursor[:len(response.Page.NextCursor)-1] + "A"
 	if strings.HasSuffix(response.Page.NextCursor, "A") {

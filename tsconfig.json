@@ -18,5 +18,5 @@
     "frontend/**/*.ts",
     "frontend/**/*.tsx"
   ],
-  "exclude": ["app/api/**", "node_modules"]
+  "exclude": ["node_modules"]
 }

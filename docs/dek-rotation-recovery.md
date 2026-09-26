@@ -1,12 +1,14 @@
 # DEK rotation recovery drill and retirement gate
 
-Issue #190 established the TypeScript fixture-only recovery drill and evidence
-gate for old Vault DEKs. Go migration Issue #434 ports that contract to the
-provider-independent Go application boundary and shares one versioned manifest
-fixture between both decoders. Neither implementation connects to a production
-backup, object storage, database, or KMS; neither deletes ciphertext, wrapped
-metadata, KEKs, or DEKs. A provider adapter and every real operation require
-separate review and explicit user approval.
+Issue #190 established the historical TypeScript fixture-only recovery drill
+and evidence gate for old Vault DEKs. Go migration Issue #434 ported that
+contract to the provider-independent Go application boundary and fixed one
+versioned manifest fixture for migration comparison. T17 removed the
+TypeScript decoder; the Go decoder and tests named below are now the executable
+authority. They connect to no production backup, object storage, database, or
+KMS and delete no ciphertext, wrapped metadata, KEKs, or DEKs. A provider
+adapter and every real operation require separate review and explicit user
+approval.
 
 ## Fixture drill
 
@@ -73,10 +75,10 @@ Before a real adapter or drill is designed, record and obtain approval for:
 
 - KMS provider semantics for disable, scheduled deletion, cancellation,
   multi-region recovery, audit export, and KEK/version availability;
-- backup provider snapshot consistency across D1 metadata and private objects,
+- backup provider snapshot consistency across PostgreSQL metadata and private objects,
   inventory pagination, immutable retention, deletion confirmation, restore
   isolation, and proof that residual copies expire within 30 days;
-- R2/D1 failure and rate-limit behavior, operational batch size, alarms, and
+- object-storage/PostgreSQL failure and rate-limit behavior, operational batch size, alarms, and
   who may issue and approve retirement requests.
 
 Never log plaintext, raw/unwrapped keys, ciphertext bodies, OTPs, or secrets.

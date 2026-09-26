@@ -1,9 +1,11 @@
 # Legacy TypeScript backend retirement evidence
 
-This document is the review and recovery record for T14b under parent Issue
-#409. It does not authorize source deletion, a `main` update, production data
-access, provider provisioning, deployment, cutover, or destruction of an old
-artifact, D1 database, key, secret, Stripe object, or contract record.
+This document is the review and recovery record for the completed T17 source
+retirement under parent Issue #409. The reviewed work removes repository
+source and configuration only. It does not authorize a `main` update,
+production data access, provider provisioning, deployment, cutover, or
+destruction of an old artifact, D1 database, key, secret, Stripe object, or
+contract record.
 
 ## Machine-checked closure
 
@@ -22,15 +24,36 @@ digest, associated F01-F28 rows, and one of these reviewed outcomes:
 
 - `retained-frontend`: a named TypeScript test in the shared Vitest or
   Playwright lane continues to protect browser/build behavior;
+- `retained-tooling`: a named TypeScript test remains in the shared Vitest lane
+  to protect typecheck, architecture, migration-closure, or release gates;
 - `go-replacement`: named Go `_test.go` files in the shared unit or tagged
   PostgreSQL integration lane replace the old backend coverage;
 - `historical-only`: only a non-executable support artifact may use this state,
   with a narrow reason and this recovery record. No executable legacy test may
   be classified this way.
 
-The checked-in ledger contains 11 retained frontend records, 127 Go
-replacements, and zero historical-only records. Documentation, production
-source, and optional benchmark files are not accepted as executable evidence.
+The checked-in ledger contains 11 retained frontend records, four retained
+tooling records, 127 Go replacements, and zero historical-only records.
+Documentation, production source, and optional benchmark files are not
+accepted as executable evidence.
+Schema version 3 also records exact named-Go-test anchors for the cross-cutting
+authentication-security, signup-admission, and checkout HTTP entries. The
+verifier requires both the evidence file and each named `Test...` declaration;
+an unrelated test in the same file cannot keep those mappings green.
+The closure phase is `retired`; V11 is complete for the repository/runtime
+artifact boundary, while V09 remains `approval-pending` for real provider and
+staging evidence. F28 remains explicitly `intentionally-absent`.
+
+The retired repository no longer tracks `app/api`, `server`, `db`, `drizzle`,
+`.openai/hosting.json`, `tsconfig.api.json`, `drizzle.config.ts`, or
+`vitest.server-load.config.ts`. The legacy API lint/typecheck/database scripts
+and the Drizzle, Miniflare, and Cloudflare Workers type dependencies are also
+absent. The server-only `lib/domain/email-otp.ts` and `lib/domain/oidc.ts`
+contracts and their type-only assertions are removed as well. A residual guard
+rejects reintroduction of those roots, files, server-only auth contracts,
+scripts, direct or npm-aliased package identities, and lock entries. Removing
+`.openai/hosting.json` is only a source-tree change; no Sites project or other
+external resource was changed or deleted.
 
 The manifest deliberately distinguishes:
 
@@ -49,13 +72,12 @@ distinct immediate account-deletion effect, so its legacy reference behavior
 may be retired in a reviewed T17 slice while the public route remains closed.
 See [`billing-cancellation.md`](billing-cancellation.md).
 
-Issue #502 ports the frozen `server/operations/core.ts` environment/action
-matrix and launch evidence decisions into an import-free typed Go policy. Its
-tests preserve the complete matrix, ordered blockers, canary and isolated
-restore requirements, production explicit-approval boundary, and fail-closed
-invalid states. No operation executor or production approval is added. Once
-#502 is merged and its checks pass, T17 may retire this TypeScript operations
-policy while retaining the Go evidence named under F26/V08.
+Issue #502 ported the frozen operations environment/action matrix and launch
+evidence decisions into an import-free typed Go policy. Its tests preserve the
+complete matrix, ordered blockers, canary and isolated restore requirements,
+production explicit-approval boundary, and fail-closed invalid states. T17 has
+now retired that TypeScript policy while retaining the Go evidence named under
+F26/V08. No operation executor or production approval is added.
 
 ## Frozen reference
 
@@ -74,23 +96,25 @@ are:
 The test corpus has its own later integration snapshot,
 `af743246f14f7e0b96accf1ed7e1a1201fc3aaaf`, because Issue #494 added
 `tests/contracts/migration-fixtures.test.ts` while recording the evidence.
-The earlier source revision and exact main reference each contain 137 selected
-files and must not be used to regenerate the 138-entry ledger.
+Under selector version 2, the earlier source revision and exact main reference
+each contain 141 selected files and must not be used to regenerate the
+142-entry ledger.
 
-At the test corpus revision, tracked `tests/**` files are sorted by POSIX path
-and selected when their UTF-8 source contains a legacy server import, a
-Miniflare reference, or the Cloudflare Workers module reference. The resulting
-corpus contains 138 files: one benchmark, one contract test, 16 fixtures, 34
-integration tests, and 86 unit tests. The SHA-256 of the sorted
+At the test corpus revision, tracked `tests/**` files are sorted by POSIX path.
+Selector version 2 includes direct alias or relative imports into a retired
+root, exact retired path/config literals, the legacy root inventory used by
+architecture tests, Miniflare/Workers references, and tests that import another
+selected test/fixture through a relative module specifier. The resulting corpus
+contains 142 files: one benchmark, one contract test, 16 fixtures, 34
+integration tests, and 90 unit tests. The SHA-256 of the sorted
 `sha256sum`-shaped file digest list is
-`7c28cbe1db282adc1d5349f06ab37964f2b224d4ee3dbc9acad8664e0de50531`.
+`878036f18d5bbfc107ad8f7873f5c9c942145b61d20f9c508a138ed797c1fc1e`.
 The verifier fails on a missing, duplicate, reordered, changed, untracked, or
-unproved entry. While the reference is present, the working tree must exactly
-match all 138 frozen path/digest pairs. Once the closure phase becomes
-`retired`, replaced paths must be absent, retained paths and evidence must
-remain tracked and free of legacy imports, and the current selected corpus must
-be empty. Retirement groups separately require every legacy source file to
-have exactly one feature owner.
+unproved entry. The frozen path/digest pairs remain historical evidence. In the
+current `retired` phase, all 127 replaced paths must be absent, all 15 retained
+paths and their evidence must remain tracked and free of legacy references, and
+the current selected legacy-dependent corpus must be empty. Retirement groups
+record exactly one feature owner for every removed legacy source file.
 
 For review or incident analysis, restore a read-only source snapshot without
 changing a branch:
@@ -184,9 +208,9 @@ PostgreSQL test schema; the Go process stopped after the measurement. No
 external-provider request occurred. These figures compare one fixture on one
 local host only; they are not a production capacity claim or release threshold.
 
-## T17 removal conditions
+## T17 completion evidence
 
-Legacy backend removal is permitted only in reviewed T17 Issue/PR slices that:
+The reviewed T17 Issue/PR satisfies these repository conditions:
 
 1. retain the TypeScript/React frontend, browser runtime, service worker, and
    public page output required by the Go-served artifact;
@@ -199,7 +223,7 @@ Legacy backend removal is permitted only in reviewed T17 Issue/PR slices that:
 4. remove request-time and operational TypeScript/JavaScript backend execution,
    obsolete D1/Workers/vinext configuration and dependencies, while keeping
    only frontend/build tooling that the final static artifact requires;
-5. pass focused compatibility tests, `git diff --check`, and the full
+5. require focused compatibility tests, `git diff --check`, and the full
    `npm run verify` gate before and after integration.
 
 Do not delete test coverage merely because its old implementation was removed.

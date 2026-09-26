@@ -4,75 +4,76 @@ import { describe, expect, it } from 'vitest';
 const requirements = [
   {
     id: 'SEC-AUTH-01',
-    evidence: [
-      'tests/integration/auth-security-corpus.test.ts',
-      'tests/unit/session-boundary.test.ts',
-    ],
+    evidence: ['backend/internal/identity/boundary_test.go'],
   },
   {
     id: 'SEC-AUTH-02',
     evidence: [
-      'tests/integration/auth-security-corpus.test.ts',
-      'tests/unit/session.test.ts',
+      'backend/internal/identity/session_test.go',
+      'backend/tests/integration/session_store_test.go',
     ],
   },
   {
     id: 'SEC-AUTH-03',
     evidence: [
-      'tests/unit/session-boundary.test.ts',
-      'tests/unit/sync-v2-http-handler.test.ts',
+      'backend/internal/identity/boundary_test.go',
+      'backend/internal/httpapi/sync_v2_test.go',
       'backend/internal/httpapi/legal_test.go',
     ],
   },
   {
     id: 'SEC-AUTH-04',
     evidence: [
-      'tests/integration/auth-security-corpus.test.ts',
-      'tests/unit/oidc.test.ts',
-      'tests/unit/oidc-boundary.test.ts',
+      'backend/internal/identity/oidc_test.go',
+      'backend/internal/identity/oidc_boundary_test.go',
+      'backend/tests/integration/identity_signup_test.go',
     ],
   },
   {
     id: 'SEC-AUTH-05',
-    evidence: ['tests/unit/oidc.test.ts', 'tests/unit/oidc-boundary.test.ts'],
+    evidence: [
+      'backend/internal/identity/oidc_test.go',
+      'backend/internal/identity/oidc_boundary_test.go',
+    ],
   },
   {
     id: 'SEC-AUTH-06',
     evidence: [
-      'tests/unit/email-otp.test.ts',
-      'tests/unit/email-otp-boundary.test.ts',
+      'backend/internal/identity/email_otp_test.go',
+      'backend/internal/identity/email_otp_boundary_test.go',
     ],
   },
   {
     id: 'SEC-AUTH-07',
     evidence: [
-      'tests/integration/auth-security-corpus.test.ts',
-      'tests/unit/email-otp.test.ts',
-      'tests/unit/email-otp-boundary.test.ts',
+      'backend/internal/identity/email_otp_test.go',
+      'backend/internal/identity/email_otp_boundary_test.go',
+      'backend/internal/adapters/otp/crypto_test.go',
     ],
   },
   {
     id: 'SEC-AUTH-08',
-    evidence: ['tests/integration/auth-security-corpus.test.ts'],
+    evidence: ['backend/internal/identity/boundary_test.go'],
   },
   {
     id: 'SEC-AUTH-09',
-    evidence: ['tests/integration/auth-security-corpus.test.ts'],
+    evidence: [
+      'backend/internal/identity/oidc_boundary_test.go',
+      'backend/internal/adapters/otp/crypto_test.go',
+    ],
   },
   {
     id: 'SEC-DATA-01',
     evidence: [
-      'tests/integration/sync-v2-server-d1.test.ts',
-      'tests/integration/sync-v2-journal-d1.test.ts',
-      'tests/integration/encrypted-object-repository.test.ts',
+      'backend/tests/integration/sync_v2_application_test.go',
+      'backend/tests/integration/encrypted_object_test.go',
     ],
   },
   {
     id: 'SEC-DATA-02',
     evidence: [
-      'tests/unit/sync-v2-protocol.test.ts',
-      'tests/unit/sync-v2-web-crypto.test.ts',
-      'tests/integration/sync-v2-server-d1.test.ts',
+      'backend/internal/syncv2/protocol_cursor_test.go',
+      'backend/internal/httpapi/sync_v2_test.go',
     ],
   },
   {
@@ -87,79 +88,84 @@ const requirements = [
   {
     id: 'SEC-DATA-04',
     evidence: [
-      'tests/integration/envelope-encryption.test.ts',
-      'tests/integration/encrypted-object-repository.test.ts',
+      'backend/internal/cryptocontent/model_test.go',
+      'backend/tests/integration/encrypted_object_test.go',
     ],
   },
   {
     id: 'SEC-DATA-05',
     evidence: [
-      'tests/integration/envelope-encryption.test.ts',
-      'tests/integration/encrypted-object-repository.test.ts',
+      'backend/internal/cryptocontent/service_test.go',
+      'backend/tests/integration/encrypted_object_test.go',
     ],
   },
   {
     id: 'SEC-DATA-06',
-    evidence: ['tests/integration/encrypted-object-repository.test.ts'],
+    evidence: [
+      'backend/internal/encryptedobject/delete_outbox_drainer_test.go',
+      'backend/tests/integration/encrypted_object_test.go',
+    ],
   },
   {
     id: 'SEC-DATA-07',
     evidence: [
-      'tests/integration/sync-v2-server-d1.test.ts',
-      'tests/integration/sync-v2-journal-d1.test.ts',
+      'backend/tests/integration/sync_v2_application_test.go',
+      'backend/tests/integration/quota_ledger_test.go',
     ],
   },
   {
     id: 'SEC-DATA-08',
-    evidence: ['tests/integration/sync-v2-server-d1.test.ts'],
+    evidence: ['backend/tests/integration/sync_v2_application_test.go'],
   },
   {
     id: 'SEC-DATA-09',
-    evidence: ['tests/unit/sync-v2-http-handler.test.ts'],
+    evidence: ['backend/internal/httpapi/sync_v2_test.go'],
   },
   {
     id: 'SEC-BILLING-01',
     evidence: [
-      'tests/unit/stripe-webhook-signature.test.ts',
-      'tests/unit/stripe-service.test.ts',
+      'backend/internal/stripebilling/signature_test.go',
+      'backend/internal/stripebilling/service_test.go',
     ],
   },
   {
     id: 'SEC-BILLING-02',
     evidence: [
-      'tests/unit/stripe-service.test.ts',
-      'tests/unit/billing-service.test.ts',
+      'backend/internal/stripebilling/service_test.go',
+      'backend/internal/billing/service_test.go',
     ],
   },
   {
     id: 'SEC-BILLING-03',
     evidence: [
-      'tests/unit/billing-core.test.ts',
-      'tests/unit/stripe-service.test.ts',
+      'backend/internal/billing/core_test.go',
+      'backend/internal/stripebilling/core_test.go',
     ],
   },
   {
     id: 'SEC-BILLING-04',
-    evidence: ['tests/unit/stripe-service.test.ts'],
+    evidence: [
+      'backend/internal/stripebilling/core_test.go',
+      'backend/internal/adapters/stripe/provider_test.go',
+    ],
   },
   {
     id: 'SEC-BILLING-05',
     evidence: [
-      'tests/integration/stripe-billing-entitlement.test.ts',
-      'tests/unit/billing-service.test.ts',
+      'backend/internal/billing/service_test.go',
+      'backend/tests/integration/billing_projection_test.go',
     ],
   },
   {
     id: 'SEC-BILLING-06',
     evidence: [
-      'tests/integration/stripe-billing-entitlement.test.ts',
-      'tests/unit/entitlement-service.test.ts',
-      'tests/integration/entitlement-d1.test.ts',
+      'backend/internal/entitlement/service_test.go',
+      'backend/tests/integration/entitlement_test.go',
     ],
   },
   {
     id: 'SEC-BILLING-07',
-    evidence: ['tests/unit/entitlement-core.test.ts'],
+    evidence: ['backend/internal/entitlement/core_test.go'],
   },
   {
     id: 'SEC-BILLING-08',
@@ -179,11 +185,10 @@ const requirements = [
   {
     id: 'SEC-LOG-01',
     evidence: [
-      'tests/integration/auth-security-corpus.test.ts',
-      'tests/unit/sync-v2-http-handler.test.ts',
-      'tests/integration/sync-api-d1.test.ts',
-      'tests/unit/account-deletion-http-handler.test.ts',
-      'tests/unit/stripe-service.test.ts',
+      'backend/internal/identity/boundary_test.go',
+      'backend/internal/httpapi/sync_v2_test.go',
+      'backend/internal/httpapi/account_deletion_test.go',
+      'backend/internal/stripebilling/service_test.go',
       'backend/internal/httpapi/legal_test.go',
     ],
   },

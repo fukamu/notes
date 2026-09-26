@@ -1,5 +1,10 @@
 # Tenant-scoped Sync v2 journal
 
+> Historical migration-source note: the D1 journal below is retained only as a
+> compatibility oracle. The executable journal is Go
+> `backend/internal/syncv2` with the PostgreSQL adapter and migrations; T17
+> removed the TypeScript/D1 source and Sites tooling.
+
 Issue #162 provides the D1 metadata transaction that the authenticated Sync v2
 endpoint in #121 will call after encrypted payload storage succeeds. It does not
 expose an HTTP route, authorize a session or entitlement, or read and write R2
@@ -60,7 +65,7 @@ path intact.
 ## Failure and rollback
 
 The checked-in migration is additive and targets the new, empty production
-schema. It is not applied to the current Sites D1 or any production database by
+schema. It was not applied to the historical Sites D1 or any production database by
 this Issue. An injected journal-insert failure is tested to leave no card,
 receipt, display ID, sequence advance, or change row. Partition remapping makes
 an already-open repository fail closed; the caller must reopen it.

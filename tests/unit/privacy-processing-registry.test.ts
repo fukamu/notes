@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { localPrivacyDisclosureFixture } from '@/lib/application/privacy-disclosure';
 import {
@@ -13,8 +14,6 @@ import {
   privacyDataCategoryIds,
   privacyProcessingPurposeIds,
 } from '@/lib/domain/privacy-processing';
-import { accountDeletionSteps } from '@/server/account-deletion/public';
-import { SESSION_COOKIE_NAME } from '@/server/core/session-cookie';
 
 function productionRegistry(): PrivacyProcessingRegistry {
   return {
@@ -178,7 +177,7 @@ describe('privacy processing registry core', () => {
     });
   });
 
-  it('detects policy, registry, logout, and account-deletion drift', () => {
+  it('detects policy, registry, logout, and account-deletion drift', async () => {
     expect(
       evaluatePrivacyProcessingConsistency({
         disclosure: localPrivacyDisclosureFixture,
@@ -217,14 +216,32 @@ describe('privacy processing registry core', () => {
       }),
     ).toMatchObject({ kind: 'inconsistent' });
 
-    expect(accountDeletionSteps).toEqual([
+    const [deletionModel, deletionEvidence, sessionCookie, sessionEvidence] =
+      await Promise.all([
+        readFile('backend/internal/accountdeletion/model.go', 'utf8'),
+        readFile(
+          'backend/internal/accountdeletion/model_protocol_test.go',
+          'utf8',
+        ),
+        readFile('backend/internal/identity/cookie.go', 'utf8'),
+        readFile('backend/internal/identity/boundary_test.go', 'utf8'),
+      ]);
+    for (const step of [
       'revoke-sessions',
       'cancel-subscription',
       'delete-vault-data',
       'delete-private-objects',
       'finalize-account',
-    ]);
-    expect(SESSION_COOKIE_NAME).toBe('__Host-fukamu_session');
+    ]) {
+      expect(deletionModel).toContain(`"${step}"`);
+    }
+    expect(deletionEvidence).toContain(
+      'func TestAccountDeletionLifecycleReceiptsAndRetry',
+    );
+    expect(sessionCookie).toContain(
+      'SessionCookieName              = "__Host-fukamu_session"',
+    );
+    expect(sessionEvidence).toContain('func TestSessionCookiePolicy');
   });
 
   it('runs the combined disclosure/registry build gate for local fixtures', () => {

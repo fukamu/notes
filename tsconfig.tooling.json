@@ -5,7 +5,6 @@
     "types": ["node"]
   },
   "include": [
-    "drizzle.config.ts",
     "playwright.config.ts",
     "scripts/**/*.mts",
     "vite.config.ts",
@@ -13,8 +12,7 @@
     "vite.frontend.ssr.config.ts",
     "vitest.config.ts",
     "vitest.benchmark.config.ts",
-    "vitest.client-benchmark.config.ts",
-    "vitest.server-load.config.ts"
+    "vitest.client-benchmark.config.ts"
   ],
   "exclude": ["node_modules"]
 }

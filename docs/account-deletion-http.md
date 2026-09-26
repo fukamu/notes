@@ -44,13 +44,16 @@ artifact or apply a reviewed forward fix, and resume using the stored
 capability. It must never synthesize receipts or attempt to undo an external
 effect.
 
-The remainder documents the existing TypeScript/D1 compatibility contract.
+## Frozen TypeScript/D1 contract (historical)
 
-Issue #174 exposes the original provider-neutral handlers for starting and resuming the
-account-deletion saga. The public production routes remain fail closed until a
-composition root supplies every real D1, subscription cancellation, private
-object, encryption, and credential binding. Legacy test mode returns 404 and
-other unconfigured modes return 503; neither route selects a fake adapter.
+The remainder preserves the retired TypeScript/D1 wire contract as historical
+parity and rollback evidence; it is not an executable server path. Issue #174
+introduced the original provider-neutral handlers for starting and resuming the
+account-deletion saga. At retirement those handlers required complete D1,
+subscription-cancellation, private-object, encryption, and credential
+composition; the legacy test mode returned 404 and other unconfigured modes
+returned 503. The Go handler is now the sole executable implementation and
+remains disconnected until the exact-fixture composition is reviewed in T13.
 
 ## Request order
 

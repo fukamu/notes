@@ -1,15 +1,21 @@
 # Sync v2 client runtime
 
+> Historical composition note: references below to `LegacyNotesApp`, the
+> TypeScript server, Sites, and D1 describe the pre-T17 runtime. The browser
+> client remains TypeScript, while request-time server execution and durable
+> server persistence are Go/PostgreSQL. Full local Go route connection is a
+> separate integration step.
+
 Issue #122 connects the authenticated Vault browser runtime to the incremental
 Sync v2 protocol and the transactional local replica introduced by #165. It
 does not enable production providers or change the local legacy application.
 
 ## Runtime separation
 
-The runtime sync dependency is a discriminated union. `LegacyNotesApp` still
-constructs the fixed legacy scope with the v1 `/api/sync` transport. Local
-development and the existing Sites test environment therefore do not require a
-login, subscription, KMS, R2, or Stripe setup.
+In the historical composition, the runtime sync dependency was a discriminated
+union and `LegacyNotesApp` constructed the fixed legacy scope with the v1
+`/api/sync` transport. That is compatibility history, not a remaining
+TypeScript server or Sites deployment path.
 
 An authenticated `SessionNotesApp` may construct
 `createVaultNotesRuntimePorts` from its server-derived `VaultContext`. That

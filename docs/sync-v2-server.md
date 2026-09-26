@@ -1,5 +1,11 @@
 # Authenticated Sync v2 server composition
 
+> Historical migration-source note: the TypeScript/D1 composition described
+> below was removed by T17. The executable implementation is now
+> `backend/internal/syncv2` plus `backend/internal/httpapi/sync_v2.go`, backed by
+> the checked-in PostgreSQL migrations and adapters. Sites/D1 is not a current
+> repository runtime or deployable fallback.
+
 Issue #121 connects the versioned Sync v2 protocol to authenticated session
 ownership, the Entitlement public capability API, the tenant-scoped D1 journal,
 and encrypted object storage. It does not enable production, select an R2 or
@@ -36,9 +42,8 @@ claims, tenant identifiers, or billing values.
 The `FUKAMU_SERVICE_MODE` binding separates the existing development service
 from the future paid service:
 
-- an absent binding or `legacy-test` preserves the current local/Sites test
-  `/api/sync` behavior, so local editing does not require checkout, Stripe,
-  R2, or a production KMS; `/api/v2/sync` is not exposed in this mode;
+- historically, an absent D1 binding or `legacy-test` preserved the old
+  local/Sites `/api/sync` behavior without checkout or providers;
 - explicit `public-paid` disables the unauthenticated v1 handler; and
 - an invalid binding fails closed and also disables v1.
 

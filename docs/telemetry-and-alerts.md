@@ -2,11 +2,11 @@
 
 Issue #217 defined the telemetry vocabulary used to observe authentication,
 Sync V2, billing, encrypted storage, and envelope-crypto boundaries without
-exporting user content or tenant identifiers. Issue #503 preserves that frozen
-TypeScript contract at
-`e8936ab90768774371d84b4808c100d546649943` in typed Go policy before the
-legacy server is retired. It does not select or connect a production monitoring
-provider.
+exporting user content or tenant identifiers. Issue #503 preserved that frozen
+TypeScript contract at `e8936ab90768774371d84b4808c100d546649943` in typed Go
+policy. T17 then retired the legacy server source and tests, so
+`backend/internal/telemetry` is now the executable contract. It does not select
+or connect a production monitoring provider.
 
 ## Data contract
 
@@ -48,12 +48,12 @@ VaultId, CardId, SessionId, and mutation identifiers. Tests submit sensitive
 markers, a raw Vault identifier, arbitrary operations, and incoherent states to
 the decoder and require rejection.
 
-The frozen TypeScript Sync V2 handler records representative anonymous/CSRF
-denial, invalid input, billing lock, dependency/internal failure, expected
-application denial, normal success, and no-change outcomes. It records only
-mutation/change count buckets and never records request values or authenticated
-context identifiers. Issue #503 ports the policy and buffer boundary only; it
-does not silently connect a Go HTTP route or a production exporter.
+The historical TypeScript Sync V2 handler supplied the comparison cases for
+anonymous/CSRF denial, invalid input, billing lock, dependency/internal failure,
+expected application denial, normal success, and no-change outcomes. The Go
+tests retain those bounded semantics and never record request values or
+authenticated context identifiers. Issue #503 ports the policy and buffer
+boundary only; it does not silently connect a production exporter.
 
 The Go `telemetry.Sink.Record` port is a synchronous buffer boundary with a
 typed `buffered`/`dropped` result. A production adapter must enqueue locally and
@@ -96,7 +96,8 @@ The Go tests exhaust every operation/outcome/failure-category coherence
 combination, exact bucket boundaries, alert precedence, sensitive and
 high-cardinality rejection, fixed metric serialization, sink ordering, and
 export-failure isolation. Existing `npm run verify` remains the shared gate;
-the frozen TypeScript tests continue to run until the reviewed T17 removal.
+T17 removed the frozen TypeScript server tests after their Go replacements were
+bound to the retirement ledger.
 
 This contract proves vocabulary, redaction-by-construction, bounded
 cardinality, and request-result isolation. It does not prove provider delivery,
@@ -106,6 +107,7 @@ created by Issue #503. Clocks, request logging, provider export, and notificatio
 delivery remain effect adapters outside the pure event, metric, and alert
 policy.
 
-Rollback is a single PR revert of the Go policy, tests, closure evidence, and
-this compatibility update. The frozen TypeScript reference remains unchanged;
-there is no schema, data, route, provider, or external-resource migration.
+The immutable TypeScript revision remains historical investigation evidence,
+not a runtime rollback. A future Go release rollback must preserve its
+compatible schema and use a reviewed immutable release artifact. Issue #503
+itself created no schema, data, provider, or external-resource migration.

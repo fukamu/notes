@@ -258,14 +258,22 @@
       "migration": "migrated",
       "verification": ["V08", "V09"],
       "goEvidence": [
-        "backend/internal/operations/quota_reconciliation.go",
+        "backend/internal/operations/account_deletion_audit.go",
+        "backend/internal/operations/billing_reconciliation.go",
+        "backend/internal/operations/dek_reencryption.go",
+        "backend/internal/operations/dek_rotation.go",
+        "backend/internal/operations/delete_outbox.go",
         "backend/internal/operations/launch_policy.go",
-        "backend/internal/telemetry/policy.go",
-        "backend/internal/telemetry/codec.go",
-        "backend/internal/telemetry/metrics.go",
+        "backend/internal/operations/orphan_scan.go",
+        "backend/internal/operations/quota_finalization.go",
+        "backend/internal/operations/quota_reconciliation.go",
+        "backend/internal/operations/recovery_drill.go",
         "backend/internal/telemetry/alert.go",
+        "backend/internal/telemetry/codec.go",
         "backend/internal/telemetry/delivery.go",
         "backend/internal/telemetry/logger.go",
+        "backend/internal/telemetry/metrics.go",
+        "backend/internal/telemetry/policy.go",
         "backend/cmd/notesctl/main.go"
       ]
     },
@@ -356,10 +364,25 @@
       "id": "V08",
       "status": "complete",
       "evidence": [
+        "backend/cmd/notesctl/main_test.go",
+        "backend/internal/operations/account_deletion_audit_test.go",
+        "backend/internal/operations/billing_reconciliation_test.go",
+        "backend/internal/operations/dek_reencryption_test.go",
         "backend/tests/integration/account_deletion_test.go",
         "backend/internal/operations/dek_rotation_test.go",
+        "backend/internal/operations/delete_outbox_test.go",
         "backend/internal/operations/launch_policy_test.go",
-        "backend/internal/operations/launch_policy_architecture_test.go"
+        "backend/internal/operations/launch_policy_architecture_test.go",
+        "backend/internal/operations/orphan_scan_test.go",
+        "backend/internal/operations/quota_finalization_test.go",
+        "backend/internal/operations/quota_reconciliation_test.go",
+        "backend/internal/operations/recovery_drill_test.go",
+        "backend/internal/telemetry/alert_test.go",
+        "backend/internal/telemetry/codec_test.go",
+        "backend/internal/telemetry/delivery_test.go",
+        "backend/internal/telemetry/logger_test.go",
+        "backend/internal/telemetry/metrics_test.go",
+        "backend/internal/telemetry/policy_test.go"
       ]
     },
     {
@@ -378,12 +401,13 @@
     },
     {
       "id": "V11",
-      "status": "in-progress",
+      "status": "complete",
       "evidence": [
         "scripts/verify-release-artifact.mts",
-        "docs/go-release-artifact.md"
-      ],
-      "note": "Node-free runtime artifact is proven; checked-in legacy source retirement remains T17."
+        "docs/go-release-artifact.md",
+        "scripts/verify-legacy-retirement.mts",
+        "docs/legacy-typescript-retirement.md"
+      ]
     },
     {
       "id": "V12",
@@ -395,7 +419,7 @@
     }
   ],
   "retirement": {
-    "phase": "reference-present",
+    "phase": "retired",
     "sourceRevision": "e8936ab90768774371d84b4808c100d546649943",
     "sourceTrees": [
       {
@@ -414,8 +438,8 @@
     ],
     "legacyTestCorpus": {
       "revision": "af743246f14f7e0b96accf1ed7e1a1201fc3aaaf",
-      "files": 138,
-      "sha256": "7c28cbe1db282adc1d5349f06ab37964f2b224d4ee3dbc9acad8664e0de50531"
+      "files": 142,
+      "sha256": "878036f18d5bbfc107ad8f7873f5c9c942145b61d20f9c508a138ed797c1fc1e"
     },
     "groups": [
       {

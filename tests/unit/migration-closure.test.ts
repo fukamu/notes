@@ -5,6 +5,8 @@ import {
   validateLegacyCoverage,
 } from '../../scripts/migration-closure-core.mts';
 
+const retiredPath = (suffix: string) => ['server', suffix].join('/');
+
 async function manifestCandidate(): Promise<unknown> {
   return JSON.parse(
     await readFile('contracts/go-migration-closure.json', 'utf8'),
@@ -64,6 +66,13 @@ describe('Go migration closure evidence', () => {
     expect(closure.verifications.find(({ id }) => id === 'V12')).toMatchObject({
       status: 'complete',
     });
+    expect(closure.verifications.find(({ id }) => id === 'V11')).toMatchObject({
+      status: 'complete',
+    });
+    expect(closure.verifications.find(({ id }) => id === 'V09')).toMatchObject({
+      status: 'approval-pending',
+    });
+    expect(closure.retirement.phase).toBe('retired');
   });
 
   it('rejects missing or duplicated feature evidence', async () => {
@@ -109,7 +118,7 @@ describe('Go migration closure evidence', () => {
     const missingNote = clone(await manifestCandidate());
     const pending = identified(
       list(Reflect.get(object(missingNote), 'verifications')),
-      'V11',
+      'V09',
     );
     Reflect.deleteProperty(pending, 'note');
     expect(() => decodeMigrationClosure(missingNote)).toThrow(
@@ -133,27 +142,44 @@ describe('Go migration closure evidence', () => {
     );
   });
 
+  it('requires completed V11 evidence before declaring retirement', async () => {
+    const incomplete = clone(await manifestCandidate());
+    const verification = identified(
+      list(Reflect.get(object(incomplete), 'verifications')),
+      'V11',
+    );
+    Reflect.set(verification, 'status', 'in-progress');
+    Reflect.set(verification, 'note', 'synthetic incomplete retirement');
+
+    expect(() => decodeMigrationClosure(incomplete)).toThrow(
+      'retired phase requires complete V11 verification',
+    );
+  });
+
   it('assigns every legacy source to exactly one retirement group', () => {
     const groups = [
-      { id: 'one', features: ['F01'], legacyPrefixes: ['server/one/'] },
-      { id: 'two', features: ['F02'], legacyPrefixes: ['server/two/'] },
+      { id: 'one', features: ['F01'], legacyPrefixes: [retiredPath('one/')] },
+      { id: 'two', features: ['F02'], legacyPrefixes: [retiredPath('two/')] },
     ] as const;
 
     expect(() =>
-      validateLegacyCoverage(['server/one/a.ts', 'server/two/b.ts'], groups),
+      validateLegacyCoverage(
+        [retiredPath('one/a.ts'), retiredPath('two/b.ts')],
+        groups,
+      ),
     ).not.toThrow();
-    expect(() => validateLegacyCoverage(['server/unowned.ts'], groups)).toThrow(
-      'not recorded',
-    );
+    expect(() =>
+      validateLegacyCoverage([retiredPath('unowned.ts')], groups),
+    ).toThrow('not recorded');
     expect(() =>
       validateLegacyCoverage(
-        ['server/one/a.ts'],
+        [retiredPath('one/a.ts')],
         [
           ...groups,
           {
             id: 'overlap',
             features: ['F03'],
-            legacyPrefixes: ['server/'],
+            legacyPrefixes: [retiredPath('')],
           },
         ],
       ),

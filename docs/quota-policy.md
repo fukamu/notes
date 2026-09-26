@@ -1,5 +1,10 @@
 # Personal Vault quota policy
 
+The D1 stages referenced below are historical migration-source context. The
+current executable policy is `backend/internal/quota`, and durable quota state
+uses the PostgreSQL adapter and checked-in Go migrations. T17 removed the
+TypeScript/D1 implementation and Sites repository runtime.
+
 Issue #194 defines the deterministic quota measures used by the later D1
 reservation and Sync v2 enforcement stages. This stage is pure policy only. It
 does not read or change storage, enable an endpoint, migrate production data,
