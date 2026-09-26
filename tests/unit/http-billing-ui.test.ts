@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { BillingCheckoutReview } from '@/lib/application/billing-ui';
 import {
   createBillingCancellationIdempotencyKey,
   createBillingCheckoutSubmissionId,
   createBillingUiHttpTransport,
 } from '@/lib/client/http-billing-ui';
-import { planContractOffer } from '@/server/legal-checkout/core';
 import {
-  contractDisclosure,
-  contractIds,
-} from '@/tests/fixtures/legal-checkout';
+  billingCheckoutReviewFixture,
+  billingUiContractIds,
+  billingUiContractOfferFixture,
+} from '@/tests/fixtures/billing-ui';
 
 describe('billing UI HTTP adapter', () => {
   it('decodes the authoritative offer and sends only consent correlation fields', async () => {
@@ -20,14 +19,14 @@ describe('billing UI HTTP adapter', () => {
       if (init.method === 'GET') {
         return Response.json({
           offer,
-          offerHash: contractIds.offerHashA,
+          offerHash: billingUiContractIds.offerHashA,
         });
       }
       return Response.json({
         kind: 'redirect',
         evidenceOutcome: 'recorded',
-        evidenceId: contractIds.evidenceA,
-        offerHash: contractIds.offerHashA,
+        evidenceId: billingUiContractIds.evidenceA,
+        offerHash: billingUiContractIds.offerHashA,
         offerVersion: offer.offerVersion,
         checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_fukamu',
       });
@@ -47,8 +46,8 @@ describe('billing UI HTTP adapter', () => {
       throw new Error('expected a JSON request body');
     }
     expect(JSON.parse(requestBody)).toEqual({
-      submissionId: contractIds.submissionA,
-      presentedOfferHash: contractIds.offerHashA,
+      submissionId: billingUiContractIds.submissionA,
+      presentedOfferHash: billingUiContractIds.offerHashA,
       consent: { kind: 'affirmed' },
     });
     expect(calls[1]?.init.credentials).toBe('same-origin');
@@ -60,8 +59,8 @@ describe('billing UI HTTP adapter', () => {
       Response.json({
         kind: 'redirect',
         evidenceOutcome: 'recorded',
-        evidenceId: contractIds.evidenceA,
-        offerHash: contractIds.offerHashA,
+        evidenceId: billingUiContractIds.evidenceA,
+        offerHash: billingUiContractIds.offerHashA,
         offerVersion: contractOffer().offerVersion,
         checkoutUrl: 'https://attacker.example/checkout',
       }),
@@ -121,22 +120,11 @@ describe('billing UI HTTP adapter', () => {
 });
 
 function contractOffer() {
-  const offer = planContractOffer(contractDisclosure());
-  if (offer.kind === 'rejected') throw new Error('invalid fixture');
-  return offer.offer;
+  return billingUiContractOfferFixture();
 }
 
-function review(): BillingCheckoutReview {
-  return {
-    offer: contractOffer(),
-    offerHash: contractIds.offerHashA,
-    terms: {
-      termsVersion: 'terms-v1:2026-09-15',
-      termsHash: `sha256:${'a'.repeat(64)}`,
-      effectiveDate: '2026-09-15',
-    },
-    submissionId: contractIds.submissionA,
-  };
+function review() {
+  return billingCheckoutReviewFixture();
 }
 
 function requestLabel(input: RequestInfo | URL): string {

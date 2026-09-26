@@ -15,7 +15,6 @@ import {
   FUKAMU_MONTHLY_PRICE_YEN,
   FUKAMU_REFUND_POLICY,
 } from '@/lib/application/legal-product';
-import { BILLING_TRIAL_DURATION_MS } from '@/server/billing/core';
 
 function productionDisclosure(): LegalCommerceDisclosure {
   return {
@@ -74,9 +73,7 @@ describe('legal commerce disclosure core', () => {
     ]) {
       expect(decodeLegalCommerceDisclosure(input).kind).toBe('invalid');
     }
-    expect(LEGAL_TRIAL_DAYS * 24 * 60 * 60 * 1_000).toBe(
-      BILLING_TRIAL_DURATION_MS,
-    );
+    expect(LEGAL_TRIAL_DAYS * 24 * 60 * 60 * 1_000).toBe(1_209_600_000);
   });
 
   it('uses an unmistakable fixture outside public-paid mode', () => {
