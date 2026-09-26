@@ -4,9 +4,10 @@ This directory contains the replacement server tracked by parent Issue #409.
 The T05 implementation serves the statically built TypeScript/React frontend,
 process health, database readiness, the private launch-status path, and the
 legacy sync path from one Go process. It has no request-time Node, Workers,
-RSC, or SSR dependency. Disconnected APIs remain closed; the explicit
-`local-fixture` application profile keeps their 404 fixture contract without
-connecting provider operations.
+RSC, or SSR dependency. Disconnected APIs remain closed; non-production
+environments keep their legacy 404 fixture contract without connecting
+provider operations. The explicit `local-fixture` application profile is a
+separate switch for the prepared local runtime foundation.
 
 Go 1.27.1 is pinned in `go.mod`, CI, and the container build stage. PostgreSQL
 access uses pinned pgx and goose versions; no ORM is used.

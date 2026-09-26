@@ -62,13 +62,13 @@ func run() int {
 		"application_profile", string(configuration.ApplicationProfile),
 	)
 	if err := httpapi.Run(ctx, httpapi.ServerOptions{
-		Address:             configuration.HTTPAddress,
-		StaticDirectory:     configuration.StaticDirectory,
-		BodyLimit:           configuration.BodyLimit,
-		ShutdownTimeout:     configuration.ShutdownTimeout,
-		Logger:              logger,
-		PrivateRuntime:      runtime.private,
-		EnableLocalFixtures: configuration.ApplicationProfile == config.ApplicationProfileLocalFixture,
+		Address:                    configuration.HTTPAddress,
+		StaticDirectory:            configuration.StaticDirectory,
+		BodyLimit:                  configuration.BodyLimit,
+		ShutdownTimeout:            configuration.ShutdownTimeout,
+		Logger:                     logger,
+		PrivateRuntime:             runtime.private,
+		EnableDisconnectedFixtures: disconnectedFixturesEnabled(configuration.Environment),
 	}); err != nil {
 		logger.Error("server stopped", "error_code", "server_failure")
 		return 1
@@ -80,6 +80,10 @@ func run() int {
 type runtimeComposition struct {
 	private      *httpapi.PrivateRuntime
 	localFixture *runtimefoundation.LocalFixture
+}
+
+func disconnectedFixturesEnabled(environment config.Environment) bool {
+	return environment != config.EnvironmentProduction
 }
 
 func composeRuntime(

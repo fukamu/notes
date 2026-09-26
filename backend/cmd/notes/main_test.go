@@ -22,6 +22,27 @@ func TestValidateRuntimeConfigurationKeepsDefaultProfileClosed(t *testing.T) {
 	}
 }
 
+func TestDisconnectedFixturesStaySeparateFromApplicationProfiles(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name        string
+		environment config.Environment
+		enabled     bool
+	}{
+		{name: "local", environment: config.EnvironmentLocal, enabled: true},
+		{name: "test", environment: config.EnvironmentTest, enabled: true},
+		{name: "production", environment: config.EnvironmentProduction, enabled: false},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if actual := disconnectedFixturesEnabled(test.environment); actual != test.enabled {
+				t.Fatalf("disconnectedFixturesEnabled(%q) = %t, want %t", test.environment, actual, test.enabled)
+			}
+		})
+	}
+}
+
 func TestValidateRuntimeConfigurationRequiresExactPrivateRuntimeReuseBeforeIO(t *testing.T) {
 	t.Parallel()
 	valid := validRuntimeConfig(t)

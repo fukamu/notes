@@ -19,6 +19,7 @@ fi
 : "${NOTES_LEGACY_OWNER_SUBJECT:?E2E owner subject is required}"
 
 export NOTES_ENVIRONMENT=test
+export NOTES_APPLICATION_PROFILE=disabled
 export NOTES_DATABASE_URL="${NOTES_TEST_DATABASE_URL:-postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable}"
 export NOTES_HTTP_ADDR=127.0.0.1:3100
 export NOTES_STATIC_DIR="$static_directory"

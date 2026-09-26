@@ -38,11 +38,11 @@ func testHandlerWithRuntime(
 	writeStaticFixture(t, staticDirectory)
 	logs := &bytes.Buffer{}
 	handler, err := httpapi.NewHandler(httpapi.HandlerOptions{
-		StaticDirectory:     staticDirectory,
-		BodyLimit:           bodyLimit,
-		Logger:              telemetry.NewLogger(logs, slog.LevelDebug),
-		PrivateRuntime:      privateRuntime,
-		EnableLocalFixtures: true,
+		StaticDirectory:            staticDirectory,
+		BodyLimit:                  bodyLimit,
+		Logger:                     telemetry.NewLogger(logs, slog.LevelDebug),
+		PrivateRuntime:             privateRuntime,
+		EnableDisconnectedFixtures: true,
 	})
 	if err != nil {
 		t.Fatalf("NewHandler() error = %v", err)
@@ -492,11 +492,11 @@ func TestDisconnectedAPIsPreserveLocalFixturesAndStayClosedInProduction(t *testi
 	staticDirectory := t.TempDir()
 	writeStaticFixture(t, staticDirectory)
 	production, err := httpapi.NewHandler(httpapi.HandlerOptions{
-		StaticDirectory:     staticDirectory,
-		BodyLimit:           1024,
-		Logger:              slog.New(slog.NewTextHandler(io.Discard, nil)),
-		PrivateRuntime:      runtime,
-		EnableLocalFixtures: false,
+		StaticDirectory:            staticDirectory,
+		BodyLimit:                  1024,
+		Logger:                     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PrivateRuntime:             runtime,
+		EnableDisconnectedFixtures: false,
 	})
 	if err != nil {
 		t.Fatal(err)

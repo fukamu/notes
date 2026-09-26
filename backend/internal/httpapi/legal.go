@@ -61,7 +61,7 @@ func termsConsentRoute(options HandlerOptions) http.HandlerFunc {
 	if options.LegalRuntime == nil {
 		return disconnectedProtectedAPI(
 			options.PrivateRuntime,
-			options.EnableLocalFixtures,
+			options.EnableDisconnectedFixtures,
 			http.MethodGet,
 			http.MethodPost,
 		)
@@ -73,7 +73,7 @@ func checkoutRoute(options HandlerOptions) http.HandlerFunc {
 	if options.LegalRuntime == nil {
 		return disconnectedProtectedAPI(
 			options.PrivateRuntime,
-			options.EnableLocalFixtures,
+			options.EnableDisconnectedFixtures,
 			http.MethodGet,
 			http.MethodPost,
 		)

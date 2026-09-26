@@ -19,10 +19,10 @@ describe('Go local fixture foundation boundary', () => {
       'values["NOTES_APPLICATION_PROFILE"] == string(ApplicationProfileLocalFixture)',
     );
     expect(main).toContain(
-      'EnableLocalFixtures: configuration.ApplicationProfile == config.ApplicationProfileLocalFixture',
+      'EnableDisconnectedFixtures: disconnectedFixturesEnabled(configuration.Environment)',
     );
     expect(main).not.toContain(
-      'EnableLocalFixtures: configuration.Environment != config.EnvironmentProduction',
+      'EnableDisconnectedFixtures: configuration.ApplicationProfile == config.ApplicationProfileLocalFixture',
     );
   });
 
