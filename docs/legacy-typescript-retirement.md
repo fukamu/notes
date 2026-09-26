@@ -21,11 +21,13 @@ The manifest deliberately distinguishes:
   and this migration does not add it;
 - `complete`, `in-progress`, and `approval-pending` verification states.
 
-F22 is blocked by Issue #403 and Draft PR #404. That work owns ordinary
-period-end cancellation. `backend/internal/billing/cancellation.go` implements
-only the immediate cancellation effect required by account deletion, so T17
-must not retire the TypeScript F22 contract until the existing work is resolved
-and its resulting contract is ported and verified in Go.
+Issue #496 ports the ordinary period-end cancellation contract from the exact
+reviewed Draft PR #404 head into the disconnected Go Billing, Stripe, and HTTP
+boundaries. It does not modify or publish #404 and is not product approval.
+F22 now has Go evidence for both ordinary period-end cancellation and the
+distinct immediate account-deletion effect, so its legacy reference behavior
+may be retired in a reviewed T17 slice while the public route remains closed.
+See [`billing-cancellation.md`](billing-cancellation.md).
 
 ## Frozen reference
 
@@ -130,8 +132,8 @@ Legacy backend removal is permitted only in reviewed T17 Issue/PR slices that:
    public page output required by the Go-served artifact;
 2. change the closure manifest and tests in the same PR, with no unrecorded
    feature, source, or legacy-dependent test silently discarded;
-3. resolve F22 through #403/#404 and port its resulting ordinary cancellation
-   contract before deleting that reference behavior;
+3. retain Issue #496's F22 period-end/immediate separation and focused Go
+   evidence when deleting the TypeScript reference behavior;
 4. remove request-time and operational TypeScript/JavaScript backend execution,
    obsolete D1/Workers/vinext configuration and dependencies, while keeping
    only frontend/build tooling that the final static artifact requires;

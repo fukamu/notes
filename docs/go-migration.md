@@ -11,8 +11,9 @@ delete existing resources.
 - Exact latest `origin/main` and migration research baseline:
   `f423da9932163980485ecc5bc2055b7c8c3b3d8b`
 - Integration branch: `integration/409-go-backend-migration`
-- Open overlapping work: #403 / Draft PR #404. T09 cancellation and the
-  corresponding T12 deletion contract remain dependent on its resolution.
+- Open overlapping work: #403 / Draft PR #404 remains untouched. Issue #496
+  ports its reviewed cancellation contract into disconnected Go boundaries;
+  this does not publish the route or approve the draft product change.
 - T01 completed in #410 / PR #411, T02 in #412 / PR #413, T03 in #414 /
   PR #415, T04 part 1 in #416 / PR #417, T04 part 2 in #418 / PR #419, T05
   in #420 / PR #421, and T06 in #422 / PR #423, #424 / PR #425, and #426 /
@@ -122,7 +123,7 @@ the same contract as its closed route.
 | F19 | B     | entitlement / offline lease                 | T09                             | V05,V07         | Go core/Postgres #440; disconnected                                        |
 | F20 | B     | legal checkout evidence                     | T10                             | V01,V07         | core/store #444; closed Go HTTP #446                                       |
 | F21 | B     | terms consent                               | T10                             | V01,V07         | core/store #442; closed Go HTTP #446                                       |
-| F22 | B     | normal cancellation                         | T09                             | V07             | blocked on #404                                                            |
+| F22 | B     | normal cancellation                         | T09                             | V01,V07         | period-end/immediate split, Stripe stub, closed HTTP #496                  |
 | F23 | B     | account deletion                            | T12                             | V03,V04,V07,V08 | saga #458; effects #460/#462/#464; finalizer #466; handoff #468            |
 | F24 | B     | privacy request journal                     | T12                             | V01,V03,V08     | Go journal/closed HTTP #456; deletion handoff #468                         |
 | F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11         | core #414; legacy singleton seed #418                                      |
@@ -720,9 +721,9 @@ same-millisecond distinct snapshots, cross-subscription ID collision, and
 concurrent CAS. This slice has no Stripe SDK or HTTP transport, signature
 verification, provider call, public route, charge, cancellation request,
 entitlement grant, offline lease, deployment, or production schema apply.
-T09b owns the disconnected Stripe adapter and T09c owns Entitlement. Normal
-cancellation remains dependent on #403 / Draft PR #404 and is not inferred
-from this projection work.
+T09b owns the disconnected Stripe adapter and T09c owns Entitlement. This
+projection slice did not infer the #403 / Draft PR #404 cancellation policy;
+Issue #496 later ports that reviewed contract explicitly.
 
 Before any approved persistent apply, rollback is a reviewed code revert plus
 disposable-schema recreation. After a persistent apply, stop billing ingestion
@@ -772,8 +773,8 @@ a code revert of the disconnected packages and SDK dependency; it must not
 delete Billing evidence or Stripe resources. A future approved connection must
 first test the pinned endpoint version and provider object/expansion shapes in
 an isolated Stripe test environment, document redacted telemetry and replay,
-and preserve the closed route as the recovery path. Normal cancellation still
-depends on #403 / Draft PR #404.
+and preserve the closed route as the recovery path. Issue #496 later adds only
+the disconnected cancellation methods and local-stub evidence.
 
 ## T09c Entitlement and offline-lease slice
 
@@ -814,7 +815,8 @@ close the entitlement consumers, preserve migration 00008 and every projection
 and lease record, restore the matching artifact, and verify Billing source
 versions before reopening. Never drop entitlement evidence or manufacture an
 active projection as part of rollback. T11 owns composition with notes, quota,
-and Sync v2; normal cancellation remains dependent on #403 / Draft PR #404.
+and Sync v2. Issue #496 later ports the reviewed draft cancellation contract
+without connecting it to this entitlement slice.
 
 ## T10a terms consent and signup evidence slice
 
@@ -1751,12 +1753,13 @@ image.
 
 Issue #494 adds the machine-checked
 [`go-migration-closure.json`](../contracts/go-migration-closure.json) inventory.
-It requires exactly F01-F28 and V01-V12, verifies that every implemented feature
-has Go evidence, and keeps F22 explicitly blocked by existing Issue #403 and
-Draft PR #404. The current Go cancellation service is the immediate
-account-deletion effect; it is not evidence for the ordinary period-end
-cancellation contract. F28 remains intentionally absent rather than silently
-becoming a scheduler or realtime service.
+It requires exactly F01-F28 and V01-V12 and verifies that every implemented
+feature has Go evidence. At the T14b checkpoint it kept F22 explicitly blocked
+by existing Issue #403 and Draft PR #404. Issue #496 subsequently ported the
+reviewed draft contract into separate ordinary period-end and account-deletion
+immediate Go effects, a pinned Stripe transport, and a closed HTTP contract.
+The draft itself remains untouched and unapproved. F28 remains intentionally
+absent rather than silently becoming a scheduler or realtime service.
 
 `npm run verify:migration-closure` is part of the shared gate. While the
 reference implementation remains checked in, it binds `app/api`, `server`,
@@ -1775,3 +1778,20 @@ diagnostic evidence from one local host, not a capacity target, production SLO,
 or permission to provision hosting. Exact procedure, observations, source
 identities, T17 preconditions, and recovery limits are in
 [`legacy-typescript-retirement.md`](legacy-typescript-retirement.md).
+
+## T09d ordinary cancellation compatibility slice
+
+Issue #496 resolves the Go migration blocker F22 by porting the exact
+period-end cancellation contract reviewed at Draft PR #404 head
+`0c64fe6f4f522ec049e5589a2d292adc97a16724`. The provider-neutral service now
+has distinct period-end and immediate ports. Provider observations include the
+confirmed access end, accept idempotent replay with an older observation time
+only when temporal invariants still hold, and reject cross-effect results.
+
+The pinned Stripe adapter uses `cancel_at_period_end=true` for the ordinary
+effect and retains no-invoice/no-proration deletion for the immediate effect.
+Loopback HTTP stubs verify both calls; no Stripe object is touched. The
+authenticated Go handler derives owner scope from the session, but stays
+outside `HandlerOptions`, so `/api/billing/cancel` remains closed. Full scope,
+tests, non-approval limits, and rollback are in
+[`billing-cancellation.md`](billing-cancellation.md).

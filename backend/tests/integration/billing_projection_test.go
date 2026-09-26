@@ -302,7 +302,8 @@ func assertAccountDeletionBillingEffect(
 	}
 	command := provider.commands[0]
 	if command.ProviderSubscriptionReference != current.ProviderSubscriptionReference ||
-		string(command.IdempotencyKey) != string(operationID) || command.RequestedAt != 2_100 {
+		string(command.IdempotencyKey) != string(operationID) || command.RequestedAt != 2_100 ||
+		command.Effect != billing.ProviderCancellationImmediate {
 		t.Fatalf("provider command = %#v", command)
 	}
 	after, err := store.FindByID(ctx, current.SubscriptionID)
@@ -324,6 +325,7 @@ func (provider *integrationCancellationProvider) CancelSubscription(
 		Kind: billing.ProviderCancellationCancelled, Provider: command.Provider,
 		ProviderSubscriptionReference: command.ProviderSubscriptionReference,
 		IdempotencyKey:                command.IdempotencyKey, ObservedAt: command.RequestedAt,
+		AccessEndsAt: command.RequestedAt,
 	}, nil
 }
 

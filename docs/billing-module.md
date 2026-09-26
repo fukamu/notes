@@ -121,8 +121,9 @@ now reject only an older observation. The unique provider/snapshot receipt
 still makes exact replay idempotent, and per-evidence timestamps keep
 same-time delinquency dominant.
 
-The Go implementation is disconnected. It registers no billing route, Stripe
-webhook, SDK transport, checkout, cancellation, charge, entitlement, offline
-lease, or production migration. Draft PR #404 remains the authority for the
-normal period-end versus account-deletion cancellation contract; #436 neither
-copies nor supersedes that draft.
+The #436 Go implementation was disconnected and registered no billing route,
+Stripe webhook, SDK transport, checkout, cancellation, charge, entitlement,
+offline lease, or production migration. Issue #496 later ports the exact
+reviewed Draft PR #404 period-end versus account-deletion cancellation contract
+without modifying or publishing that draft. The resulting Go handler also
+remains disconnected; see [`billing-cancellation.md`](billing-cancellation.md).

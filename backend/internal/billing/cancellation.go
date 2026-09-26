@@ -26,16 +26,25 @@ type SubscriptionCancellationCommand struct {
 	RequestedAt    int64
 }
 
+type ProviderCancellationEffect string
+
+const (
+	ProviderCancellationPeriodEnd ProviderCancellationEffect = "period-end"
+	ProviderCancellationImmediate ProviderCancellationEffect = "immediate"
+)
+
 type ProviderCancellationCommand struct {
 	Provider                      Provider
 	ProviderSubscriptionReference ProviderSubscriptionReference
 	IdempotencyKey                CancellationIdempotencyKey
 	RequestedAt                   int64
+	Effect                        ProviderCancellationEffect
 }
 
 type ProviderCancellationKind string
 
 const (
+	ProviderCancellationScheduled        ProviderCancellationKind = "scheduled"
 	ProviderCancellationCancelled        ProviderCancellationKind = "cancelled"
 	ProviderCancellationAlreadyCancelled ProviderCancellationKind = "already-cancelled"
 	ProviderCancellationRetryableFailure ProviderCancellationKind = "retryable-failure"
@@ -48,6 +57,7 @@ type ProviderCancellationObservation struct {
 	ProviderSubscriptionReference ProviderSubscriptionReference
 	IdempotencyKey                CancellationIdempotencyKey
 	ObservedAt                    int64
+	AccessEndsAt                  int64
 }
 
 type SubscriptionCancellationResultKind string
@@ -59,10 +69,12 @@ const (
 	SubscriptionCancellationRetryableFailure SubscriptionCancellationResultKind = "retryable-failure"
 	SubscriptionCancellationTerminalFailure  SubscriptionCancellationResultKind = "terminal-failure"
 
-	SubscriptionCancelled        SubscriptionCancellationOutcome = "cancelled"
-	SubscriptionAlreadyCancelled SubscriptionCancellationOutcome = "already-cancelled"
+	SubscriptionCancellationScheduled SubscriptionCancellationOutcome = "scheduled"
+	SubscriptionCancelled             SubscriptionCancellationOutcome = "cancelled"
+	SubscriptionAlreadyCancelled      SubscriptionCancellationOutcome = "already-cancelled"
 
 	CancellationInvalidCommand            SubscriptionCancellationReason = "invalid-command"
+	CancellationInvalidSubscriptionState  SubscriptionCancellationReason = "invalid-subscription-state"
 	CancellationOwnerMismatch             SubscriptionCancellationReason = "owner-mismatch"
 	CancellationSubscriptionNotFound      SubscriptionCancellationReason = "subscription-not-found"
 	CancellationProviderNotLinked         SubscriptionCancellationReason = "provider-not-linked"
@@ -73,10 +85,11 @@ const (
 )
 
 type SubscriptionCancellationResult struct {
-	Kind        SubscriptionCancellationResultKind
-	Outcome     SubscriptionCancellationOutcome
-	Reason      SubscriptionCancellationReason
-	ConfirmedAt int64
+	Kind         SubscriptionCancellationResultKind
+	Outcome      SubscriptionCancellationOutcome
+	Reason       SubscriptionCancellationReason
+	ConfirmedAt  int64
+	AccessEndsAt int64
 }
 
 type CancellationPlanKind string
@@ -100,14 +113,25 @@ type SubscriptionCancellationProviderPort interface {
 	CancelSubscription(context.Context, ProviderCancellationCommand) (ProviderCancellationObservation, error)
 }
 
+type PeriodEndSubscriptionCancellationPort interface {
+	ScheduleSubscriptionCancellation(context.Context, SubscriptionCancellationCommand) (SubscriptionCancellationResult, error)
+}
+
+type ImmediateSubscriptionCancellationPort interface {
+	CancelSubscriptionImmediately(context.Context, SubscriptionCancellationCommand) (SubscriptionCancellationResult, error)
+}
+
 type SubscriptionCancellationPort interface {
-	CancelSubscription(context.Context, SubscriptionCancellationCommand) (SubscriptionCancellationResult, error)
+	PeriodEndSubscriptionCancellationPort
+	ImmediateSubscriptionCancellationPort
 }
 
 type CancellationService struct {
 	repository SubscriptionCancellationLookup
 	provider   SubscriptionCancellationProviderPort
 }
+
+var _ SubscriptionCancellationPort = (*CancellationService)(nil)
 
 func NewCancellationService(
 	repository SubscriptionCancellationLookup,
@@ -119,7 +143,43 @@ func NewCancellationService(
 	return &CancellationService{repository: repository, provider: provider}, nil
 }
 
-func PlanSubscriptionCancellation(
+func PlanPeriodEndSubscriptionCancellation(
+	command SubscriptionCancellationCommand,
+	current *SubscriptionRecord,
+) CancellationPlan {
+	prerequisite := cancellationPrerequisite(command, current)
+	if prerequisite.Kind == CancellationPlanComplete {
+		return prerequisite
+	}
+	if current.CancelAt != nil && *current.CancelAt >= command.RequestedAt {
+		confirmedAt := current.UpdatedAt
+		if current.CancellationUpdatedAt != nil {
+			confirmedAt = *current.CancellationUpdatedAt
+		}
+		return CancellationPlan{
+			Kind: CancellationPlanComplete,
+			Result: SubscriptionCancellationResult{
+				Kind: SubscriptionCancellationConfirmed, Outcome: SubscriptionCancellationScheduled,
+				ConfirmedAt: confirmedAt, AccessEndsAt: *current.CancelAt,
+			},
+		}
+	}
+	prerequisite.Command.Effect = ProviderCancellationPeriodEnd
+	return prerequisite
+}
+
+func PlanImmediateSubscriptionCancellation(
+	command SubscriptionCancellationCommand,
+	current *SubscriptionRecord,
+) CancellationPlan {
+	prerequisite := cancellationPrerequisite(command, current)
+	if prerequisite.Kind == CancellationPlanRequestProvider {
+		prerequisite.Command.Effect = ProviderCancellationImmediate
+	}
+	return prerequisite
+}
+
+func cancellationPrerequisite(
 	command SubscriptionCancellationCommand,
 	current *SubscriptionRecord,
 ) CancellationPlan {
@@ -136,11 +196,18 @@ func PlanSubscriptionCancellation(
 		return completedCancellation(CancellationOwnerMismatch)
 	}
 	if current.Lifecycle.Kind == LifecycleCancelled {
+		if current.Lifecycle.CancelledAt > command.RequestedAt {
+			return completedCancellation(CancellationInvalidSubscriptionState)
+		}
+		confirmedAt := current.Lifecycle.CancelledAt
+		if current.CancellationUpdatedAt != nil {
+			confirmedAt = *current.CancellationUpdatedAt
+		}
 		return CancellationPlan{
 			Kind: CancellationPlanComplete,
 			Result: SubscriptionCancellationResult{
 				Kind: SubscriptionCancellationConfirmed, Outcome: SubscriptionAlreadyCancelled,
-				ConfirmedAt: current.Lifecycle.CancelledAt,
+				ConfirmedAt: confirmedAt, AccessEndsAt: current.Lifecycle.CancelledAt,
 			},
 		}
 	}
@@ -156,27 +223,26 @@ func PlanSubscriptionCancellation(
 	}
 }
 
-func EvaluateProviderCancellation(
+func EvaluatePeriodEndProviderCancellation(
 	command ProviderCancellationCommand,
 	observation ProviderCancellationObservation,
 ) SubscriptionCancellationResult {
-	if !validProviderCancellationCommand(command) || !ValidProviderCancellationObservation(observation) ||
-		observation.Provider != command.Provider ||
-		observation.ProviderSubscriptionReference != command.ProviderSubscriptionReference ||
-		observation.IdempotencyKey != command.IdempotencyKey || observation.ObservedAt < command.RequestedAt {
+	if command.Effect != ProviderCancellationPeriodEnd || !providerResultMatches(command, observation) {
 		return retryableCancellation(CancellationProviderResultMismatch)
 	}
 	switch observation.Kind {
-	case ProviderCancellationCancelled:
-		return SubscriptionCancellationResult{
-			Kind: SubscriptionCancellationConfirmed, Outcome: SubscriptionCancelled,
-			ConfirmedAt: observation.ObservedAt,
+	case ProviderCancellationScheduled:
+		if observation.AccessEndsAt < observation.ObservedAt || observation.AccessEndsAt < command.RequestedAt {
+			return retryableCancellation(CancellationProviderResultMismatch)
 		}
+		return confirmedCancellation(SubscriptionCancellationScheduled, observation)
 	case ProviderCancellationAlreadyCancelled:
-		return SubscriptionCancellationResult{
-			Kind: SubscriptionCancellationConfirmed, Outcome: SubscriptionAlreadyCancelled,
-			ConfirmedAt: observation.ObservedAt,
+		if observation.AccessEndsAt > observation.ObservedAt {
+			return retryableCancellation(CancellationProviderResultMismatch)
 		}
+		return confirmedCancellation(SubscriptionAlreadyCancelled, observation)
+	case ProviderCancellationCancelled:
+		return retryableCancellation(CancellationProviderResultMismatch)
 	case ProviderCancellationRetryableFailure:
 		return retryableCancellation(CancellationProviderUnavailable)
 	case ProviderCancellationTerminalFailure:
@@ -184,6 +250,44 @@ func EvaluateProviderCancellation(
 	default:
 		return retryableCancellation(CancellationMalformedProviderResponse)
 	}
+}
+
+func EvaluateImmediateProviderCancellation(
+	command ProviderCancellationCommand,
+	observation ProviderCancellationObservation,
+) SubscriptionCancellationResult {
+	if command.Effect != ProviderCancellationImmediate || !providerResultMatches(command, observation) {
+		return retryableCancellation(CancellationProviderResultMismatch)
+	}
+	switch observation.Kind {
+	case ProviderCancellationCancelled, ProviderCancellationAlreadyCancelled:
+		if observation.AccessEndsAt > observation.ObservedAt {
+			return retryableCancellation(CancellationProviderResultMismatch)
+		}
+		outcome := SubscriptionCancelled
+		if observation.Kind == ProviderCancellationAlreadyCancelled {
+			outcome = SubscriptionAlreadyCancelled
+		}
+		return confirmedCancellation(outcome, observation)
+	case ProviderCancellationScheduled:
+		return retryableCancellation(CancellationProviderResultMismatch)
+	case ProviderCancellationRetryableFailure:
+		return retryableCancellation(CancellationProviderUnavailable)
+	case ProviderCancellationTerminalFailure:
+		return terminalCancellation(CancellationProviderTerminal)
+	default:
+		return retryableCancellation(CancellationMalformedProviderResponse)
+	}
+}
+
+func providerResultMatches(
+	command ProviderCancellationCommand,
+	observation ProviderCancellationObservation,
+) bool {
+	return validProviderCancellationCommand(command) && ValidProviderCancellationObservation(observation) &&
+		observation.Provider == command.Provider &&
+		observation.ProviderSubscriptionReference == command.ProviderSubscriptionReference &&
+		observation.IdempotencyKey == command.IdempotencyKey
 }
 
 func ValidProviderCancellationObservation(observation ProviderCancellationObservation) bool {
@@ -200,26 +304,47 @@ func ValidProviderCancellationObservation(observation ProviderCancellationObserv
 		return false
 	}
 	switch observation.Kind {
-	case ProviderCancellationCancelled, ProviderCancellationAlreadyCancelled,
-		ProviderCancellationRetryableFailure, ProviderCancellationTerminalFailure:
-		return true
+	case ProviderCancellationScheduled, ProviderCancellationCancelled, ProviderCancellationAlreadyCancelled:
+		return validTimestamp(observation.AccessEndsAt)
+	case ProviderCancellationRetryableFailure, ProviderCancellationTerminalFailure:
+		return observation.AccessEndsAt == 0
 	default:
 		return false
 	}
 }
 
-func (service *CancellationService) CancelSubscription(
+func (service *CancellationService) ScheduleSubscriptionCancellation(
 	ctx context.Context,
 	command SubscriptionCancellationCommand,
 ) (SubscriptionCancellationResult, error) {
-	if service == nil || service.repository == nil || service.provider == nil {
+	return service.execute(ctx, command, PlanPeriodEndSubscriptionCancellation, EvaluatePeriodEndProviderCancellation)
+}
+
+func (service *CancellationService) CancelSubscriptionImmediately(
+	ctx context.Context,
+	command SubscriptionCancellationCommand,
+) (SubscriptionCancellationResult, error) {
+	return service.execute(ctx, command, PlanImmediateSubscriptionCancellation, EvaluateImmediateProviderCancellation)
+}
+
+type cancellationPlanner func(SubscriptionCancellationCommand, *SubscriptionRecord) CancellationPlan
+type cancellationEvaluator func(ProviderCancellationCommand, ProviderCancellationObservation) SubscriptionCancellationResult
+
+func (service *CancellationService) execute(
+	ctx context.Context,
+	command SubscriptionCancellationCommand,
+	planCancellation cancellationPlanner,
+	evaluateCancellation cancellationEvaluator,
+) (SubscriptionCancellationResult, error) {
+	if service == nil || service.repository == nil || service.provider == nil ||
+		planCancellation == nil || evaluateCancellation == nil {
 		return SubscriptionCancellationResult{}, ErrInvalidCancellationConfiguration
 	}
 	current, err := service.repository.FindByOwner(ctx, command.Scope)
 	if err != nil {
 		return SubscriptionCancellationResult{}, err
 	}
-	plan := PlanSubscriptionCancellation(command, current)
+	plan := planCancellation(command, current)
 	if plan.Kind == CancellationPlanComplete {
 		return plan.Result, nil
 	}
@@ -233,7 +358,7 @@ func (service *CancellationService) CancelSubscription(
 	if !ValidProviderCancellationObservation(observation) {
 		return retryableCancellation(CancellationMalformedProviderResponse), nil
 	}
-	return EvaluateProviderCancellation(plan.Command, observation), nil
+	return evaluateCancellation(plan.Command, observation), nil
 }
 
 func validCancellationCommand(command SubscriptionCancellationCommand) bool {
@@ -254,11 +379,24 @@ func validProviderCancellationCommand(command ProviderCancellationCommand) bool 
 	if _, err := ParseCancellationIdempotencyKey(string(command.IdempotencyKey)); err != nil {
 		return false
 	}
+	if command.Effect != ProviderCancellationPeriodEnd && command.Effect != ProviderCancellationImmediate {
+		return false
+	}
 	return validTimestamp(command.RequestedAt)
 }
 
 func completedCancellation(reason SubscriptionCancellationReason) CancellationPlan {
 	return CancellationPlan{Kind: CancellationPlanComplete, Result: terminalCancellation(reason)}
+}
+
+func confirmedCancellation(
+	outcome SubscriptionCancellationOutcome,
+	observation ProviderCancellationObservation,
+) SubscriptionCancellationResult {
+	return SubscriptionCancellationResult{
+		Kind: SubscriptionCancellationConfirmed, Outcome: outcome,
+		ConfirmedAt: observation.ObservedAt, AccessEndsAt: observation.AccessEndsAt,
+	}
 }
 
 func retryableCancellation(reason SubscriptionCancellationReason) SubscriptionCancellationResult {
