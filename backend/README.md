@@ -245,13 +245,30 @@ one session resolver, and requires schema, seed, exclusive scope, directory,
 and DEK checks to pass before listening and on readiness checks.
 
 This foundation does not mount session, Sync v2, Billing, deletion, crypto, or
-object-storage business routes, and it constructs no Stripe, KMS, identity,
-mail, or storage provider. The profile-disabled `prepare-e2e` path remains the
-existing subject-only compatibility path. In particular, the seeded active
-subscription may conflict with a later checkout fixture; Issue #510 must define
-that fixture's separate scope or explicit local-provider behavior rather than
-weakening the seed. This is local/CI composition evidence, not V11 completion,
-production configuration, deployment, or cutover approval.
+object-storage business routes, and it constructs or contacts no external or
+remote Stripe, KMS, identity, mail, object, or backup provider. Local directory
+adapters are constructed only for the guarded fixture root. The
+profile-disabled `prepare-e2e` path remains the existing subject-only
+compatibility path. In particular, the seeded active subscription may conflict
+with a later checkout fixture; Issue #510 must define that fixture's separate
+scope or explicit local-provider behavior rather than weakening the seed. This
+is local/CI composition evidence, not V11 completion, production configuration,
+deployment, or cutover approval.
+
+The real-PostgreSQL adapter integration test covers migration, exact closed
+`launch_config` (`singleton = 1`, public access disabled, `updated_at = 0`),
+seed retry, readiness, session resolution, and key unwrap. It does not call the
+unexported `composeRuntime` entry point: that function cannot reach successful
+composition without a live PostgreSQL server. Configuration preflight and each
+constructed adapter are covered independently. Constructor wiring across the
+complete process remains a residual risk; a whole-process local-fixture check
+must run serially with live local PostgreSQL/HTTP verification before later
+business-route connection claims.
+
+Filesystem validation is path-based rather than descriptor-relative. This is
+accepted only for an owner-private local/test root on a trusted host; do not
+share that root with an untrusted process. Hostile multi-user symlink-swap
+hardening remains outside this fixture foundation.
 
 ## Local PostgreSQL migration
 

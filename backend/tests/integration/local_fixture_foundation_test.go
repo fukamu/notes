@@ -140,6 +140,58 @@ func TestLocalFixtureFoundationPostgres(t *testing.T) {
 	}
 	key.Destroy()
 
+	for _, test := range []struct {
+		name   string
+		mutate string
+	}{
+		{
+			name:   "public access enabled",
+			mutate: "UPDATE launch_config SET public_access_enabled = true",
+		},
+		{
+			name:   "singleton deleted",
+			mutate: "DELETE FROM launch_config",
+		},
+		{
+			name:   "migration timestamp changed",
+			mutate: "UPDATE launch_config SET updated_at = 1",
+		},
+	} {
+		t.Run("launch config "+test.name, func(t *testing.T) {
+			if _, err := pool.Exec(ctx, test.mutate); err != nil {
+				t.Fatalf("mutate launch config: %v", err)
+			}
+			t.Cleanup(func() {
+				if _, err := pool.Exec(
+					context.Background(),
+					`INSERT INTO launch_config(singleton, public_access_enabled, updated_at)
+					 VALUES (1, false, 0)
+					 ON CONFLICT (singleton) DO UPDATE SET public_access_enabled = false, updated_at = 0`,
+				); err != nil {
+					t.Errorf("restore launch config: %v", err)
+				}
+			})
+			if err := store.Check(ctx); !errors.Is(err, postgresadapter.ErrLocalFixtureConflict) {
+				t.Fatalf("Check() launch config error = %v", err)
+			}
+			if err := store.Seed(ctx); !errors.Is(err, postgresadapter.ErrLocalFixtureConflict) {
+				t.Fatalf("Seed() launch config error = %v", err)
+			}
+		})
+		if err := store.Check(ctx); err != nil {
+			t.Fatalf("restored launch config Check() error = %v", err)
+		}
+	}
+	// The migrated table cannot represent a wrong singleton without first
+	// weakening its CHECK constraint. The unit validator still rejects such a
+	// decoded row defensively; here the real schema must prevent the mutation.
+	if _, err := pool.Exec(ctx, "UPDATE launch_config SET singleton = 2"); err == nil {
+		t.Fatal("migration constraint accepted a wrong launch singleton")
+	}
+	if err := store.Check(ctx); err != nil {
+		t.Fatalf("wrong-singleton rejection changed fixture state: %v", err)
+	}
+
 	foreignAccount := "01999c20-9e33-7000-8000-000000000099"
 	if _, err := pool.Exec(ctx, "INSERT INTO accounts(account_id, created_at) VALUES ($1, 1)", foreignAccount); err != nil {
 		t.Fatal(err)

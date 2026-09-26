@@ -114,6 +114,27 @@ func (store *LocalFixtureStore) Check(ctx context.Context) error {
 }
 
 func checkLocalFixture(ctx context.Context, query localFixtureQuerier, seed fixture.Seed) error {
+	var launchSingleton int16
+	var publicAccessEnabled bool
+	var launchUpdatedAt int64
+	var launchConfigCount int64
+	if err := query.QueryRow(
+		ctx,
+		`SELECT singleton, public_access_enabled, updated_at, COUNT(*) OVER ()
+		 FROM launch_config`,
+	).Scan(
+		&launchSingleton,
+		&publicAccessEnabled,
+		&launchUpdatedAt,
+		&launchConfigCount,
+	); err != nil || !validLocalFixtureLaunchConfig(
+		launchSingleton,
+		publicAccessEnabled,
+		launchUpdatedAt,
+		launchConfigCount,
+	) {
+		return ErrLocalFixtureConflict
+	}
 	if err := ensureExclusiveLocalFixtureScope(ctx, query, seed); err != nil {
 		return err
 	}
@@ -186,6 +207,13 @@ func checkLocalFixture(ctx context.Context, query localFixtureQuerier, seed fixt
 		return ErrLocalFixtureConflict
 	}
 	return nil
+}
+
+func validLocalFixtureLaunchConfig(singleton int16, publicAccessEnabled bool, updatedAt int64, count int64) bool {
+	// Migration 00001 creates exactly this closed launch state. Fixture
+	// preparation rebuilds the schema before seeding, so any later mutation is
+	// evidence that this is no longer the exact disposable fixture.
+	return count == 1 && singleton == 1 && !publicAccessEnabled && updatedAt == 0
 }
 
 func ensureExclusiveLocalFixtureScope(ctx context.Context, query localFixtureQuerier, seed fixture.Seed) error {

@@ -1868,10 +1868,12 @@ fixture.
 
 The server composes this prepared state from one PostgreSQL pool and one shared
 session resolver. Before listening, and subsequently through aggregate
-readiness, it verifies schema version, exact seed/scope, private layout, fixture
-key integrity, and unwrap capability. Diagnostics report only fixed failure
-classes. The raw session token is never stored in PostgreSQL; fixture HMAC and
-DEK material are neither logged nor included in CLI errors.
+readiness, it verifies schema version, the migration-defined singleton closed
+launch configuration (`singleton = 1`, public access disabled, initial update
+timestamp `0`), exact seed/scope, private layout, fixture key integrity, and
+unwrap capability. Diagnostics report only fixed failure classes. The raw
+session token is never stored in PostgreSQL; fixture HMAC and DEK material are
+neither logged nor included in CLI errors.
 
 No prepared dependency is passed into `httpapi.HandlerOptions`, so session,
 Sync v2, Billing, cancellation, privacy/deletion, encrypted-object, and recovery
@@ -1882,6 +1884,21 @@ can conflict with a later checkout fixture; Issue #510 must use a separate
 scope or define explicit local-provider behavior and must not weaken this
 exact-state guard. This slice does not change any A/B/C feature state, complete
 V11, remove legacy TypeScript, deploy, or authorize production configuration.
+
+The real-PostgreSQL adapter integration test exercises the migrated schema,
+seed/readiness store, session lookup, and key unwrap, including mutated
+launch-state rejection. It does not directly invoke the unexported
+`composeRuntime`: successful invocation intrinsically needs a live PostgreSQL
+server. Its configuration preflight and concrete constructors remain covered
+independently. Constructor wiring across the complete process remains a
+residual risk; a whole-process local-fixture check must run serially with live
+local PostgreSQL/HTTP verification before later business-route connection
+claims.
+
+The filesystem checks are path-based rather than descriptor-relative. This is
+an explicit local/test residual risk bounded by the owner-private root and
+trusted-host assumption; the root must not be shared with an untrusted process.
+This slice does not claim hostile multi-user symlink-swap hardening.
 
 Rollback removes the profile/foundation code and its local fixture data only.
 It is not permission to delete a shared database, key, secret, Stripe object,
