@@ -231,6 +231,13 @@ root. It verifies formatting, vet, unit/process/integration tests, the race
 detector, both commands, and Go-served desktop/mobile browser behavior. The
 same gate is part of `npm run verify`.
 
+`npm run verify:release` builds the production-shaped scratch image, rejects
+Node and legacy server artifacts in every runtime layer, verifies the fixed
+non-root identity and Git provenance, runs closed-route and graceful-shutdown
+smoke checks on a random loopback port, and writes ignored local manifest/SBOM
+evidence. See [`docs/go-release-artifact.md`](../docs/go-release-artifact.md).
+The command never pushes or deploys the disposable image.
+
 The shared crypto fixture is executed by both TypeScript Web Crypto and Go's
 AES-GCM implementation. Focused Go checks are:
 

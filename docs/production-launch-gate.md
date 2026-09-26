@@ -88,10 +88,15 @@ subject.
 The eventual release unit binds one frontend artifact hash, Go image digest,
 database migration version, public configuration, secret versions, and identity
 mapping. Cutover changes routing only after that unit passes the approved smoke
-plan. There is no long-lived dual write.
+plan. `npm run verify:release` provides the provider-independent image,
+filesystem, non-root, closed-route, and graceful-shutdown evidence described in
+[`go-release-artifact.md`](go-release-artifact.md); it neither pushes the image
+nor authorizes staging or production. There is no long-lived dual write.
 
 Rollback restores the matching old Sites artifact, D1 database, configuration,
 and identity entry together. It must never point the old TypeScript backend at
 PostgreSQL, point Go at the existing D1 database, or infer permission to remove
 either datastore. The current integration work has no production rollback
-action because no production resource or route has changed.
+action because no production resource or route has changed. A future image
+rollback may use only a reviewed immutable digest that is compatible with the
+current schema and ciphertext/security state.

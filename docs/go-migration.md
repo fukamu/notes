@@ -72,10 +72,13 @@ delete existing resources.
   #482 / PR #483 and #486 / PR #487. T13h Issue #488 was integrated from exact
   integration tip `3b31c29868fc775aac08a1e6bda332f013786e0d` and adds only the
   bounded owner-scoped delete-outbox runner over disposable local/test storage.
-  T13i Issue #490 starts from exact integration tip
+  T13i was integrated by #490 / PR #491 from exact integration tip
   `3d36519fb26baed16c080b3a0d9ca56fcc84f3ff` and adds only a read-only recovery
-  drill over isolated local fixture directories. No real KMS/object/backup
-  provider request or provider resource change is part of these slices.
+  drill over isolated local fixture directories. T14a Issue #492 starts from
+  exact integration tip `081fb4fecfc3855244bd06c9e3a5d765e82af0e0` and adds
+  the disposable Node-free Go release-artifact gate. No real KMS/object/backup
+  provider request, provider resource change, registry push, or deployment is
+  part of these slices.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -121,7 +124,7 @@ the same contract as its closed route.
 | F24 | B     | privacy request journal                     | T12                             | V01,V03,V08     | Go journal/closed HTTP #456; deletion handoff #468                         |
 | F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11         | core #414; legacy singleton seed #418                                      |
 | F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | quota #470/#472; deletion #474; billing #478; DEK #480/#482; recovery #490 |
-| F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10         | static runtime #420; legacy removal T14                                    |
+| F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10,V11     | static runtime #420; release artifact #492; source removal remains T17     |
 | F28 | C     | scheduler / realtime services               | none unless separately approved | V08             | intentionally not added                                                    |
 
 ## Verification matrix
@@ -138,7 +141,7 @@ the same contract as its closed route.
 | V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432/#482; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468; billing #478; rotation runner #480 |
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                                  |
 | V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                                                                                              |
-| V11 | clean build/migrate/image and server-runtime removal    | T14/T17 pending                                                                                                                                                            |
+| V11 | clean build/migrate/image and server-runtime removal    | Node-free image/config/layer/smoke gate #492; legacy source removal remains T17                                                                                            |
 | V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                                                                                                                  |
 
 ## Intentional security differences
@@ -1706,3 +1709,37 @@ Rollback removes or stops invoking this read-only command; it does not alter
 the fixture or any durable application state. A successful local receipt does
 not prove production restorability and never bypasses the existing terminal
 `explicit-production-key-destruction-approval-required` gate.
+
+## T14a Node-free Go release artifact gate
+
+Issue #492 adds `npm run verify:release` to the shared Quality gate. It builds
+the digest-pinned multi-stage Dockerfile with the exact Git revision, then
+decodes Docker inspection and saved-layer output as untrusted data. The final
+stage is `scratch`; only the static Go `/notes` executable and built
+`/app/static` tree are allowed. The verifier rejects links, unsafe paths,
+Node/npm, `node_modules`, legacy server/database/API source, TypeScript, SQL,
+root execution, unexpected entrypoints, missing production defaults,
+secret-bearing environment keys, and mismatched OCI provenance.
+
+The disposable container binds only to a random loopback port with private
+runtime composition disabled. It verifies health, honest database-not-ready
+state, Notes/public/deep-link delivery, unknown-route denial, closed
+disconnected APIs, and graceful `SIGTERM` exit. It does not supply a database,
+identity, provider credential, public address, or feature-enablement setting.
+The unique image and container are removed before the command returns.
+
+Successful runs create ignored `dist/release/manifest.json` and SPDX 2.3 JSON
+evidence. The manifest binds revision, image ID, migration version,
+binary/frontend hashes, runtime identity, and smoke results. The dependency
+inventory contains modules embedded in the Go binary and a conservative
+production npm lockfile graph; no Node package is present in the runtime
+filesystem. [`go-release-artifact.md`](go-release-artifact.md) defines the
+contract, evidence limits, cutover preconditions, and schema-compatible image
+rollback.
+
+This slice proves the production-shaped artifact without pushing it. Registry,
+hosting, database, identity, domain/TLS, resource/cost, staging, deployment,
+production migration, and traffic cutover remain separate decisions and
+approvals. Legacy TypeScript server source remains for compatibility evidence
+until the later T17 removal slice; it is not copied into or executed by this
+image.
