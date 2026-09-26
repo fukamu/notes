@@ -197,6 +197,86 @@ describe('sync v2 wire codecs', () => {
       }),
     ).toThrow(BoundaryDecodeError);
   });
+
+  it('rejects every response revision above the Sync v2 server maximum', () => {
+    const fixture = createCompatibilityFixture();
+    const [card] = fixture.response.cards;
+    if (card === undefined)
+      throw new Error('missing compatibility server card');
+    const overflow = 2_147_483_648;
+    const base = responseWire();
+    const cases = [
+      {
+        name: 'card upsert',
+        wire: {
+          ...base,
+          highWatermark: 1,
+          changes: [
+            {
+              kind: 'card-upsert',
+              sequence: 1,
+              card: { ...card, revision: overflow },
+            },
+          ],
+          receipts: [],
+        },
+      },
+      {
+        name: 'conflict upsert',
+        wire: {
+          ...base,
+          highWatermark: 1,
+          changes: [
+            {
+              kind: 'conflict-upsert',
+              sequence: 1,
+              conflict: { ...fixture.conflict, serverRevision: overflow },
+            },
+          ],
+          receipts: [],
+        },
+      },
+      {
+        name: 'card tombstone',
+        wire: {
+          ...base,
+          highWatermark: 1,
+          changes: [
+            {
+              kind: 'card-tombstone',
+              sequence: 1,
+              cardId: compatibilityIds.cardA,
+              revision: overflow,
+              deletedAt: 1_789_000_000_400,
+            },
+          ],
+          receipts: [],
+        },
+      },
+      {
+        name: 'mutation receipt',
+        wire: {
+          ...base,
+          highWatermark: 0,
+          changes: [],
+          receipts: [
+            {
+              mutationId: compatibilityIds.mutation,
+              cardId: compatibilityIds.cardA,
+              appliedRevision: overflow,
+            },
+          ],
+        },
+      },
+    ];
+
+    for (const testCase of cases) {
+      expect(
+        () => decodeSyncV2Response(testCase.wire, [fixture.mutation]),
+        testCase.name,
+      ).toThrow(BoundaryDecodeError);
+    }
+  });
 });
 
 describe('authenticated cursor claims', () => {

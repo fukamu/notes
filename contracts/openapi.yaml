@@ -789,6 +789,50 @@ components:
           type: array
           items: { $ref: '#/components/schemas/BodySegment' }
         createdAt: { $ref: '#/components/schemas/SafeInteger' }
+    SyncV2ServerCard:
+      type: object
+      additionalProperties: false
+      required:
+        [id, officialDisplayId, title, body, createdAt, updatedAt, revision]
+      properties:
+        id: { $ref: '#/components/schemas/UuidV7' }
+        officialDisplayId:
+          { type: integer, minimum: 1, maximum: 9007199254740991 }
+        title: { type: string, maxLength: 10000 }
+        body:
+          type: array
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        revision: { type: integer, minimum: 1, maximum: 2147483647 }
+    SyncV2Conflict:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          cardId,
+          serverRevision,
+          localTitle,
+          localBody,
+          serverTitle,
+          serverBody,
+          createdAt,
+        ]
+      properties:
+        id: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        serverRevision: { type: integer, minimum: 1, maximum: 2147483647 }
+        localTitle: { type: string, maxLength: 10000 }
+        localBody:
+          type: array
+          items: { $ref: '#/components/schemas/BodySegment' }
+        serverTitle: { type: string, maxLength: 10000 }
+        serverBody:
+          type: array
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
     SyncV2Change:
       oneOf:
         - type: object
@@ -797,14 +841,14 @@ components:
           properties:
             kind: { type: string, enum: [card-upsert] }
             sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
-            card: { $ref: '#/components/schemas/ServerCard' }
+            card: { $ref: '#/components/schemas/SyncV2ServerCard' }
         - type: object
           additionalProperties: false
           required: [kind, sequence, conflict]
           properties:
             kind: { type: string, enum: [conflict-upsert] }
             sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
-            conflict: { $ref: '#/components/schemas/Conflict' }
+            conflict: { $ref: '#/components/schemas/SyncV2Conflict' }
         - type: object
           additionalProperties: false
           required: [kind, sequence, cardId, revision, deletedAt]
@@ -812,7 +856,7 @@ components:
             kind: { type: string, enum: [card-tombstone] }
             sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
             cardId: { $ref: '#/components/schemas/UuidV7' }
-            revision: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            revision: { type: integer, minimum: 1, maximum: 2147483647 }
             deletedAt: { $ref: '#/components/schemas/SafeInteger' }
         - type: object
           additionalProperties: false
@@ -830,8 +874,7 @@ components:
       properties:
         mutationId: { $ref: '#/components/schemas/UuidV7' }
         cardId: { $ref: '#/components/schemas/UuidV7' }
-        appliedRevision:
-          { type: integer, minimum: 1, maximum: 9007199254740991 }
+        appliedRevision: { type: integer, minimum: 1, maximum: 2147483647 }
     SyncV2Page:
       type: object
       additionalProperties: false

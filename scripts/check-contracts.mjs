@@ -47,6 +47,12 @@ const syncV2Mutation = componentSchema(spec, 'SyncV2Mutation');
 const syncV2Upsert = componentSchema(spec, 'SyncV2UpsertMutation');
 const syncV2Resolve = componentSchema(spec, 'SyncV2ResolveMutation');
 const syncV2Request = componentSchema(spec, 'SyncV2Request');
+const legacyServerCard = componentSchema(spec, 'ServerCard');
+const legacyConflict = componentSchema(spec, 'Conflict');
+const syncV2ServerCard = componentSchema(spec, 'SyncV2ServerCard');
+const syncV2Conflict = componentSchema(spec, 'SyncV2Conflict');
+const syncV2Change = componentSchema(spec, 'SyncV2Change');
+const syncV2Receipt = componentSchema(spec, 'SyncV2MutationReceipt');
 assertMarkers('SyncV2Mutation', syncV2Mutation, [
   '#/components/schemas/SyncV2UpsertMutation',
   '#/components/schemas/SyncV2ResolveMutation',
@@ -77,6 +83,26 @@ if (syncV2Resolve.includes('nullable: true')) {
 assertMarkers('SyncV2Request', syncV2Request, [
   'mutationId values must be unique within the request',
   "items: { $ref: '#/components/schemas/SyncV2Mutation' }",
+]);
+assertMarkers('legacy ServerCard', legacyServerCard, [
+  'revision: { type: integer, minimum: 1, maximum: 9007199254740991 }',
+]);
+assertMarkers('legacy Conflict', legacyConflict, [
+  'serverRevision: { type: integer, minimum: 1, maximum: 9007199254740991 }',
+]);
+assertMarkers('SyncV2ServerCard', syncV2ServerCard, [
+  'revision: { type: integer, minimum: 1, maximum: 2147483647 }',
+]);
+assertMarkers('SyncV2Conflict', syncV2Conflict, [
+  'serverRevision: { type: integer, minimum: 1, maximum: 2147483647 }',
+]);
+assertMarkers('SyncV2Change', syncV2Change, [
+  "card: { $ref: '#/components/schemas/SyncV2ServerCard' }",
+  "conflict: { $ref: '#/components/schemas/SyncV2Conflict' }",
+  'revision: { type: integer, minimum: 1, maximum: 2147483647 }',
+]);
+assertMarkers('SyncV2MutationReceipt', syncV2Receipt, [
+  '{ type: integer, minimum: 1, maximum: 2147483647 }',
 ]);
 
 const files = await jsonFiles(fixtureRoot);
@@ -149,8 +175,10 @@ function isRecord(value) {
  * @returns {string}
  */
 function componentSchema(source, name) {
+  const schemasStart = source.indexOf('\n  schemas:\n');
+  if (schemasStart < 0) throw new Error('OpenAPI components.schemas missing');
   const marker = `    ${name}:\n`;
-  const start = source.indexOf(marker);
+  const start = source.indexOf(marker, schemasStart);
   if (start < 0) throw new Error(`OpenAPI component missing: ${name}`);
   const remainder = source.slice(start + marker.length);
   const next = remainder.search(/^    [A-Za-z0-9_-]+:\n/m);
