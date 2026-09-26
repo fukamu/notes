@@ -74,6 +74,29 @@ describe('static frontend delivery architecture', () => {
   });
 });
 
+describe('browser contract dependency direction', () => {
+  it('keeps browser code independent of legacy backend modules', async () => {
+    const browserRoots = [
+      'app/(notes)',
+      'app/(public)',
+      'components',
+      'frontend',
+      'hooks',
+      'lib',
+      'service-worker',
+    ];
+    const files = (await Promise.all(browserRoots.map(sourceFiles))).flat();
+    const legacyBackendImport =
+      /(?:from\s+|import\s*(?:\(\s*)?|require\s*\(\s*)['"]@\/(?:app\/api|db|server)(?:\/|['"])/u;
+    const violations: string[] = [];
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (legacyBackendImport.test(source)) violations.push(file);
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

@@ -1,8 +1,10 @@
 # Production operations launch, restore, canary, and rollback runbook
 
 Issue #218 defines provider-neutral decisions and evidence for future operations.
-It contains no provider command, credential, endpoint, tenant identifier, or
-production executor. A passing gate is evidence of readiness, never authority to
+Issue #502 ports that frozen decision policy to the import-free Go core in
+`backend/internal/operations/launch_policy.go`. It contains no provider command,
+credential, endpoint, tenant identifier, production executor, clock read, or
+environment read. A passing gate is evidence of readiness, never authority to
 perform an external operation. Production deployment, restore, data mutation,
 webhook or alert registration, data deletion, and key destruction each retain
 their separate explicit-approval requirement.
@@ -16,11 +18,14 @@ their separate explicit-approval requirement.
 | staging     | isolated non-production validation       | gated restore drill, canary, rollback rehearsal | production mutation, key destruction, copying plaintext production content |
 | production  | paid public service after later approval | evidence evaluation only                        | execution without a separately identified explicit approval                |
 
-`planEnvironmentAction` is the authoritative matrix. A restore drill must target
-isolated staging, never production. Data deletion and key destruction are outside
-this launch workflow in every environment. Provider webhook and alert
-configuration also remain outside it until a provider, account, retention policy,
-and destination have been approved.
+Go `operations.PlanEnvironmentAction` is the authoritative matrix. A restore
+drill must target isolated staging, never production.
+
+Data deletion and key destruction are outside this launch workflow in every
+environment. Provider webhook and alert configuration also remain outside it
+until a provider, account, retention policy, and destination have been approved.
+Unknown environment or action values produce a blocked plan rather than an
+executable default.
 
 Operational evidence contains fixed states and counts only. Do not place card
 content, plaintext, ciphertext bodies, raw keys, OTPs, tokens, cookies, payment
@@ -31,12 +36,19 @@ system, not in telemetry labels or this repository.
 
 ## Launch-gate evidence
 
-Decode external evidence as `unknown` with `decodeLaunchGateEvidence`, then pass
-the decoded value to `evaluateLaunchGate`. The gate requires a confirmed target,
-the environment-appropriate change approval, an open rollback window, ready
-telemetry, and resolved operational decisions. Production additionally requires
-two-person review. A migration requires verified backup evidence; destructive
-migration is blocked by this workflow.
+An eventual adapter must strictly decode external evidence before constructing
+Go `operations.LaunchGateEvidence`, then pass that typed value to
+`operations.EvaluateLaunchGate`. The pure core independently rejects an unknown
+enum, unsupported schema version, malformed rollback-window state, or timestamp
+outside the non-negative JavaScript-safe integer range. The frozen TypeScript
+`decodeLaunchGateEvidence` remains comparison evidence only until T17 removes
+the old backend.
+
+The gate requires a confirmed target, the environment-appropriate change
+approval, an open rollback window, ready telemetry, and resolved operational
+decisions. Production additionally requires two-person review. A migration
+requires verified backup evidence; destructive migration is blocked by this
+workflow.
 
 A complete staging result is `ready`. A complete production result is still
 `explicit-production-operation-approval-required`; no code path turns that result
@@ -178,12 +190,19 @@ production operation and changes neither `main` nor production.
 
 ## Local verification
 
-Run the focused policy and static-contract tests with:
+Run the focused Go policy and import-boundary tests with:
+
+```sh
+go -C backend test ./internal/operations -run 'LaunchPolicy|EnvironmentAction|LaunchGate|ConcreteEffects'
+```
+
+While the frozen TypeScript comparison remains checked in, its focused tests
+may also be run with:
 
 ```sh
 npx vitest run tests/unit/operations-launch-gate.test.ts tests/unit/architecture.test.ts
 ```
 
-Then run `git diff --check` and `npm run verify`. Rollback of Issue #218 is one PR
-revert of the pure policy, tests, architecture assertion, and this document; it
-has no schema or data migration.
+Then run `git diff --check` and `npm run verify`. Rollback of Issue #502 is one
+PR revert of the pure Go policy, tests, closure evidence, and documentation; it
+has no schema, data migration, operation executor, or external effect to undo.

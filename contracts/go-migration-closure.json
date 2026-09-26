@@ -259,6 +259,7 @@
       "verification": ["V08", "V09"],
       "goEvidence": [
         "backend/internal/operations/quota_reconciliation.go",
+        "backend/internal/operations/launch_policy.go",
         "backend/internal/telemetry/logger.go",
         "backend/cmd/notesctl/main.go"
       ]
@@ -350,7 +351,9 @@
       "status": "complete",
       "evidence": [
         "backend/tests/integration/account_deletion_test.go",
-        "backend/internal/operations/dek_rotation_test.go"
+        "backend/internal/operations/dek_rotation_test.go",
+        "backend/internal/operations/launch_policy_test.go",
+        "backend/internal/operations/launch_policy_architecture_test.go"
       ]
     },
     {

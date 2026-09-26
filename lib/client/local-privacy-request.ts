@@ -4,7 +4,7 @@ import type {
   PrivacyRequestTransportResult,
   PrivacyRequestUiTransport,
 } from '@/lib/client/http-privacy-request';
-import { parsePrivacyRequestId } from '@/server/privacy-request/public';
+import { parsePrivacyRequestId } from '@/lib/contracts/privacy-request';
 
 // Local-only, in-memory sample. It deliberately has no persistence and never
 // performs identity verification, account deletion, network, or provider work.
