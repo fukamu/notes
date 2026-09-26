@@ -1504,7 +1504,8 @@ failure could therefore make that payment appear newest and unlock the
 subscription. T17 later removed the corrected TypeScript decoder; Go is the
 current executable implementation.
 
-Both implementations now preserve Stripe's stable evidence timestamps:
+The frozen TypeScript parity record and the current Go implementation preserve
+Stripe's stable evidence timestamps:
 `invoice.status_transitions.paid_at` for a paid Invoice and the latest
 PaymentIntent `created` timestamp for payment failure or required action. The
 Stripe SDK adapter carries those fields into the pure Go core. Provider
