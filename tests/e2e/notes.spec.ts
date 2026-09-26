@@ -2674,13 +2674,8 @@ test('semantic navigation preserves availability, current context and accessible
   page,
 }, testInfo) => {
   const title = unique('画面契約', testInfo.project.name);
+  await serveSyncCards(page, []);
   await ready(page);
-  await page.locator('html[data-offline-ready=true]').waitFor({
-    state: 'attached',
-    timeout: 15_000,
-  });
-  await replaceLocalCards(page, []);
-  await page.reload();
 
   const cardNavigation = page.getByRole('button', {
     name: 'カード',
