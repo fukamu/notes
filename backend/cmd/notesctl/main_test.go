@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/fukamu/notes/backend/internal/accountdeletion"
+	"github.com/fukamu/notes/backend/internal/encryptedobject"
 	"github.com/fukamu/notes/backend/internal/operations"
 	"github.com/fukamu/notes/backend/internal/quota"
 	"github.com/fukamu/notes/backend/internal/stripebilling"
@@ -64,6 +65,7 @@ func TestRunMigratesOnlyTheExplicitAllowlistedEnvironment(t *testing.T) {
 		},
 		billingReconciliationMustNotRun(t),
 		dekRotationMustNotRun(t),
+		dekReencryptionMustNotRun(t),
 	)
 	if code != 0 || !called || stdout.String() != "migration complete\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
@@ -100,6 +102,7 @@ func TestRunRefusesMigrationEnvironmentMismatchWithoutDisclosingURL(t *testing.T
 		},
 		billingReconciliationMustNotRun(t),
 		dekRotationMustNotRun(t),
+		dekReencryptionMustNotRun(t),
 	)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "refused") {
 		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
@@ -146,6 +149,7 @@ func TestRunPreparesOnlyTheAllowlistedE2EDatabase(t *testing.T) {
 		},
 		billingReconciliationMustNotRun(t),
 		dekRotationMustNotRun(t),
+		dekReencryptionMustNotRun(t),
 	)
 	if code != 0 || !called || stdout.String() != "e2e database prepared\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
@@ -403,6 +407,7 @@ func runQuotaAuditForTest(
 		},
 		billingReconciliationMustNotRun(t),
 		dekRotationMustNotRun(t),
+		dekReencryptionMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -602,6 +607,7 @@ func runQuotaCommitForTest(
 		},
 		billingReconciliationMustNotRun(t),
 		dekRotationMustNotRun(t),
+		dekReencryptionMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -819,6 +825,7 @@ func runAccountDeletionAuditForTest(
 		inspect,
 		billingReconciliationMustNotRun(t),
 		dekRotationMustNotRun(t),
+		dekReencryptionMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -1085,6 +1092,7 @@ func runBillingReconciliationForTest(
 		},
 		reconcile,
 		dekRotationMustNotRun(t),
+		dekReencryptionMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -1355,8 +1363,249 @@ func runDEKRotationForTest(
 		},
 		billingReconciliationMustNotRun(t),
 		rotate,
+		dekReencryptionMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
+}
+
+func TestRunDEKReencryptionUsesBoundedScopeAndRedactedOutput(t *testing.T) {
+	arguments := dekReencryptionCLIArguments("test", t.TempDir(), t.TempDir())
+	values := dekRotationEnvironment(
+		"test", "postgres://notes:PRIVATE_DATABASE@127.0.0.1:55432/fukamu_notes_go_test",
+	)
+	called := false
+	code, stdout, stderr := runDEKReencryptionForTest(
+		t,
+		context.Background(),
+		arguments,
+		values,
+		func(
+			_ context.Context,
+			databaseURL string,
+			keyVersion string,
+			accessToken string,
+			objectRoot string,
+			nonceRoot string,
+			command operations.DEKReencryptionCommand,
+		) (operations.DEKReencryptionResult, error) {
+			called = true
+			if !strings.Contains(databaseURL, "fukamu_notes_go_test") || keyVersion != testKMSKeyVersion ||
+				accessToken != testKMSAccessToken || objectRoot != arguments[8][len("--object-root="):] ||
+				nonceRoot != arguments[9][len("--nonce-root="):] || command.Limit != 2 ||
+				command.PerformedAtMilli != 3_000 || command.TargetVersion != 2 {
+				t.Fatalf("unexpected inputs: %q, %q, %q, %q, %q, %#v",
+					databaseURL, keyVersion, accessToken, objectRoot, nonceRoot, command)
+			}
+			return operations.DEKReencryptionResult{
+				Kind: operations.DEKReencryptionPending, Processed: 2,
+				TargetVersion: command.TargetVersion, Pending: encryptedobject.ReencryptionPageLimit,
+			}, nil
+		},
+	)
+	if code != 0 || !called || stderr != "" {
+		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout, stderr)
+	}
+	var output map[string]any
+	if err := json.Unmarshal([]byte(stdout), &output); err != nil {
+		t.Fatal(err)
+	}
+	if output["command"] != "dek-reencrypt" || output["outcome"] != "pending" ||
+		output["processed"] != float64(2) || output["targetVersion"] != float64(2) ||
+		output["pending"] != string(encryptedobject.ReencryptionPageLimit) || len(output) != 5 {
+		t.Fatalf("output = %#v", output)
+	}
+	for _, private := range []string{
+		"PRIVATE_DATABASE", testKMSAccessToken,
+		"01991f20-61d2-7000-8000-000000000101",
+		"01991f20-61d2-7000-8000-000000000201",
+		arguments[8][len("--object-root="):], arguments[9][len("--nonce-root="):],
+	} {
+		if strings.Contains(stdout+stderr, private) {
+			t.Fatalf("output disclosed private value %q", private)
+		}
+	}
+}
+
+func TestParseDEKReencryptionRejectsInvalidAndProductionCommands(t *testing.T) {
+	valid := dekReencryptionCLIArguments("test", t.TempDir(), t.TempDir())
+	tests := [][]string{
+		removeCLIArgument(valid, "--confirm-local-object-writes"),
+		removeCLIArgument(valid, "--confirm-kms-unwrapping"),
+		replaceCLIArgument(valid, "--environment=", "--environment=production"),
+		replaceCLIArgument(valid, "--limit=", "--limit=0"),
+		replaceCLIArgument(valid, "--target-version=", "--target-version=0"),
+		replaceCLIArgument(valid, "--performed-at-millis=", "--performed-at-millis=0"),
+		replaceCLIArgument(valid, "--object-root=", "--object-root=bad\npath"),
+		replaceCLIArgument(valid, "--object-root=", "--object-root=relative"),
+		replaceCLIArgument(valid, "--nonce-root=", "--nonce-root="+valid[8][len("--object-root="):]),
+		append(append([]string(nil), valid...), "--unknown=value"),
+	}
+	for index, arguments := range tests {
+		if _, requested, err := parseDEKReencryptionArguments(arguments); !requested || err == nil {
+			t.Fatalf("case %d parsed: requested=%t err=%v", index, requested, err)
+		}
+	}
+	if _, requested, err := parseDEKReencryptionArguments([]string{"dek", "rotate"}); requested || err != nil {
+		t.Fatalf("unrelated command requested=%t err=%v", requested, err)
+	}
+}
+
+func TestRunDEKReencryptionRefusesEnvironmentTargetAndProviderConfiguration(t *testing.T) {
+	arguments := dekReencryptionCLIArguments("test", t.TempDir(), t.TempDir())
+	tests := []struct {
+		name   string
+		values map[string]string
+		want   string
+	}{
+		{
+			name: "environment mismatch",
+			values: dekRotationEnvironment(
+				"local", "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+			),
+			want: "DEK re-encryption environment refused\n",
+		},
+		{
+			name:   "remote database",
+			values: dekRotationEnvironment("test", "postgres://notes:secret@database.example/notes"),
+			want:   "DEK re-encryption target refused\n",
+		},
+		{
+			name: "missing provider",
+			values: map[string]string{
+				"NOTES_ENVIRONMENT":  "test",
+				"NOTES_DATABASE_URL": "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+			},
+			want: "DEK re-encryption provider configuration invalid\n",
+		},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			code, stdout, stderr := runDEKReencryptionForTest(
+				t, context.Background(), arguments, testCase.values, dekReencryptionMustNotRun(t),
+			)
+			if code != 1 || stdout != "" || stderr != testCase.want || strings.Contains(stderr, "secret") {
+				t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestRunDEKReencryptionRedactsRefusalFailureCancellationAndOutputError(t *testing.T) {
+	arguments := dekReencryptionCLIArguments("test", t.TempDir(), t.TempDir())
+	values := dekRotationEnvironment(
+		"test", "postgres://notes:PRIVATE_DATABASE@127.0.0.1:55432/fukamu_notes_go_test",
+	)
+	parsed, requested, err := parseDEKReencryptionArguments(arguments)
+	if err != nil || !requested {
+		t.Fatalf("parse = %#v, %t, %v", parsed, requested, err)
+	}
+	tests := []struct {
+		name      string
+		ctx       context.Context
+		reencrypt reencryptDEKFunction
+		want      string
+	}{
+		{
+			name: "refused", ctx: context.Background(), want: "DEK re-encryption scope refused\n",
+			reencrypt: func(context.Context, string, string, string, string, string, operations.DEKReencryptionCommand) (operations.DEKReencryptionResult, error) {
+				return operations.DEKReencryptionResult{
+					Kind: operations.DEKReencryptionRefused, TargetVersion: parsed.command.TargetVersion,
+				}, nil
+			},
+		},
+		{
+			name: "dependency", ctx: context.Background(), want: "DEK re-encryption failed\n",
+			reencrypt: func(context.Context, string, string, string, string, string, operations.DEKReencryptionCommand) (operations.DEKReencryptionResult, error) {
+				return operations.DEKReencryptionResult{}, errors.New("PRIVATE OBJECT FAILURE")
+			},
+		},
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	tests = append(tests, struct {
+		name      string
+		ctx       context.Context
+		reencrypt reencryptDEKFunction
+		want      string
+	}{
+		name: "cancelled", ctx: cancelled, want: "DEK re-encryption failed\n",
+		reencrypt: func(ctx context.Context, _ string, _ string, _ string, _ string, _ string, _ operations.DEKReencryptionCommand) (operations.DEKReencryptionResult, error) {
+			return operations.DEKReencryptionResult{}, ctx.Err()
+		},
+	})
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			code, stdout, stderr := runDEKReencryptionForTest(
+				t, testCase.ctx, arguments, values, testCase.reencrypt,
+			)
+			if code != 1 || stdout != "" || stderr != testCase.want || strings.Contains(stderr, "PRIVATE") {
+				t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
+			}
+		})
+	}
+	var stderr bytes.Buffer
+	code := runDEKReencryption(
+		context.Background(), parsed, rejectingWriter{}, &stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string, string, string, string, string, operations.DEKReencryptionCommand) (operations.DEKReencryptionResult, error) {
+			return operations.DEKReencryptionResult{
+				Kind: operations.DEKReencryptionCompleted, TargetVersion: parsed.command.TargetVersion,
+			}, nil
+		},
+	)
+	if code != 1 || stderr.String() != "DEK re-encryption output failed\n" {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+}
+
+func runDEKReencryptionForTest(
+	t *testing.T,
+	ctx context.Context,
+	arguments []string,
+	values map[string]string,
+	reencrypt reencryptDEKFunction,
+) (int, string, string) {
+	t.Helper()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithDependencies(
+		ctx, arguments, &stdout, &stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
+		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
+			t.Fatal("quota audit must not run")
+			return operations.QuotaAuditResult{}, nil
+		},
+		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			t.Fatal("quota commit must not run")
+			return operations.QuotaCommitResult{}, nil
+		},
+		func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			t.Fatal("account deletion audit must not run")
+			return operations.AccountDeletionAuditResult{}, nil
+		},
+		billingReconciliationMustNotRun(t),
+		dekRotationMustNotRun(t),
+		reencrypt,
+	)
+	return code, stdout.String(), stderr.String()
+}
+
+func dekReencryptionCLIArguments(environment, objectRoot, nonceRoot string) []string {
+	return []string{
+		"dek", "reencrypt",
+		"--vault-id=01991f20-61d2-7000-8000-000000000201",
+		"--environment=" + environment,
+		"--limit=2",
+		"--target-version=2",
+		"--performed-at-millis=3000",
+		"--account-id=01991f20-61d2-7000-8000-000000000101",
+		"--object-root=" + objectRoot,
+		"--nonce-root=" + nonceRoot,
+		"--confirm-local-object-writes",
+		"--confirm-kms-unwrapping",
+	}
 }
 
 const (
@@ -1411,6 +1660,22 @@ func dekRotationMustNotRun(t *testing.T) rotateDEKFunction {
 	) (operations.DEKRotationResult, error) {
 		t.Fatal("DEK rotation must not run")
 		return operations.DEKRotationResult{}, nil
+	}
+}
+
+func dekReencryptionMustNotRun(t *testing.T) reencryptDEKFunction {
+	t.Helper()
+	return func(
+		context.Context,
+		string,
+		string,
+		string,
+		string,
+		string,
+		operations.DEKReencryptionCommand,
+	) (operations.DEKReencryptionResult, error) {
+		t.Fatal("DEK re-encryption must not run")
+		return operations.DEKReencryptionResult{}, nil
 	}
 }
 
