@@ -1,6 +1,7 @@
 # Go release artifact verification
 
-Issue #492 adds the T14 release-artifact gate. It builds and inspects a
+Issue #492 added the T14 release-artifact gate and T17 now pairs it with the
+checked-in legacy-source residual guard. It builds and inspects a
 disposable image; it does not push an image, choose a registry or hosting
 provider, deploy, migrate a database, publish a route, or authorize a
 production operation.
@@ -41,6 +42,12 @@ The checked image must satisfy all of these conditions:
   database, serves the Notes shell, pricing page, and a deep link, returns 404
   for unknown page/API routes, and leaves reviewed disconnected APIs at 503;
 - `SIGTERM` produces a zero exit and the Go server's graceful-shutdown record.
+
+The repository-level `verify:legacy-retirement` gate separately proves that
+the old TypeScript API/server/database roots, their configs and scripts, and
+their package and lockfile dependencies are absent. TypeScript remains only
+for the React/browser, Service Worker, prerender/build tooling, and tests; none
+is copied into the final runtime image.
 
 The smoke run has no database URL, identity key, KMS/object credential, Stripe
 credential, mail transport, or production endpoint. It therefore cannot read

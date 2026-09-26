@@ -3,11 +3,13 @@
 This directory contains the replacement server tracked by parent Issue #409.
 The T05 implementation serves the statically built TypeScript/React frontend,
 process health, database readiness, the private launch-status path, and the
-legacy sync path from one Go process. It has no request-time Node, Workers,
+v1-compatible sync path from one Go process. It has no request-time Node, Workers,
 RSC, or SSR dependency. Disconnected APIs remain closed; non-production
 environments keep their legacy 404 fixture contract without connecting
 provider operations. The explicit `local-fixture` application profile is a
-separate switch for the prepared local runtime foundation.
+separate switch for the prepared local runtime foundation. T17 removed the old
+TypeScript API/server/database source and D1 toolchain from the repository;
+React/browser and build-time TypeScript remain.
 
 Go 1.27.1 is pinned in `go.mod`, CI, and the container build stage. PostgreSQL
 access uses pinned pgx and goose versions; no ORM is used.
@@ -75,12 +77,13 @@ call, or production recovery claim is configured.
 T09a Issue #436 adds the disconnected provider-neutral billing aggregate and
 PostgreSQL projection. T09b Issue #438 adds the pure Stripe Checkout/webhook/
 reconciliation boundary, exact raw-body HMAC verification, and an official
-`stripe-go/v84` v84.4.1 adapter pinned to API `2026-02-25.clover`. A shared
-signed fixture executes through TypeScript and Go, while local HTTP stubs verify
-SDK headers, forms, expansions, retrieval fallback, and provider failures. The
-Stripe packages are not composed into the server: there is no route, API key,
-endpoint secret, provider request, webhook registration, scheduler, charge,
-cancellation mutation, entitlement grant, or production operation.
+`stripe-go/v84` v84.4.1 adapter pinned to API `2026-02-25.clover`. The frozen
+signed fixture established migration parity and remains Go test evidence, while
+local HTTP stubs verify SDK headers, forms, expansions, retrieval fallback, and
+provider failures. The Stripe packages are not composed into the server: there
+is no route, API key, endpoint secret, provider request, webhook registration,
+scheduler, charge, cancellation mutation, entitlement grant, or production
+operation.
 
 T13d Issue #478 composes only explicit `notesctl billing reconcile`: it
 derives both provider mapping references from an exact Account/Vault-owned
@@ -125,9 +128,9 @@ PostgreSQL repository. Migration 00008 stores Account/Vault-scoped projections
 and Session/SessionEpoch-bound offline leases. Projection CAS and active-lease
 revocation are one serializable transaction; lease creation locks and validates
 the exact active projection. The explicit product policy caps leases at 24
-hours and at the Billing period boundary. Shared TypeScript/Go fixtures and
-disposable-PostgreSQL tests cover exclusive expiry, replay, cross-owner access,
-old/new paid ordering, issue/lock races, and rollback on revocation failure.
+hours and at the Billing period boundary. Frozen migration fixtures and
+disposable-PostgreSQL Go tests cover exclusive expiry, replay, cross-owner
+access, old/new paid ordering, issue/lock races, and rollback on revocation failure.
 Nothing is composed into an HTTP, notes, quota, or Sync v2 path, and no
 production migration or provider operation is performed.
 
@@ -135,8 +138,8 @@ T10a Issue #442 adds the disconnected Go terms-consent core, fail-closed
 service, checkout verifier, signup admission adapter, and PostgreSQL immutable
 evidence repository. Migration 00009 authorizes insert only for an exact
 Personal Vault owner or the exact pre-finalization signup reservation and
-blocks updates. A shared TypeScript/Go fixture fixes canonical JSON bytes and
-SHA-256 across `<>&` and U+2028/U+2029. Unit and disposable-PostgreSQL tests
+blocks updates. A frozen migration fixture fixes canonical JSON bytes and
+SHA-256 across `<>&` and U+2028/U+2029 and remains executable Go evidence. Unit and disposable-PostgreSQL tests
 cover stale/missing consent, replay, changed-term classification, cross-owner
 access, reservation-before-finalization, immutable evidence, and concurrent
 duplicate submissions. The package has no HTTP route, configured legal source,
@@ -253,8 +256,9 @@ profile-disabled `prepare-e2e` path remains the existing subject-only
 compatibility path. In particular, the seeded active subscription may conflict
 with a later checkout fixture; Issue #510 must define that fixture's separate
 scope or explicit local-provider behavior rather than weakening the seed. This
-is local/CI composition evidence, not V11 completion, production configuration,
-deployment, or cutover approval.
+foundation alone is local/CI composition evidence, not production
+configuration, deployment, or cutover approval. V11 is complete separately for
+checked-in source retirement and the Go-only runtime artifact.
 
 The real-PostgreSQL adapter integration test covers migration, exact closed
 `launch_config` (`singleton = 1`, public access disabled, `updated_at = 0`),
@@ -302,10 +306,11 @@ evidence. See [`docs/go-release-artifact.md`](../docs/go-release-artifact.md).
 The command never pushes or deploys the disposable image.
 
 `npm run verify:migration-closure` strictly checks the complete F01-F28 and
-V01-V12 evidence inventory, the frozen legacy source trees, and the
-legacy-dependent test corpus before T17 retirement.
-`npm run verify:legacy-retirement` additionally checks all 138 frozen test
-paths, per-file digests, dispositions, and executable replacement evidence.
+V01-V12 evidence inventory and the completed T17 retirement state.
+`npm run verify:legacy-retirement` checks all 138 frozen test paths, per-file
+digests and dispositions, requires the 127 Go-replaced paths to be absent and
+the 11 frontend paths to remain legacy-free, validates executable replacement
+evidence, and rejects retired source/config/script/package reintroduction.
 See
 [`docs/legacy-typescript-retirement.md`](../docs/legacy-typescript-retirement.md).
 F22 has separate Go evidence for ordinary period-end cancellation and the
@@ -313,8 +318,8 @@ immediate account-deletion effect. The ordinary handler remains disconnected;
 Draft PR #404, public activation, and production provider use remain
 unapproved.
 
-The shared crypto fixture is executed by both TypeScript Web Crypto and Go's
-AES-GCM implementation. Focused Go checks are:
+The frozen crypto fixture is decoded by the Go AES-GCM tests; browser wire
+fixtures remain TypeScript-only. Focused Go checks are:
 
 ```bash
 go -C backend test ./internal/cryptocontent/... ./internal/adapters/contentcrypto/... ./internal/adapters/kms/...

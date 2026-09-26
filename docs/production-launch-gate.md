@@ -63,12 +63,12 @@ prerequisites for local/CI composition only. Production rejects that profile,
 its values are not production identity or launch evidence, and no business
 route or provider is enabled by it.
 
-The older TypeScript/D1 migration and adapters remain as compatibility
-reference and test inputs until the reviewed T17 removal. T14b fixes their
-source trees and test corpus in
-[`legacy-typescript-retirement.md`](legacy-typescript-retirement.md). They are not
-the Go runtime's identity source, and no current D1 data has been copied or
-deleted.
+T17 removed the older TypeScript/D1 runtime, migrations, adapters, and server
+tests from the working tree. T14b's immutable source-tree and test-corpus
+identifiers remain investigation evidence in
+[`legacy-typescript-retirement.md`](legacy-typescript-retirement.md), not a
+deployable fallback. This repository change copied or deleted no external D1
+data and performed no Sites operation.
 
 ## Operations requiring separate approval
 
@@ -98,16 +98,17 @@ mapping. Cutover changes routing only after that unit passes the approved smoke
 plan. `npm run verify:release` provides the provider-independent image,
 filesystem, non-root, closed-route, and graceful-shutdown evidence described in
 [`go-release-artifact.md`](go-release-artifact.md); it neither pushes the image
-nor authorizes staging or production. There is no long-lived dual write.
-The TypeScript reference, removal preconditions, and recovery limits are
-recorded in
+nor authorizes staging or production. There is no long-lived dual write. T17's
+repository-retirement evidence and recovery limits are recorded in
 [`legacy-typescript-retirement.md`](legacy-typescript-retirement.md); passing
-that gate is also not cutover permission.
+that gate is not cutover permission.
 
-Rollback restores the matching old Sites artifact, D1 database, configuration,
-and identity entry together. It must never point the old TypeScript backend at
-PostgreSQL, point Go at the existing D1 database, or infer permission to remove
-either datastore. The current integration work has no production rollback
-action because no production resource or route has changed. A future image
-rollback may use only a reviewed immutable digest that is compatible with the
-current schema and ciphertext/security state.
+No production resource or route changed in this integration work, so there is
+no production rollback action to execute. A future Go release may roll back
+only to a reviewed immutable image digest that is compatible with the current
+PostgreSQL schema and ciphertext/security state. If an approved first cutover
+plan retains the pre-cutover Sites/D1 service as a time-bounded emergency
+route, that exact immutable artifact, database, configuration, and identity
+entry must be restored together; it cannot be rebuilt from the retired source.
+Never point that historical backend at PostgreSQL, point Go at D1, dual-write,
+or infer permission to remove either datastore.

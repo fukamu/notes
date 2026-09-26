@@ -36,7 +36,7 @@ npm run test:e2e
 
 `npm run build:frontend` は既存React UIと公開ページを `dist/frontend` へ静的生成します。公開ページはbuild時に事前描画され、Notesの既知deep linkは同じ非個人化app shellを使います。`npm run test:e2e` は一時Ed25519鍵、loopback限定の専用PostgreSQLテストDB、Goサーバーを自動構成します。実provider、実課金、本番dataには接続しません。手動のGo起動設定は [backend/README.md](backend/README.md) を参照してください。
 
-`npm run dev` はfrontend表示だけを確認するVite開発サーバーです。認証・同期を含む縦断確認には上記E2Eを使ってください。既存ChatGPT Site／D1本番経路はこのintegration作業では変更も削除もされません。Go版のhosting、database、identity、domain、production切替は未承認であり、[Go migration decisions](docs/go-migration-decisions.md) と [Go backend migration](docs/go-migration.md) で別管理します。
+`npm run dev` はfrontend表示だけを確認するVite開発サーバーです。認証・同期を含む縦断確認には上記E2Eを使ってください。request-time server sourceはGoへ移行済みで、旧`app/api`／`server`／`db`／`drizzle`とSites repository configは撤去済みです。これは外部のSites projectやD1 resourceを変更・削除する操作ではありません。Go版のproduction hosting、database、identity/provider設定、data移行、traffic切替は未承認・未実施であり、[Go migration decisions](docs/go-migration-decisions.md) と [Go backend migration](docs/go-migration.md) で別管理します。
 
 ## テスト
 
@@ -53,7 +53,7 @@ npm run verify
 
 `npm run test:e2e` は静的frontendを配信するGoローカルサーバーを自動起動し、デスクトップChromeとPixel 7相当のChromiumで検証します。対象はオフライン作成、自動保存、再読み込み、再接続、別端末同期、仮番号から正式番号への変更、重複仮番号と遅延到着、本文リンク、Undo / Redo、一覧、全カードの一方向リンク可視化、現在カードの初期表示、キーボード／タッチ操作、循環・自己リンク・相互リンク、競合保持、deep link、戻る／進むです。
 
-`npm run check` では全runtimeの型検査、静的検査、単体テスト、本番ビルドをまとめて実行します。`npm run verify` はCIと共通の入口で、format check、`check`、Desktop Chrome／Pixel 7相当のE2Eを実行します。型検査のruntime分離、trust boundary、assertion方針、段階的なunsafe lint／codec導入は [型安全の境界と検査](docs/type-safety.md)、データストア・ナビゲーション・描画の依存方向と交換契約は [Application / presentation contracts](docs/application-presentation.md)、認証済みsessionからのVaultContext導出と未認証runtime停止契約は [Identity, session, and VaultContext boundary](docs/session-boundary.md)、Google認証のstate・nonce・PKCE・issuer+subject・明示linking契約は [Google OIDC boundary](docs/google-oidc-boundary.md)、Email OTPの一回限り・試行／再送／濫用制限・明示linking・NIST上の制約は [Email OTP boundary](docs/email-otp-boundary.md)、本文editorのheadless操作・Tiptap adapter・renderer・structural DOM契約は [Card editor contracts](docs/card-editor.md)、全UI境界・raw interaction・親 #8 要件1–29の対応は [Presentation boundary audit](docs/presentation-boundary-audit.md) を参照してください。検証はlocal fixture／emulatorのみを使い、本番D1や本番データへ接続しません。
+`npm run check` では全runtimeの型検査、静的検査、単体テスト、本番ビルドをまとめて実行します。`npm run verify` はCIと共通の入口で、format check、`check`、Desktop Chrome／Pixel 7相当のE2Eを実行します。型検査のruntime分離、trust boundary、assertion方針、段階的なunsafe lint／codec導入は [型安全の境界と検査](docs/type-safety.md)、データストア・ナビゲーション・描画の依存方向と交換契約は [Application / presentation contracts](docs/application-presentation.md)、認証済みsessionからのVaultContext導出と未認証runtime停止契約は [Identity, session, and VaultContext boundary](docs/session-boundary.md)、Google認証のstate・nonce・PKCE・issuer+subject・明示linking契約は [Google OIDC boundary](docs/google-oidc-boundary.md)、Email OTPの一回限り・試行／再送／濫用制限・明示linking・NIST上の制約は [Email OTP boundary](docs/email-otp-boundary.md)、本文editorのheadless操作・Tiptap adapter・renderer・structural DOM契約は [Card editor contracts](docs/card-editor.md)、全UI境界・raw interaction・親 #8 要件1–29の対応は [Presentation boundary audit](docs/presentation-boundary-audit.md) を参照してください。検証は専用test databaseとlocal adapterだけを使い、本番databaseや本番データへ接続しません。
 
 Issue、統合／作業ブランチ、PR、merge後検証、型付き純粋ロジックと副作用adapter、mainへの反映制限は [Issue-based type-safe development workflow](docs/development-workflow.md) を正本とします。実装PRは統合ブランチだけをbaseとし、利用者が対象を特定して明示的に許可するまでmainへ反映しません。
 
@@ -123,9 +123,9 @@ type BodySegment =
 - 1人・1コレクション専用で、公開登録、権限管理、複数ユーザー分離はありません。
 - 初回のアプリ資源取得には通信が必要です。
 - UUIDv7は端末時計が正確である前提です。時計ずれ補正は行いません。
-- 現在接続済みのlegacy同期先は本文を読めます。Goの暗号化経路は後続taskで接続します。
+- local/testで接続済みのv1互換Go同期経路は本文を読めます。暗号化済みSync v2の完全なruntime接続は後続のintegration taskで検証します。
 - 競合は自動マージせず、双方を保持して利用者へ選択を求めます。
-- legacy APIのwire互換は維持していますが、既存D1からPostgreSQLへの本番data移行と切替は未実施です。
+- legacy APIのwire互換はGoで維持していますが、既存D1からPostgreSQLへの本番data移行と切替は未実施です。
 - 画像、添付、検索、タグ、推薦、AI整理、リアルタイム共同編集は対象外です。
 - 大量カード向けの高度な一覧仮想化やグラフ集約は行いません。
 - 任意の有向グラフでは交差を常にゼロにできません。ELKで不要な交差と重なりを減らし、残る交差はhaloで判別しやすくしますが、密グラフでは線が多くなります。

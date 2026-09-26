@@ -91,17 +91,13 @@ as provider/acquirer confirmation.
 
 ### Dependency audit result
 
-T05 rechecked the dependency graph on 2026-09-25 after removing vinext, RSC,
-Wrangler, and the Sites runtime. `shadcn` is a build-only dependency, Vite was
-updated to 8.3.1, and Miniflare's vulnerable pinned `sharp` and `undici` patch
-versions are overridden and covered by the complete legacy D1 compatibility
-suite. `npm audit --omit=dev --audit-level=high` reports zero vulnerabilities;
-the full development graph reports four moderate findings in the obsolete
-esbuild bundled through `drizzle-kit`. That CLI is not included in the scratch
-Go runtime image and no esbuild development server is exposed. Replacing or
-removing the legacy D1 generation tool belongs to T14; a forced downgrade to
-the audit tool's suggested old drizzle-kit is not accepted without migration
-regression evidence.
+T17 removed vinext/RSC/Sites runtime dependencies and the remaining Drizzle,
+Miniflare, and Cloudflare Workers development dependencies. `shadcn` remains a
+build-only dependency and Vite is pinned by the lockfile. The residual
+retirement gate checks both `package.json` and `package-lock.json` so the old
+server packages cannot return unnoticed. Dependency audit output remains only
+one input to the separately approved production vulnerability review; it is
+not a PCI or launch-readiness claim.
 
 ## EC merchant controls
 

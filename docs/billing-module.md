@@ -4,6 +4,15 @@ Issue #142 introduces the provider-neutral Billing boundary used by later
 Entitlement, Stripe, sync, and legal-flow work. It does not enable paid access,
 call a payment provider, or deploy a production migration.
 
+## Status after T17
+
+The TypeScript/D1 design through “Verification and remaining work” is a
+historical migration-source record. T17 removed `server/billing`, D1/Drizzle,
+Miniflare, and their server tests. The executable implementation is now
+`backend/internal/billing` with `backend/internal/adapters/postgres`; the Go
+status section below records its migration provenance. Historical identifiers
+in this document are not current import paths or operational commands.
+
 ## Responsibility and ownership
 
 Billing owns contract and payment facts. It is the only feature allowed to
@@ -116,8 +125,9 @@ dedicated ordering-evidence column rather than overloading the current
 
 The original reconciliation comparison treated `observedAt <= previous` as
 stale. Two independently identified snapshots observed in the same millisecond
-could therefore hide a newer failure state. The TypeScript oracle and Go core
-now reject only an older observation. The unique provider/snapshot receipt
+could therefore hide a newer failure state. Migration comparison established
+the corrected rule, and the Go core rejects only an older observation. The
+unique provider/snapshot receipt
 still makes exact replay idempotent, and per-evidence timestamps keep
 same-time delinquency dominant.
 

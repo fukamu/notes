@@ -6,6 +6,14 @@ any live/test charge. The Notes application composition is unchanged, so local
 editing does not acquire a billing prerequisite. Tests opt into the fake Stripe
 transport and verifier explicitly.
 
+## Status after T17
+
+The TypeScript `server/stripe` design through the primary-reference section is
+a historical migration-source record. T17 removed that source and its server
+tests. The executable contract is `backend/internal/stripebilling`; only
+`backend/internal/adapters/stripe` may import the Stripe SDK. Historical paths
+below are not current import paths or deployable rollback artifacts.
+
 ## Responsibility and dependency direction
 
 ```text
@@ -147,9 +155,9 @@ future composition must emit only the repository's bounded, redacted outcome.
 
 The Go HMAC verifier copies verified raw bytes, compares every `v1` signature
 in constant time, and applies the same five-minute timestamp and 256-KiB body
-limits. The shared `billing/stripe.json` fixture runs through both TypeScript
-and Go and fixes every Checkout field plus an exact signed `invoice.paid`
-payload. Local HTTP-stub tests inspect the SDK's Stripe-Version,
+limits. The frozen `billing/stripe.json` fixture established the TypeScript/Go
+migration comparison and remains exercised by Go. It fixes every Checkout field
+plus an exact signed `invoice.paid` payload. Local HTTP-stub tests inspect the SDK's Stripe-Version,
 Authorization, and Idempotency-Key headers, encoded form fields, required
 subscription expansions, unexpanded PaymentIntent retrieval, and provider
 failure propagation. They use no Stripe credential or network endpoint.

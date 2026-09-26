@@ -8,10 +8,11 @@ code, tests, configuration, or documentation.
 
 - Keep deterministic domain decisions, transformations, validation-independent
   invariants, and state transitions in typed pure functions. Pure core code must
-  not read clocks, generate UUIDs, call network/storage/DOM/D1 APIs, log, or
+  not read clocks, generate UUIDs, call network/storage/DOM/database APIs, log, or
   mutate caller-owned values.
-- Keep React, browser APIs, `fetch`, IndexedDB, Service Worker, D1, environment,
-  clock, UUID generation, and third-party runtime access in explicit adapters.
+- Keep React, browser APIs, `fetch`, IndexedDB, Service Worker, PostgreSQL,
+  environment, clock, UUID generation, and third-party runtime access in
+  explicit adapters.
   Pass generated or decoded values into the pure core.
 - Dependencies point from adapters to typed domain/application/sync contracts.
   Core modules never import concrete adapters.
@@ -56,9 +57,9 @@ code, tests, configuration, or documentation.
   not force-push or rewrite existing history.
 - Preserve user changes. Parallel implementation requires a separate worktree
   and branch for every Issue; never edit one worktree concurrently.
-- Deployment, production data or D1 changes, destructive migrations, and paid
-  verification require separate explicit permission. GitHub push and PR events
-  are quality checks, not deployment authorization.
+- Deployment, production data or database changes, destructive migrations, and
+  paid verification require separate explicit permission. GitHub push and PR
+  events are quality checks, not deployment authorization.
 
 ## Verification gates
 

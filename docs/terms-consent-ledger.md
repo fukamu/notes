@@ -6,6 +6,14 @@ version of the FUKAMU Notes terms. It is separate from `contract_evidence`,
 which records the commercial offer confirmed before checkout; neither record is
 treated as a substitute for the other.
 
+## Status after T17
+
+The TypeScript/D1 sections before “Go T10a implementation” are historical
+migration-source documentation. T17 removed `server/terms-consent`, the D1 and
+Drizzle artifacts, and their server tests. The executable terms ledger is
+`backend/internal/legal` with `backend/internal/adapters/postgres`; historical
+paths below are not current APIs or operational rollback instructions.
+
 ## Contract and pure decision
 
 `server/terms-consent/public.ts` brands consent and submission UUIDv7 values,
@@ -75,9 +83,10 @@ submission/Account/Vault signup reservation. A second trigger rejects every
 update. The adapter remains INSERT/SELECT-only and scopes consent ID,
 submission ID, and latest-evidence reads by Account and Vault.
 
-The shared `contracts/fixtures/legal/terms-consent.json` vector proves exact
-TypeScript/Go UTF-8 serialization and hash compatibility, including HTML
-characters and JavaScript line separators. Disposable-PostgreSQL tests prove
+The frozen `contracts/fixtures/legal/terms-consent.json` vector established
+exact TypeScript/Go UTF-8 serialization and hash compatibility, including HTML
+characters and JavaScript line separators, and remains executable Go evidence.
+Disposable-PostgreSQL tests prove
 reservation-before-finalization, replay, concurrent duplicate convergence,
 owner rejection, and immutability. No production schema is applied and no
 HTTP, public signup, billing, or provider path is connected by #442.

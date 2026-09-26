@@ -6,7 +6,7 @@
 
 ```text
 external data / generated values
-  Request, Response, IndexedDB, D1, env, DOM, clock, UUID
+  Request, Response, IndexedDB, PostgreSQL, env, DOM, clock, UUID
                          ↓ decode / generate in adapter
 typed pure core
   domain transitions, sync decisions, reducers, selectors
@@ -17,7 +17,7 @@ effect adapters
 
 純粋コアは、同じ入力から同じ出力を返し、呼出し側のobject/arrayや共有状態を変更せず、I/O・clock・乱数・環境変数を読みません。局所変数、loop、新しく作ったcollectionへの追加は、変更が外へ漏れない限り使用できます。純粋性のためだけの再帰、独自DSL、汎用command基盤、大量copyは導入しません。
 
-React、browser API、`fetch`、IndexedDB、Service Worker、D1、environment、clock、UUID生成、第三者runtime accessはadapterに置きます。adapterが外部値を `unknown` または実際に保証された最小型として受け、境界で一度decode/guardしてからcoreへ渡します。coreはconcrete adapterをimportしません。
+React、browser API、`fetch`、IndexedDB、Service Worker、PostgreSQL、environment、clock、UUID生成、第三者runtime accessはadapterに置きます。adapterが外部値を `unknown` または実際に保証された最小型として受け、境界で一度decode/guardしてからcoreへ渡します。coreはconcrete adapterをimportしません。
 
 重要な状態、成功/予期可能な失敗、検証前後の値、状態固有dataはdiscriminated union、brand、refined value等の言語に自然な型で区別します。switchは網羅的に扱います。文字列や数値を無差別にwrapせず、取り違えや不正状態を防ぐ具体的価値がある箇所へ限定します。
 
@@ -25,7 +25,7 @@ assertionが避けられない第三者境界では、範囲を最小化し、�
 
 ## 維持する契約
 
-変更Issueが仕様変更を明示していない限り、READMEと既存contract testが保護するwire、IndexedDB、D1、HTTP、同期、採番、競合、自動保存、offline、URL/history、editor、graph、UI、a11y、keyboard/touchの契約を維持します。
+変更Issueが仕様変更を明示していない限り、READMEと既存contract testが保護するwire、IndexedDB、PostgreSQL、HTTP、同期、採番、競合、自動保存、offline、URL/history、editor、graph、UI、a11y、keyboard/touchの契約を維持します。
 
 副作用の順序、transaction、retry、idempotency、並行編集保護、timeout/cancelも契約です。純粋化のためにtransaction外へread/writeを移したり、streamingや性能特性を黙って変えたりしません。新しいruntime validationが従来入力を拒否する場合はrefactorではなく互換性変更Issueとして扱います。
 
@@ -108,9 +108,9 @@ git diff --check
 npm run verify
 ```
 
-Issue固有testは実装中に繰返します。個別PR結果の合計を最終integration検証の代用にしません。test/build/CIはfixture/emulatorだけを使い、本番D1/実dataへ接続せずdeployしません。未実行、skip、環境制約を成功扱いにしません。
+Issue固有testは実装中に繰返します。個別PR結果の合計を最終integration検証の代用にしません。test/build/CIは専用fixture databaseとlocal adapterだけを使い、本番database/実dataへ接続せずdeployしません。未実行、skip、環境制約を成功扱いにしません。
 
-Schema変更はfeature ownerのDrizzle定義、versioned manifest、checked-in migration、codec、Miniflare testを同じIssueへ含めます。request handlerからDDLを実行せず、migration適用は明示runnerと別途承認された運用手順に限定します。local/CIは新規の空Miniflare databaseだけを使い、既存Sites data migrationやproduction applyを行いません。
+Schema変更はfeature ownerのGo model/adapter、versioned checked-in PostgreSQL migration、boundary validation、専用database integration testを同じIssueへ含めます。request handlerからDDLを実行せず、migration適用は明示runnerと別途承認された運用手順に限定します。local/CIはallowlistされた空のtest databaseだけを使い、既存D1 data migrationやproduction applyを行いません。
 
 ## 検査設定の変更
 

@@ -77,11 +77,12 @@ gate is introduced.
 `npm run benchmark:server-load` runs only the focused evidence test. The
 checked-in counts do not change when the benchmark is re-run.
 
-## Legacy assertion mapping
+## Retired legacy assertion mapping
 
-The TypeScript harness is frozen at
-`e8936ab90768774371d84b4808c100d546649943` until T17 removes the legacy server
-test corpus. Its assertions map to Go evidence as follows:
+T17 removed the TypeScript harness after freezing its source and test ledger at
+the revisions recorded in
+[`legacy-typescript-retirement.md`](legacy-typescript-retirement.md). The
+historical assertions map to the executable Go evidence as follows:
 
 | Legacy evidence                                         | Go replacement                                                                                                                                                     |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -95,10 +96,10 @@ test corpus. Its assertions map to Go evidence as follows:
 
 ## Rollback and limitations
 
-Rollback of Issue #501 restores the previous benchmark command and removes the
-Go load test plus `server-load-go.json`. It does not require a schema or data
-migration. The old TypeScript files and artifact remain unchanged on this branch
-so their frozen evidence is available to the T17 retirement review.
+Rollback of the Go load evidence restores its prior commit only as part of a
+reviewed migration rollback. The retired TypeScript files are not a deployable
+fallback; their exact Git revisions and digests remain historical evidence.
+No schema or production data operation is performed by this benchmark.
 
 This harness does not authorize or replace provider-scale load testing. Hosted
 PostgreSQL, Cloudflare, KMS, object-storage, production credentials, paid

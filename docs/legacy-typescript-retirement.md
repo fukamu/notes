@@ -1,9 +1,11 @@
 # Legacy TypeScript backend retirement evidence
 
-This document is the review and recovery record for T14b under parent Issue
-#409. It does not authorize source deletion, a `main` update, production data
-access, provider provisioning, deployment, cutover, or destruction of an old
-artifact, D1 database, key, secret, Stripe object, or contract record.
+This document is the review and recovery record for the completed T17 source
+retirement under parent Issue #409. The reviewed work removes repository
+source and configuration only. It does not authorize a `main` update,
+production data access, provider provisioning, deployment, cutover, or
+destruction of an old artifact, D1 database, key, secret, Stripe object, or
+contract record.
 
 ## Machine-checked closure
 
@@ -31,6 +33,17 @@ digest, associated F01-F28 rows, and one of these reviewed outcomes:
 The checked-in ledger contains 11 retained frontend records, 127 Go
 replacements, and zero historical-only records. Documentation, production
 source, and optional benchmark files are not accepted as executable evidence.
+The closure phase is `retired`; V11 is complete for the repository/runtime
+artifact boundary, while V09 remains `approval-pending` for real provider and
+staging evidence. F28 remains explicitly `intentionally-absent`.
+
+The retired repository no longer tracks `app/api`, `server`, `db`, `drizzle`,
+`.openai/hosting.json`, `tsconfig.api.json`, `drizzle.config.ts`, or
+`vitest.server-load.config.ts`. The legacy API lint/typecheck/database scripts
+and the Drizzle, Miniflare, and Cloudflare Workers type dependencies are also
+absent. A residual guard rejects reintroduction of those roots, files, scripts,
+or packages. Removing `.openai/hosting.json` is only a source-tree change; no
+Sites project or other external resource was changed or deleted.
 
 The manifest deliberately distinguishes:
 
@@ -49,13 +62,12 @@ distinct immediate account-deletion effect, so its legacy reference behavior
 may be retired in a reviewed T17 slice while the public route remains closed.
 See [`billing-cancellation.md`](billing-cancellation.md).
 
-Issue #502 ports the frozen `server/operations/core.ts` environment/action
-matrix and launch evidence decisions into an import-free typed Go policy. Its
-tests preserve the complete matrix, ordered blockers, canary and isolated
-restore requirements, production explicit-approval boundary, and fail-closed
-invalid states. No operation executor or production approval is added. Once
-#502 is merged and its checks pass, T17 may retire this TypeScript operations
-policy while retaining the Go evidence named under F26/V08.
+Issue #502 ported the frozen operations environment/action matrix and launch
+evidence decisions into an import-free typed Go policy. Its tests preserve the
+complete matrix, ordered blockers, canary and isolated restore requirements,
+production explicit-approval boundary, and fail-closed invalid states. T17 has
+now retired that TypeScript policy while retaining the Go evidence named under
+F26/V08. No operation executor or production approval is added.
 
 ## Frozen reference
 
@@ -85,12 +97,11 @@ integration tests, and 86 unit tests. The SHA-256 of the sorted
 `sha256sum`-shaped file digest list is
 `7c28cbe1db282adc1d5349f06ab37964f2b224d4ee3dbc9acad8664e0de50531`.
 The verifier fails on a missing, duplicate, reordered, changed, untracked, or
-unproved entry. While the reference is present, the working tree must exactly
-match all 138 frozen path/digest pairs. Once the closure phase becomes
-`retired`, replaced paths must be absent, retained paths and evidence must
-remain tracked and free of legacy imports, and the current selected corpus must
-be empty. Retirement groups separately require every legacy source file to
-have exactly one feature owner.
+unproved entry. The frozen path/digest pairs remain historical evidence. In the
+current `retired` phase, all 127 replaced paths must be absent, all 11 retained
+paths and their evidence must remain tracked and free of legacy imports, and
+the current selected legacy-dependent corpus must be empty. Retirement groups
+record exactly one feature owner for every removed legacy source file.
 
 For review or incident analysis, restore a read-only source snapshot without
 changing a branch:
@@ -184,9 +195,9 @@ PostgreSQL test schema; the Go process stopped after the measurement. No
 external-provider request occurred. These figures compare one fixture on one
 local host only; they are not a production capacity claim or release threshold.
 
-## T17 removal conditions
+## T17 completion evidence
 
-Legacy backend removal is permitted only in reviewed T17 Issue/PR slices that:
+The reviewed T17 Issue/PR satisfies these repository conditions:
 
 1. retain the TypeScript/React frontend, browser runtime, service worker, and
    public page output required by the Go-served artifact;
@@ -199,7 +210,7 @@ Legacy backend removal is permitted only in reviewed T17 Issue/PR slices that:
 4. remove request-time and operational TypeScript/JavaScript backend execution,
    obsolete D1/Workers/vinext configuration and dependencies, while keeping
    only frontend/build tooling that the final static artifact requires;
-5. pass focused compatibility tests, `git diff --check`, and the full
+5. require focused compatibility tests, `git diff --check`, and the full
    `npm run verify` gate before and after integration.
 
 Do not delete test coverage merely because its old implementation was removed.
