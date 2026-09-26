@@ -40,7 +40,7 @@ async function createHarness(options: {
   );
   await writeFile(
     path.join(bin, 'go'),
-    `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "${goLog}"\nif [[ "$*" == *'run ./cmd/notesctl prepare-e2e'* ]]; then\n  printf 'NOTES_ENVIRONMENT=%s\\nNOTES_DATABASE_URL=%s\\nNOTES_STATIC_DIR=%s\\nNOTES_PRIVATE_AUTH_MODE=%s\\n' "$NOTES_ENVIRONMENT" "$NOTES_DATABASE_URL" "$NOTES_STATIC_DIR" "$NOTES_PRIVATE_AUTH_MODE" > "${environmentLog}"\nfi\nif [[ "$*" == *'run ./cmd/notes' && '${options.failStart ? '1' : '0'}' == '1' ]]; then\n  exit 1\nfi\n`,
+    `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "${goLog}"\nif [[ "$*" == *'run ./cmd/notesctl prepare-e2e'* ]]; then\n  printf 'NOTES_ENVIRONMENT=%s\\nNOTES_APPLICATION_PROFILE=%s\\nNOTES_DATABASE_URL=%s\\nNOTES_STATIC_DIR=%s\\nNOTES_PRIVATE_AUTH_MODE=%s\\n' "$NOTES_ENVIRONMENT" "$NOTES_APPLICATION_PROFILE" "$NOTES_DATABASE_URL" "$NOTES_STATIC_DIR" "$NOTES_PRIVATE_AUTH_MODE" > "${environmentLog}"\nfi\nif [[ "$*" == *'run ./cmd/notes' && '${options.failStart ? '1' : '0'}' == '1' ]]; then\n  exit 1\nfi\n`,
   );
   await chmod(path.join(bin, 'npm'), 0o755);
   await chmod(path.join(bin, 'go'), 0o755);
@@ -95,6 +95,7 @@ describe('Go E2E server', () => {
     expect(result.goCalls).toContain('run ./cmd/notesctl prepare-e2e');
     expect(result.goCalls).toContain('run ./cmd/notes');
     expect(result.environment).toContain('NOTES_ENVIRONMENT=test');
+    expect(result.environment).toContain('NOTES_APPLICATION_PROFILE=disabled');
     expect(result.environment).toContain(
       'NOTES_DATABASE_URL=postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable',
     );

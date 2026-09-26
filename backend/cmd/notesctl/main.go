@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/access"
 	contentcryptoadapter "github.com/fukamu/notes/backend/internal/adapters/contentcrypto"
 	kmsadapter "github.com/fukamu/notes/backend/internal/adapters/kms"
+	localfixtureadapter "github.com/fukamu/notes/backend/internal/adapters/localfixture"
 	objectstorageadapter "github.com/fukamu/notes/backend/internal/adapters/objectstorage"
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
 	recoverybackupadapter "github.com/fukamu/notes/backend/internal/adapters/recoverybackup"
@@ -27,6 +29,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/cryptocontent"
 	"github.com/fukamu/notes/backend/internal/encryptedobject"
 	"github.com/fukamu/notes/backend/internal/identity"
+	"github.com/fukamu/notes/backend/internal/localfixture"
 	"github.com/fukamu/notes/backend/internal/operations"
 	"github.com/fukamu/notes/backend/internal/quota"
 	"github.com/fukamu/notes/backend/internal/stripebilling"
@@ -56,11 +59,17 @@ func run(ctx context.Context, arguments []string, stdout io.Writer, stderr io.Wr
 		reencryptVaultDEK,
 		scanVaultOrphans,
 		drainVaultDeleteOutbox,
+		prepareLocalFixtureE2EDatabase,
 	)
 }
 
 type migrateFunction func(context.Context, string) error
 type prepareE2EFunction func(context.Context, string, string) error
+type prepareLocalFixtureFunction func(
+	context.Context,
+	config.LocalFixtureConfig,
+	access.Subject,
+) error
 type listQuotaCandidatesFunction func(
 	context.Context,
 	string,
@@ -134,11 +143,13 @@ func runWithDependencies(
 	reencryptDEK reencryptDEKFunction,
 	scanOrphans scanOrphansFunction,
 	drainDeleteOutbox drainDeleteOutboxFunction,
+	prepareLocalFixture ...prepareLocalFixtureFunction,
 ) int {
 	return runWithRecoveryDependency(
 		parent, arguments, stdout, stderr, lookup, migrate, prepareE2E,
 		listQuotaCandidates, finalizeQuotaCommit, inspectDeletion, reconcileBilling,
 		rotateDEK, reencryptDEK, scanOrphans, drainDeleteOutbox, runVaultRecoveryDrill,
+		prepareLocalFixture...,
 	)
 }
 
@@ -159,6 +170,7 @@ func runWithRecoveryDependency(
 	scanOrphans scanOrphansFunction,
 	drainDeleteOutbox drainDeleteOutboxFunction,
 	recoveryDrill runRecoveryDrillFunction,
+	prepareLocalFixture ...prepareLocalFixtureFunction,
 ) int {
 	if parent == nil || listQuotaCandidates == nil || finalizeQuotaCommit == nil || inspectDeletion == nil ||
 		reconcileBilling == nil || rotateDEK == nil || reencryptDEK == nil || scanOrphans == nil ||
@@ -286,9 +298,27 @@ func runWithRecoveryDependency(
 			return 1
 		}
 		subjectValue := strings.TrimPrefix(arguments[2], "--allowed-subject=")
-		if _, err := access.ParseSubject(subjectValue); err != nil {
+		subject, err := access.ParseSubject(subjectValue)
+		if err != nil {
 			_, _ = fmt.Fprintln(stderr, "e2e subject refused")
 			return 1
+		}
+		profileValue, _ := lookup("NOTES_APPLICATION_PROFILE")
+		if profileValue != "" && profileValue != string(config.ApplicationProfileDisabled) {
+			configuration, configErr := config.Load(lookup)
+			if configErr != nil || configuration.ApplicationProfile != config.ApplicationProfileLocalFixture ||
+				configuration.LocalFixture == nil || configuration.Environment != config.EnvironmentTest ||
+				configuration.LocalFixture.DatabaseURL != databaseConfig.URL || len(prepareLocalFixture) != 1 ||
+				prepareLocalFixture[0] == nil || configuration.LocalFixture.AllowedSubject != subject {
+				_, _ = fmt.Fprintln(stderr, "local fixture configuration invalid")
+				return 1
+			}
+			if err := prepareLocalFixture[0](ctx, *configuration.LocalFixture, subject); err != nil {
+				_, _ = fmt.Fprintln(stderr, "e2e preparation failed")
+				return 1
+			}
+			_, _ = fmt.Fprintln(stdout, "e2e database prepared")
+			return 0
 		}
 		if err := prepareE2E(ctx, databaseConfig.URL, subjectValue); err != nil {
 			_, _ = fmt.Fprintln(stderr, "e2e preparation failed")
@@ -1585,6 +1615,9 @@ func printUsage(output io.Writer) {
 }
 
 func prepareE2EDatabase(ctx context.Context, databaseURL string, allowedSubject string) error {
+	if err := postgresadapter.ValidateTestDatabaseURL(databaseURL); err != nil {
+		return err
+	}
 	database, err := postgresadapter.OpenSQL(ctx, databaseURL)
 	if err != nil {
 		return err
@@ -1607,6 +1640,78 @@ func prepareE2EDatabase(ctx context.Context, databaseURL string, allowedSubject 
 		time.Now().UnixMilli(),
 	)
 	return err
+}
+
+func prepareLocalFixtureE2EDatabase(
+	ctx context.Context,
+	configuration config.LocalFixtureConfig,
+	allowedSubject access.Subject,
+) error {
+	if err := postgresadapter.ValidateTestDatabaseURL(configuration.DatabaseURL); err != nil {
+		return err
+	}
+	if configuration.ObjectDirectory != filepath.Join(
+		configuration.PrivateRoot,
+		localfixture.ObjectDirectoryName,
+	) || configuration.NonceDirectory != filepath.Join(
+		configuration.PrivateRoot,
+		localfixture.NonceDirectoryName,
+	) || configuration.KeyDirectory != filepath.Join(
+		configuration.PrivateRoot,
+		localfixture.KeyDirectoryName,
+	) {
+		return errors.New("local fixture directory configuration mismatch")
+	}
+	layout, err := localfixtureadapter.PrepareLayout(configuration.PrivateRoot)
+	if err != nil {
+		return err
+	}
+	metadata, err := recoverykeyadapter.PrepareFixtureKey(layout.KeyDirectory, configuration.VaultID)
+	if err != nil {
+		return err
+	}
+	seed, err := localfixture.NewSeed(
+		allowedSubject,
+		configuration.AccountID,
+		configuration.VaultID,
+		configuration.SessionID,
+		configuration.SessionEpoch,
+		configuration.SessionToken,
+		metadata,
+	)
+	if err != nil {
+		return err
+	}
+	database, err := postgresadapter.OpenSQL(ctx, configuration.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	if _, err := database.ExecContext(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
+		_ = database.Close()
+		return err
+	}
+	migrator, err := postgresadapter.NewMigrator(database, migrations.Files)
+	if err != nil {
+		_ = database.Close()
+		return err
+	}
+	if err := migrator.Up(ctx); err != nil {
+		_ = database.Close()
+		return err
+	}
+	if err := database.Close(); err != nil {
+		return err
+	}
+	pool, err := postgresadapter.OpenPool(ctx, configuration.DatabaseURL, 2)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	store, err := postgresadapter.NewLocalFixtureStore(pool, seed)
+	if err != nil {
+		return err
+	}
+	return store.Seed(ctx)
 }
 
 func migrateDatabase(ctx context.Context, databaseURL string) error {

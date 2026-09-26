@@ -124,11 +124,22 @@ directory on exit.
 After stopping the reference server and deleting its temporary D1 directory,
 start the Go implementation from the T14b worktree against the disposable
 Compose PostgreSQL fixture. `notesctl prepare-e2e` accepts only the exact
-loopback `fukamu_notes_go_test` database, recreates that schema, applies the
-embedded migrations, and inserts the same opaque test subject. Give Go only an
-ephemeral public verification key; keep the private test key in the local test
-process. Sequential use of the loopback port prevents either process from
-reaching the other implementation's store.
+loopback `fukamu_notes_go_test` database. With the default `disabled`
+application profile it retains the original compatibility behavior: recreate
+that schema, apply the embedded migrations, and insert the same opaque test
+subject. Give Go only an ephemeral public verification key; keep the private
+test key in the local test process. Sequential use of the loopback port
+prevents either process from reaching the other implementation's store.
+
+Issue #509 adds a separate explicit `local-fixture` preparation profile for
+later full-Go route composition. It reuses the exact private-runtime database
+and origin and, behind the same disposable-database guard, seeds a typed
+Account/Vault, hash-only session, local Billing/Entitlement state, wrapped DEK
+metadata, and owner-only filesystem roots. Its private key file is generated
+or reused without printing key material. Exact-state and foreign-scope checks
+fail closed. No business route or external provider is connected by that
+foundation, so it is not used to upgrade this legacy-sync comparison into a
+full-feature equivalence or V11/server-removal claim.
 
 Then run the same checked-in sync request against each implementation:
 
