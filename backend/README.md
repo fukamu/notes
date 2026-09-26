@@ -238,6 +238,14 @@ smoke checks on a random loopback port, and writes ignored local manifest/SBOM
 evidence. See [`docs/go-release-artifact.md`](../docs/go-release-artifact.md).
 The command never pushes or deploys the disposable image.
 
+`npm run verify:migration-closure` strictly checks the complete F01-F28 and
+V01-V12 evidence inventory, the frozen legacy source trees, and the
+legacy-dependent test corpus before T17 retirement. See
+[`docs/legacy-typescript-retirement.md`](../docs/legacy-typescript-retirement.md).
+F22 ordinary period-end cancellation remains blocked by #403 / Draft PR #404;
+the immediate account-deletion cancellation effect is not treated as a
+substitute.
+
 The shared crypto fixture is executed by both TypeScript Web Crypto and Go's
 AES-GCM implementation. Focused Go checks are:
 

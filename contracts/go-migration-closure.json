@@ -1,0 +1,499 @@
+{
+  "schemaVersion": 1,
+  "baseline": {
+    "mainRevision": "f423da9932163980485ecc5bc2055b7c8c3b3d8b",
+    "legacyRetirementRevision": "e8936ab90768774371d84b4808c100d546649943",
+    "integrationBranch": "integration/409-go-backend-migration"
+  },
+  "features": [
+    {
+      "id": "F01",
+      "state": "A",
+      "migration": "migrated",
+      "verification": ["V01", "V10"],
+      "goEvidence": ["backend/internal/httpapi/static.go"]
+    },
+    {
+      "id": "F02",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V02", "V03"],
+      "goEvidence": [
+        "backend/internal/access/access.go",
+        "backend/internal/launchgate/gate.go"
+      ]
+    },
+    {
+      "id": "F03",
+      "state": "A",
+      "migration": "migrated",
+      "verification": ["V01", "V04", "V10"],
+      "goEvidence": [
+        "backend/internal/synclegacy/decode.go",
+        "backend/internal/adapters/postgres/legacy_sync.go"
+      ]
+    },
+    {
+      "id": "F04",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V02", "V03", "V04"],
+      "goEvidence": ["backend/internal/identity/session.go"]
+    },
+    {
+      "id": "F05",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V03"],
+      "goEvidence": [
+        "backend/internal/identity/oidc.go",
+        "backend/internal/adapters/oidc/provider.go"
+      ]
+    },
+    {
+      "id": "F06",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V03"],
+      "goEvidence": [
+        "backend/internal/identity/email_otp.go",
+        "backend/internal/adapters/otp/crypto.go"
+      ]
+    },
+    {
+      "id": "F07",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V03", "V04"],
+      "goEvidence": [
+        "backend/internal/identity/session.go",
+        "backend/internal/adapters/postgres/session.go"
+      ]
+    },
+    {
+      "id": "F08",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V03", "V07"],
+      "goEvidence": [
+        "backend/internal/identity/signup.go",
+        "backend/internal/legal/terms_signup.go"
+      ]
+    },
+    {
+      "id": "F09",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V04", "V05"],
+      "goEvidence": [
+        "backend/internal/syncv2/content.go",
+        "backend/internal/adapters/postgres/sync_v2_content.go"
+      ]
+    },
+    {
+      "id": "F10",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V01", "V04", "V05"],
+      "goEvidence": [
+        "backend/internal/syncv2/application.go",
+        "backend/internal/httpapi/sync_v2.go"
+      ]
+    },
+    {
+      "id": "F11",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V06"],
+      "goEvidence": [
+        "backend/internal/cryptocontent/service.go",
+        "backend/internal/adapters/contentcrypto/aes_gcm.go"
+      ]
+    },
+    {
+      "id": "F12",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V06", "V09"],
+      "goEvidence": [
+        "backend/internal/adapters/kms/gcp.go",
+        "backend/internal/adapters/kms/rest.go"
+      ]
+    },
+    {
+      "id": "F13",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V04", "V06", "V08"],
+      "goEvidence": [
+        "backend/internal/cryptocontent/rotation.go",
+        "backend/internal/operations/dek_rotation.go"
+      ]
+    },
+    {
+      "id": "F14",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V04", "V06", "V08"],
+      "goEvidence": [
+        "backend/internal/encryptedobject/core.go",
+        "backend/internal/adapters/postgres/encrypted_object.go"
+      ]
+    },
+    {
+      "id": "F15",
+      "state": "B/C",
+      "migration": "migrated",
+      "verification": ["V06", "V08"],
+      "goEvidence": [
+        "backend/internal/encryptedobject/recovery_service.go",
+        "backend/internal/operations/recovery_drill.go"
+      ]
+    },
+    {
+      "id": "F16",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V04", "V05"],
+      "goEvidence": [
+        "backend/internal/quota/ledger.go",
+        "backend/internal/adapters/postgres/quota.go"
+      ]
+    },
+    {
+      "id": "F17",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V04", "V07"],
+      "goEvidence": [
+        "backend/internal/billing/core.go",
+        "backend/internal/adapters/postgres/billing.go"
+      ]
+    },
+    {
+      "id": "F18",
+      "state": "B/C",
+      "migration": "migrated",
+      "verification": ["V07", "V09"],
+      "goEvidence": [
+        "backend/internal/stripebilling/core.go",
+        "backend/internal/adapters/stripe/provider.go"
+      ]
+    },
+    {
+      "id": "F19",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V05", "V07"],
+      "goEvidence": [
+        "backend/internal/entitlement/core.go",
+        "backend/internal/adapters/postgres/entitlement.go"
+      ]
+    },
+    {
+      "id": "F20",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V01", "V07"],
+      "goEvidence": [
+        "backend/internal/legal/contract_service.go",
+        "backend/internal/httpapi/legal.go"
+      ]
+    },
+    {
+      "id": "F21",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V01", "V07"],
+      "goEvidence": [
+        "backend/internal/legal/terms_service.go",
+        "backend/internal/httpapi/legal.go"
+      ]
+    },
+    {
+      "id": "F22",
+      "state": "B",
+      "migration": "blocked-existing-work",
+      "verification": ["V07"],
+      "goEvidence": ["backend/internal/billing/cancellation.go"],
+      "dependencies": ["#403", "#404"],
+      "note": "Ordinary period-end cancellation remains owned by the existing Draft PR; current Go cancellation is only the immediate account-deletion effect."
+    },
+    {
+      "id": "F23",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V03", "V04", "V07", "V08"],
+      "goEvidence": [
+        "backend/internal/accountdeletion/application.go",
+        "backend/internal/httpapi/account_deletion.go"
+      ]
+    },
+    {
+      "id": "F24",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V01", "V03", "V08"],
+      "goEvidence": [
+        "backend/internal/privacyrequest/application.go",
+        "backend/internal/httpapi/privacy_request.go"
+      ]
+    },
+    {
+      "id": "F25",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V04", "V11"],
+      "goEvidence": [
+        "backend/migrations/migrations.go",
+        "backend/internal/adapters/postgres/migrator.go"
+      ]
+    },
+    {
+      "id": "F26",
+      "state": "B/C",
+      "migration": "migrated",
+      "verification": ["V08", "V09"],
+      "goEvidence": [
+        "backend/internal/operations/quota_reconciliation.go",
+        "backend/internal/telemetry/logger.go",
+        "backend/cmd/notesctl/main.go"
+      ]
+    },
+    {
+      "id": "F27",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V01", "V10", "V11"],
+      "goEvidence": [
+        "contracts/openapi.yaml",
+        "backend/internal/httpapi/handler.go",
+        "backend/internal/httpapi/static.go"
+      ]
+    },
+    {
+      "id": "F28",
+      "state": "C",
+      "migration": "intentionally-absent",
+      "verification": ["V08"],
+      "goEvidence": [],
+      "note": "No scheduler or realtime service exists in the connected product; migration does not add one."
+    }
+  ],
+  "verifications": [
+    {
+      "id": "V01",
+      "status": "complete",
+      "evidence": [
+        "contracts/openapi.yaml",
+        "tests/contracts/migration-fixtures.test.ts",
+        "backend/internal/httpapi/handler_test.go"
+      ]
+    },
+    {
+      "id": "V02",
+      "status": "complete",
+      "evidence": [
+        "backend/internal/adapters/access/local_test.go",
+        "backend/internal/launchgate/gate_test.go"
+      ]
+    },
+    {
+      "id": "V03",
+      "status": "complete",
+      "evidence": [
+        "backend/internal/identity/session_test.go",
+        "backend/internal/identity/oidc_test.go",
+        "backend/internal/identity/email_otp_test.go"
+      ]
+    },
+    {
+      "id": "V04",
+      "status": "complete",
+      "evidence": [
+        "backend/tests/integration/postgres_foundation_test.go",
+        "backend/tests/integration/legacy_sync_test.go"
+      ]
+    },
+    {
+      "id": "V05",
+      "status": "complete",
+      "evidence": [
+        "backend/tests/integration/quota_ledger_test.go",
+        "backend/tests/integration/sync_v2_application_test.go"
+      ]
+    },
+    {
+      "id": "V06",
+      "status": "complete",
+      "evidence": [
+        "backend/internal/cryptocontent/model_test.go",
+        "backend/internal/encryptedobject/recovery_service_test.go"
+      ]
+    },
+    {
+      "id": "V07",
+      "status": "complete",
+      "evidence": [
+        "backend/tests/integration/billing_projection_test.go",
+        "backend/tests/integration/contract_evidence_test.go"
+      ]
+    },
+    {
+      "id": "V08",
+      "status": "complete",
+      "evidence": [
+        "backend/tests/integration/account_deletion_test.go",
+        "backend/internal/operations/dek_rotation_test.go"
+      ]
+    },
+    {
+      "id": "V09",
+      "status": "approval-pending",
+      "evidence": ["docs/go-migration-decisions.md"],
+      "note": "External provider and staging evidence requires separate approval."
+    },
+    {
+      "id": "V10",
+      "status": "complete",
+      "evidence": [
+        "tests/e2e/notes.spec.ts",
+        "tests/unit/service-worker.test.ts"
+      ]
+    },
+    {
+      "id": "V11",
+      "status": "in-progress",
+      "evidence": [
+        "scripts/verify-release-artifact.mts",
+        "docs/go-release-artifact.md"
+      ],
+      "note": "Node-free runtime artifact is proven; checked-in legacy source retirement remains T17."
+    },
+    {
+      "id": "V12",
+      "status": "complete",
+      "evidence": [
+        "scripts/benchmark-migration.mts",
+        "docs/legacy-typescript-retirement.md"
+      ]
+    }
+  ],
+  "retirement": {
+    "phase": "reference-present",
+    "sourceRevision": "e8936ab90768774371d84b4808c100d546649943",
+    "sourceTrees": [
+      {
+        "path": "app/api",
+        "gitTree": "33be5898306605bb5e16287066f11f069054801f"
+      },
+      {
+        "path": "server",
+        "gitTree": "f01b0ad2dab939766e2d86d46effa61becba5d35"
+      },
+      { "path": "db", "gitTree": "049835774238c8b1726f3e85dc992eb26a6cf144" },
+      {
+        "path": "drizzle",
+        "gitTree": "25f61bc391b0d90c9e3c145f0ebe20caae693632"
+      }
+    ],
+    "legacyTestCorpus": {
+      "files": 138,
+      "sha256": "7c28cbe1db282adc1d5349f06ab37964f2b224d4ee3dbc9acad8664e0de50531"
+    },
+    "groups": [
+      {
+        "id": "delivery-sync",
+        "features": ["F02", "F03", "F25"],
+        "legacyPrefixes": [
+          "app/api/launch-status/",
+          "app/api/sync/",
+          "app/api/tsconfig.json",
+          "db/",
+          "server/launch-gate/",
+          "server/runtime-mode.ts"
+        ]
+      },
+      {
+        "id": "identity",
+        "features": ["F04", "F05", "F06", "F07", "F08"],
+        "legacyPrefixes": [
+          "server/core/",
+          "server/control-plane/",
+          "server/signup-admission/",
+          "server/session-boundary.ts",
+          "server/oidc-boundary.ts",
+          "server/email-otp-boundary.ts",
+          "server/adapters/fake-email-otp.ts",
+          "server/adapters/fake-oidc.ts",
+          "server/adapters/fake-session-resolver.ts",
+          "server/adapters/web-oidc.ts",
+          "server/adapters/web-session.ts"
+        ]
+      },
+      {
+        "id": "crypto-object",
+        "features": ["F11", "F12", "F13", "F14", "F15"],
+        "legacyPrefixes": [
+          "server/crypto/",
+          "server/encrypted-object/",
+          "server/adapters/fake-key-management.ts",
+          "server/adapters/fake-private-object-storage.ts",
+          "server/adapters/fake-vault-recovery-backup.ts",
+          "server/adapters/gcp-cloud-kms.ts",
+          "server/adapters/web-object-key.ts"
+        ]
+      },
+      {
+        "id": "vault-sync-quota",
+        "features": ["F09", "F10", "F16"],
+        "legacyPrefixes": [
+          "app/api/v2/sync/",
+          "server/composition/",
+          "server/quota/",
+          "server/sync-v2/",
+          "server/vault-content/"
+        ]
+      },
+      {
+        "id": "billing",
+        "features": ["F17", "F18", "F19", "F22"],
+        "legacyPrefixes": [
+          "app/api/billing/",
+          "server/billing/",
+          "server/entitlement/",
+          "server/stripe/"
+        ]
+      },
+      {
+        "id": "legal",
+        "features": ["F20", "F21"],
+        "legacyPrefixes": [
+          "app/api/account/terms-consent/",
+          "server/legal-checkout/",
+          "server/terms-consent/"
+        ]
+      },
+      {
+        "id": "deletion-privacy",
+        "features": ["F23", "F24"],
+        "legacyPrefixes": [
+          "app/api/account/deletion/",
+          "app/api/account/privacy-requests/",
+          "server/account-deletion/",
+          "server/privacy-request/"
+        ]
+      },
+      {
+        "id": "operations",
+        "features": ["F26"],
+        "legacyPrefixes": ["server/operations/", "server/telemetry/"]
+      },
+      {
+        "id": "migrations",
+        "features": ["F25"],
+        "legacyPrefixes": ["server/migrations/", "drizzle/"]
+      }
+    ]
+  }
+}

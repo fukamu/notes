@@ -74,11 +74,14 @@ delete existing resources.
   bounded owner-scoped delete-outbox runner over disposable local/test storage.
   T13i was integrated by #490 / PR #491 from exact integration tip
   `3d36519fb26baed16c080b3a0d9ca56fcc84f3ff` and adds only a read-only recovery
-  drill over isolated local fixture directories. T14a Issue #492 starts from
-  exact integration tip `081fb4fecfc3855244bd06c9e3a5d765e82af0e0` and adds
-  the disposable Node-free Go release-artifact gate. No real KMS/object/backup
-  provider request, provider resource change, registry push, or deployment is
-  part of these slices.
+  drill over isolated local fixture directories. T14a was integrated by #492 /
+  PR #493 from exact integration tip
+  `081fb4fecfc3855244bd06c9e3a5d765e82af0e0` and adds the disposable Node-free
+  Go release-artifact gate. T14b Issue #494 starts from exact integration tip
+  `e8936ab90768774371d84b4808c100d546649943` and records the
+  feature/verification closure and TypeScript retirement evidence. No real
+  KMS/object/backup provider request, provider resource change, registry push,
+  or deployment is part of these slices.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -124,7 +127,7 @@ the same contract as its closed route.
 | F24 | B     | privacy request journal                     | T12                             | V01,V03,V08     | Go journal/closed HTTP #456; deletion handoff #468                         |
 | F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11         | core #414; legacy singleton seed #418                                      |
 | F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | quota #470/#472; deletion #474; billing #478; DEK #480/#482; recovery #490 |
-| F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10,V11     | static runtime #420; release artifact #492; source removal remains T17     |
+| F27 | A/B   | frontend wire contracts                     | T01,T05,T14                     | V01,V10,V11     | static runtime #420; artifact #492; closure evidence #494; removal is T17  |
 | F28 | C     | scheduler / realtime services               | none unless separately approved | V08             | intentionally not added                                                    |
 
 ## Verification matrix
@@ -142,7 +145,7 @@ the same contract as its closed route.
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                                  |
 | V10 | browser UI/offline/SW/deep links                        | #420 desktop/mobile: 110 passed, 4 optional feasibility skips                                                                                                              |
 | V11 | clean build/migrate/image and server-runtime removal    | Node-free image/config/layer/smoke gate #492; legacy source removal remains T17                                                                                            |
-| V12 | isolated reference/Go performance comparison            | safe runner in #410; measurements pending                                                                                                                                  |
+| V12 | isolated reference/Go performance comparison            | loopback-only typed runner and isolated D1/PostgreSQL observation in #494                                                                                                  |
 
 ## Intentional security differences
 
@@ -1743,3 +1746,32 @@ production migration, and traffic cutover remain separate decisions and
 approvals. Legacy TypeScript server source remains for compatibility evidence
 until the later T17 removal slice; it is not copied into or executed by this
 image.
+
+## T14b migration closure and retirement evidence
+
+Issue #494 adds the machine-checked
+[`go-migration-closure.json`](../contracts/go-migration-closure.json) inventory.
+It requires exactly F01-F28 and V01-V12, verifies that every implemented feature
+has Go evidence, and keeps F22 explicitly blocked by existing Issue #403 and
+Draft PR #404. The current Go cancellation service is the immediate
+account-deletion effect; it is not evidence for the ordinary period-end
+cancellation contract. F28 remains intentionally absent rather than silently
+becoming a scheduler or realtime service.
+
+`npm run verify:migration-closure` is part of the shared gate. While the
+reference implementation remains checked in, it binds `app/api`, `server`,
+`db`, and `drizzle` to the exact T14a integration revision and Git tree IDs,
+assigns every file to one retirement group, and fixes the complete legacy test
+corpus by count and digest. Any unrecorded feature ID, evidence path, source
+file, test drift, revision drift, overlap, or unsafe path fails verification.
+T17 must change the phase and retained evidence deliberately in the same
+reviewed removal, rather than merely deleting directories until checks pass.
+
+The typed migration benchmark accepts only a root loopback HTTP URL, requires a
+unique disposable-store label, uses the same checked-in legacy sync fixture,
+and never prints identity material. The reference and Go observations use
+separate D1 and PostgreSQL stores and execute no provider effect. Timing is
+diagnostic evidence from one local host, not a capacity target, production SLO,
+or permission to provision hosting. Exact procedure, observations, source
+identities, T17 preconditions, and recovery limits are in
+[`legacy-typescript-retirement.md`](legacy-typescript-retirement.md).
