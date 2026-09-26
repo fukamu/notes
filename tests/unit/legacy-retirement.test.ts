@@ -7,6 +7,7 @@ import {
   selectLegacyTestCorpus,
   validateExecutableEvidence,
   validateLedgerClosure,
+  validateNamedGoTestEvidence,
   validateReferenceCorpus,
   validateRetiredPackageLock,
   validateRetiredRepository,
@@ -48,7 +49,7 @@ function smallLedgerCandidate(
     },
   };
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     selectionVersion: 2,
     legacySourceRevision,
     testCorpusRevision: corpusRevision,
@@ -233,6 +234,176 @@ describe('legacy TypeScript test retirement ledger', () => {
     );
   });
 
+  it('binds cross-cutting auth, signup, and checkout coverage to exact Go tests', async () => {
+    const ledger = decodeLegacyTestRetirementLedger(await ledgerCandidate());
+    const entries = new Map(
+      ledger.entries.map((entry) => [entry.legacyPath, entry]),
+    );
+    const expected = new Map<
+      string,
+      Readonly<{
+        featureIds: readonly string[];
+        anchors: readonly Readonly<{ path: string; testName: string }>[];
+      }>
+    >([
+      [
+        'tests/integration/auth-security-corpus.test.ts',
+        {
+          featureIds: ['F04', 'F05', 'F06', 'F07', 'F08'],
+          anchors: [
+            {
+              path: 'backend/internal/adapters/oidc/provider_test.go',
+              testName: 'TestCryptoSecretsAndPkce',
+            },
+            {
+              path: 'backend/internal/adapters/otp/crypto_test.go',
+              testName: 'TestHasherBindsEveryContextValueAndPepper',
+            },
+            {
+              path: 'backend/internal/identity/boundary_test.go',
+              testName: 'TestCSRFPolicy',
+            },
+            {
+              path: 'backend/internal/identity/email_otp_boundary_test.go',
+              testName: 'TestEmailOtpCompleteHasExactlyOneConcurrentWinner',
+            },
+            {
+              path: 'backend/internal/identity/email_otp_test.go',
+              testName: 'TestEmailOtpChallengeLifecycle',
+            },
+            {
+              path: 'backend/internal/identity/oidc_boundary_test.go',
+              testName: 'TestGoogleOidcCompletionConsumesOnce',
+            },
+            {
+              path: 'backend/internal/identity/oidc_test.go',
+              testName: 'TestOidcTransactionAndClaimsValidation',
+            },
+            {
+              path: 'backend/internal/identity/session_test.go',
+              testName: 'TestSessionLifecycle',
+            },
+            {
+              path: 'backend/tests/integration/session_store_test.go',
+              testName: 'TestSessionStorePostgres',
+            },
+          ],
+        },
+      ],
+      [
+        'tests/integration/signup-admission.test.ts',
+        {
+          featureIds: ['F04', 'F05', 'F06', 'F07', 'F08', 'F21'],
+          anchors: [
+            {
+              path: 'backend/internal/identity/email_otp_boundary_test.go',
+              testName: 'TestEmailOtpCompletionAdmitsOnlyMatchingSignupReceipt',
+            },
+            {
+              path: 'backend/internal/identity/oidc_boundary_test.go',
+              testName: 'TestGoogleOidcCompletionAdmitsSignupOnlyWithConsent',
+            },
+            {
+              path: 'backend/internal/identity/signup_boundary_test.go',
+              testName:
+                'TestSignupApplicationCreatesAndReplaysWithFreshHashedSession',
+            },
+            {
+              path: 'backend/internal/identity/signup_test.go',
+              testName:
+                'TestSignupAdmissionPlanBindsIdentitySubmissionAndOwner',
+            },
+            {
+              path: 'backend/internal/legal/terms_service_test.go',
+              testName: 'TestSignupTermsAdmissionPreservesReplayEvidence',
+            },
+            {
+              path: 'backend/tests/integration/identity_signup_test.go',
+              testName: 'TestIdentityAndSignupPostgres',
+            },
+          ],
+        },
+      ],
+      [
+        'tests/unit/billing-checkout-http-handler.test.ts',
+        {
+          featureIds: ['F04', 'F17', 'F18', 'F19', 'F20', 'F21', 'F22'],
+          anchors: [
+            {
+              path: 'backend/internal/billing/cancellation_test.go',
+              testName:
+                'TestCancellationServiceRedactsProviderAndRepositoryFailures',
+            },
+            {
+              path: 'backend/internal/httpapi/billing_cancellation_test.go',
+              testName:
+                'TestBillingCancellationContractAuthenticatesBeforeReadingOrUsingOwnerInput',
+            },
+            {
+              path: 'backend/internal/httpapi/legal_test.go',
+              testName: 'TestLegalCheckoutHandlersPreserveHTTPContract',
+            },
+            {
+              path: 'backend/internal/httpapi/legal_test.go',
+              testName:
+                'TestLegalHandlersAuthorizeBeforeReadingAndRejectInvalidBodies',
+            },
+            {
+              path: 'backend/internal/httpapi/legal_test.go',
+              testName:
+                'TestLegalHandlersMapApplicationFailuresAndSanitizePanics',
+            },
+            {
+              path: 'backend/internal/legal/contract_test.go',
+              testName:
+                'TestContractCheckoutRecordsEvidenceBeforeProviderAndReplaysLostResponse',
+            },
+          ],
+        },
+      ],
+      [
+        'tests/unit/signup-admission.test.ts',
+        {
+          featureIds: ['F04', 'F07', 'F08', 'F21'],
+          anchors: [
+            {
+              path: 'backend/internal/identity/signup_boundary_test.go',
+              testName:
+                'TestSignupApplicationCreatesAndReplaysWithFreshHashedSession',
+            },
+            {
+              path: 'backend/internal/identity/signup_test.go',
+              testName:
+                'TestSignupAdmissionPlanBindsIdentitySubmissionAndOwner',
+            },
+            {
+              path: 'backend/tests/integration/identity_signup_test.go',
+              testName: 'TestIdentityAndSignupPostgres',
+            },
+          ],
+        },
+      ],
+    ]);
+
+    for (const [legacyPath, contract] of expected) {
+      const entry = entries.get(legacyPath);
+      expect(entry?.featureIds).toEqual(contract.featureIds);
+      if (entry?.disposition.kind !== 'go-replacement') {
+        throw new TypeError(`missing anchored Go replacement: ${legacyPath}`);
+      }
+      expect(entry.disposition.evidenceAnchors).toEqual(contract.anchors);
+      expect(entry.disposition.evidence).toEqual([
+        ...new Set(contract.anchors.map(({ path }) => path)),
+      ]);
+      for (const anchor of contract.anchors) {
+        const source = await readFile(anchor.path, 'utf8');
+        expect(() =>
+          validateNamedGoTestEvidence(anchor.path, source, anchor.testName),
+        ).not.toThrow();
+      }
+    }
+  });
+
   it('rejects missing, duplicate, unsorted, unsafe, and unknown entry data', async () => {
     const missing = clone(await ledgerCandidate());
     list(Reflect.get(object(missing), 'entries')).pop();
@@ -413,6 +584,56 @@ describe('legacy TypeScript test retirement ledger', () => {
         '//go:build linux\npackage integration\nfunc TestEvidence(t *testing.T) {}\n',
       ),
     ).toThrow('build tag');
+    expect(() =>
+      validateNamedGoTestEvidence(
+        goEvidence,
+        'package example\nfunc TestExactContract(t *testing.T) {}\n',
+        'TestExactContract',
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateNamedGoTestEvidence(
+        goEvidence,
+        'package example\nfunc TestOtherContract(t *testing.T) {}\n',
+        'TestExactContract',
+      ),
+    ).toThrow('missing named test');
+
+    const anchored = decodeLegacyTestRetirementLedger(
+      smallLedgerCandidate({
+        disposition: {
+          kind: 'go-replacement',
+          evidence: [goEvidence],
+          evidenceAnchors: [
+            { path: goEvidence, testName: 'TestExactContract' },
+          ],
+        },
+      }),
+    );
+    const anchoredEntry = anchored.entries[0];
+    if (anchoredEntry?.disposition.kind !== 'go-replacement') {
+      throw new TypeError('anchored replacement fixture is missing');
+    }
+    expect(anchoredEntry.disposition.evidenceAnchors).toEqual([
+      { path: goEvidence, testName: 'TestExactContract' },
+    ]);
+
+    expect(() =>
+      decodeLegacyTestRetirementLedger(
+        smallLedgerCandidate({
+          disposition: {
+            kind: 'go-replacement',
+            evidence: [goEvidence],
+            evidenceAnchors: [
+              {
+                path: 'backend/internal/example/other_test.go',
+                testName: 'TestExactContract',
+              },
+            ],
+          },
+        }),
+      ),
+    ).toThrow('not disposition evidence');
   });
 
   it('requires removal or a legacy-free retained frontend path after retirement', () => {

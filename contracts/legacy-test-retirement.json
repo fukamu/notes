@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "selectionVersion": 2,
   "legacySourceRevision": "e8936ab90768774371d84b4808c100d546649943",
   "testCorpusRevision": "af743246f14f7e0b96accf1ed7e1a1201fc3aaaf",
@@ -359,13 +359,57 @@
     {
       "legacyPath": "tests/integration/auth-security-corpus.test.ts",
       "legacySha256": "0a92f4efd8c0e43c849ce7aecec0a9cc48774242d072584ae00a5a133dc82059",
-      "featureIds": ["F04", "F07", "F08"],
+      "featureIds": ["F04", "F05", "F06", "F07", "F08"],
       "disposition": {
         "kind": "go-replacement",
         "evidence": [
+          "backend/internal/adapters/oidc/provider_test.go",
+          "backend/internal/adapters/otp/crypto_test.go",
           "backend/internal/identity/boundary_test.go",
+          "backend/internal/identity/email_otp_boundary_test.go",
+          "backend/internal/identity/email_otp_test.go",
+          "backend/internal/identity/oidc_boundary_test.go",
+          "backend/internal/identity/oidc_test.go",
           "backend/internal/identity/session_test.go",
           "backend/tests/integration/session_store_test.go"
+        ],
+        "evidenceAnchors": [
+          {
+            "path": "backend/internal/adapters/oidc/provider_test.go",
+            "testName": "TestCryptoSecretsAndPkce"
+          },
+          {
+            "path": "backend/internal/adapters/otp/crypto_test.go",
+            "testName": "TestHasherBindsEveryContextValueAndPepper"
+          },
+          {
+            "path": "backend/internal/identity/boundary_test.go",
+            "testName": "TestCSRFPolicy"
+          },
+          {
+            "path": "backend/internal/identity/email_otp_boundary_test.go",
+            "testName": "TestEmailOtpCompleteHasExactlyOneConcurrentWinner"
+          },
+          {
+            "path": "backend/internal/identity/email_otp_test.go",
+            "testName": "TestEmailOtpChallengeLifecycle"
+          },
+          {
+            "path": "backend/internal/identity/oidc_boundary_test.go",
+            "testName": "TestGoogleOidcCompletionConsumesOnce"
+          },
+          {
+            "path": "backend/internal/identity/oidc_test.go",
+            "testName": "TestOidcTransactionAndClaimsValidation"
+          },
+          {
+            "path": "backend/internal/identity/session_test.go",
+            "testName": "TestSessionLifecycle"
+          },
+          {
+            "path": "backend/tests/integration/session_store_test.go",
+            "testName": "TestSessionStorePostgres"
+          }
         ]
       }
     },
@@ -565,13 +609,42 @@
     {
       "legacyPath": "tests/integration/signup-admission.test.ts",
       "legacySha256": "31928ce7f3bc2eaa43de3ad4d54e0930314ae5e70d2226559d38ed83a90ff5b3",
-      "featureIds": ["F04", "F07", "F08"],
+      "featureIds": ["F04", "F05", "F06", "F07", "F08", "F21"],
       "disposition": {
         "kind": "go-replacement",
         "evidence": [
-          "backend/internal/identity/boundary_test.go",
-          "backend/internal/identity/session_test.go",
-          "backend/tests/integration/session_store_test.go"
+          "backend/internal/identity/email_otp_boundary_test.go",
+          "backend/internal/identity/oidc_boundary_test.go",
+          "backend/internal/identity/signup_boundary_test.go",
+          "backend/internal/identity/signup_test.go",
+          "backend/internal/legal/terms_service_test.go",
+          "backend/tests/integration/identity_signup_test.go"
+        ],
+        "evidenceAnchors": [
+          {
+            "path": "backend/internal/identity/email_otp_boundary_test.go",
+            "testName": "TestEmailOtpCompletionAdmitsOnlyMatchingSignupReceipt"
+          },
+          {
+            "path": "backend/internal/identity/oidc_boundary_test.go",
+            "testName": "TestGoogleOidcCompletionAdmitsSignupOnlyWithConsent"
+          },
+          {
+            "path": "backend/internal/identity/signup_boundary_test.go",
+            "testName": "TestSignupApplicationCreatesAndReplaysWithFreshHashedSession"
+          },
+          {
+            "path": "backend/internal/identity/signup_test.go",
+            "testName": "TestSignupAdmissionPlanBindsIdentitySubmissionAndOwner"
+          },
+          {
+            "path": "backend/internal/legal/terms_service_test.go",
+            "testName": "TestSignupTermsAdmissionPreservesReplayEvidence"
+          },
+          {
+            "path": "backend/tests/integration/identity_signup_test.go",
+            "testName": "TestIdentityAndSignupPostgres"
+          }
         ]
       }
     },
@@ -855,13 +928,40 @@
     {
       "legacyPath": "tests/unit/billing-checkout-http-handler.test.ts",
       "legacySha256": "75b60d7b9fe2276d68043a97be06e20b5ff5d570415f444527c211c848ae4dcb",
-      "featureIds": ["F17", "F18", "F19"],
+      "featureIds": ["F04", "F17", "F18", "F19", "F20", "F21", "F22"],
       "disposition": {
         "kind": "go-replacement",
         "evidence": [
-          "backend/internal/billing/core_test.go",
-          "backend/internal/stripebilling/core_test.go",
-          "backend/tests/integration/billing_projection_test.go"
+          "backend/internal/billing/cancellation_test.go",
+          "backend/internal/httpapi/billing_cancellation_test.go",
+          "backend/internal/httpapi/legal_test.go",
+          "backend/internal/legal/contract_test.go"
+        ],
+        "evidenceAnchors": [
+          {
+            "path": "backend/internal/billing/cancellation_test.go",
+            "testName": "TestCancellationServiceRedactsProviderAndRepositoryFailures"
+          },
+          {
+            "path": "backend/internal/httpapi/billing_cancellation_test.go",
+            "testName": "TestBillingCancellationContractAuthenticatesBeforeReadingOrUsingOwnerInput"
+          },
+          {
+            "path": "backend/internal/httpapi/legal_test.go",
+            "testName": "TestLegalCheckoutHandlersPreserveHTTPContract"
+          },
+          {
+            "path": "backend/internal/httpapi/legal_test.go",
+            "testName": "TestLegalHandlersAuthorizeBeforeReadingAndRejectInvalidBodies"
+          },
+          {
+            "path": "backend/internal/httpapi/legal_test.go",
+            "testName": "TestLegalHandlersMapApplicationFailuresAndSanitizePanics"
+          },
+          {
+            "path": "backend/internal/legal/contract_test.go",
+            "testName": "TestContractCheckoutRecordsEvidenceBeforeProviderAndReplaysLostResponse"
+          }
         ]
       }
     },
@@ -1520,13 +1620,27 @@
     {
       "legacyPath": "tests/unit/signup-admission.test.ts",
       "legacySha256": "0baba6af45b1edec0205cf3bb4fcb38777d7a99f2daddeb57ccc33698d448955",
-      "featureIds": ["F04", "F07", "F08"],
+      "featureIds": ["F04", "F07", "F08", "F21"],
       "disposition": {
         "kind": "go-replacement",
         "evidence": [
-          "backend/internal/identity/boundary_test.go",
-          "backend/internal/identity/session_test.go",
-          "backend/tests/integration/session_store_test.go"
+          "backend/internal/identity/signup_boundary_test.go",
+          "backend/internal/identity/signup_test.go",
+          "backend/tests/integration/identity_signup_test.go"
+        ],
+        "evidenceAnchors": [
+          {
+            "path": "backend/internal/identity/signup_boundary_test.go",
+            "testName": "TestSignupApplicationCreatesAndReplaysWithFreshHashedSession"
+          },
+          {
+            "path": "backend/internal/identity/signup_test.go",
+            "testName": "TestSignupAdmissionPlanBindsIdentitySubmissionAndOwner"
+          },
+          {
+            "path": "backend/tests/integration/identity_signup_test.go",
+            "testName": "TestIdentityAndSignupPostgres"
+          }
         ]
       }
     },

@@ -83,7 +83,7 @@ Terms-of-service version consent remains #132. This Issue does not enable
 Stripe Dashboard ToS consent or claim that its commercial-offer consent is the
 same legal act.
 
-The TypeScript terms verifier indexes evidence by the checkout submission ID,
+The removed TypeScript terms verifier indexed evidence by the checkout submission ID,
 but the terms-consent and checkout clients generate separate identifiers. Go
 Issue #446 deliberately does not reproduce that unreachable composition. It
 verifies the latest immutable evidence in the resolved Account/Vault scope
@@ -101,7 +101,7 @@ called.
 
 ## Rollback and verification
 
-The TypeScript implementation has no migration beyond #223. Go Issue #444 adds
+The removed TypeScript implementation had no migration beyond #223. Go Issue #444 adds
 PostgreSQL migration 00010 and keeps it disconnected. Rollback stops new
 Checkout acceptance and reverts handler/provider composition while keeping the
 existing cancellation port available. Once evidence exists, migration 00010 and
@@ -110,9 +110,11 @@ migration is used. T12 must explicitly execute the approved deletion/retention
 workflow; the Go foreign key does not silently cascade. Production changes and
 real provider operations require separate approval.
 
-Focused TypeScript and Go tests cover authentication, CSRF, body scope injection and limits,
+Focused Go tests cover authentication, CSRF, body scope injection and limits,
 consent/stale-offer rejection, response-loss replay, contract metadata mismatch,
-secret-safe errors, and cancellation during payment lock. Repository gates are:
+secret-safe errors, and cancellation during payment lock. Retained TypeScript
+tests cover only browser disclosure and wire decoding; the former server tests
+are frozen ledger evidence. Repository gates are:
 
 ```bash
 git diff --check

@@ -6,6 +6,7 @@ import {
   selectLegacyTestCorpus,
   validateExecutableEvidence,
   validateLedgerClosure,
+  validateNamedGoTestEvidence,
   validateReferenceCorpus,
   validateRetiredPackageLock,
   validateRetiredRepository,
@@ -77,6 +78,15 @@ for (const entry of ledger.entries) {
       );
     }
     validateExecutableEvidence(evidencePath, source);
+  }
+  for (const anchor of entry.disposition.evidenceAnchors) {
+    const source = currentSources.get(anchor.path);
+    if (source === undefined) {
+      throw new TypeError(
+        `legacy retirement anchored evidence is unreadable: ${anchor.path}`,
+      );
+    }
+    validateNamedGoTestEvidence(anchor.path, source, anchor.testName);
   }
 }
 

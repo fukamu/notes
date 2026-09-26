@@ -7,7 +7,9 @@ Issue #458 ports the provider-neutral saga to
 `00014_account_deletion_saga.sql`. The fixed step order, typed states, bounded
 leases and retries, prefix receipts, and compare-and-swap transitions are now
 covered by Go unit and PostgreSQL integration tests. The shared account
-lifecycle fixture is decoded by TypeScript and Go so public states cannot drift.
+lifecycle fixture is decoded by the retained TypeScript browser status test and
+the Go codec so the public wire states cannot drift; the TypeScript saga server
+and its tests were removed by T17.
 
 `account_deletion_operations` intentionally has no live Account/Vault foreign
 key; a continuation and minimal journal must survive finalization long enough

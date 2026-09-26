@@ -310,7 +310,7 @@ V01-V12 evidence inventory and the completed T17 retirement state.
 `npm run verify:legacy-retirement` checks all 142 frozen test paths, per-file
 digests and dispositions, requires the 127 Go-replaced paths to be absent and
 the 11 frontend plus four tooling paths to remain legacy-free, validates
-executable replacement evidence, and rejects retired
+executable replacement evidence plus the ledger's named Go-test anchors, and rejects retired
 source/config/script/package reintroduction.
 See
 [`docs/legacy-typescript-retirement.md`](../docs/legacy-typescript-retirement.md).

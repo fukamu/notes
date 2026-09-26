@@ -36,6 +36,10 @@ The checked-in ledger contains 11 retained frontend records, four retained
 tooling records, 127 Go replacements, and zero historical-only records.
 Documentation, production source, and optional benchmark files are not
 accepted as executable evidence.
+Schema version 3 also records exact named-Go-test anchors for the cross-cutting
+authentication-security, signup-admission, and checkout HTTP entries. The
+verifier requires both the evidence file and each named `Test...` declaration;
+an unrelated test in the same file cannot keep those mappings green.
 The closure phase is `retired`; V11 is complete for the repository/runtime
 artifact boundary, while V09 remains `approval-pending` for real provider and
 staging evidence. F28 remains explicitly `intentionally-absent`.

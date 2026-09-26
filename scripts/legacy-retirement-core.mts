@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
-export const legacyRetirementSchemaVersion = 2;
+export const legacyRetirementSchemaVersion = 3;
 export const legacyTestSelectionVersion = 2;
 
 const retiredSourceRoots = ['app/api', 'db', 'drizzle', 'server'] as const;
@@ -51,21 +51,29 @@ export type TrackedTextFile = Readonly<{
   content: string;
 }>;
 
+export type LegacyEvidenceAnchor = Readonly<{
+  path: string;
+  testName: string;
+}>;
+
 type RetainedFrontendDisposition = Readonly<{
   kind: 'retained-frontend';
   currentPath: string;
   evidence: readonly string[];
+  evidenceAnchors: readonly LegacyEvidenceAnchor[];
 }>;
 
 type RetainedToolingDisposition = Readonly<{
   kind: 'retained-tooling';
   currentPath: string;
   evidence: readonly string[];
+  evidenceAnchors: readonly LegacyEvidenceAnchor[];
 }>;
 
 type GoReplacementDisposition = Readonly<{
   kind: 'go-replacement';
   evidence: readonly string[];
+  evidenceAnchors: readonly LegacyEvidenceAnchor[];
 }>;
 
 type HistoricalOnlyDisposition = Readonly<{
@@ -643,6 +651,26 @@ export function validateExecutableEvidence(
   return 'go-unit';
 }
 
+export function validateNamedGoTestEvidence(
+  evidencePath: string,
+  source: string,
+  testName: string,
+): void {
+  repositoryPath(evidencePath, 'legacy evidence anchor path');
+  if (
+    !goEvidencePattern.test(evidencePath) ||
+    !/^Test[A-Za-z0-9_]+$/u.test(testName)
+  ) {
+    throw new TypeError('legacy evidence anchor is not a named Go test');
+  }
+  const declaration = new RegExp(`^func\\s+${testName}\\s*\\(`, 'mu');
+  if (!declaration.test(source)) {
+    throw new TypeError(
+      `legacy retirement Go evidence is missing named test ${testName}: ${evidencePath}`,
+    );
+  }
+}
+
 export function evidencePaths(
   ledger: LegacyTestRetirementLedger,
 ): readonly string[] {
@@ -701,10 +729,12 @@ function decodeDisposition(
   switch (kind) {
     case 'retained-frontend':
     case 'retained-tooling': {
+      const hasAnchors = Object.hasOwn(base, 'evidenceAnchors');
       const value = exactRecord(candidate, 'retained test disposition', [
         'kind',
         'currentPath',
         'evidence',
+        ...(hasAnchors ? ['evidenceAnchors'] : []),
       ]);
       const evidence = evidenceList(value.evidence, 'retained test evidence');
       if (
@@ -725,18 +755,25 @@ function decodeDisposition(
           'retained test current path',
         ),
         evidence,
+        evidenceAnchors: decodeEvidenceAnchors(value.evidenceAnchors, evidence),
       };
     }
     case 'go-replacement': {
+      const hasAnchors = Object.hasOwn(base, 'evidenceAnchors');
       const value = exactRecord(candidate, 'Go replacement disposition', [
         'kind',
         'evidence',
+        ...(hasAnchors ? ['evidenceAnchors'] : []),
       ]);
       const evidence = evidenceList(value.evidence, 'Go replacement evidence');
       if (!evidence.every((path) => goEvidencePattern.test(path))) {
         throw new TypeError('Go replacement requires only Go test evidence');
       }
-      return { kind, evidence };
+      return {
+        kind,
+        evidence,
+        evidenceAnchors: decodeEvidenceAnchors(value.evidenceAnchors, evidence),
+      };
     }
     case 'historical-only': {
       const value = exactRecord(candidate, 'historical-only disposition', [
@@ -788,6 +825,42 @@ function evidenceList(value: unknown, label: string): readonly string[] {
   }
   requireSortedUnique(evidence, label);
   return evidence;
+}
+
+function decodeEvidenceAnchors(
+  value: unknown,
+  evidence: readonly string[],
+): readonly LegacyEvidenceAnchor[] {
+  if (value === undefined) return [];
+  const anchors = array(value, 'legacy evidence anchors').map((candidate) => {
+    const anchor = exactRecord(candidate, 'legacy evidence anchor', [
+      'path',
+      'testName',
+    ]);
+    const path = repositoryPath(anchor.path, 'legacy evidence anchor path');
+    const testName = boundedString(
+      anchor.testName,
+      'legacy evidence anchor test name',
+      160,
+    );
+    if (
+      !goEvidencePattern.test(path) ||
+      !/^Test[A-Za-z0-9_]+$/u.test(testName)
+    ) {
+      throw new TypeError('legacy evidence anchor is not a named Go test');
+    }
+    if (!evidence.includes(path)) {
+      throw new TypeError(
+        'legacy evidence anchor path is not disposition evidence',
+      );
+    }
+    return { path, testName };
+  });
+  requireSortedUnique(
+    anchors.map(({ path, testName }) => `${path}#${testName}`),
+    'legacy evidence anchor',
+  );
+  return anchors;
 }
 
 function exactRecord(

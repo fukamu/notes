@@ -1,6 +1,7 @@
 package architecture_test
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -15,24 +16,51 @@ import (
 
 const modulePath = "github.com/fukamu/notes/backend"
 
-var pureDomainAndApplicationRoots = map[string]struct{}{
-	"access":          {},
-	"accountdeletion": {},
-	"billing":         {},
-	"cryptocontent":   {},
-	"encryptedobject": {},
-	"entitlement":     {},
-	"identity":        {},
-	"launchgate":      {},
-	"legal":           {},
-	"localfixture":    {},
-	"operations":      {},
-	"privacyrequest":  {},
-	"quota":           {},
-	"stripebilling":   {},
-	"synclegacy":      {},
-	"syncv2":          {},
-	"vaultdata":       {},
+// knownInternalRoots is an inventory, not an allowlist for effects. Every root
+// in this inventory is scanned by default unless it has a documented exemption
+// below. A newly added root fails the gate until its architectural role is
+// reviewed and recorded here.
+var knownInternalRoots = map[string]struct{}{
+	"access":            {},
+	"accountdeletion":   {},
+	"adapters":          {},
+	"architecture":      {},
+	"billing":           {},
+	"config":            {},
+	"cryptocontent":     {},
+	"encryptedobject":   {},
+	"entitlement":       {},
+	"httpapi":           {},
+	"identity":          {},
+	"launchgate":        {},
+	"legal":             {},
+	"localfixture":      {},
+	"operations":        {},
+	"privacyrequest":    {},
+	"quota":             {},
+	"runtimefoundation": {},
+	"stripebilling":     {},
+	"synclegacy":        {},
+	"syncv2":            {},
+	"telemetry":         {},
+	"vaultdata":         {},
+}
+
+// Package-wide exemptions are limited to concrete adapters, configuration,
+// HTTP delivery, composition, and this architecture test package itself.
+var concreteEffectRootExemptions = map[string]string{
+	"adapters":          "concrete infrastructure adapters",
+	"architecture":      "architecture verification code",
+	"config":            "environment configuration boundary",
+	"httpapi":           "HTTP delivery adapters",
+	"runtimefoundation": "process composition and lifecycle effects",
+}
+
+// logger.go is the single effect-bearing file in telemetry: it adapts already
+// bounded telemetry records to slog. Codec, policy, metric, alert, and delivery
+// decisions in the rest of telemetry remain protected by the default gate.
+var concreteEffectFileExemptions = map[string]string{
+	"telemetry/logger.go": "bounded slog output adapter retained beside telemetry contracts",
 }
 
 var forbiddenConcreteEffectImports = []string{
@@ -63,6 +91,7 @@ func TestPureDomainAndApplicationPackagesDoNotImportConcreteEffects(t *testing.T
 	}
 	backendRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
 	internalRoot := filepath.Join(backendRoot, "internal")
+	validateConcreteEffectFileExemptions(t, internalRoot)
 	err := filepath.WalkDir(internalRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -71,16 +100,18 @@ func TestPureDomainAndApplicationPackagesDoNotImportConcreteEffects(t *testing.T
 		if relErr != nil {
 			return relErr
 		}
-		first, _, _ := strings.Cut(filepath.ToSlash(relative), "/")
+		relative = filepath.ToSlash(relative)
+		action, classificationErr := classifyInternalPath(relative, entry.IsDir())
+		if classificationErr != nil {
+			return classificationErr
+		}
 		if entry.IsDir() {
-			if relative != "." {
-				if _, protected := pureDomainAndApplicationRoots[first]; !protected {
-					return filepath.SkipDir
-				}
-			}
-			if strings.Contains(filepath.ToSlash(relative), "/testdata/") {
+			if action == internalPathSkipTree {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if action == internalPathSkipFile {
 			return nil
 		}
 		if !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
@@ -140,6 +171,119 @@ func TestConcreteEffectImportGateRegressionFixtures(t *testing.T) {
 	}
 	if len(violations) != 0 {
 		t.Fatalf("typed ports were falsely classified as effects: %#v", violations)
+	}
+}
+
+func TestInternalPathClassificationDefaultsToProtectedAndRejectsUnknownRoots(t *testing.T) {
+	t.Parallel()
+
+	for _, relative := range []string{
+		"identity/session.go",
+		"operations/quota_reconciliation.go",
+		"telemetry/codec.go",
+		"telemetry/logger_helper.go",
+	} {
+		action, err := classifyInternalPath(relative, false)
+		if err != nil {
+			t.Fatalf("classify protected path %q: %v", relative, err)
+		}
+		if action != internalPathScanFile {
+			t.Fatalf("protected path %q action = %d", relative, action)
+		}
+	}
+
+	for _, relative := range []string{
+		"adapters/postgres/session.go",
+		"config/environment.go",
+		"httpapi/legal.go",
+		"runtimefoundation/server.go",
+	} {
+		action, err := classifyInternalPath(relative, false)
+		if err != nil {
+			t.Fatalf("classify exempt path %q: %v", relative, err)
+		}
+		if action != internalPathSkipFile {
+			t.Fatalf("exempt path %q action = %d", relative, action)
+		}
+	}
+
+	action, err := classifyInternalPath("telemetry/logger.go", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if action != internalPathSkipFile {
+		t.Fatalf("telemetry logger action = %d", action)
+	}
+
+	if _, err := classifyInternalPath("unreviewed/new_package.go", false); err == nil {
+		t.Fatal("unknown internal root escaped classification")
+	}
+	if _, err := classifyInternalPath("unreviewed", true); err == nil {
+		t.Fatal("unknown internal directory escaped classification")
+	}
+}
+
+type internalPathAction uint8
+
+const (
+	internalPathDescend internalPathAction = iota
+	internalPathScanFile
+	internalPathSkipFile
+	internalPathSkipTree
+)
+
+func classifyInternalPath(relative string, directory bool) (internalPathAction, error) {
+	if relative == "." {
+		return internalPathDescend, nil
+	}
+	root, _, _ := strings.Cut(relative, "/")
+	if _, known := knownInternalRoots[root]; !known {
+		return internalPathDescend, fmt.Errorf("unclassified internal root %q", root)
+	}
+	if reason, exempt := concreteEffectRootExemptions[root]; exempt {
+		if reason == "" {
+			return internalPathDescend, fmt.Errorf("internal root %q has an undocumented exemption", root)
+		}
+		if directory {
+			return internalPathSkipTree, nil
+		}
+		return internalPathSkipFile, nil
+	}
+	if directory {
+		if strings.Contains("/"+relative+"/", "/testdata/") {
+			return internalPathSkipTree, nil
+		}
+		return internalPathDescend, nil
+	}
+	if reason, exempt := concreteEffectFileExemptions[relative]; exempt {
+		if reason == "" {
+			return internalPathDescend, fmt.Errorf("internal file %q has an undocumented exemption", relative)
+		}
+		return internalPathSkipFile, nil
+	}
+	return internalPathScanFile, nil
+}
+
+func validateConcreteEffectFileExemptions(t *testing.T, internalRoot string) {
+	t.Helper()
+	for relative, reason := range concreteEffectFileExemptions {
+		if reason == "" {
+			t.Errorf("internal file %q has an undocumented exemption", relative)
+			continue
+		}
+		source, err := os.ReadFile(filepath.Join(internalRoot, filepath.FromSlash(relative)))
+		if err != nil {
+			t.Errorf("read concrete-effect exemption %s: %v", relative, err)
+			continue
+		}
+		violations, err := concreteEffectImports(source)
+		if err != nil {
+			t.Errorf("parse concrete-effect exemption %s: %v", relative, err)
+			continue
+		}
+		if len(violations) == 0 {
+			t.Errorf("concrete-effect exemption %s is stale", relative)
+		}
 	}
 }
 
