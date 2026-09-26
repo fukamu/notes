@@ -932,6 +932,7 @@ test('the current card keeps one inactive editor session across view tabs', asyn
   await page.getByRole('button', { name: 'カード', exact: true }).click();
   await expect(page.getByTestId('link-candidate-scroll')).toHaveCount(0);
 
+  await context.setOffline(false);
   await page.goto(`${cardPath}/history`);
   await expect(page.getByTestId('history-list')).toBeVisible();
   await expect(page.getByTestId('body-editor')).toHaveCount(0);

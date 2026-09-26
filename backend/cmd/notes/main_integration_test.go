@@ -93,18 +93,19 @@ func TestLocalFixtureCompositionSyncV2FilesystemEncryptionRestartAndDelete(t *te
 
 	cardID, _ := syncv2.ParseCardID(compositionCardID)
 	deletionID, _ := syncv2.ParseMutationID(compositionDeletion)
+	deletedAt := time.Now().UnixMilli()
 	deleted, err := second.syncV2Application.DeleteCard(ctx, syncv2.DeleteCardInput{
 		Context: configuration.LocalFixtureContext(), MutationID: deletionID,
-		CardID: cardID, ExpectedRevision: 1, DeletedAt: 2_000,
-		SynchronizedAt: 2_000, Limits: entitlement.PaidPersonalVaultLimits(),
+		CardID: cardID, ExpectedRevision: 1, DeletedAt: deletedAt,
+		SynchronizedAt: deletedAt, Limits: entitlement.PaidPersonalVaultLimits(),
 	})
 	if err != nil || deleted.Kind != syncv2.DeleteCardDeleted || deleted.Receipt.AppliedRevision != 2 {
 		t.Fatalf("delete = %#v, %v", deleted, err)
 	}
 	replayed, err := second.syncV2Application.DeleteCard(ctx, syncv2.DeleteCardInput{
 		Context: configuration.LocalFixtureContext(), MutationID: deletionID,
-		CardID: cardID, ExpectedRevision: 1, DeletedAt: 2_000,
-		SynchronizedAt: 2_001, Limits: entitlement.PaidPersonalVaultLimits(),
+		CardID: cardID, ExpectedRevision: 1, DeletedAt: deletedAt,
+		SynchronizedAt: deletedAt, Limits: entitlement.PaidPersonalVaultLimits(),
 	})
 	if err != nil || replayed.Kind != syncv2.DeleteCardDeleted || replayed.Receipt != deleted.Receipt {
 		t.Fatalf("delete replay = %#v, %v", replayed, err)

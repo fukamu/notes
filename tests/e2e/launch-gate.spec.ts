@@ -10,6 +10,7 @@ test('an unapproved production-like browser sees the limited-release screen and 
         'fukamu-notes-e2e-not-allowed',
       ),
     },
+    storageState: { cookies: [], origins: [] },
   });
   const page = await context.newPage();
 
