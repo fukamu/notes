@@ -1,5 +1,39 @@
 {
   "profile": "legacy-sync-v1",
+  "setupRequests": [
+    {
+      "deviceId": "01991f20-61d2-7000-8000-000000000004",
+      "mutations": [
+        {
+          "mutationId": "01991f20-61d2-7000-8000-000000000010",
+          "cardId": "01991f20-61d2-7000-8000-000000000001",
+          "baseServerRevision": null,
+          "title": "before",
+          "body": [],
+          "createdAt": 1789000000000,
+          "updatedAt": 1789000000000,
+          "kind": "upsert",
+          "conflictIds": []
+        }
+      ]
+    },
+    {
+      "deviceId": "01991f20-61d2-7000-8000-000000000004",
+      "mutations": [
+        {
+          "mutationId": "01991f20-61d2-7000-8000-000000000011",
+          "cardId": "01991f20-61d2-7000-8000-000000000002",
+          "baseServerRevision": null,
+          "title": "固定カードB",
+          "body": [],
+          "createdAt": 1789000000200,
+          "updatedAt": 1789000000200,
+          "kind": "upsert",
+          "conflictIds": []
+        }
+      ]
+    }
+  ],
   "request": {
     "deviceId": "01991f20-61d2-7000-8000-000000000004",
     "mutations": [

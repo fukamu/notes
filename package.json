@@ -38,7 +38,7 @@
     "benchmark:client:link-index": "vitest run tests/benchmarks/client-link-candidate-index.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
     "benchmark:client:history-index": "vitest run tests/benchmarks/client-history-preview-index.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
     "benchmark:server-load": "vitest run --config vitest.server-load.config.ts --disableConsoleIntercept",
-    "benchmark:migration": "node scripts/benchmark-migration.mjs",
+    "benchmark:migration": "node --experimental-strip-types scripts/benchmark-migration.mts",
     "contracts:check": "node scripts/check-contracts.mjs && vitest run tests/contracts",
     "go:format:check": "node --experimental-strip-types scripts/check-go-format.mts",
     "go:test:integration": "NOTES_TEST_DATABASE_URL=${NOTES_TEST_DATABASE_URL:-postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable} go -C backend test -tags=integration ./tests/integration/...",
@@ -53,8 +53,9 @@
     "check:card-payment-security": "node --experimental-strip-types scripts/verify-card-payment-security.mjs",
     "check:launch-compliance": "node --experimental-strip-types scripts/verify-launch-compliance.mjs",
     "check:production-launch": "node --experimental-strip-types scripts/verify-launch-compliance.mjs --production-release",
+    "verify:migration-closure": "node --experimental-strip-types scripts/verify-migration-closure.mts",
     "verify:release": "node --experimental-strip-types scripts/verify-release-artifact.mts",
-    "verify": "npm run contracts:check && npm run format:check && npm run check && npm run go:check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e && npm run verify:release",
+    "verify": "npm run contracts:check && npm run verify:migration-closure && npm run format:check && npm run check && npm run go:check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e && npm run verify:release",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

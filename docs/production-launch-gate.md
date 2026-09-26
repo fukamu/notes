@@ -59,7 +59,9 @@ not loopback and the exact `fukamu_notes_go_test` database, recreates only its
 test schema, migrates, and seeds one explicit test subject.
 
 The older TypeScript/D1 migration and adapters remain as compatibility
-reference and test inputs until T14 removes the server runtime. They are not
+reference and test inputs until the reviewed T17 removal. T14b fixes their
+source trees and test corpus in
+[`legacy-typescript-retirement.md`](legacy-typescript-retirement.md). They are not
 the Go runtime's identity source, and no current D1 data has been copied or
 deleted.
 
@@ -92,6 +94,10 @@ plan. `npm run verify:release` provides the provider-independent image,
 filesystem, non-root, closed-route, and graceful-shutdown evidence described in
 [`go-release-artifact.md`](go-release-artifact.md); it neither pushes the image
 nor authorizes staging or production. There is no long-lived dual write.
+The TypeScript reference, removal preconditions, and recovery limits are
+recorded in
+[`legacy-typescript-retirement.md`](legacy-typescript-retirement.md); passing
+that gate is also not cutover permission.
 
 Rollback restores the matching old Sites artifact, D1 database, configuration,
 and identity entry together. It must never point the old TypeScript backend at
