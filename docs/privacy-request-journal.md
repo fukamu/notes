@@ -2,9 +2,11 @@
 
 Issue #235 added the TypeScript/D1 reference journal. Migration Issue #456
 ports the same provider-neutral state machine and owner-scoped repository to
-Go and PostgreSQL. Neither implementation exposes a route or changes the Notes
-UI. The HTTP boundary derives `AccountId` and `VaultId` from the authenticated
-server session; callers never choose the journal scope.
+Go and PostgreSQL. Issue #513 connects only Submit and Status in the exact
+disposable local fixture; default and production stay closed. The HTTP boundary
+derives `AccountId` and `VaultId` from the authenticated server session;
+callers never choose the journal scope. The dedicated browser page uses that
+Go HTTP transport in every mode and never substitutes an in-memory success.
 
 ## Stored metadata
 
@@ -60,5 +62,13 @@ restore a compatible artifact or use a reviewed forward migration, and resume
 from the stored revision. Never drop accepted receipts or invent a completed
 outcome as rollback.
 
+The local fixture stores real PostgreSQL rows and proves restart durability.
+Identity verification and non-deletion execution remain explicit unavailable
+ports. Only the disposable `delete-live-evidence` graph composes the real
+account-deletion Start handoff, and neither Verify nor Process is an HTTP
+route. `account-deletion-started` proves durable admission only, not effect
+progress or completion. Processing recovery, status after owner deletion, and
+production retention remain unresolved operational boundaries.
+
 No production D1/PostgreSQL operation, provider wiring, deployment, retention
-decision, or `main` update is part of Issue #456.
+decision, or external side effect is enabled by Issue #513.

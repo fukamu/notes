@@ -17,6 +17,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/accountdeletion"
 	accessadapter "github.com/fukamu/notes/backend/internal/adapters/access"
 	"github.com/fukamu/notes/backend/internal/launchgate"
+	"github.com/fukamu/notes/backend/internal/privacyrequest"
 	"github.com/fukamu/notes/backend/internal/synclegacy"
 )
 
@@ -29,6 +30,7 @@ type HandlerOptions struct {
 	LegalRuntime               *LegalRuntime
 	BillingCancellationRuntime *BillingCancellationRuntime
 	AccountDeletionRuntime     *AccountDeletionRuntime
+	PrivacyRequestRuntime      *PrivacyRequestRuntime
 	DisableLegacySync          bool
 	EnableDisconnectedFixtures bool
 }
@@ -81,6 +83,9 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 	}
 	if options.AccountDeletionRuntime != nil && !accountDeletionRuntimeComplete(options.AccountDeletionRuntime) {
 		return nil, errors.New("account deletion runtime is incomplete")
+	}
+	if options.PrivacyRequestRuntime != nil && !privacyRequestRuntimeComplete(options.PrivacyRequestRuntime) {
+		return nil, errors.New("privacy request runtime is incomplete")
 	}
 	staticSite, err := loadStaticSite(options.StaticDirectory)
 	if err != nil {
@@ -148,12 +153,22 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 	}
 	mux.HandleFunc("/api/account/deletion", exact("/api/account/deletion", deletionStart))
 	mux.HandleFunc("/api/account/deletion/status", exact("/api/account/deletion/status", deletionResume))
-	for _, path := range []string{
-		"/api/account/privacy-requests",
-		"/api/account/privacy-requests/status",
-	} {
-		mux.HandleFunc(path, exact(path, disconnectedPublicAPI(options.EnableDisconnectedFixtures, http.MethodGet, http.MethodPost)))
+	privacySubmit := http.HandlerFunc(disconnectedPublicAPI(options.EnableDisconnectedFixtures, http.MethodGet, http.MethodPost))
+	privacyStatus := http.HandlerFunc(disconnectedPublicAPI(options.EnableDisconnectedFixtures, http.MethodGet, http.MethodPost))
+	if options.PrivacyRequestRuntime != nil {
+		privacyHandlers, privacyErr := newPrivacyRequestContractHandlers(
+			options.PrivacyRequestRuntime,
+			options.Logger,
+			effectivePrivacyRequestBodyLimit(options.BodyLimit),
+		)
+		if privacyErr != nil {
+			return nil, privacyErr
+		}
+		privacySubmit = privacyHandlers.Submit.ServeHTTP
+		privacyStatus = privacyHandlers.Status.ServeHTTP
 	}
+	mux.HandleFunc("/api/account/privacy-requests", exact("/api/account/privacy-requests", privacySubmit))
+	mux.HandleFunc("/api/account/privacy-requests/status", exact("/api/account/privacy-requests/status", privacyStatus))
 	mux.HandleFunc("/api", closedAPI)
 	mux.HandleFunc("/api/", closedAPI)
 	mux.HandleFunc("/", staticSite.handler())
@@ -471,7 +486,7 @@ func limitBody(limit int64, next http.Handler) http.Handler {
 
 func authorizesBeforeBody(path string) bool {
 	switch path {
-	case "/api/sync", "/api/v2/sync", "/api/session-context", "/api/billing/checkout", "/api/account/terms-consent", "/api/billing/cancel", "/api/account/deletion", "/api/account/deletion/status":
+	case "/api/sync", "/api/v2/sync", "/api/session-context", "/api/billing/checkout", "/api/account/terms-consent", "/api/billing/cancel", "/api/account/deletion", "/api/account/deletion/status", "/api/account/privacy-requests", "/api/account/privacy-requests/status":
 		return true
 	default:
 		return false
@@ -483,6 +498,13 @@ func effectiveAccountDeletionBodyLimit(configured int64) int64 {
 		return configured
 	}
 	return accountdeletion.MaximumRequestBytes
+}
+
+func effectivePrivacyRequestBodyLimit(configured int64) int64 {
+	if configured < privacyrequest.MaximumRequestBytes {
+		return configured
+	}
+	return privacyrequest.MaximumRequestBytes
 }
 
 func writeBodyTooLarge(response http.ResponseWriter, request *http.Request) {

@@ -63,7 +63,9 @@ the exact disposable local fixture, using the no-network commerce provider,
 anchored real filesystem directories, and explicit
 `delete-live-evidence`. `undecided`, default, and production-shaped profiles
 remain unmounted. Issue #468 connects a verified privacy deletion request only to
-the durable saga start. Its scoped deterministic identity makes a lost response
+the durable saga start. Issue #513 composes that handoff only inside the explicit
+disposable `delete-live-evidence` graph; normal privacy HTTP exposes Submit and
+Status but no Verify or Process endpoint. Its scoped deterministic identity makes a lost response
 replay one operation without executing any step, and `account-deletion-started`
 does not mean deletion completed. Issue #474 adds an exact-owner read-only
 `notesctl account-deletion inspect` command. It reports durable state and timing

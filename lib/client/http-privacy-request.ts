@@ -3,6 +3,7 @@ import {
   booleanDecoder,
   literalDecoder,
   objectDecoder,
+  refineDecoder,
   safeIntegerDecoder,
   unionDecoder,
 } from '@/lib/codec/core';
@@ -15,7 +16,6 @@ import {
   parsePrivacyRequestSubmissionId,
   privacyRequestIdDecoder,
   privacyRequestKindDecoder,
-  privacyRequestOutcomeDecoder,
 } from '@/lib/contracts/privacy-request';
 
 type FetchRequest = (
@@ -43,14 +43,29 @@ const base = {
   updatedAt: safeIntegerDecoder({ minimum: 0 }),
 } as const;
 
-const responseDecoder = unionDecoder(
+const nonDeletionRequestKindDecoder = unionDecoder(
+  literalDecoder('purpose-notification'),
+  literalDecoder('disclosure'),
+  literalDecoder('correction'),
+  literalDecoder('usage-suspension'),
+  literalDecoder('third-party-provision-suspension'),
+);
+
+const rawResponseDecoder = unionDecoder(
   objectDecoder({ ...base, status: literalDecoder('verification-pending') }),
   objectDecoder({ ...base, status: literalDecoder('ready') }),
   objectDecoder({ ...base, status: literalDecoder('processing') }),
   objectDecoder({
     ...base,
+    requestKind: nonDeletionRequestKindDecoder,
     status: literalDecoder('completed'),
-    outcome: privacyRequestOutcomeDecoder,
+    outcome: literalDecoder('fulfilled'),
+  }),
+  objectDecoder({
+    ...base,
+    requestKind: literalDecoder('deletion'),
+    status: literalDecoder('completed'),
+    outcome: literalDecoder('account-deletion-started'),
   }),
   objectDecoder({ ...base, status: literalDecoder('rejected') }),
   objectDecoder({
@@ -58,6 +73,14 @@ const responseDecoder = unionDecoder(
     status: literalDecoder('failed'),
     retryable: booleanDecoder,
   }),
+);
+
+const responseDecoder = refineDecoder(
+  rawResponseDecoder,
+  (value) => {
+    return value.updatedAt >= value.requestedAt;
+  },
+  'invalid privacy request status semantics',
 );
 
 const errorDecoder = objectDecoder({
@@ -81,6 +104,7 @@ export function createPrivacyRequestUiHttpTransport(
         fetchRequest,
         '/api/account/privacy-requests',
         command,
+        'submit',
       );
       if (result.kind === 'rejected') return result;
       return result.request.requestKind === command.requestKind
@@ -93,6 +117,7 @@ export function createPrivacyRequestUiHttpTransport(
         fetchRequest,
         '/api/account/privacy-requests/status',
         command,
+        'status',
       );
       if (result.kind === 'rejected') return result;
       return result.request.requestId === command.requestId
@@ -112,6 +137,7 @@ async function post(
   bodyValue:
     | PrivacyRequestUiCommand
     | Pick<PrivacyRequestUiRecord, 'requestId'>,
+  operation: 'submit' | 'status',
 ): Promise<PrivacyRequestTransportResult> {
   let response: Response;
   try {
@@ -130,7 +156,7 @@ async function post(
     return { kind: 'rejected', reason: 'unavailable' };
   }
   const value = await responseBody(response);
-  if (!response.ok) return rejected(response.status, value);
+  if (!response.ok) return rejected(response.status, value, operation);
   const decoded = responseDecoder.decode(value);
   return decoded.ok
     ? { kind: 'accepted', request: decoded.value }
@@ -149,6 +175,7 @@ async function responseBody(response: Response): Promise<unknown> {
 function rejected(
   status: number,
   value: unknown,
+  operation: 'submit' | 'status',
 ): Extract<PrivacyRequestTransportResult, { readonly kind: 'rejected' }> {
   const decoded = errorDecoder.decode(value);
   if (!decoded.ok) return { kind: 'rejected', reason: 'unavailable' };
@@ -158,7 +185,11 @@ function rejected(
   ) {
     return { kind: 'rejected', reason: 'authentication-required' };
   }
-  if (status === 404 && decoded.value.error === 'not-found') {
+  if (
+    operation === 'status' &&
+    status === 404 &&
+    decoded.value.error === 'not-found'
+  ) {
     return { kind: 'rejected', reason: 'not-found' };
   }
   if (status === 409 && decoded.value.error === 'request-conflict') {

@@ -279,6 +279,19 @@ mail, object, or backup provider is constructed or contacted. See
 local/CI evidence, not production configuration, legal/price approval,
 deployment, charging, or cutover approval.
 
+Issue #513 mounts `POST /api/account/privacy-requests` and its `/status`
+companion for every exact local-fixture phase and policy. They share the same
+pool, scoped session resolver, HTTP clock, and runtime lease, and persist only
+an owner-scoped PostgreSQL journal. Identity verification and generic
+fulfillment use explicit unavailable adapters. Under `undecided`, deletion is
+also explicitly unavailable. Under disposable `delete-live-evidence`, the
+internal processor graph can hand an already verified deletion record to the
+real fenced account-deletion Start boundary, but HTTP exposes no Verify,
+Process, scheduler, or Resume ownership for that privacy request. Normal
+Submit/Status therefore remains `verification-pending` and never claims
+fulfillment or deletion completion. Default and production pass no privacy
+runtime and keep both routes closed.
+
 The live notes layout first recovers any durable deletion handoff. Only its
 idle/no-marker children proceed through the launch gate and then fetch the
 strict, private, no-store session context; Vault-scoped IndexedDB and Sync v2
@@ -298,7 +311,8 @@ source; checkout never charges and cancellation never contacts a provider. No
 login/session issuance or legacy-data migration is enabled. The delete wire is
 available only under the explicit disposable policy. Default and production
 composition pass none of the local-fixture Sync v2, session-context, legal,
-cancellation, or deletion runtimes to the HTTP handler, so those routes stay
+cancellation, privacy-request, or deletion runtimes to the HTTP handler, so
+those routes stay
 closed. This is local/CI composition evidence, not
 production configuration, deployment, or cutover approval.
 
@@ -318,6 +332,12 @@ browser handoff tests inject test-only Start/Resume responses in their in-page
 harness and do not open the real destructive Go route. Issue #512 real
 PostgreSQL/filesystem tests opt into `delete-live-evidence` explicitly and cover
 all effect/receipt restart windows, runtime-lease loss, and completed restart.
+Issue #513 desktop and mobile coverage submits through the real Go privacy
+route, restarts the Go process without reseeding, proves the journal status is
+still pending, and separately proves the browser form/tracking state resets.
+The E2E launcher owns a fresh 0700 restart-control directory and random 0600
+marker for that invocation; the server validates the marker and cleanup removes
+only the known control artifacts before requiring the directory to be empty.
 The existing Sync v2 integration suite remains the evidence for
 object-before-journal retry, cursor/device/owner isolation, conflicts, quota
 admission, dependency failures, and replay. These tests use only the allowlisted

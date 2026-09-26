@@ -73,16 +73,28 @@ func (body *privacyTrackingBody) Read([]byte) (int, error) {
 func (body *privacyTrackingBody) Close() error { return nil }
 
 func TestPrivacyRequestContractAuthenticatesBeforeBody(t *testing.T) {
-	handlers, sessions, application := newPrivacyHTTPHandlers(t)
-	body := &privacyTrackingBody{}
-	request := httptest.NewRequest(http.MethodPost, "/api/account/privacy-requests", nil)
-	request.Body = body
-	request.Header.Set("Origin", privacyTestOrigin)
-	request.Header.Set("Sec-Fetch-Site", "same-origin")
-	response := httptest.NewRecorder()
-	handlers.Submit.ServeHTTP(response, request)
-	if response.Code != http.StatusUnauthorized || body.reads != 0 || sessions.calls != 0 || application.submitCalls != 0 {
-		t.Fatalf("response=%d reads=%d sessions=%d application=%d", response.Code, body.reads, sessions.calls, application.submitCalls)
+	for _, test := range []struct {
+		name string
+		path string
+		pick func(httpapi.PrivacyRequestContractHandlers) http.Handler
+	}{
+		{name: "submit", path: "/api/account/privacy-requests", pick: func(handlers httpapi.PrivacyRequestContractHandlers) http.Handler { return handlers.Submit }},
+		{name: "status", path: "/api/account/privacy-requests/status", pick: func(handlers httpapi.PrivacyRequestContractHandlers) http.Handler { return handlers.Status }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handlers, sessions, application := newPrivacyHTTPHandlers(t)
+			body := &privacyTrackingBody{}
+			request := httptest.NewRequest(http.MethodPost, test.path, nil)
+			request.Body = body
+			request.Header.Set("Origin", privacyTestOrigin)
+			request.Header.Set("Sec-Fetch-Site", "same-origin")
+			response := httptest.NewRecorder()
+			test.pick(handlers).ServeHTTP(response, request)
+			if response.Code != http.StatusUnauthorized || body.reads != 0 || sessions.calls != 0 ||
+				application.submitCalls != 0 || application.statusCalls != 0 {
+				t.Fatalf("response=%d reads=%d sessions=%d submit=%d status=%d", response.Code, body.reads, sessions.calls, application.submitCalls, application.statusCalls)
+			}
+		})
 	}
 }
 
@@ -159,8 +171,124 @@ func TestPrivacyRequestContractRejectsCSRFAndLargeBody(t *testing.T) {
 	}
 }
 
+func TestPrivacyRequestMuxAuthenticatesBeforeConfiguredBodyLimit(t *testing.T) {
+	runtime, sessions, application := newPrivacyRuntime()
+	staticDirectory := t.TempDir()
+	writeStaticFixture(t, staticDirectory)
+	handler, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory:       staticDirectory,
+		BodyLimit:             64,
+		Logger:                slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PrivacyRequestRuntime: runtime,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := &privacyTrackingBody{}
+	unauthenticated := httptest.NewRequest(http.MethodPost, "/api/account/privacy-requests", nil)
+	unauthenticated.Body = body
+	unauthenticated.ContentLength = 65
+	unauthenticated.Header.Set("Origin", privacyTestOrigin)
+	unauthenticated.Header.Set("Sec-Fetch-Site", "same-origin")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, unauthenticated)
+	if response.Code != http.StatusUnauthorized || body.reads != 0 || sessions.calls != 0 {
+		t.Fatalf("unauthenticated = %d reads=%d sessions=%d", response.Code, body.reads, sessions.calls)
+	}
+
+	oversized := authenticatedPrivacyRequest(
+		"/api/account/privacy-requests",
+		`{"submissionId":"01991f20-61d2-7000-8000-000000002601","requestKind":"disclosure"}`,
+	)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, oversized)
+	if response.Code != http.StatusRequestEntityTooLarge || sessions.calls != 1 || application.submitCalls != 0 ||
+		!strings.Contains(response.Body.String(), "request-too-large") {
+		t.Fatalf("oversized = %d %s sessions=%d calls=%d", response.Code, response.Body.String(), sessions.calls, application.submitCalls)
+	}
+}
+
+func TestPrivacyRequestMuxFailsClosedWithoutCompleteRuntime(t *testing.T) {
+	staticDirectory := t.TempDir()
+	writeStaticFixture(t, staticDirectory)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	closed, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory: staticDirectory,
+		BodyLimit:       2048,
+		Logger:          logger,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	closed.ServeHTTP(response, authenticatedPrivacyRequest(
+		"/api/account/privacy-requests",
+		`{"submissionId":"01991f20-61d2-7000-8000-000000002601","requestKind":"disclosure"}`,
+	))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("closed route = %d %s", response.Code, response.Body.String())
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*httpapi.PrivacyRequestRuntime)
+	}{
+		{name: "origin", mutate: func(runtime *httpapi.PrivacyRequestRuntime) { runtime.ExpectedOrigin = "https://notes.example/" }},
+		{name: "clock", mutate: func(runtime *httpapi.PrivacyRequestRuntime) { runtime.Clock = nil }},
+		{name: "sessions", mutate: func(runtime *httpapi.PrivacyRequestRuntime) { runtime.Sessions = nil }},
+		{name: "application", mutate: func(runtime *httpapi.PrivacyRequestRuntime) { runtime.Application = nil }},
+		{name: "request ID", mutate: func(runtime *httpapi.PrivacyRequestRuntime) { runtime.NewRequestID = nil }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runtime, _, _ := newPrivacyRuntime()
+			test.mutate(runtime)
+			if _, err := httpapi.NewHandler(httpapi.HandlerOptions{
+				StaticDirectory:       staticDirectory,
+				BodyLimit:             2048,
+				Logger:                logger,
+				PrivacyRequestRuntime: runtime,
+			}); err == nil || !strings.Contains(err.Error(), "privacy request runtime is incomplete") {
+				t.Fatalf("incomplete runtime error = %v", err)
+			}
+		})
+	}
+}
+
+func TestPrivacyRequestContractRejectsInvalidGeneratedRequestID(t *testing.T) {
+	runtime, _, application := newPrivacyRuntime()
+	runtime.NewRequestID = func() string { return "not-a-request-id" }
+	handlers, err := httpapi.NewPrivacyRequestContractHandlers(
+		runtime,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handlers.Submit.ServeHTTP(response, authenticatedPrivacyRequest(
+		"/api/account/privacy-requests",
+		`{"submissionId":"01991f20-61d2-7000-8000-000000002601","requestKind":"disclosure"}`,
+	))
+	if response.Code != http.StatusServiceUnavailable || application.submitCalls != 0 {
+		t.Fatalf("invalid generated id = %d %s calls=%d", response.Code, response.Body.String(), application.submitCalls)
+	}
+}
+
 func newPrivacyHTTPHandlers(t *testing.T) (httpapi.PrivacyRequestContractHandlers, *privacySessionStub, *privacyApplicationStub) {
 	t.Helper()
+	runtime, sessions, application := newPrivacyRuntime()
+	handlers, err := httpapi.NewPrivacyRequestContractHandlers(
+		runtime,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return handlers, sessions, application
+}
+
+func newPrivacyRuntime() (*httpapi.PrivacyRequestRuntime, *privacySessionStub, *privacyApplicationStub) {
 	sessions := &privacySessionStub{session: &identity.Session{
 		Kind: identity.SessionActive, SessionID: privacyTestSessionID,
 		AccountID: privacyTestAccountID, VaultID: privacyTestVaultID,
@@ -174,15 +302,12 @@ func newPrivacyHTTPHandlers(t *testing.T) (httpapi.PrivacyRequestContractHandler
 			RequestedAt: 1_500, UpdatedAt: 1_500, Status: privacyrequest.StateVerificationPending,
 		},
 	}}
-	handlers, err := httpapi.NewPrivacyRequestContractHandlers(&httpapi.PrivacyRequestRuntime{
+	runtime := &httpapi.PrivacyRequestRuntime{
 		ExpectedOrigin: privacyTestOrigin, Clock: func() int64 { return 1_500 },
 		Sessions: sessions, Application: application,
 		NewRequestID: func() string { return privacyTestRequestID },
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if err != nil {
-		t.Fatal(err)
 	}
-	return handlers, sessions, application
+	return runtime, sessions, application
 }
 
 func authenticatedPrivacyRequest(path string, body string) *http.Request {

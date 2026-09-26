@@ -267,13 +267,19 @@
     },
     {
       "id": "F24",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
-      "verification": ["V01", "V03", "V08"],
+      "verification": ["V01", "V03", "V04", "V08", "V10"],
       "goEvidence": [
+        "backend/cmd/notes/main.go",
+        "backend/internal/adapters/postgres/privacy_request.go",
+        "backend/internal/adapters/privacydeletion/handoff.go",
+        "backend/internal/adapters/privacyunavailable/provider.go",
+        "backend/internal/httpapi/privacy_request.go",
         "backend/internal/privacyrequest/application.go",
-        "backend/internal/httpapi/privacy_request.go"
-      ]
+        "backend/internal/runtimefoundation/vault_activity_fence.go"
+      ],
+      "note": "Issue #513 mounts only owner-scoped Submit/Status in the exact disposable local fixture. Verification, fulfillment, scheduling, and production remain closed; explicit delete-live evidence composes a controlled Start-only deletion handoff without Resume."
     },
     {
       "id": "F25",
@@ -338,6 +344,7 @@
         "contracts/openapi.yaml",
         "tests/contracts/migration-fixtures.test.ts",
         "backend/internal/httpapi/handler_test.go",
+        "backend/internal/httpapi/privacy_request_test.go",
         "backend/internal/httpapi/session_context_test.go",
         "backend/internal/httpapi/sync_v2_test.go"
       ]
@@ -444,6 +451,7 @@
       "status": "complete",
       "evidence": [
         "tests/e2e/notes.spec.ts",
+        "tests/e2e/privacy-request-ui.spec.ts",
         "tests/e2e/logout-purge.spec.ts",
         "tests/integration/authenticated-notes-account-deletion.test.tsx",
         "tests/integration/logout-runtime-coordination.test.ts",

@@ -432,6 +432,20 @@ not approve or prove production recovery.
 
 ## Remaining operations boundaries
 
+Issue #513 does not add a privacy-request worker. The exact local fixture
+accepts and reads the durable PostgreSQL journal through Go HTTP, but identity
+verification, non-deletion fulfillment, queue claiming, scheduling, and retry
+ownership are unavailable. The controlled `delete-live-evidence` integration
+can invoke only the existing account-deletion Start handoff for an already
+verified test row; it does not retain the continuation or invoke Resume.
+
+Before any production processor is connected, operations must define a
+provider-neutral registry, exclusive claim/recovery rules for a record left in
+`processing` after response loss, status access after live owner/session
+removal, and a reviewed retention/purge lifecycle for the privacy journal.
+Until then, operators must preserve accepted rows and must not infer
+fulfillment or deletion completion from age or `account-deletion-started`.
+
 - checking application/provider evidence for a reservation;
 - deriving release evidence or automatically releasing a reservation;
 - pagination beyond the explicit bounded first page;

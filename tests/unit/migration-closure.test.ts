@@ -72,6 +72,21 @@ describe('Go migration closure evidence', () => {
     expect(accountDeletion?.verification).toEqual(
       expect.arrayContaining(['V04', 'V08', 'V10']),
     );
+    const privacyRequest = closure.features.find(({ id }) => id === 'F24');
+    expect(privacyRequest).toMatchObject({
+      state: 'A/B',
+      migration: 'migrated',
+    });
+    expect(privacyRequest?.verification).toEqual(
+      expect.arrayContaining(['V01', 'V03', 'V04', 'V08', 'V10']),
+    );
+    expect(privacyRequest?.goEvidence).toEqual(
+      expect.arrayContaining([
+        'backend/cmd/notes/main.go',
+        'backend/internal/adapters/privacyunavailable/provider.go',
+        'backend/internal/httpapi/privacy_request.go',
+      ]),
+    );
     expect(closure.features.find(({ id }) => id === 'F28')).toMatchObject({
       migration: 'intentionally-absent',
     });

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/fukamu/notes/backend/internal/accountdeletion"
+	"github.com/fukamu/notes/backend/internal/privacyrequest"
 	"github.com/fukamu/notes/backend/internal/syncv2"
 )
 
@@ -189,6 +190,60 @@ type FencedAccountDeletionApplication struct {
 type LeaseCheckedAccountDeletionApplication struct {
 	lease    RuntimeLease
 	delegate accountDeletionApplication
+}
+
+type privacyRequestApplication interface {
+	Submit(context.Context, privacyrequest.Scope, privacyrequest.SubmitCommand, privacyrequest.RequestID, int64) (privacyrequest.ApplicationResult, error)
+	Status(context.Context, privacyrequest.Scope, privacyrequest.RequestID) (privacyrequest.ApplicationResult, error)
+}
+
+// LeaseCheckedPrivacyRequestApplication keeps the durable local-fixture
+// privacy journal unavailable after the fixture runtime loses its database
+// lease. It deliberately exposes only Submit and Status; verification and
+// processing remain separate, unavailable operator boundaries.
+type LeaseCheckedPrivacyRequestApplication struct {
+	lease    RuntimeLease
+	delegate privacyRequestApplication
+}
+
+func NewLeaseCheckedPrivacyRequestApplication(
+	lease RuntimeLease,
+	delegate privacyRequestApplication,
+) (*LeaseCheckedPrivacyRequestApplication, error) {
+	if lease == nil || delegate == nil {
+		return nil, ErrInvalidFoundation
+	}
+	return &LeaseCheckedPrivacyRequestApplication{lease: lease, delegate: delegate}, nil
+}
+
+func (application *LeaseCheckedPrivacyRequestApplication) Submit(
+	ctx context.Context,
+	scope privacyrequest.Scope,
+	command privacyrequest.SubmitCommand,
+	requestID privacyrequest.RequestID,
+	requestedAt int64,
+) (privacyrequest.ApplicationResult, error) {
+	if application == nil || application.lease == nil || application.delegate == nil {
+		return privacyrequest.ApplicationResult{}, ErrInvalidFoundation
+	}
+	if err := application.lease.Check(ctx); err != nil {
+		return privacyrequest.ApplicationResult{}, ErrVaultActivityClosed
+	}
+	return application.delegate.Submit(ctx, scope, command, requestID, requestedAt)
+}
+
+func (application *LeaseCheckedPrivacyRequestApplication) Status(
+	ctx context.Context,
+	scope privacyrequest.Scope,
+	requestID privacyrequest.RequestID,
+) (privacyrequest.ApplicationResult, error) {
+	if application == nil || application.lease == nil || application.delegate == nil {
+		return privacyrequest.ApplicationResult{}, ErrInvalidFoundation
+	}
+	if err := application.lease.Check(ctx); err != nil {
+		return privacyrequest.ApplicationResult{}, ErrVaultActivityClosed
+	}
+	return application.delegate.Status(ctx, scope, requestID)
 }
 
 func NewLeaseCheckedAccountDeletionApplication(

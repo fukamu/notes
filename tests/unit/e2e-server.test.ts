@@ -97,10 +97,11 @@ async function createHarness(options: {
 
 describe('Go E2E server', () => {
   it('keeps the seeded browser session tied to the local fixture profile', async () => {
-    const [server, identity, playwright] = await Promise.all([
+    const [server, identity, playwright, launcher] = await Promise.all([
       readFile('scripts/e2e-server.sh', 'utf8'),
       readFile('tests/e2e/identity-fixture.ts', 'utf8'),
       readFile('playwright.config.ts', 'utf8'),
+      readFile('scripts/run-e2e.mts', 'utf8'),
     ]);
     expect(server).toContain(
       '${NOTES_LOCAL_FIXTURE_SESSION_TOKEN:?E2E fixture session token is required}',
@@ -117,10 +118,25 @@ describe('Go E2E server', () => {
     expect(identity).toContain('httpOnly: true');
     expect(identity).toContain('secure: true');
     expect(playwright).toContain('storageState: e2eSessionStorageState()');
+    expect(playwright).toContain("'FUKAMU_E2E_RESTART_CONTROL'");
+    expect(playwright).toContain("'FUKAMU_E2E_RESTART_TOKEN'");
+    expect(playwright).toContain("'.fukamu-notes-e2e-owner'");
+    expect(server).toContain(
+      'E2E restart control ownership marker is invalid.',
+    );
+    expect(launcher).toContain('const token = randomUUID()');
+    expect(launcher).toContain(
+      'refusing to remove unexpected restart artifacts',
+    );
+    expect(launcher).toContain('await rmdir(candidateDirectory)');
+    expect(launcher).not.toContain('recursive: true');
     expect(playwright).toContain(
       'NOTES_LOCAL_FIXTURE_SESSION_TOKEN: e2eFixtureSessionToken',
     );
     expect(server).toContain('NOTES_APPLICATION_PROFILE=local-fixture');
+    expect(server).toContain(
+      'NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY=undecided',
+    );
     expect(server).not.toContain('NOTES_APPLICATION_PROFILE=disabled');
   });
 

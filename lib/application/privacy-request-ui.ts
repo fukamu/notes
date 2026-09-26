@@ -2,26 +2,35 @@ import type { PrivacyRequestKind } from '@/lib/domain/privacy-request';
 
 type PrivacyRequestUiBase = {
   readonly requestId: string;
-  readonly requestKind: PrivacyRequestKind;
   readonly requestedAt: number;
   readonly updatedAt: number;
 };
 
-export type PrivacyRequestUiRecord = PrivacyRequestUiBase &
-  (
-    | { readonly status: 'verification-pending' }
-    | { readonly status: 'ready' }
-    | { readonly status: 'processing' }
-    | {
-        readonly status: 'completed';
-        readonly outcome: 'fulfilled' | 'account-deletion-started';
-      }
-    | { readonly status: 'rejected' }
-    | {
-        readonly status: 'failed';
-        readonly retryable: boolean;
-      }
-  );
+type PrivacyRequestNonDeletionKind = Exclude<PrivacyRequestKind, 'deletion'>;
+
+export type PrivacyRequestUiRecord =
+  | (PrivacyRequestUiBase & {
+      readonly requestKind: PrivacyRequestKind;
+    } & (
+        | { readonly status: 'verification-pending' }
+        | { readonly status: 'ready' }
+        | { readonly status: 'processing' }
+        | { readonly status: 'rejected' }
+        | {
+            readonly status: 'failed';
+            readonly retryable: boolean;
+          }
+      ))
+  | (PrivacyRequestUiBase & {
+      readonly requestKind: PrivacyRequestNonDeletionKind;
+      readonly status: 'completed';
+      readonly outcome: 'fulfilled';
+    })
+  | (PrivacyRequestUiBase & {
+      readonly requestKind: 'deletion';
+      readonly status: 'completed';
+      readonly outcome: 'account-deletion-started';
+    });
 
 export type PrivacyRequestUiCommand = {
   readonly submissionId: string;

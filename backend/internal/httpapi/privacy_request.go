@@ -19,8 +19,6 @@ type PrivacyRequestApplication interface {
 
 var _ PrivacyRequestApplication = (*privacyrequest.Service)(nil)
 
-// PrivacyRequestRuntime is deliberately not part of HandlerOptions. Constructing
-// these reviewed handlers must not publish either privacy request route.
 type PrivacyRequestRuntime struct {
 	ExpectedOrigin string
 	Clock          func() int64
@@ -34,20 +32,28 @@ type PrivacyRequestContractHandlers struct {
 	Status http.Handler
 }
 
-// NewPrivacyRequestContractHandlers returns disconnected handlers for contract
-// and integration verification. NewHandler continues to install the closed
-// public routes until a separate route-enablement review.
 func NewPrivacyRequestContractHandlers(runtime *PrivacyRequestRuntime, logger *slog.Logger) (PrivacyRequestContractHandlers, error) {
+	return newPrivacyRequestContractHandlers(runtime, logger, privacyrequest.MaximumRequestBytes)
+}
+
+func newPrivacyRequestContractHandlers(
+	runtime *PrivacyRequestRuntime,
+	logger *slog.Logger,
+	bodyLimit int64,
+) (PrivacyRequestContractHandlers, error) {
 	if !privacyRequestRuntimeComplete(runtime) || logger == nil {
 		return PrivacyRequestContractHandlers{}, errors.New("complete privacy request runtime and logger are required")
 	}
+	if bodyLimit < 1 || bodyLimit > privacyrequest.MaximumRequestBytes {
+		return PrivacyRequestContractHandlers{}, errors.New("privacy request body limit must be within protocol bounds")
+	}
 	return PrivacyRequestContractHandlers{
-		Submit: http.HandlerFunc(privacyRequestSubmitHandler(runtime, logger)),
-		Status: http.HandlerFunc(privacyRequestStatusHandler(runtime, logger)),
+		Submit: http.HandlerFunc(privacyRequestSubmitHandler(runtime, logger, bodyLimit)),
+		Status: http.HandlerFunc(privacyRequestStatusHandler(runtime, logger, bodyLimit)),
 	}, nil
 }
 
-func privacyRequestSubmitHandler(runtime *PrivacyRequestRuntime, logger *slog.Logger) http.HandlerFunc {
+func privacyRequestSubmitHandler(runtime *PrivacyRequestRuntime, logger *slog.Logger, bodyLimit int64) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		if !allowMethods(response, request, http.MethodPost) {
 			return
@@ -56,7 +62,7 @@ func privacyRequestSubmitHandler(runtime *PrivacyRequestRuntime, logger *slog.Lo
 		if handled {
 			return
 		}
-		body, status := readPrivacyRequestBody(response, request)
+		body, status := readPrivacyRequestBody(response, request, bodyLimit)
 		if status != 0 {
 			writePrivacyRequestBodyError(response, request, status)
 			return
@@ -83,7 +89,7 @@ func privacyRequestSubmitHandler(runtime *PrivacyRequestRuntime, logger *slog.Lo
 	}
 }
 
-func privacyRequestStatusHandler(runtime *PrivacyRequestRuntime, logger *slog.Logger) http.HandlerFunc {
+func privacyRequestStatusHandler(runtime *PrivacyRequestRuntime, logger *slog.Logger, bodyLimit int64) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		if !allowMethods(response, request, http.MethodPost) {
 			return
@@ -92,7 +98,7 @@ func privacyRequestStatusHandler(runtime *PrivacyRequestRuntime, logger *slog.Lo
 		if handled {
 			return
 		}
-		body, status := readPrivacyRequestBody(response, request)
+		body, status := readPrivacyRequestBody(response, request, bodyLimit)
 		if status != 0 {
 			writePrivacyRequestBodyError(response, request, status)
 			return
@@ -165,7 +171,7 @@ func authenticatePrivacyRequest(
 	return 0, identity.VaultContext{}, true
 }
 
-func readPrivacyRequestBody(response http.ResponseWriter, request *http.Request) ([]byte, int) {
+func readPrivacyRequestBody(response http.ResponseWriter, request *http.Request, bodyLimit int64) ([]byte, int) {
 	declared := request.Header.Values("Content-Length")
 	if len(declared) > 1 {
 		return nil, http.StatusBadRequest
@@ -175,11 +181,11 @@ func readPrivacyRequestBody(response http.ResponseWriter, request *http.Request)
 		if err != nil || length < 0 {
 			return nil, http.StatusBadRequest
 		}
-		if length > privacyrequest.MaximumRequestBytes {
+		if length > bodyLimit {
 			return nil, http.StatusRequestEntityTooLarge
 		}
 	}
-	limited := http.MaxBytesReader(response, request.Body, privacyrequest.MaximumRequestBytes)
+	limited := http.MaxBytesReader(response, request.Body, bodyLimit)
 	body, err := io.ReadAll(limited)
 	if err != nil {
 		var maximum *http.MaxBytesError
