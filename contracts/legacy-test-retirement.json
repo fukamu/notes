@@ -1,0 +1,1751 @@
+{
+  "schemaVersion": 1,
+  "selectionVersion": 1,
+  "legacySourceRevision": "e8936ab90768774371d84b4808c100d546649943",
+  "testCorpusRevision": "af743246f14f7e0b96accf1ed7e1a1201fc3aaaf",
+  "files": 138,
+  "sha256": "7c28cbe1db282adc1d5349f06ab37964f2b224d4ee3dbc9acad8664e0de50531",
+  "entries": [
+    {
+      "legacyPath": "tests/benchmarks/server-load.benchmark.test.ts",
+      "legacySha256": "58129db0c2f395294a882bacc1cd3300b25f12e05407413feb82727403100fc3",
+      "featureIds": ["F10", "F16"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": ["backend/tests/integration/sync_v2_load_test.go"]
+      }
+    },
+    {
+      "legacyPath": "tests/contracts/migration-fixtures.test.ts",
+      "legacySha256": "7b4e32865f563dcd24cb786d743907ec17f49b205fcaa40a3072a72be146b149",
+      "featureIds": [
+        "F03",
+        "F04",
+        "F05",
+        "F06",
+        "F10",
+        "F11",
+        "F15",
+        "F17",
+        "F18",
+        "F19",
+        "F20",
+        "F21",
+        "F23",
+        "F24"
+      ],
+      "disposition": {
+        "kind": "retained-frontend",
+        "currentPath": "tests/contracts/migration-fixtures.test.ts",
+        "evidence": ["tests/contracts/migration-fixtures.test.ts"]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/account-deletion.ts",
+      "legacySha256": "805f2e7b910c5ab99792b73908863b43f25c2a7ecf00eafb8d7b40d350d2f6f0",
+      "featureIds": ["F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/application_test.go",
+          "backend/internal/httpapi/account_deletion_test.go",
+          "backend/tests/integration/account_deletion_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/billing.ts",
+      "legacySha256": "d78df54f42a915c220f09c131fddc5939b8afafa02e73a55931e66954bb496c9",
+      "featureIds": ["F17", "F18", "F19"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/billing/core_test.go",
+          "backend/internal/stripebilling/core_test.go",
+          "backend/tests/integration/billing_projection_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/control-plane.ts",
+      "legacySha256": "334cda920583c733112a23d349e314540f1e5b4c10c28d20d59ec487d3612d90",
+      "featureIds": ["F04", "F07", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/identity/boundary_test.go",
+          "backend/internal/identity/session_test.go",
+          "backend/tests/integration/session_store_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/email-otp.ts",
+      "legacySha256": "b8350ec5e412345933f93159025a0d75d22ae25e3246e452ca5cf677d022ba71",
+      "featureIds": ["F06", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/otp/crypto_test.go",
+          "backend/internal/identity/email_otp_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/encrypted-object.ts",
+      "legacySha256": "2583772a266a2969b8311a916918c5c5a4166f226eb3f9660e88f54da8d62cca",
+      "featureIds": ["F11", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/model_test.go",
+          "backend/internal/encryptedobject/core_test.go",
+          "backend/tests/integration/encrypted_object_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/entitlement.ts",
+      "legacySha256": "df3a35cf08519a5ef247a9cb4147aad72e2436a49a0ca338433dcd22417b538c",
+      "featureIds": ["F19"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/entitlement/core_test.go",
+          "backend/internal/entitlement/service_test.go",
+          "backend/tests/integration/entitlement_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/envelope-crypto.ts",
+      "legacySha256": "cfa00f1765778e162b465748a616623f4208721e27a2414ccab7cb9bd69f99a6",
+      "featureIds": ["F11", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/model_test.go",
+          "backend/internal/encryptedobject/core_test.go",
+          "backend/tests/integration/encrypted_object_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/legal-checkout.ts",
+      "legacySha256": "ab6b9ea555a435aa2cf182779fff6f3dcc5b86555b5349ddd4b860cdbd9ba924",
+      "featureIds": ["F20"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/legal_test.go",
+          "backend/internal/legal/contract_test.go",
+          "backend/tests/integration/contract_evidence_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/oidc.ts",
+      "legacySha256": "264f188d4be05a4f167e160df8c06393611a880bfdbc81d1f22cbd762bf9a9b7",
+      "featureIds": ["F05", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/oidc/provider_test.go",
+          "backend/internal/identity/oidc_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/privacy-request.ts",
+      "legacySha256": "7af2f9f05316e44b301879db88002be6ddbd6d92e32f7d7b5593854e26376af6",
+      "featureIds": ["F24"],
+      "disposition": {
+        "kind": "retained-frontend",
+        "currentPath": "tests/fixtures/privacy-request.ts",
+        "evidence": [
+          "tests/unit/http-privacy-request.test.ts",
+          "tests/unit/local-privacy-request.test.ts"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/quota.ts",
+      "legacySha256": "8b91ccc9418af96f146b8fd03e92a296029161958b336bc78b90461f81dba9c7",
+      "featureIds": ["F16"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/quota/core_test.go",
+          "backend/internal/quota/ledger_test.go",
+          "backend/tests/integration/quota_ledger_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/session.ts",
+      "legacySha256": "296e138572269f685322249d5dda52a67078fdff2c7dfc981e3357d875c46c5c",
+      "featureIds": ["F04", "F07"],
+      "disposition": {
+        "kind": "retained-frontend",
+        "currentPath": "tests/fixtures/session.ts",
+        "evidence": [
+          "tests/unit/browser-logout-coordination.test.ts",
+          "tests/unit/notes-access.test.ts"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/stripe.ts",
+      "legacySha256": "959c06626981a46aabbb3a837a7d978eb8e522476621e4ea7136e5e3ad28f731",
+      "featureIds": ["F18"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/stripe/provider_test.go",
+          "backend/internal/stripebilling/service_test.go",
+          "backend/internal/stripebilling/signature_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/terms-consent.ts",
+      "legacySha256": "fc024060d7beb9108a331cdd8c68ceacd55f0182ee45957732c56b24d2eab15b",
+      "featureIds": ["F21"],
+      "disposition": {
+        "kind": "retained-frontend",
+        "currentPath": "tests/fixtures/terms-consent.ts",
+        "evidence": ["tests/unit/terms-consent-ui-client.test.ts"]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/vault-content.ts",
+      "legacySha256": "a23a4a56b7bc6efabd019185f400de3ecb767e5b954d40f7bc6bed37eccd55f6",
+      "featureIds": ["F09", "F10"],
+      "disposition": {
+        "kind": "retained-frontend",
+        "currentPath": "tests/fixtures/vault-content.ts",
+        "evidence": ["tests/unit/sync-v2-protocol.test.ts"]
+      }
+    },
+    {
+      "legacyPath": "tests/fixtures/vault-recovery.ts",
+      "legacySha256": "9014c39d109a3e9e408712a7ef7c8994cd5366e2d08416600305e77a83e2250e",
+      "featureIds": ["F15"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/encryptedobject/recovery_service_test.go",
+          "backend/internal/operations/recovery_drill_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/account-deletion-application.test.ts",
+      "legacySha256": "11d3a838bf06afd547b68466c4158031f6ef708ac11ca0e1e8df36948ee25574",
+      "featureIds": ["F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/application_test.go",
+          "backend/internal/httpapi/account_deletion_test.go",
+          "backend/tests/integration/account_deletion_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/account-deletion-billing-cancellation.test.ts",
+      "legacySha256": "43377d0637e66048ad84c6aebabfcc4f4ad20f017ea5532e71c07fd00a27f167",
+      "featureIds": ["F17", "F22", "F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/billing_effect_test.go",
+          "backend/tests/integration/account_deletion_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/account-deletion-continuation-d1.test.ts",
+      "legacySha256": "ba2ff95bc68c8d1d15e8773969fa4b98350c417d172bf9fec0ba270a7d61bdba",
+      "featureIds": ["F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/application_test.go",
+          "backend/internal/httpapi/account_deletion_test.go",
+          "backend/tests/integration/account_deletion_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/account-deletion-d1.test.ts",
+      "legacySha256": "d12ff048ffbb181b114f34a44b13dc52b4e3792e719e357de39579c78dbf3ab5",
+      "featureIds": ["F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/application_test.go",
+          "backend/internal/httpapi/account_deletion_test.go",
+          "backend/tests/integration/account_deletion_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/account-deletion-finalization.test.ts",
+      "legacySha256": "8be72b048a01871efb9ec9950c18780703866b18eb5d4f230ecd57e194aad480",
+      "featureIds": ["F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/finalization_test.go",
+          "backend/tests/integration/account_finalization_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/account-deletion-private-objects.test.ts",
+      "legacySha256": "902ef11254b01d1ba17f827e4ba3e31b5bae8f46e7013593a1262da4b1384220",
+      "featureIds": ["F14", "F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/private_object_effect_test.go",
+          "backend/tests/integration/vault_private_object_purge_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/account-deletion-vault-live-data.test.ts",
+      "legacySha256": "c29bb96d923decbf63a23803019c5eb20c1ddf383ffd31bdc86202a2feb2f72c",
+      "featureIds": ["F09", "F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/vault_data_effect_test.go",
+          "backend/tests/integration/vault_data_purge_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/account-session-revocation-d1.test.ts",
+      "legacySha256": "3d3c617ff1d0d433580b7237958d1fa5fca7363558a65268333da61f62483ff2",
+      "featureIds": ["F04", "F07", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/identity/boundary_test.go",
+          "backend/internal/identity/session_test.go",
+          "backend/tests/integration/session_store_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/auth-security-corpus.test.ts",
+      "legacySha256": "0a92f4efd8c0e43c849ce7aecec0a9cc48774242d072584ae00a5a133dc82059",
+      "featureIds": ["F04", "F07", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/identity/boundary_test.go",
+          "backend/internal/identity/session_test.go",
+          "backend/tests/integration/session_store_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/billing-cancellation-http.test.ts",
+      "legacySha256": "c92b6b3967b97800cad0a8f7d87c16e29970f0f08f6ef7b99027f9ffe20c0959",
+      "featureIds": ["F17", "F22"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/billing/cancellation_test.go",
+          "backend/internal/httpapi/billing_cancellation_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/billing-d1.test.ts",
+      "legacySha256": "26a66672e8ba789285b46ca9d9643e709660fb63ee978de7278015f74b072e2a",
+      "featureIds": ["F17", "F18", "F19"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/billing/core_test.go",
+          "backend/internal/stripebilling/core_test.go",
+          "backend/tests/integration/billing_projection_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/control-plane-d1.test.ts",
+      "legacySha256": "0000581cb4688f9ac1792f85adc3c3c6354ea4caa7207d1f96eafd166df97a35",
+      "featureIds": ["F04", "F07", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/identity/boundary_test.go",
+          "backend/internal/identity/session_test.go",
+          "backend/tests/integration/session_store_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/dek-rotation-d1.test.ts",
+      "legacySha256": "9d90209c90fcd1af7d1c7199fa9f5713b7c5017eca3eee9d93f6218b44b3bd38",
+      "featureIds": ["F13", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/rotation_test.go",
+          "backend/internal/encryptedobject/reencryption_test.go",
+          "backend/tests/integration/dek_rotation_reencryption_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/encrypted-object-reencryption.test.ts",
+      "legacySha256": "cec62482640ba3ec0f0883433fd88074d7a53b2a3d499457d58921365a0f0c0f",
+      "featureIds": ["F13", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/rotation_test.go",
+          "backend/internal/encryptedobject/reencryption_test.go",
+          "backend/tests/integration/dek_rotation_reencryption_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/encrypted-object-repository.test.ts",
+      "legacySha256": "2f9e0b8d5c5bcaad8b6bd751c0fc36175970668cc75f52be65f6cd109b8e9408",
+      "featureIds": ["F11", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/model_test.go",
+          "backend/internal/encryptedobject/core_test.go",
+          "backend/tests/integration/encrypted_object_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/entitlement-d1.test.ts",
+      "legacySha256": "f660f84832f6ef06204ac57bafd1ddbbda1117ae7f41975db13e1a0ea3b1779e",
+      "featureIds": ["F19"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/entitlement/core_test.go",
+          "backend/internal/entitlement/service_test.go",
+          "backend/tests/integration/entitlement_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/envelope-encryption-d1.test.ts",
+      "legacySha256": "d71354b727850be4a2146862839ec1e51e3bc384fcc1a440c7013cd50d6ca630",
+      "featureIds": ["F11", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/model_test.go",
+          "backend/internal/encryptedobject/core_test.go",
+          "backend/tests/integration/encrypted_object_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/envelope-encryption.test.ts",
+      "legacySha256": "6436e9f2758917427a3e2baf69f573866a13b77117cd26f26fc492f37983fb7f",
+      "featureIds": ["F11", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/model_test.go",
+          "backend/internal/encryptedobject/core_test.go",
+          "backend/tests/integration/encrypted_object_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/launch-gate-d1.test.ts",
+      "legacySha256": "48245cda53e9cda819b0bbc2cc2cd6f38c32a40079b5098467756d7143f52943",
+      "featureIds": ["F02"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/launchgate/gate_test.go",
+          "backend/tests/integration/postgres_foundation_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/legal-checkout-d1.test.ts",
+      "legacySha256": "cee48bbe7ea2ba2d0d3bb144985dcaf14b19f8f65f780ad011daaee986bc3345",
+      "featureIds": ["F20"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/legal_test.go",
+          "backend/internal/legal/contract_test.go",
+          "backend/tests/integration/contract_evidence_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/legal-checkout-stripe.test.ts",
+      "legacySha256": "bd87c46effd5142c5c804d2f91cc76a33dd8ebfc02d3c9c44508231cc862a57a",
+      "featureIds": ["F18"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/stripe/provider_test.go",
+          "backend/internal/stripebilling/service_test.go",
+          "backend/internal/stripebilling/signature_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/privacy-request-application.test.ts",
+      "legacySha256": "dab8af0673178d42a491f2de693c131172b792e0bb112b64cfa64324bd907ded",
+      "featureIds": ["F24"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/privacy_request_test.go",
+          "backend/internal/privacyrequest/model_protocol_test.go",
+          "backend/tests/integration/privacy_request_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/privacy-request-d1.test.ts",
+      "legacySha256": "a3fb626c1f21979b585fd8c185d67906b497bb8c9ec8953e74bebe22c18e2c0e",
+      "featureIds": ["F24"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/privacy_request_test.go",
+          "backend/internal/privacyrequest/model_protocol_test.go",
+          "backend/tests/integration/privacy_request_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/quota-ledger-d1.test.ts",
+      "legacySha256": "0e5222d25b660e3ca136b174215f68dc36483f5e2d1813fee8cfece9524525fc",
+      "featureIds": ["F16"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/quota/core_test.go",
+          "backend/internal/quota/ledger_test.go",
+          "backend/tests/integration/quota_ledger_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/signup-admission.test.ts",
+      "legacySha256": "31928ce7f3bc2eaa43de3ad4d54e0930314ae5e70d2226559d38ed83a90ff5b3",
+      "featureIds": ["F04", "F07", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/identity/boundary_test.go",
+          "backend/internal/identity/session_test.go",
+          "backend/tests/integration/session_store_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/sites-drizzle-migrations.test.ts",
+      "legacySha256": "c8a319c272811e8b51e96612a8b06633222fc89644c37a49ed58031ff5e01eea",
+      "featureIds": ["F25"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/postgres/safety_test.go",
+          "backend/tests/integration/postgres_foundation_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/stripe-billing-entitlement.test.ts",
+      "legacySha256": "7bc6cd40802f39cd804e6000cd30abd4aae5eca7bcc52de5dc12d94c1696b187",
+      "featureIds": ["F17", "F18", "F19"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/billing/core_test.go",
+          "backend/internal/stripebilling/core_test.go",
+          "backend/tests/integration/billing_projection_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/sync-api-d1.test.ts",
+      "legacySha256": "fee9ca90496d9dd0c8f1a0d9a42e25cbff10b9ed0cd4ff24d54c44fbb6cbf58b",
+      "featureIds": ["F03"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/synclegacy/decode_test.go",
+          "backend/tests/integration/legacy_sync_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/sync-v2-journal-d1.test.ts",
+      "legacySha256": "3562d22d26a9c9ee197c80af928247b3d148a9c31b7ba76ffd72d76f8078e7bf",
+      "featureIds": ["F09", "F10"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/sync_v2_test.go",
+          "backend/internal/syncv2/core_test.go",
+          "backend/tests/integration/sync_v2_application_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/sync-v2-server-d1.test.ts",
+      "legacySha256": "7145c0d9c5fad4fa6e56a9dd23006ba8b7133f31d73c69c5b7c8c2de1c466af4",
+      "featureIds": ["F09", "F10"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/sync_v2_test.go",
+          "backend/internal/syncv2/core_test.go",
+          "backend/tests/integration/sync_v2_application_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/terms-consent-application.test.ts",
+      "legacySha256": "94be5f4c96c3cb7261248553d00eb51de4180da6f3195f828c712ac8203b9735",
+      "featureIds": ["F21"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/legal/terms_core_test.go",
+          "backend/internal/legal/terms_service_test.go",
+          "backend/tests/integration/terms_consent_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/terms-consent-d1.test.ts",
+      "legacySha256": "9e510acc417a26f5896eb208301a2f54ad1c9b99e09f4b8546daef7a55d31618",
+      "featureIds": ["F21"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/legal/terms_core_test.go",
+          "backend/internal/legal/terms_service_test.go",
+          "backend/tests/integration/terms_consent_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/vault-content-d1.test.ts",
+      "legacySha256": "74272b756d7b7614296b6c6c0f1eac380b4977fd48d4bb337a6d652b811274ee",
+      "featureIds": ["F09", "F10"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/sync_v2_test.go",
+          "backend/internal/syncv2/core_test.go",
+          "backend/tests/integration/sync_v2_application_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/integration/vault-recovery-drill.test.ts",
+      "legacySha256": "61a3dd400a7f976a0a3bb46130a5afe67db8310f4bfa54f2b6fab705b7cdf342",
+      "featureIds": ["F15"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/encryptedobject/recovery_service_test.go",
+          "backend/internal/operations/recovery_drill_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/account-deletion-cancel-subscription.test.ts",
+      "legacySha256": "01fb4c8902b10bba1cb60cfbd220e0dea0ca113200b7ebbcff0a9f04c09a7c7a",
+      "featureIds": ["F17", "F22", "F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/billing_effect_test.go",
+          "backend/tests/integration/account_deletion_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/account-deletion-core.test.ts",
+      "legacySha256": "16fb4919d3dde66eff379ed0168ad98206404a458e08e90707a77bf8f6264334",
+      "featureIds": ["F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/application_test.go",
+          "backend/internal/httpapi/account_deletion_test.go",
+          "backend/tests/integration/account_deletion_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/account-deletion-delete-private-objects.test.ts",
+      "legacySha256": "d51e8408a7d6bc2b3ee52f9590cd420c84bf2ace39c691a72a33c05308de6978",
+      "featureIds": ["F14", "F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/private_object_effect_test.go",
+          "backend/tests/integration/vault_private_object_purge_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/account-deletion-delete-vault-data.test.ts",
+      "legacySha256": "d04f32295391a4846bdf29af924e73a121fca37b950d39da99747b0841cb0a51",
+      "featureIds": ["F09", "F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/vault_data_effect_test.go",
+          "backend/tests/integration/vault_data_purge_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/account-deletion-finalize-account.test.ts",
+      "legacySha256": "c4a69f1132d2eed720053acee002d8c0e9ca82628dea7ca1defdafa58009f8a4",
+      "featureIds": ["F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/finalization_test.go",
+          "backend/tests/integration/account_finalization_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/account-deletion-http-core.test.ts",
+      "legacySha256": "33a9be7aeed6d2005620a4fb988a89af51490f2d52fd2b86c385a5e304754d75",
+      "featureIds": ["F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/application_test.go",
+          "backend/internal/httpapi/account_deletion_test.go",
+          "backend/tests/integration/account_deletion_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/account-deletion-http-handler.test.ts",
+      "legacySha256": "ff3712fadab046cf7ee8772261307dfd179dbfaf2cd16847534a259f18d8f588",
+      "featureIds": ["F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/application_test.go",
+          "backend/internal/httpapi/account_deletion_test.go",
+          "backend/tests/integration/account_deletion_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/account-deletion-revoke-sessions.test.ts",
+      "legacySha256": "09e76f5a9398904c69d2aab4bdf617718d8579e678ef15649ae7dbfeffe26940",
+      "featureIds": ["F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/application_test.go",
+          "backend/internal/httpapi/account_deletion_test.go",
+          "backend/tests/integration/account_deletion_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/account-deletion-schema.test.ts",
+      "legacySha256": "9a04083d3888f0d40603e0a50c8a307bac677f70ec703e5f1044abb41be22e90",
+      "featureIds": ["F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/application_test.go",
+          "backend/internal/httpapi/account_deletion_test.go",
+          "backend/tests/integration/account_deletion_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/account-deletion-web-credentials.test.ts",
+      "legacySha256": "3a932c9188bff4858a6320cc7db71a1491be799681bfc2ef87ac2a6ddaa08ac4",
+      "featureIds": ["F23"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/accountdeletion/application_test.go",
+          "backend/internal/httpapi/account_deletion_test.go",
+          "backend/tests/integration/account_deletion_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/billing-cancellation-core.test.ts",
+      "legacySha256": "049ad981b790a235aa578efa6ab228be396ad87991c09b9c0d54a0c7e9191387",
+      "featureIds": ["F17", "F22"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/billing/cancellation_test.go",
+          "backend/internal/httpapi/billing_cancellation_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/billing-cancellation-service.test.ts",
+      "legacySha256": "34782ad8de49fb474090f5e311913a6405a16d55c859b007e38e2fe4082ac93e",
+      "featureIds": ["F17", "F22"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/billing/cancellation_test.go",
+          "backend/internal/httpapi/billing_cancellation_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/billing-checkout-http-handler.test.ts",
+      "legacySha256": "75b60d7b9fe2276d68043a97be06e20b5ff5d570415f444527c211c848ae4dcb",
+      "featureIds": ["F17", "F18", "F19"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/billing/core_test.go",
+          "backend/internal/stripebilling/core_test.go",
+          "backend/tests/integration/billing_projection_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/billing-core.test.ts",
+      "legacySha256": "e3d829e5691a5363e24064954973fae223e3d7b0ca03729415c3c5c8efe5e54e",
+      "featureIds": ["F17", "F18", "F19"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/billing/core_test.go",
+          "backend/internal/stripebilling/core_test.go",
+          "backend/tests/integration/billing_projection_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/billing-schema.test.ts",
+      "legacySha256": "8290800a3a8cd0c3d90a169d01e786bd355be8d297eafa3f4bd38cd705a3a760",
+      "featureIds": ["F17", "F18", "F19"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/billing/core_test.go",
+          "backend/internal/stripebilling/core_test.go",
+          "backend/tests/integration/billing_projection_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/billing-service.test.ts",
+      "legacySha256": "c9fbe0853a39591e9ef0e3fda8d1000a3c134ad6f67538a549b8f0d1ea78dddd",
+      "featureIds": ["F17", "F18", "F19"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/billing/core_test.go",
+          "backend/internal/stripebilling/core_test.go",
+          "backend/tests/integration/billing_projection_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/billing-ui.test.ts",
+      "legacySha256": "7f6626c1610efca2f0c479461c28e42a2d34f86cca80e806ed117a4e35d83ed7",
+      "featureIds": ["F17", "F20", "F22"],
+      "disposition": {
+        "kind": "retained-frontend",
+        "currentPath": "tests/unit/billing-ui.test.ts",
+        "evidence": ["tests/unit/billing-ui.test.ts"]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/card-payment-security.test.ts",
+      "legacySha256": "1f28fb1f7132b95be1078b10232a97583f78885e7654783e462e3d09d8428c5d",
+      "featureIds": ["F18", "F20"],
+      "disposition": {
+        "kind": "retained-frontend",
+        "currentPath": "tests/unit/card-payment-security.test.ts",
+        "evidence": ["tests/unit/card-payment-security.test.ts"]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/control-plane-core.test.ts",
+      "legacySha256": "ba46f564ea5106af8e74d9e4db184b72f8a04fb5e2e67363ea5f7dc9d548bdab",
+      "featureIds": ["F04", "F07", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/identity/boundary_test.go",
+          "backend/internal/identity/session_test.go",
+          "backend/tests/integration/session_store_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/control-plane-schema.test.ts",
+      "legacySha256": "9c4e45d7387aa34c0979549cc28890f0449f15f2d1b17243170ea55f5572b686",
+      "featureIds": ["F04", "F07", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/identity/boundary_test.go",
+          "backend/internal/identity/session_test.go",
+          "backend/tests/integration/session_store_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/dek-rotation-core.test.ts",
+      "legacySha256": "3d6e9e784da4f9a7fab3eeca5cb2ef7faff0995033cfc14e1a69e4a7ce9e8e29",
+      "featureIds": ["F13", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/rotation_test.go",
+          "backend/internal/encryptedobject/reencryption_test.go",
+          "backend/tests/integration/dek_rotation_reencryption_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/dek-rotation-schema.test.ts",
+      "legacySha256": "34b8c8258d7286eeac14562e1742841a0cf966a9a27df6db070dfa7767c04e53",
+      "featureIds": ["F13", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/rotation_test.go",
+          "backend/internal/encryptedobject/reencryption_test.go",
+          "backend/tests/integration/dek_rotation_reencryption_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/dek-rotation-service.test.ts",
+      "legacySha256": "ea91d16b6cb255787ec8fcfcddd1e2d58bcbcd8531b7cf56cf7fda060539639d",
+      "featureIds": ["F13", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/rotation_test.go",
+          "backend/internal/encryptedobject/reencryption_test.go",
+          "backend/tests/integration/dek_rotation_reencryption_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/email-otp-boundary.test.ts",
+      "legacySha256": "e6f0ac78df9a5de54eae35e2aadf88d997e2057e3d7d4ade81ac80564ba58d88",
+      "featureIds": ["F06", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/otp/crypto_test.go",
+          "backend/internal/identity/email_otp_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/email-otp.test.ts",
+      "legacySha256": "c0992c75b49da939440758dcc0bb404f2237cbe5c8628228516d81e80ded3de3",
+      "featureIds": ["F06", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/otp/crypto_test.go",
+          "backend/internal/identity/email_otp_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/encrypted-object-core.test.ts",
+      "legacySha256": "e3a1537baa1d6bd3c96653ea24bdbc2317548fd1ff36f74c65d7e19563d1e303",
+      "featureIds": ["F11", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/model_test.go",
+          "backend/internal/encryptedobject/core_test.go",
+          "backend/tests/integration/encrypted_object_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/encrypted-object-reencryption-core.test.ts",
+      "legacySha256": "82c61376c73fd78d668379391ba4f413cc73e287f15dd653a073aadc6655a7a7",
+      "featureIds": ["F13", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/rotation_test.go",
+          "backend/internal/encryptedobject/reencryption_test.go",
+          "backend/tests/integration/dek_rotation_reencryption_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/encrypted-object-reencryption-service.test.ts",
+      "legacySha256": "943f8eef391593073e028b42b3882da9c5152e0a3ac338f9dfc05778cc1063d7",
+      "featureIds": ["F13", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/rotation_test.go",
+          "backend/internal/encryptedobject/reencryption_test.go",
+          "backend/tests/integration/dek_rotation_reencryption_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/encrypted-object-schema.test.ts",
+      "legacySha256": "88c7fe9e86057857db5dc6a09c9240856f8824e8dad86d97bc1667d4e21a87b9",
+      "featureIds": ["F11", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/model_test.go",
+          "backend/internal/encryptedobject/core_test.go",
+          "backend/tests/integration/encrypted_object_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/encrypted-object-vault-purge.test.ts",
+      "legacySha256": "1b042c39aa603263fb580315c75bb782ce2aabb2efec99eb173c51e1efb011ba",
+      "featureIds": ["F11", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/model_test.go",
+          "backend/internal/encryptedobject/core_test.go",
+          "backend/tests/integration/encrypted_object_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/entitlement-core.test.ts",
+      "legacySha256": "dfc56e7abe68e0361aac5372804d12449d10aa05b6ba7b74c2ecb1c6fd33793f",
+      "featureIds": ["F19"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/entitlement/core_test.go",
+          "backend/internal/entitlement/service_test.go",
+          "backend/tests/integration/entitlement_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/entitlement-schema.test.ts",
+      "legacySha256": "8b371a2eb900f114cee4cd77366b8ebd02710c99f62783c33644efd32b6c7add",
+      "featureIds": ["F19"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/entitlement/core_test.go",
+          "backend/internal/entitlement/service_test.go",
+          "backend/tests/integration/entitlement_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/entitlement-service.test.ts",
+      "legacySha256": "8b5994d832dad7cb26b975c24889dbe33e953bf5fe4031e34548925a63ac6f63",
+      "featureIds": ["F19"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/entitlement/core_test.go",
+          "backend/internal/entitlement/service_test.go",
+          "backend/tests/integration/entitlement_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/envelope-crypto-core.test.ts",
+      "legacySha256": "8deb5a1ece86df4cdbe4c76d3a7e12357545e8729f64a644975b47b721ab35bd",
+      "featureIds": ["F11", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/model_test.go",
+          "backend/internal/encryptedobject/core_test.go",
+          "backend/tests/integration/encrypted_object_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/envelope-crypto-schema.test.ts",
+      "legacySha256": "038c2a28cfbf2695f2cdfda8edcae7abc6cb1b17d45e5ec5f41f5e26efc7329c",
+      "featureIds": ["F11", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/model_test.go",
+          "backend/internal/encryptedobject/core_test.go",
+          "backend/tests/integration/encrypted_object_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/environment.test.ts",
+      "legacySha256": "ff576dc23ce6b8651d7f9b28432ec37039f4fe45fad5d9e9be964bd665cdeba6",
+      "featureIds": ["F02", "F27"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": ["backend/internal/config/config_test.go"]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/external-transmission.test.ts",
+      "legacySha256": "1bf6b4c4cc83fe644059fcee4e350b6277acc31ba4345a7cddf0e4164dc6c4c2",
+      "featureIds": ["F05", "F18", "F27"],
+      "disposition": {
+        "kind": "retained-frontend",
+        "currentPath": "tests/unit/external-transmission.test.ts",
+        "evidence": ["tests/unit/external-transmission.test.ts"]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/gcp-cloud-kms-adapter.test.ts",
+      "legacySha256": "03c320e028242a283e9ad9d843b2cfb174e1864ae74c3b836eca7d8e9ad4d7b3",
+      "featureIds": ["F12"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/kms/gcp_test.go",
+          "backend/tests/integration/crypto_keyring_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/http-billing-ui.test.ts",
+      "legacySha256": "e8f6c008cd6d17b5903adb4589f38a2993426e1d0fb8890663524f62757f69ee",
+      "featureIds": ["F18", "F20", "F22"],
+      "disposition": {
+        "kind": "retained-frontend",
+        "currentPath": "tests/unit/http-billing-ui.test.ts",
+        "evidence": ["tests/unit/http-billing-ui.test.ts"]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/launch-gate-schema.test.ts",
+      "legacySha256": "c1b5b04c049a6e4d31b689618fdf4de82822aa675702dbda29ee9d311383e768",
+      "featureIds": ["F02"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/launchgate/gate_test.go",
+          "backend/tests/integration/postgres_foundation_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/launch-gate.test.ts",
+      "legacySha256": "316dc6f369ea368a0bb87ab0adf7a003436a710260c22b1caf42e20545eba282",
+      "featureIds": ["F02"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/launchgate/gate_test.go",
+          "backend/tests/integration/postgres_foundation_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/legal-checkout-core.test.ts",
+      "legacySha256": "f1e434d31cc230ca56fefa7ad2dd0d2abcd3bb00d95be22e486e6dd0886fe81d",
+      "featureIds": ["F20"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/legal_test.go",
+          "backend/internal/legal/contract_test.go",
+          "backend/tests/integration/contract_evidence_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/legal-checkout-orchestration.test.ts",
+      "legacySha256": "603ff6f818d7e0271286b712b93f193b4ff4d8a1d20be2102deb16f69c2a4650",
+      "featureIds": ["F20"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/legal_test.go",
+          "backend/internal/legal/contract_test.go",
+          "backend/tests/integration/contract_evidence_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/legal-checkout-schema.test.ts",
+      "legacySha256": "5aa6ccd36ccdb1e9492d2b9c9663fdb5645ee3c8d952509e9ef3ee770abc3cd1",
+      "featureIds": ["F20"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/legal_test.go",
+          "backend/internal/legal/contract_test.go",
+          "backend/tests/integration/contract_evidence_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/legal-checkout-service.test.ts",
+      "legacySha256": "f93e5c3186986cda435460b80227e1d41e7e74027e86b7d3ab3ab9d1b9b7488f",
+      "featureIds": ["F20"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/legal_test.go",
+          "backend/internal/legal/contract_test.go",
+          "backend/tests/integration/contract_evidence_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/legal-commerce.test.ts",
+      "legacySha256": "b1d2580cdec1f2b59d053a6f7baa72689990e015c766e107d9f6af78a2c5e789",
+      "featureIds": ["F17", "F20"],
+      "disposition": {
+        "kind": "retained-frontend",
+        "currentPath": "tests/unit/legal-commerce.test.ts",
+        "evidence": ["tests/unit/legal-commerce.test.ts"]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/migration-core.test.ts",
+      "legacySha256": "efdbe50594b004c677e91acde78713ef3a3ade71a0440eef60f30f64013e3779",
+      "featureIds": ["F25"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/postgres/safety_test.go",
+          "backend/tests/integration/postgres_foundation_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/oidc-boundary.test.ts",
+      "legacySha256": "f20dc03ba979e4828b435fec0aed3a608cf2c160606aeb2de9dcfe5ad4fc0000",
+      "featureIds": ["F05", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/oidc/provider_test.go",
+          "backend/internal/identity/oidc_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/oidc.test.ts",
+      "legacySha256": "9f54697632dd2025914b0dcd136b8187e5574b8a2731fb27943bdbe30cde4a9d",
+      "featureIds": ["F05", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/oidc/provider_test.go",
+          "backend/internal/identity/oidc_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/operations-launch-gate.test.ts",
+      "legacySha256": "c12eaec75abf2fce135e6e41a9780578873e9780c00fc33d23dd31fd75dfa3d3",
+      "featureIds": ["F02"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/launchgate/gate_test.go",
+          "backend/tests/integration/postgres_foundation_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/privacy-processing-registry.test.ts",
+      "legacySha256": "07b434b5b437706156d4b705cb4574fe353ebc33c6623c7c8db567af547f349d",
+      "featureIds": ["F23", "F24"],
+      "disposition": {
+        "kind": "retained-frontend",
+        "currentPath": "tests/unit/privacy-processing-registry.test.ts",
+        "evidence": ["tests/unit/privacy-processing-registry.test.ts"]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/privacy-request-application-core.test.ts",
+      "legacySha256": "6d78f0c077891e5d110dfb423e6986b9ecb3565caddd83f2ab2c3732692983b5",
+      "featureIds": ["F24"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/privacy_request_test.go",
+          "backend/internal/privacyrequest/model_protocol_test.go",
+          "backend/tests/integration/privacy_request_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/privacy-request-core.test.ts",
+      "legacySha256": "7570c94564940cdc9edc979df9840745318c589277f20ea670015b0f04b98c03",
+      "featureIds": ["F24"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/privacy_request_test.go",
+          "backend/internal/privacyrequest/model_protocol_test.go",
+          "backend/tests/integration/privacy_request_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/privacy-request-http-handler.test.ts",
+      "legacySha256": "f0a23c7b1449727ff36a6c888f2bbaebd405335aa8cec0c95f4435b56018c6df",
+      "featureIds": ["F24"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/privacy_request_test.go",
+          "backend/internal/privacyrequest/model_protocol_test.go",
+          "backend/tests/integration/privacy_request_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/privacy-request-schema.test.ts",
+      "legacySha256": "a298c1b995f45900bd19d3a4fe04077beb7a83692d2cbe9bff43c9294625620a",
+      "featureIds": ["F24"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/privacy_request_test.go",
+          "backend/internal/privacyrequest/model_protocol_test.go",
+          "backend/tests/integration/privacy_request_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/quota-core.test.ts",
+      "legacySha256": "747e73e97f49ec1a179e4e66786e9519351386d9260f9da4b3836ed6685c437a",
+      "featureIds": ["F16"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/quota/core_test.go",
+          "backend/internal/quota/ledger_test.go",
+          "backend/tests/integration/quota_ledger_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/quota-ledger-core.test.ts",
+      "legacySha256": "77794085730a1d6dc825cfb30bf9361e0a6714838bc504413dedc9070e55d4b2",
+      "featureIds": ["F16"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/quota/core_test.go",
+          "backend/internal/quota/ledger_test.go",
+          "backend/tests/integration/quota_ledger_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/quota-ledger-fake.test.ts",
+      "legacySha256": "24496b13382f5466149bc0c08f4c0c1a083e8a43d79e8fcdb7a581fdafd6fc8b",
+      "featureIds": ["F16"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/quota/core_test.go",
+          "backend/internal/quota/ledger_test.go",
+          "backend/tests/integration/quota_ledger_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/quota-ledger-records.test.ts",
+      "legacySha256": "efd819cf914f291daf3ed95925e9e36f8e8726d6556868a4d1aa0d9e2d1d2ded",
+      "featureIds": ["F16"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/quota/core_test.go",
+          "backend/internal/quota/ledger_test.go",
+          "backend/tests/integration/quota_ledger_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/quota-ledger-schema.test.ts",
+      "legacySha256": "8615a0295620bbf5141fc29d3c598166753bd40057c918f16b5a4657192baac9",
+      "featureIds": ["F16"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/quota/core_test.go",
+          "backend/internal/quota/ledger_test.go",
+          "backend/tests/integration/quota_ledger_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/schema-drift.test.ts",
+      "legacySha256": "1b0a43ed727a5841ff319fc6024ca5bb677c3d87e8bc9d92a947a6b616424bb7",
+      "featureIds": ["F25"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/postgres/safety_test.go",
+          "backend/tests/integration/postgres_foundation_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/session-boundary.test.ts",
+      "legacySha256": "a30660d41b806ce17d691086c01e460f903c1c4d1bdbd051b7873c8cdf93cce7",
+      "featureIds": ["F04", "F07", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/identity/boundary_test.go",
+          "backend/internal/identity/session_test.go",
+          "backend/tests/integration/session_store_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/session.test.ts",
+      "legacySha256": "4f64a55d4e0efc1e9e580e235ebcf890e6c80584d7006ab6ebe4bf8514294a51",
+      "featureIds": ["F04", "F07", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/identity/boundary_test.go",
+          "backend/internal/identity/session_test.go",
+          "backend/tests/integration/session_store_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/signup-admission.test.ts",
+      "legacySha256": "0baba6af45b1edec0205cf3bb4fcb38777d7a99f2daddeb57ccc33698d448955",
+      "featureIds": ["F04", "F07", "F08"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/identity/boundary_test.go",
+          "backend/internal/identity/session_test.go",
+          "backend/tests/integration/session_store_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/stripe-core.test.ts",
+      "legacySha256": "d5db5ec66c9741e4b2f09041c62172e8eb0d8f4445da2454e0e3422b66e6c1bc",
+      "featureIds": ["F18"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/stripe/provider_test.go",
+          "backend/internal/stripebilling/service_test.go",
+          "backend/internal/stripebilling/signature_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/stripe-service.test.ts",
+      "legacySha256": "a0affb26ad33dc4152fa6911c36d2c4bca27cc87d592aafbe5743b98c645a038",
+      "featureIds": ["F18"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/stripe/provider_test.go",
+          "backend/internal/stripebilling/service_test.go",
+          "backend/internal/stripebilling/signature_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/stripe-webhook-signature.test.ts",
+      "legacySha256": "2f21efcde2807829eb9e8e6131b9e3077eeff6c6b29a7b5e26d94cb8d35f4bd2",
+      "featureIds": ["F18"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/adapters/stripe/provider_test.go",
+          "backend/internal/stripebilling/service_test.go",
+          "backend/internal/stripebilling/signature_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/sync-v2-composition-boundaries.test.ts",
+      "legacySha256": "d6aa81c28e1874be8bd6f6f1534bd1656b9da9c32009f05bdd2448e826d37f8a",
+      "featureIds": ["F09", "F10"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/sync_v2_test.go",
+          "backend/internal/syncv2/core_test.go",
+          "backend/tests/integration/sync_v2_application_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/sync-v2-http-handler.test.ts",
+      "legacySha256": "3f40dc35cf75d73d4d6f31f3694f88d91852457353ce943c512674738bb15bcf",
+      "featureIds": ["F09", "F10"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/sync_v2_test.go",
+          "backend/internal/syncv2/core_test.go",
+          "backend/tests/integration/sync_v2_application_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/sync-v2-journal-core.test.ts",
+      "legacySha256": "56a43db481992af449ede8aaed688e835a2ebde3efd98595e9cd17cd5ea0886a",
+      "featureIds": ["F09", "F10"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/sync_v2_test.go",
+          "backend/internal/syncv2/core_test.go",
+          "backend/tests/integration/sync_v2_application_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/sync-v2-journal-schema.test.ts",
+      "legacySha256": "a96a4f252649e56044634a26ffdbbbdfa7a16b4628eed81c81a57c40e9eba993",
+      "featureIds": ["F09", "F10"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/sync_v2_test.go",
+          "backend/internal/syncv2/core_test.go",
+          "backend/tests/integration/sync_v2_application_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/sync-v2-quota-core.test.ts",
+      "legacySha256": "864fa9d1754ce7334f46caafa0ca435c092c0e29f9bd12294003e7b6f468e5a4",
+      "featureIds": ["F16"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/quota/core_test.go",
+          "backend/internal/quota/ledger_test.go",
+          "backend/tests/integration/quota_ledger_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/sync-v2-server-core.test.ts",
+      "legacySha256": "42514d110e868b691d58669c6ba686943c7d99a2e872698d6d4939ee32997e95",
+      "featureIds": ["F09", "F10"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/sync_v2_test.go",
+          "backend/internal/syncv2/core_test.go",
+          "backend/tests/integration/sync_v2_application_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/sync-v2-web-crypto.test.ts",
+      "legacySha256": "b6f42433984ab69f54ce6793b4ddc561b16b23e7fd3789ca7a77ea6479b06ee1",
+      "featureIds": ["F09", "F10"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/sync_v2_test.go",
+          "backend/internal/syncv2/core_test.go",
+          "backend/tests/integration/sync_v2_application_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/telemetry-core.test.ts",
+      "legacySha256": "d8703d2428bb3d6e81d96ffd39b95e40ed90732c0ad3b605b08eeafef2cf4b3c",
+      "featureIds": ["F26"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": ["backend/internal/telemetry/logger_test.go"]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/terms-consent-application-core.test.ts",
+      "legacySha256": "67f43c4e5e4bb8a495d8e77ea663a8c482a8406122e433ab3ae0fedcef66fc05",
+      "featureIds": ["F21"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/legal/terms_core_test.go",
+          "backend/internal/legal/terms_service_test.go",
+          "backend/tests/integration/terms_consent_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/terms-consent-application.test.ts",
+      "legacySha256": "4cb05e2e0837a7e1cdf923b44740f472d8b76ee57b4cd6c6061cba55b3fa046d",
+      "featureIds": ["F21"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/legal/terms_core_test.go",
+          "backend/internal/legal/terms_service_test.go",
+          "backend/tests/integration/terms_consent_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/terms-consent-checkout-verifier.test.ts",
+      "legacySha256": "8c301ae60d4216ca2d9d3e7f35f7126f5abf3b0ace5688abff90eab3e9837b1f",
+      "featureIds": ["F21"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/legal/terms_core_test.go",
+          "backend/internal/legal/terms_service_test.go",
+          "backend/tests/integration/terms_consent_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/terms-consent-core.test.ts",
+      "legacySha256": "c2921b6126ad229008ca870de0e0161c30571f72306c7fcfaa6c60b60258c4aa",
+      "featureIds": ["F21"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/legal/terms_core_test.go",
+          "backend/internal/legal/terms_service_test.go",
+          "backend/tests/integration/terms_consent_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/terms-consent-fake.test.ts",
+      "legacySha256": "664b9535a9748b713af5f436ab2acc02794271658ea436c4de73f89457b32f97",
+      "featureIds": ["F21"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/legal/terms_core_test.go",
+          "backend/internal/legal/terms_service_test.go",
+          "backend/tests/integration/terms_consent_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/terms-consent-http-handler.test.ts",
+      "legacySha256": "efafb7f63ee88444b329ba7e37b0fa5cd05421c56dd16f0b85497b9e84ea76f0",
+      "featureIds": ["F21"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/legal/terms_core_test.go",
+          "backend/internal/legal/terms_service_test.go",
+          "backend/tests/integration/terms_consent_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/terms-consent-schema.test.ts",
+      "legacySha256": "ef11128d3ea2a8590b1437be9008ca4cf4c9ee5aa047fb38a26ad265d8b6aa4b",
+      "featureIds": ["F21"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/legal/terms_core_test.go",
+          "backend/internal/legal/terms_service_test.go",
+          "backend/tests/integration/terms_consent_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/vault-content-core.test.ts",
+      "legacySha256": "b0b77779531e433f67a18168be2eb7cb0d5f345a7c35d0f60d81be9c7ec7d49e",
+      "featureIds": ["F09", "F10"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/sync_v2_test.go",
+          "backend/internal/syncv2/core_test.go",
+          "backend/tests/integration/sync_v2_application_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/vault-content-schema.test.ts",
+      "legacySha256": "068b969cc4a0ba77313362fc125a34189f4b0d29dcee734384a11c1c2efc693a",
+      "featureIds": ["F09", "F10"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/httpapi/sync_v2_test.go",
+          "backend/internal/syncv2/core_test.go",
+          "backend/tests/integration/sync_v2_application_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/vault-recovery-core.test.ts",
+      "legacySha256": "875f781d178e59585b026b9a9ca255cc7f9f75bc5ec28dff22df1e552c97fbb8",
+      "featureIds": ["F15"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/encryptedobject/recovery_service_test.go",
+          "backend/internal/operations/recovery_drill_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/web-aes-gcm.test.ts",
+      "legacySha256": "b8538a6af0947105dcfe63e4234af88de1af0d7cdae8bf65d175872bbf307d14",
+      "featureIds": ["F11", "F14"],
+      "disposition": {
+        "kind": "go-replacement",
+        "evidence": [
+          "backend/internal/cryptocontent/model_test.go",
+          "backend/internal/encryptedobject/core_test.go",
+          "backend/tests/integration/encrypted_object_test.go"
+        ]
+      }
+    }
+  ]
+}
