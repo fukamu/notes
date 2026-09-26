@@ -42,6 +42,11 @@ The Go evidence is in
 `backend/internal/encryptedobject/recovery_service_test.go`. The backup adapter
 copies bytes on read and replacement and is isolated under
 `backend/internal/adapters/recoverybackup`; it is not composed into the server.
+Issue #490 additionally composes a read-only private-directory adapter into the
+local/test-only `notesctl recovery drill` command. Its separate fixture-key
+directory is an isolated test mechanism, not a provider, KMS emulator, or
+production recovery choice. The command never writes a backup or key file and
+never exposes recovered plaintext or raw keys.
 
 ## Retirement evidence gate
 

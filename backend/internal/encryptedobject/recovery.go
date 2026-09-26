@@ -71,6 +71,37 @@ type RecoveryDrillReceipt struct {
 	VerifiedVersions []cryptocontent.DEKVersion        `json:"verifiedVersions"`
 }
 
+func ValidateRecoveryDrillReceipt(receipt RecoveryDrillReceipt) error {
+	if ValidateRecoveryScope(receipt.RecoveryScope) != nil ||
+		!backupIDPattern.MatchString(string(receipt.BackupID)) ||
+		!validTimestamp(receipt.CapturedAt) || !validTimestamp(receipt.DeleteAfter) ||
+		!validTimestamp(receipt.DrilledAt) || receipt.DeleteAfter < receipt.CapturedAt ||
+		receipt.DeleteAfter-receipt.CapturedAt > MaximumBackupRetentionMilli ||
+		receipt.DrilledAt < receipt.CapturedAt || receipt.DrilledAt > receipt.DeleteAfter ||
+		receipt.ObjectCount < 0 || receipt.ObjectCount > MaximumRecoveryObjects ||
+		len(receipt.VerifiedVersions) > cryptocontent.MaximumKeyringSize ||
+		int64(len(receipt.VerifiedVersions)) > receipt.ObjectCount {
+		return ErrInvalidRecovery
+	}
+	if _, err := cryptocontent.ParseRotationOperationID(string(receipt.OperationID)); err != nil {
+		return ErrInvalidRecovery
+	}
+	if _, err := cryptocontent.ParseDEKVersion(int64(receipt.SourceVersion)); err != nil {
+		return ErrInvalidRecovery
+	}
+	if _, err := cryptocontent.ParseDEKVersion(int64(receipt.TargetVersion)); err != nil ||
+		receipt.TargetVersion <= receipt.SourceVersion {
+		return ErrInvalidRecovery
+	}
+	for index, version := range receipt.VerifiedVersions {
+		if _, err := cryptocontent.ParseDEKVersion(int64(version)); err != nil ||
+			(index > 0 && receipt.VerifiedVersions[index-1] >= version) {
+			return ErrInvalidRecovery
+		}
+	}
+	return nil
+}
+
 type RecoveryDrillPlanKind string
 
 const (
@@ -271,6 +302,9 @@ func CompleteRecoveryDrill(
 		TargetVersion: manifest.Rotation.TargetVersion, CapturedAt: manifest.CapturedAt,
 		DeleteAfter: manifest.DeleteAfter, DrilledAt: drilledAt, ObjectCount: verifiedObjects,
 		VerifiedVersions: append([]cryptocontent.DEKVersion(nil), expected...),
+	}
+	if ValidateRecoveryDrillReceipt(receipt) != nil {
+		return RecoveryDrillCompletion{Kind: RecoveryDrillInvalidEvidence}
 	}
 	return RecoveryDrillCompletion{Kind: RecoveryDrillVerified, Receipt: &receipt}
 }

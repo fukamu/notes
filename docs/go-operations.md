@@ -377,13 +377,66 @@ scheduler, deployment, cost, or external request. The account-deletion purge is
 a different operation and continues to require its running saga state and
 prior receipt.
 
+## Local recovery drill
+
+The T13i command authenticates one completed recovery fixture for an exact
+Account/Vault at an explicit time. It is read-only and available only in
+`local` or `test`:
+
+```bash
+NOTES_ENVIRONMENT=test \
+go -C backend run ./cmd/notesctl recovery drill \
+  --environment=test \
+  --account-id=01991f20-61d2-7000-8000-000000000101 \
+  --vault-id=01991f20-61d2-7000-8000-000000000201 \
+  --drilled-at-millis=1725000000000 \
+  --backup-root=/absolute/private/recovery-backup \
+  --key-root=/absolute/private/recovery-keys \
+  --confirm-local-backup-read \
+  --confirm-local-fixture-key-read
+```
+
+Both roots must already exist, be different absolute paths, resolve without
+symlinks, and deny group/other access (normally `0700`). Files must be private
+regular files (normally `0600`). The backup root layout is:
+
+```text
+manifest.json
+<backupId>/<objectKey>
+```
+
+The key root uses one `dek-<version>.json` for each manifest key. Each file has
+exactly `format`, `vaultId`, `dekVersion`, `kekKeyReference`, `wrappedDek`, and
+`rawDek`; `format` is `fukamu-local-recovery-key/v1` and `rawDek` is a canonical
+unpadded base64url encoding of exactly 32 fixture bytes. These raw fixture keys
+are sensitive: keep the directory isolated and disposable, never commit it,
+and never substitute production key material.
+
+The strict manifest must identify the requested scope, a completed rotation
+and re-encryption checkpoint, and an unexpired bounded retention window. Every
+declared ciphertext is length/version checked and decrypted with its exact
+Vault/object/revision AAD; recovered plaintext is cleared immediately. Missing,
+malformed, swapped, tampered, expired, cross-scope, or incomplete input returns
+a fixed blocked reason and no receipt.
+
+Verified output contains only command/outcome, source and target versions,
+object count, and verified-version count. Blocked output contains only the
+command/outcome and fixed reason. Neither form contains scope IDs, backup ID,
+paths, object keys, key references, ciphertext/plaintext, raw/wrapped keys, or
+dependency errors. A blocked command exits unsuccessfully.
+
+The confirmation flags guard accidental reads only. This command does not
+write or restore data, contact a provider, inspect a database, create/delete a
+backup, or retire/destroy a key. Its receipt is local fixture evidence and does
+not approve or prove production recovery.
+
 ## Remaining operations boundaries
 
 - checking application/provider evidence for a reservation;
 - deriving release evidence or automatically releasing a reservation;
 - pagination beyond the explicit bounded first page;
 - recurring scheduling or cron registration;
-- account-deletion advancement or recovery drill runners;
+- account-deletion advancement and recovery of permanently processing privacy requests;
 - production KMS identity/resource composition and recurring scheduling.
 
 Those effects require separate typed commands, tests, and review. Age alone is
@@ -392,7 +445,7 @@ never evidence that a quota reservation is safe to release.
 ## Rollback
 
 Stop invoking the commands and roll back the application artifact to the prior
-integration commit. T13a through T13h add no schema. T13a and T13c write no
+integration commit. T13a through T13i add no schema. T13a, T13c, and T13i write no
 data. A T13b commit is an intentional quota-ledger transition backed by an
 existing Sync receipt and must not be reversed by deleting rows or
 synthesizing a release. A T13d applied/ignored provider snapshot and its
@@ -416,4 +469,7 @@ drains but cannot restore bytes already deleted from disposable storage. Keep
 every remaining outbox row and its retry metadata, reconcile any uncertain
 invocation by replaying the same scoped operation, and never recreate an
 immutable key or delete a row by hand. Production recovery and backup restore
-remain unapproved and were not exercised by this command.
+remain unapproved and were not exercised by this command. A T13i rollback only
+stops the read-only local drill; retain any evidence needed for investigation,
+delete no fixture or key as a side effect of application rollback, and never
+treat a local verified result as approval to retire a production key.
