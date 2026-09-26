@@ -93,7 +93,9 @@ delete existing resources.
   connects the exact local Sync v2/session/encryption graph. Issue #512 starts
   from integration commit `3931ae7b9d1988cccea8c93d9844ef3bb2d03f54`
   and is the guarded disposable account-deletion slice described under T12h;
-  it does not select production policy or deploy. T17 Issue
+  Issue #513 starts from merge `e0c1de94559bb86e77557d7e7d7fa892459171cc`
+  and connects only the exact-fixture privacy Submit/Status journal described
+  under T12i. Neither slice selects production policy or deploys. T17 Issue
   #498 subsequently retired the legacy server and completed V11; V09 remains
   approval-pending.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
@@ -142,7 +144,7 @@ A disconnected handler is not the same contract as its closed route.
 | F21 | A/B   | terms consent                               | T10                             | V01,V07             | local fixture/PostgreSQL runtime #510; production closed                                  |
 | F22 | A/B   | normal cancellation                         | T09                             | V01,V07             | local no-effect scheduled provider #510; production closed                                |
 | F23 | A/B   | account deletion                            | T12                             | V03,V04,V07,V08,V10 | exact disposable fixture composition #512; production/default remain closed               |
-| F24 | B     | privacy request journal                     | T12                             | V01,V03,V08         | Go journal/closed HTTP #456; deletion handoff #468                                        |
+| F24 | A/B   | privacy request journal                     | T12                             | V01,V03,V04,V08,V10 | exact fixture Submit/Status #513; verification/fulfillment/production remain closed       |
 | F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11             | core #414; legacy singleton seed #418                                                     |
 | F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09             | quota #470/#472; deletion #474; billing #478; DEK #480/#482; recovery #490                |
 | F27 | A/B   | frontend wire contracts                     | T01,T05,T14,T17                 | V01,V10,V11         | authenticated local Sync v2 route live by #511; production remains approval-pending       |
@@ -1121,7 +1123,7 @@ consistency set. Restore a compatible artifact or apply a reviewed forward
 fix; never delete pending reservations or immutable objects merely to roll
 back application code.
 
-## T12a privacy request journal and closed HTTP contract
+## T12a privacy request journal and local Submit/Status contract
 
 Issue #456 ports the existing provider-neutral privacy request journal to
 `backend/internal/privacyrequest`. Pure transitions preserve the exact
@@ -1149,16 +1151,18 @@ complete with `account-deletion-started` after the typed handoff succeeds.
 
 `backend/internal/httpapi/privacy_request.go` authenticates the secure session
 and same-origin request before reading the bounded body and returns only fixed
-`no-store` categories. Its constructor is intentionally absent from
-`HandlerOptions`, so both public routes retain the existing closed 404/503
-contract. The slice does not choose identity verification, fulfillment,
-retention, a provider, or recovery for a permanently processing request. It
-does not incorporate the still-draft normal-cancellation policy from #404;
-T12b owns the account-deletion saga and that overlap.
+`no-store` categories. Issue #513 adds it to `HandlerOptions` only when the
+exact local fixture composes a shared scoped session, PostgreSQL journal, and
+runtime lease. The body limit is the lower of configured and 2,048 bytes.
+Default/production remain closed. Verification and fulfillment stay explicit
+unavailable ports, and no Verify/Process route or scheduler exists. Under
+explicit `delete-live-evidence` only, a controlled verified row can call the
+real deletion Start handoff; normal HTTP remains pending. The slice does not
+choose identity verification, fulfillment, retention, a provider, or recovery
+for a permanently processing request.
 
-Before any persistent use, rollback is a code revert while the handler remains
-unmounted and the disposable schema may be recreated. After an accepted
-request exists, first stop new submissions and processing, preserve migration
+Before any persistent use, rollback closes the exact local route. After an
+accepted request exists, first stop new submissions and processing, preserve migration
 00013 and every journal revision, restore a compatible artifact or apply a
 reviewed forward fix, and resume from durable state. Never drop an accepted
 request or synthesize verification, execution, deletion, or completion
@@ -1401,13 +1405,17 @@ PostgreSQL coverage runs privacy submit, verification, processing, and the real
 account-deletion start repository together. It proves a lost handoff response
 can replay the same durable start, the operation and continuation remain
 singletons, another owner is isolated, a pre-existing conflicting owner
-operation is preserved, and no deletion effect is invoked. The public privacy
-route and processor remain closed. T12h separately connects the deletion HTTP
-route only in the exact destructive disposable fixture, so the privacy handoff
-remains composition evidence rather than feature publication.
+operation is preserved, and no deletion effect is invoked. Issue #513 connects
+only privacy Submit/Status in the exact disposable fixture; the
+verification/processing surface remains closed. T12h separately connects
+deletion HTTP only in the exact destructive disposable fixture, so the privacy
+handoff remains controlled composition evidence rather than a processor or
+production feature publication.
 
 `account-deletion-started` is not a statement that data has been deleted. The
-explicit runner that advances the stored saga remains T13 work. Recovery for a
+privacy handoff neither retains the continuation nor calls Resume; only the
+separate reviewed account-deletion client/runtime can advance that saga.
+Recovery for a
 privacy record left permanently in `processing`, identity-verification and
 non-deletion fulfillment providers, privacy/evidence retention, the production
 legal-evidence policy, and every production configuration remain undecided and
@@ -1481,6 +1489,44 @@ artifact or use a reviewed forward fix; never forge receipts or reconstruct
 deleted state. The guarded fixture prepare/reseed command may replace only the
 explicit disposable graph under both leases. Production policy, provider
 resources, cutover, deployment, and `main` remain separately approval-gated.
+
+## T12i exact local privacy request runtime
+
+Issue #513 connects F24 as guarded `A/B`. Default and production compositions
+still pass no privacy runtime. Every exact local-fixture phase mounts only
+owner-scoped Submit and Status over the shared PostgreSQL pool, scoped session,
+HTTP clock, request-ID source, and host/PostgreSQL runtime lease. Authentication
+and CSRF checks precede the body; the route then applies the lower of the
+configured limit and the 2,048-byte protocol cap. The response remains
+`no-store` and contains no owner or provider evidence.
+
+Omitted/`undecided` policy uses explicit unavailable verification,
+fulfillment, and deletion adapters. Explicit disposable
+`delete-live-evidence` replaces only the deletion port with the real
+Vault-fenced account-deletion Start handoff. Verify, Process, scheduling, and
+provider callbacks are not HTTP operations, so ordinary submissions remain
+`verification-pending`. Controlled real-PostgreSQL coverage alone advances a
+test row to ready and proves concurrent/replayed processing creates exactly one
+deletion operation and continuation, zero receipts, no Resume call, and no
+session or deletion effect. `account-deletion-started` is durable admission,
+not effect progress or deletion completion.
+
+The frontend no longer has a local in-memory success adapter; every environment
+uses the strict Go HTTP transport. Its form and displayed tracking state are
+ephemeral, while the journal is durable. Desktop and mobile Playwright submit
+through the actual Go process, restart that process without reseeding, reload
+the page, prove the UI reset, and then query the same pending journal row. The
+shared E2E lane unconditionally selects `undecided`, so an ambient environment
+cannot open destructive deletion routes.
+
+No worker claims queued requests, so normal HTTP cannot enter `processing`.
+Recovery after a future processor loses a response, status access after live
+owner deletion, and the production journal retention/purge policy remain
+unimplemented review boundaries. Rollback closes new Submit/Status traffic and
+preserves migration 00013 plus every accepted revision. If controlled evidence
+has admitted an account-deletion saga, its operation and continuation must also
+be preserved and recovered through the separately reviewed deletion path. No
+production resource, provider, deployment, fulfillment, or cutover is enabled.
 
 ## T13a scoped quota reconciliation audit runner
 

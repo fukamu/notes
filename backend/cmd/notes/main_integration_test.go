@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,6 +33,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/httpapi"
 	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/fukamu/notes/backend/internal/localfixture"
+	"github.com/fukamu/notes/backend/internal/privacyrequest"
 	"github.com/fukamu/notes/backend/internal/syncv2"
 	"github.com/fukamu/notes/backend/migrations"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -46,9 +48,184 @@ const (
 	compositionDeletion  = "01999c20-9e33-7000-8000-000000000106"
 	compositionDeviceA   = "01999c20-9e33-7000-8000-000000000107"
 	compositionDeviceB   = "01999c20-9e33-7000-8000-000000000108"
+	compositionPrivacy   = "01999c20-9e33-7000-8000-000000000109"
+	compositionReceipt   = "01999c20-9e33-7000-8000-000000000110"
 	compositionOrigin    = "http://localhost:3100"
 	compositionSecret    = "restart-persistent encrypted fixture content"
 )
+
+func TestLocalFixturePrivacyRequestJournalPersistsWithoutProcessingOrDeletion(t *testing.T) {
+	databaseURL := os.Getenv("NOTES_TEST_DATABASE_URL")
+	if err := postgresadapter.ValidateTestDatabaseURL(databaseURL); err != nil {
+		t.Fatalf("safe NOTES_TEST_DATABASE_URL is required: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configuration, token := prepareCompositionFixture(t, ctx, databaseURL)
+	configuration.Config.LocalFixture.LegalEvidencePolicy = config.LocalFixtureLegalEvidenceUndecided
+
+	first, closeFirst, err := composeRuntime(ctx, configuration.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.privacyRequest == nil || first.privacyApplication == nil || first.privacyStore == nil ||
+		first.accountDeletion != nil {
+		closeFirst()
+		t.Fatalf("undecided privacy composition = %#v", first)
+	}
+	firstHandler := compositionHandler(t, configuration, first)
+	submitted := serveCompositionPrivacySubmit(firstHandler, token, compositionPrivacy, privacyrequest.KindDisclosure)
+	if submitted.Code != http.StatusAccepted {
+		closeFirst()
+		t.Fatalf("privacy submit = %d %s", submitted.Code, submitted.Body.String())
+	}
+	status := decodeCompositionPrivacyStatus(t, submitted)
+	if status.Status != privacyrequest.StateVerificationPending || status.RequestKind != privacyrequest.KindDisclosure {
+		closeFirst()
+		t.Fatalf("privacy submit status = %#v", status)
+	}
+
+	replayed := serveCompositionPrivacySubmit(firstHandler, token, compositionPrivacy, privacyrequest.KindDisclosure)
+	if replayed.Code != http.StatusAccepted || decodeCompositionPrivacyStatus(t, replayed).RequestID != status.RequestID {
+		closeFirst()
+		t.Fatalf("privacy replay = %d %s", replayed.Code, replayed.Body.String())
+	}
+	conflict := serveCompositionPrivacySubmit(firstHandler, token, compositionPrivacy, privacyrequest.KindCorrection)
+	if conflict.Code != http.StatusConflict || !strings.Contains(conflict.Body.String(), "request-conflict") {
+		closeFirst()
+		t.Fatalf("privacy conflict = %d %s", conflict.Code, conflict.Body.String())
+	}
+	foreign := serveCompositionPrivacyStatus(firstHandler, mustCompositionToken(t, bytes.Repeat([]byte{0x7f}, 32)), status.RequestID)
+	if foreign.Code != http.StatusUnauthorized {
+		closeFirst()
+		t.Fatalf("privacy foreign status = %d %s", foreign.Code, foreign.Body.String())
+	}
+	verification, err := first.privacyApplication.Verify(
+		ctx,
+		privacyrequest.Scope{AccountID: configuration.context.AccountID, VaultID: configuration.context.VaultID},
+		status.RequestID,
+		status.UpdatedAt+1,
+	)
+	if err != nil || verification.Kind != privacyrequest.ApplicationRejected ||
+		verification.Reason != privacyrequest.ApplicationUnavailable {
+		closeFirst()
+		t.Fatalf("unavailable verification = %#v, %v", verification, err)
+	}
+	before := captureCompositionAdmissionState(t, ctx, databaseURL, configuration.Config.LocalFixture.PrivateRoot)
+	assertCompositionPrivacyCounts(t, ctx, databaseURL, 1, 0, 0, 0, 1)
+	closeFirst()
+
+	second, closeSecond, err := composeRuntime(ctx, configuration.Config)
+	if err != nil {
+		t.Fatalf("restart privacy runtime: %v", err)
+	}
+	defer closeSecond()
+	if second.privacyRequest == nil || second.privacyApplication == nil || second.privacyStore == nil {
+		t.Fatalf("restarted privacy composition = %#v", second)
+	}
+	secondHandler := compositionHandler(t, configuration, second)
+	restored := serveCompositionPrivacyStatus(secondHandler, token, status.RequestID)
+	if restored.Code != http.StatusAccepted || decodeCompositionPrivacyStatus(t, restored) != status {
+		t.Fatalf("privacy restart status = %d %s", restored.Code, restored.Body.String())
+	}
+	after := captureCompositionAdmissionState(t, ctx, databaseURL, configuration.Config.LocalFixture.PrivateRoot)
+	if after != before {
+		t.Fatalf("privacy journal changed fixture live state\nbefore=%#v\nafter=%#v", before, after)
+	}
+	assertCompositionPrivacyCounts(t, ctx, databaseURL, 1, 0, 0, 0, 1)
+}
+
+func TestLocalFixturePrivacyDeletionHandoffStartsExactlyOneSagaWithoutEffects(t *testing.T) {
+	databaseURL := os.Getenv("NOTES_TEST_DATABASE_URL")
+	if err := postgresadapter.ValidateTestDatabaseURL(databaseURL); err != nil {
+		t.Fatalf("safe NOTES_TEST_DATABASE_URL is required: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	configuration, token := prepareCompositionFixture(t, ctx, databaseURL)
+	runtime, closeRuntime, err := composeRuntime(ctx, configuration.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeRuntime()
+	if runtime.privacyApplication == nil || runtime.deletionApplication == nil {
+		t.Fatalf("delete-live privacy composition = %#v", runtime)
+	}
+	handler := compositionHandler(t, configuration, runtime)
+	submitted := serveCompositionPrivacySubmit(handler, token, compositionPrivacy, privacyrequest.KindDeletion)
+	if submitted.Code != http.StatusAccepted {
+		t.Fatalf("privacy deletion submit = %d %s", submitted.Code, submitted.Body.String())
+	}
+	status := decodeCompositionPrivacyStatus(t, submitted)
+	record, err := runtime.privacyStore.FindByID(ctx, privacyrequest.Scope{
+		AccountID: configuration.context.AccountID,
+		VaultID:   configuration.context.VaultID,
+	}, status.RequestID)
+	if err != nil || record == nil {
+		t.Fatalf("find privacy request = %#v, %v", record, err)
+	}
+	receiptID, _ := privacyrequest.ParseVerificationReceiptID(compositionReceipt)
+	verified := privacyrequest.PlanVerification(*record, privacyrequest.VerificationDecision{
+		Kind: privacyrequest.VerificationApproved, ReceiptID: receiptID, DecidedAt: status.UpdatedAt + 1,
+	})
+	if verified.Kind != privacyrequest.PlanAccepted {
+		t.Fatalf("verification plan = %#v", verified)
+	}
+	committed, err := runtime.privacyStore.Commit(ctx, record.Scope, verified.Transition)
+	if err != nil || committed.Kind != privacyrequest.CommitApplied {
+		t.Fatalf("verification commit = %#v, %v", committed, err)
+	}
+
+	const contenders = 16
+	results := make(chan privacyrequest.ApplicationResult, contenders)
+	errors := make(chan error, contenders)
+	var start sync.WaitGroup
+	start.Add(1)
+	var workers sync.WaitGroup
+	for range contenders {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			start.Wait()
+			result, processErr := runtime.privacyApplication.Process(
+				ctx, record.Scope, status.RequestID, status.UpdatedAt+2, status.UpdatedAt+3,
+			)
+			results <- result
+			errors <- processErr
+		}()
+	}
+	start.Done()
+	workers.Wait()
+	close(results)
+	close(errors)
+	for processErr := range errors {
+		if processErr != nil {
+			t.Fatalf("concurrent Process() error = %v", processErr)
+		}
+	}
+	for result := range results {
+		if result.Kind != privacyrequest.ApplicationAccepted || result.Request == nil {
+			t.Fatalf("concurrent Process() = %#v", result)
+		}
+	}
+	final, err := runtime.privacyApplication.Status(ctx, record.Scope, status.RequestID)
+	if err != nil || final.Request == nil || final.Request.Status != privacyrequest.StateCompleted ||
+		final.Request.Outcome != privacyrequest.OutcomeAccountDeletionStarted {
+		t.Fatalf("privacy deletion final = %#v, %v", final, err)
+	}
+	replayed, err := runtime.privacyApplication.Process(
+		ctx, record.Scope, status.RequestID, status.UpdatedAt+4, status.UpdatedAt+5,
+	)
+	if err != nil || replayed.Request == nil || replayed.Request.Status != privacyrequest.StateCompleted {
+		t.Fatalf("privacy deletion replay = %#v, %v", replayed, err)
+	}
+	assertCompositionPrivacyCounts(t, ctx, databaseURL, 1, 1, 1, 0, 1)
+	sealed := serveCompositionSync(handler, token, `{"version":"sync/v2","deviceId":"`+
+		compositionDeviceB+`","cursor":null,"mutations":[]}`)
+	if sealed.Code != http.StatusServiceUnavailable {
+		t.Fatalf("sync after privacy deletion handoff = %d %s", sealed.Code, sealed.Body.String())
+	}
+}
 
 func TestLocalFixtureCompositionSyncV2FilesystemEncryptionRestartAndDelete(t *testing.T) {
 	databaseURL := os.Getenv("NOTES_TEST_DATABASE_URL")
@@ -151,6 +328,14 @@ func TestLocalFixtureCompositionAccountDeletionLifecycleAndPhaseRestarts(t *test
 		closeInitial()
 		t.Fatalf("deletion-capable session context = %d %s", contextResponse.Code, contextResponse.Body.String())
 	}
+	privacySubmitted := serveCompositionPrivacySubmit(
+		initialHandler, token, compositionPrivacy, privacyrequest.KindDisclosure,
+	)
+	if privacySubmitted.Code != http.StatusAccepted {
+		closeInitial()
+		t.Fatalf("privacy journal before deletion = %d %s", privacySubmitted.Code, privacySubmitted.Body.String())
+	}
+	privacyStatus := decodeCompositionPrivacyStatus(t, privacySubmitted)
 	mutationBody := `{"version":"sync/v2","deviceId":"` + compositionDeviceA +
 		`","cursor":null,"mutations":[{"mutationId":"` + compositionMutation +
 		`","cardId":"` + compositionCardID + `","baseServerRevision":null,"title":"` + compositionSecret +
@@ -181,11 +366,16 @@ func TestLocalFixtureCompositionAccountDeletionLifecycleAndPhaseRestarts(t *test
 	if err != nil {
 		t.Fatalf("compose pre-effect deletion restart: %v", err)
 	}
-	if preEffect.syncV2 != nil || preEffect.syncV2Application != nil || preEffect.accountDeletion == nil {
+	if preEffect.syncV2 != nil || preEffect.syncV2Application != nil || preEffect.accountDeletion == nil ||
+		preEffect.privacyRequest == nil || preEffect.privacyApplication == nil {
 		closePreEffect()
 		t.Fatalf("pre-effect deleting composition exposed sync or omitted deletion: %#v", preEffect)
 	}
 	preEffectHandler := compositionHandler(t, configuration, preEffect)
+	if response := serveCompositionPrivacyStatus(preEffectHandler, token, privacyStatus.RequestID); response.Code != http.StatusAccepted {
+		closePreEffect()
+		t.Fatalf("privacy journal during deleting phase = %d %s", response.Code, response.Body.String())
+	}
 	legacyRequest := httptest.NewRequest(http.MethodPost, "/api/sync", strings.NewReader(`{"cards":[]}`))
 	legacyResponse := httptest.NewRecorder()
 	preEffectHandler.ServeHTTP(legacyResponse, legacyRequest)
@@ -240,9 +430,15 @@ func TestLocalFixtureCompositionAccountDeletionLifecycleAndPhaseRestarts(t *test
 		t.Fatalf("compose completed restart: %v", err)
 	}
 	if completed.syncV2 != nil || completed.localFixture != nil || completed.accountDeletion == nil ||
+		completed.privacyRequest == nil || completed.privacyApplication == nil ||
 		completed.private.Readiness.Check(ctx) != nil {
 		closeCompleted()
 		t.Fatalf("completed composition is not closed and ready: %#v", completed)
+	}
+	completedHandler := compositionHandler(t, configuration, completed)
+	if response := serveCompositionPrivacyStatus(completedHandler, token, privacyStatus.RequestID); response.Code != http.StatusUnauthorized {
+		closeCompleted()
+		t.Fatalf("deleted owner privacy status = %d %s", response.Code, response.Body.String())
 	}
 	closeCompleted()
 	configuration.Config.LocalFixture.LegalEvidencePolicy = config.LocalFixtureLegalEvidenceUndecided
@@ -251,6 +447,7 @@ func TestLocalFixtureCompositionAccountDeletionLifecycleAndPhaseRestarts(t *test
 		t.Fatalf("completed fixture restarted without explicit deletion policy: %#v", unavailable)
 	}
 	assertCompositionDeletionComplete(t, ctx, databaseURL, configuration.Config.LocalFixture.PrivateRoot)
+	assertCompositionPrivacyCounts(t, ctx, databaseURL, 1, 1, 1, 5, 0)
 }
 
 func TestLocalFixtureCompositionRenewsExpiredPreRevocationContinuationThroughHTTP(t *testing.T) {
@@ -1093,14 +1290,25 @@ func TestLocalFixtureCompositionFailsClosedAfterPostgresLeaseLoss(t *testing.T) 
 		closeRuntime()
 		t.Fatalf("sync after lease loss = %d %s", response.Code, response.Body.String())
 	}
-	var operations, activeSessions int64
-	if err := pool.QueryRow(ctx, `SELECT
-		(SELECT COUNT(*) FROM account_deletion_operations),
-		(SELECT COUNT(*) FROM sessions WHERE revoked_at IS NULL)`,
-	).Scan(&operations, &activeSessions); err != nil || operations != 0 || activeSessions != 1 {
+	privacyResponse := serveCompositionPrivacySubmit(
+		handler, token, compositionPrivacy, privacyrequest.KindDisclosure,
+	)
+	if privacyResponse.Code != http.StatusServiceUnavailable {
 		pool.Close()
 		closeRuntime()
-		t.Fatalf("lease-loss side effects operations=%d sessions=%d error=%v", operations, activeSessions, err)
+		t.Fatalf("privacy submit after lease loss = %d %s", privacyResponse.Code, privacyResponse.Body.String())
+	}
+	var operations, privacyRequests, activeSessions int64
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT COUNT(*) FROM account_deletion_operations),
+		(SELECT COUNT(*) FROM privacy_requests),
+		(SELECT COUNT(*) FROM sessions WHERE revoked_at IS NULL)`,
+	).Scan(&operations, &privacyRequests, &activeSessions); err != nil ||
+		operations != 0 || privacyRequests != 0 || activeSessions != 1 {
+		pool.Close()
+		closeRuntime()
+		t.Fatalf("lease-loss side effects operations=%d privacy=%d sessions=%d error=%v",
+			operations, privacyRequests, activeSessions, err)
 	}
 	if overlap, overlapClose, err := composeRuntime(ctx, configuration.Config); err == nil {
 		overlapClose()
@@ -1276,6 +1484,7 @@ func compositionHandler(
 		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
 		PrivateRuntime: composition.private, SyncV2Runtime: composition.syncV2,
 		AccountDeletionRuntime:     composition.accountDeletion,
+		PrivacyRequestRuntime:      composition.privacyRequest,
 		DisableLegacySync:          composition.disableLegacySync,
 		EnableDisconnectedFixtures: true,
 	})
@@ -1300,6 +1509,90 @@ func serveCompositionDeletionStart(
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response
+}
+
+func serveCompositionPrivacySubmit(
+	handler http.Handler,
+	token identity.SessionToken,
+	submissionID string,
+	requestKind privacyrequest.RequestKind,
+) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/account/privacy-requests",
+		strings.NewReader(`{"submissionId":"`+submissionID+`","requestKind":"`+string(requestKind)+`"}`),
+	)
+	request.Header.Set("Cookie", identity.SessionCookieName+"="+string(token))
+	setCompositionMutationHeaders(request)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+func serveCompositionPrivacyStatus(
+	handler http.Handler,
+	token identity.SessionToken,
+	requestID privacyrequest.RequestID,
+) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/account/privacy-requests/status",
+		strings.NewReader(`{"requestId":"`+string(requestID)+`"}`),
+	)
+	request.Header.Set("Cookie", identity.SessionCookieName+"="+string(token))
+	setCompositionMutationHeaders(request)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+func decodeCompositionPrivacyStatus(
+	t *testing.T,
+	response *httptest.ResponseRecorder,
+) privacyrequest.PublicStatus {
+	t.Helper()
+	status, err := privacyrequest.DecodePublicStatus(response.Body.Bytes())
+	if err != nil {
+		t.Fatalf("decode privacy response %d %q: %v", response.Code, response.Body.String(), err)
+	}
+	return status
+}
+
+func assertCompositionPrivacyCounts(
+	t *testing.T,
+	ctx context.Context,
+	databaseURL string,
+	privacyRequests int64,
+	deletionOperations int64,
+	continuations int64,
+	receipts int64,
+	activeSessions int64,
+) {
+	t.Helper()
+	pool, err := postgresadapter.OpenPool(ctx, databaseURL, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	var actualPrivacy, actualOperations, actualContinuations, actualReceipts, actualSessions int64
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT COUNT(*) FROM privacy_requests),
+		(SELECT COUNT(*) FROM account_deletion_operations),
+		(SELECT COUNT(*) FROM account_deletion_continuations),
+		(SELECT COUNT(*) FROM account_deletion_step_receipts),
+		(SELECT COUNT(*) FROM sessions WHERE revoked_at IS NULL)`,
+	).Scan(
+		&actualPrivacy, &actualOperations, &actualContinuations, &actualReceipts, &actualSessions,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if actualPrivacy != privacyRequests || actualOperations != deletionOperations ||
+		actualContinuations != continuations || actualReceipts != receipts || actualSessions != activeSessions {
+		t.Fatalf(
+			"privacy/deletion counts privacy=%d operations=%d continuations=%d receipts=%d active-sessions=%d",
+			actualPrivacy, actualOperations, actualContinuations, actualReceipts, actualSessions,
+		)
+	}
 }
 
 func serveCompositionDeletionResume(

@@ -96,6 +96,68 @@ describe('privacy request UI HTTP adapter', () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
   });
+
+  it('treats submit route closure separately from an absent status record', async () => {
+    const notFound = createPrivacyRequestUiHttpTransport(async () =>
+      Response.json({ error: 'not-found' }, { status: 404 }),
+    );
+    await expect(
+      notFound.submit({
+        submissionId: privacyRequestIds.submissionA,
+        requestKind: 'disclosure',
+      }),
+    ).resolves.toEqual({ kind: 'rejected', reason: 'unavailable' });
+    await expect(
+      notFound.status({ requestId: privacyRequestIds.requestA }),
+    ).resolves.toEqual({ kind: 'rejected', reason: 'not-found' });
+  });
+
+  it('rejects impossible timestamps and completion outcomes', async () => {
+    for (const candidate of [
+      { ...publicStatus(), updatedAt: 999 },
+      {
+        ...publicStatus(),
+        status: 'completed',
+        outcome: 'account-deletion-started',
+      },
+      {
+        ...publicStatus(),
+        requestKind: 'deletion',
+        status: 'completed',
+        outcome: 'fulfilled',
+      },
+    ]) {
+      const transport = createPrivacyRequestUiHttpTransport(async () =>
+        Response.json(candidate),
+      );
+      await expect(
+        transport.status({ requestId: privacyRequestIds.requestA }),
+      ).resolves.toEqual({ kind: 'rejected', reason: 'unavailable' });
+    }
+  });
+
+  it('accepts both correlated completed response variants', async () => {
+    for (const candidate of [
+      {
+        ...publicStatus(),
+        status: 'completed',
+        outcome: 'fulfilled',
+      },
+      {
+        ...publicStatus(),
+        requestKind: 'deletion',
+        status: 'completed',
+        outcome: 'account-deletion-started',
+      },
+    ]) {
+      const transport = createPrivacyRequestUiHttpTransport(async () =>
+        Response.json(candidate),
+      );
+      await expect(
+        transport.status({ requestId: privacyRequestIds.requestA }),
+      ).resolves.toEqual({ kind: 'accepted', request: candidate });
+    }
+  });
 });
 
 function publicStatus() {

@@ -20,6 +20,7 @@ type ServerOptions struct {
 	LegalRuntime               *LegalRuntime
 	BillingCancellationRuntime *BillingCancellationRuntime
 	AccountDeletionRuntime     *AccountDeletionRuntime
+	PrivacyRequestRuntime      *PrivacyRequestRuntime
 	DisableLegacySync          bool
 	EnableDisconnectedFixtures bool
 }
@@ -34,6 +35,7 @@ func Run(ctx context.Context, options ServerOptions) error {
 		LegalRuntime:               options.LegalRuntime,
 		BillingCancellationRuntime: options.BillingCancellationRuntime,
 		AccountDeletionRuntime:     options.AccountDeletionRuntime,
+		PrivacyRequestRuntime:      options.PrivacyRequestRuntime,
 		DisableLegacySync:          options.DisableLegacySync,
 		EnableDisconnectedFixtures: options.EnableDisconnectedFixtures,
 	})

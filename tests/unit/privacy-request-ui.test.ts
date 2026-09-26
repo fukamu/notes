@@ -107,8 +107,8 @@ describe('privacy request UI pure state', () => {
       record({ status: 'verification-pending' }),
       record({ status: 'ready' }),
       record({ status: 'processing' }),
-      record({ status: 'completed', outcome: 'fulfilled' }),
-      record({ status: 'completed', outcome: 'account-deletion-started' }),
+      completedRecord(),
+      deletionHandoffRecord(),
       record({ status: 'rejected' }),
       record({ status: 'failed', retryable: true }),
       record({ status: 'failed', retryable: false }),
@@ -131,10 +131,6 @@ type PrivacyRequestUiRecordState =
   | { readonly status: 'verification-pending' }
   | { readonly status: 'ready' }
   | { readonly status: 'processing' }
-  | {
-      readonly status: 'completed';
-      readonly outcome: 'fulfilled' | 'account-deletion-started';
-    }
   | { readonly status: 'rejected' }
   | { readonly status: 'failed'; readonly retryable: boolean };
 
@@ -151,5 +147,27 @@ function record(
     updatedAt: 1_000,
     ...baseOverride,
     ...state,
+  };
+}
+
+function completedRecord(): PrivacyRequestUiRecord {
+  return {
+    requestId: '01991f20-61d2-7000-8000-000000002501',
+    requestKind: 'disclosure',
+    requestedAt: 1_000,
+    updatedAt: 1_000,
+    status: 'completed',
+    outcome: 'fulfilled',
+  };
+}
+
+function deletionHandoffRecord(): PrivacyRequestUiRecord {
+  return {
+    requestId: '01991f20-61d2-7000-8000-000000002501',
+    requestKind: 'deletion',
+    requestedAt: 1_000,
+    updatedAt: 1_000,
+    status: 'completed',
+    outcome: 'account-deletion-started',
   };
 }

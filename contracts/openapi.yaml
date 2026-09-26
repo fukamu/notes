@@ -262,28 +262,74 @@ paths:
   /api/account/privacy-requests:
     post:
       operationId: privacyRequestSubmitRoute
-      x-fukamu-state: disconnected
+      x-fukamu-state: connected-local-fixture-production-closed
       x-handler-contract: privacy-request-submit
       x-go-handler: backend/internal/httpapi/privacy_request.go
       description: >-
-        The production route remains closed. The authenticated Go contract
-        handler is tested separately and requires an explicit provider-neutral
-        privacy runtime composition.
+        The exact disposable local fixture authenticates the owner and checks
+        same-origin CSRF before reading a body bounded by the lower of the
+        configured limit and 2,048 bytes. The runtime lease is checked before
+        the durable PostgreSQL insert. This route records or replays a journal
+        entry only; it does not verify identity, execute fulfillment, or invoke
+        account deletion. Default and production compositions remain closed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PrivacyRequestSubmitRequest' }
       responses:
-        '404': { $ref: '#/components/responses/NotFound' }
-        '503': { $ref: '#/components/responses/Unavailable' }
+        '200':
+          description: Idempotent replay of an existing terminal journal entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PrivacyRequestResponse' }
+        '202':
+          description: New or replayed nonterminal journal entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PrivacyRequestResponse' }
+        '400': { $ref: '#/components/responses/PrivacyRequestInvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/PrivacyRequestForbidden' }
+        '404': { $ref: '#/components/responses/PrivacyRequestNotFound' }
+        '409': { $ref: '#/components/responses/PrivacyRequestConflict' }
+        '413': { $ref: '#/components/responses/PrivacyRequestTooLarge' }
+        '503': { $ref: '#/components/responses/PrivacyRequestUnavailable' }
   /api/account/privacy-requests/status:
     post:
       operationId: privacyRequestStatusRoute
-      x-fukamu-state: disconnected
+      x-fukamu-state: connected-local-fixture-production-closed
       x-handler-contract: privacy-request-status
       x-go-handler: backend/internal/httpapi/privacy_request.go
       description: >-
-        The production route remains closed. The Go handler derives the owner
-        from the secure session and never accepts Account or Vault identifiers.
+        The exact local fixture derives Account and Vault ownership from the
+        secure session, performs same-origin checks before its bounded body read,
+        and checks the runtime lease before the owner-scoped PostgreSQL lookup.
+        The browser's displayed form state is not durable; this endpoint reads
+        the durable journal when the caller retains the request ID. It does not
+        schedule or resume processing. Default and production remain closed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PrivacyRequestStatusRequest' }
       responses:
-        '404': { $ref: '#/components/responses/NotFound' }
-        '503': { $ref: '#/components/responses/Unavailable' }
+        '200':
+          description: Owner-scoped terminal journal status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PrivacyRequestResponse' }
+        '202':
+          description: Owner-scoped nonterminal journal status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PrivacyRequestResponse' }
+        '400': { $ref: '#/components/responses/PrivacyRequestInvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/PrivacyRequestForbidden' }
+        '404': { $ref: '#/components/responses/PrivacyRequestNotFound' }
+        '413': { $ref: '#/components/responses/PrivacyRequestTooLarge' }
+        '503': { $ref: '#/components/responses/PrivacyRequestUnavailable' }
   /api/account/terms-consent:
     get:
       operationId: termsConsentStatusRoute
@@ -367,6 +413,46 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/ContinuationRequiredError' }
           example: { error: continuation-required }
+    PrivacyRequestInvalidRequest:
+      description: The privacy request body or identifiers are invalid.
+      content:
+        application/json:
+          schema:
+            { $ref: '#/components/schemas/PrivacyRequestInvalidRequestError' }
+          example: { error: invalid-request }
+    PrivacyRequestForbidden:
+      description: Privacy request same-origin or owner verification failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PrivacyRequestForbiddenError' }
+          example: { error: forbidden }
+    PrivacyRequestNotFound:
+      description: >-
+        The privacy route is closed in this composition, or no privacy journal
+        entry exists for this owner and request ID.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PrivacyRequestNotFoundError' }
+          example: { error: not-found }
+    PrivacyRequestConflict:
+      description: The submission identifier is already bound to another request kind.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PrivacyRequestConflictError' }
+          example: { error: request-conflict }
+    PrivacyRequestTooLarge:
+      description: The body exceeds the configured effective limit, capped at 2,048 bytes.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PrivacyRequestTooLargeError' }
+          example: { error: request-too-large }
+    PrivacyRequestUnavailable:
+      description: The privacy journal runtime or its fixture lease is unavailable.
+      content:
+        application/json:
+          schema:
+            { $ref: '#/components/schemas/PrivacyRequestUnavailableError' }
+          example: { error: unavailable }
     Forbidden:
       description: Owner or same-origin verification failed.
       content:
@@ -438,6 +524,42 @@ components:
       required: [error]
       properties:
         error: { type: string, enum: [continuation-required] }
+    PrivacyRequestInvalidRequestError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [invalid-request] }
+    PrivacyRequestForbiddenError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [forbidden] }
+    PrivacyRequestNotFoundError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [not-found] }
+    PrivacyRequestConflictError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [request-conflict] }
+    PrivacyRequestTooLargeError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [request-too-large] }
+    PrivacyRequestUnavailableError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [unavailable] }
     LaunchStatus:
       type: object
       additionalProperties: false
@@ -675,6 +797,129 @@ components:
       required: [status]
       properties:
         status: { type: string, enum: [completed] }
+    PrivacyRequestKind:
+      type: string
+      enum:
+        [
+          purpose-notification,
+          disclosure,
+          correction,
+          usage-suspension,
+          deletion,
+          third-party-provision-suspension,
+        ]
+    PrivacyRequestNonDeletionKind:
+      type: string
+      enum:
+        [
+          purpose-notification,
+          disclosure,
+          correction,
+          usage-suspension,
+          third-party-provision-suspension,
+        ]
+    PrivacyRequestSubmitRequest:
+      type: object
+      additionalProperties: false
+      required: [submissionId, requestKind]
+      properties:
+        submissionId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { $ref: '#/components/schemas/PrivacyRequestKind' }
+    PrivacyRequestStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [requestId]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+    PrivacyRequestResponse:
+      description: >-
+        updatedAt is at or after requestedAt. A deletion completion can only be
+        account-deletion-started; every non-deletion completion can only be fulfilled.
+      oneOf:
+        - $ref: '#/components/schemas/PrivacyRequestVerificationPending'
+        - $ref: '#/components/schemas/PrivacyRequestReady'
+        - $ref: '#/components/schemas/PrivacyRequestProcessing'
+        - $ref: '#/components/schemas/PrivacyRequestCompletedFulfilled'
+        - $ref: '#/components/schemas/PrivacyRequestCompletedDeletionHandoff'
+        - $ref: '#/components/schemas/PrivacyRequestRejected'
+        - $ref: '#/components/schemas/PrivacyRequestFailed'
+    PrivacyRequestVerificationPending:
+      type: object
+      additionalProperties: false
+      required: [requestId, requestKind, requestedAt, updatedAt, status]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { $ref: '#/components/schemas/PrivacyRequestKind' }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [verification-pending] }
+    PrivacyRequestReady:
+      type: object
+      additionalProperties: false
+      required: [requestId, requestKind, requestedAt, updatedAt, status]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { $ref: '#/components/schemas/PrivacyRequestKind' }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [ready] }
+    PrivacyRequestProcessing:
+      type: object
+      additionalProperties: false
+      required: [requestId, requestKind, requestedAt, updatedAt, status]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { $ref: '#/components/schemas/PrivacyRequestKind' }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [processing] }
+    PrivacyRequestCompletedFulfilled:
+      type: object
+      additionalProperties: false
+      required:
+        [requestId, requestKind, requestedAt, updatedAt, status, outcome]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind:
+          { $ref: '#/components/schemas/PrivacyRequestNonDeletionKind' }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [completed] }
+        outcome: { type: string, enum: [fulfilled] }
+    PrivacyRequestCompletedDeletionHandoff:
+      type: object
+      additionalProperties: false
+      required:
+        [requestId, requestKind, requestedAt, updatedAt, status, outcome]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { type: string, enum: [deletion] }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [completed] }
+        outcome: { type: string, enum: [account-deletion-started] }
+    PrivacyRequestRejected:
+      type: object
+      additionalProperties: false
+      required: [requestId, requestKind, requestedAt, updatedAt, status]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { $ref: '#/components/schemas/PrivacyRequestKind' }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [rejected] }
+    PrivacyRequestFailed:
+      type: object
+      additionalProperties: false
+      required:
+        [requestId, requestKind, requestedAt, updatedAt, status, retryable]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { $ref: '#/components/schemas/PrivacyRequestKind' }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [failed] }
+        retryable: { type: boolean }
     TermsReference:
       type: object
       additionalProperties: false

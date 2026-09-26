@@ -28,9 +28,9 @@ for (const marker of [
   '/api/session-context:',
   '/api/billing/checkout:',
   '/api/account/deletion:',
+  '/api/account/privacy-requests:',
   'x-handler-contract: account-deletion-start',
   'x-handler-contract: account-deletion-resume-one-step',
-  'x-fukamu-state: disconnected',
   'x-fukamu-state: connected-local-fixture-production-closed',
   'x-handler-contract: sync-v2',
   'SyncV2Mutation:',
@@ -54,6 +54,14 @@ const accountDeletionResumePath = pathContract(
   spec,
   '/api/account/deletion/status',
 );
+const privacyRequestSubmitPath = pathContract(
+  spec,
+  '/api/account/privacy-requests',
+);
+const privacyRequestStatusPath = pathContract(
+  spec,
+  '/api/account/privacy-requests/status',
+);
 assertMarkers('account deletion Start path', accountDeletionStartPath, [
   'x-fukamu-state: connected-local-fixture-production-closed',
   'x-handler-contract: account-deletion-start',
@@ -62,6 +70,7 @@ assertMarkers('account deletion Start path', accountDeletionStartPath, [
   "'202':",
   "'401':",
   "'403':",
+  "'404':",
   "'409':",
   "'413':",
 ]);
@@ -76,6 +85,35 @@ assertMarkers('account deletion Resume path', accountDeletionResumePath, [
   "'403':",
   "'413':",
   '#/components/responses/ContinuationRequired',
+]);
+assertMarkers('privacy request Submit path', privacyRequestSubmitPath, [
+  'x-fukamu-state: connected-local-fixture-production-closed',
+  'x-handler-contract: privacy-request-submit',
+  '#/components/schemas/PrivacyRequestSubmitRequest',
+  '#/components/schemas/PrivacyRequestResponse',
+  "'200':",
+  "'202':",
+  "'400':",
+  "'401':",
+  "'403':",
+  "'404':",
+  "'409':",
+  "'413':",
+  "'503':",
+]);
+assertMarkers('privacy request Status path', privacyRequestStatusPath, [
+  'x-fukamu-state: connected-local-fixture-production-closed',
+  'x-handler-contract: privacy-request-status',
+  '#/components/schemas/PrivacyRequestStatusRequest',
+  '#/components/schemas/PrivacyRequestResponse',
+  "'200':",
+  "'202':",
+  "'400':",
+  "'401':",
+  "'403':",
+  "'404':",
+  "'413':",
+  "'503':",
 ]);
 
 const syncV2Mutation = componentSchema(spec, 'SyncV2Mutation');
@@ -115,6 +153,23 @@ const authenticationRequiredError = componentSchema(
 const continuationRequiredError = componentSchema(
   spec,
   'ContinuationRequiredError',
+);
+const privacyRequestSubmit = componentSchema(
+  spec,
+  'PrivacyRequestSubmitRequest',
+);
+const privacyRequestStatus = componentSchema(
+  spec,
+  'PrivacyRequestStatusRequest',
+);
+const privacyRequestResponse = componentSchema(spec, 'PrivacyRequestResponse');
+const privacyRequestCompletedFulfilled = componentSchema(
+  spec,
+  'PrivacyRequestCompletedFulfilled',
+);
+const privacyRequestCompletedDeletion = componentSchema(
+  spec,
+  'PrivacyRequestCompletedDeletionHandoff',
 );
 const sessionContext = componentSchema(spec, 'SessionContext');
 assertMarkers('SyncV2Mutation', syncV2Mutation, [
@@ -205,6 +260,62 @@ assertMarkers('ContinuationRequiredError', continuationRequiredError, [
   'required: [error]',
   'error: { type: string, enum: [continuation-required] }',
 ]);
+assertMarkers('PrivacyRequestSubmitRequest', privacyRequestSubmit, [
+  'additionalProperties: false',
+  'required: [submissionId, requestKind]',
+  "submissionId: { $ref: '#/components/schemas/UuidV7' }",
+  "requestKind: { $ref: '#/components/schemas/PrivacyRequestKind' }",
+]);
+assertMarkers('PrivacyRequestStatusRequest', privacyRequestStatus, [
+  'additionalProperties: false',
+  'required: [requestId]',
+  "requestId: { $ref: '#/components/schemas/UuidV7' }",
+]);
+assertMarkers('PrivacyRequestResponse', privacyRequestResponse, [
+  '#/components/schemas/PrivacyRequestVerificationPending',
+  '#/components/schemas/PrivacyRequestReady',
+  '#/components/schemas/PrivacyRequestProcessing',
+  '#/components/schemas/PrivacyRequestCompletedFulfilled',
+  '#/components/schemas/PrivacyRequestCompletedDeletionHandoff',
+  '#/components/schemas/PrivacyRequestRejected',
+  '#/components/schemas/PrivacyRequestFailed',
+  'updatedAt is at or after requestedAt',
+]);
+assertMarkers(
+  'PrivacyRequestCompletedFulfilled',
+  privacyRequestCompletedFulfilled,
+  [
+    'additionalProperties: false',
+    'requestKind:',
+    "{ $ref: '#/components/schemas/PrivacyRequestNonDeletionKind' }",
+    'status: { type: string, enum: [completed] }',
+    'outcome: { type: string, enum: [fulfilled] }',
+  ],
+);
+assertMarkers(
+  'PrivacyRequestCompletedDeletionHandoff',
+  privacyRequestCompletedDeletion,
+  [
+    'additionalProperties: false',
+    'requestKind: { type: string, enum: [deletion] }',
+    'status: { type: string, enum: [completed] }',
+    'outcome: { type: string, enum: [account-deletion-started] }',
+  ],
+);
+for (const [name, literal] of [
+  ['PrivacyRequestInvalidRequestError', 'invalid-request'],
+  ['PrivacyRequestForbiddenError', 'forbidden'],
+  ['PrivacyRequestNotFoundError', 'not-found'],
+  ['PrivacyRequestConflictError', 'request-conflict'],
+  ['PrivacyRequestTooLargeError', 'request-too-large'],
+  ['PrivacyRequestUnavailableError', 'unavailable'],
+]) {
+  assertMarkers(name, componentSchema(spec, name), [
+    'additionalProperties: false',
+    'required: [error]',
+    `error: { type: string, enum: [${literal}] }`,
+  ]);
+}
 assertMarkers(
   'AuthenticationRequired response',
   componentResponse(spec, 'AuthenticationRequired'),

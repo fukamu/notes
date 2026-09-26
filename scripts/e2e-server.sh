@@ -30,14 +30,24 @@ fi
 fixture_root="$(mktemp -d "${TMPDIR:-/tmp}/fukamu-notes-e2e.XXXXXX")"
 chmod 700 "$fixture_root"
 server_pid=''
+restart_request=''
+restart_completed=''
+server_binary=''
 cleanup() {
   if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
     kill "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
   fi
+	if [[ -n "$restart_request" ]]; then
+		rm -f -- "$restart_request" "$restart_completed" "$server_binary"
+	fi
   rm -rf -- "$fixture_root"
 }
-trap cleanup EXIT INT TERM
+shutdown() {
+	exit 0
+}
+trap cleanup EXIT
+trap shutdown INT TERM
 
 export NOTES_ENVIRONMENT=test
 export NOTES_APPLICATION_PROFILE=local-fixture
@@ -52,17 +62,80 @@ export NOTES_BODY_LIMIT_BYTES=4000000
 export NOTES_SHUTDOWN_TIMEOUT=2s
 export NOTES_LOG_LEVEL=info
 export NOTES_LOCAL_FIXTURE_ROOT="$fixture_root"
+# The shared browser lane proves durable journal wiring only. Ambient shell
+# state must never opt it into destructive account-deletion admission.
+export NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY=undecided
 
 go -C backend run ./cmd/notesctl prepare-e2e \
   --environment=test \
   "--allowed-subject=$NOTES_LEGACY_OWNER_SUBJECT"
 
-go -C backend run ./cmd/notes &
-server_pid="$!"
+if [[ -z "${FUKAMU_E2E_RESTART_CONTROL:-}" ]]; then
+	go -C backend run ./cmd/notes &
+	server_pid="$!"
+	if wait "$server_pid"; then
+		server_status=0
+	else
+		server_status="$?"
+	fi
+	server_pid=''
+	exit "$server_status"
+fi
+
+restart_control="$FUKAMU_E2E_RESTART_CONTROL"
+: "${FUKAMU_E2E_RESTART_TOKEN:?E2E restart-control token is required}"
+if [[ ! -d "$restart_control" || -L "$restart_control" ||
+	"$(stat -c '%a' "$restart_control")" != '700' ||
+	"$(stat -c '%u' "$restart_control")" != "$(id -u)" ]]; then
+	echo 'E2E restart control directory must be an owned 0700 directory.' >&2
+	exit 1
+fi
+restart_owner="$restart_control/.fukamu-notes-e2e-owner"
+if [[ ! -f "$restart_owner" || -L "$restart_owner" ||
+	"$(stat -c '%a' "$restart_owner")" != '600' ||
+	"$(stat -c '%u' "$restart_owner")" != "$(id -u)" ||
+	"$(stat -c '%h' "$restart_owner")" != '1' ||
+	"$(cat "$restart_owner")" != "$FUKAMU_E2E_RESTART_TOKEN" ]]; then
+	echo 'E2E restart control ownership marker is invalid.' >&2
+	exit 1
+fi
+restart_request="$restart_control/restart.request"
+restart_completed="$restart_control/restart.completed"
+rm -f -- "$restart_request" "$restart_completed"
+server_binary="$restart_control/notes-e2e-server"
+go -C backend build -o "$server_binary" ./cmd/notes
+
+start_server() {
+	"$server_binary" &
+	server_pid="$!"
+}
+
+stop_server() {
+	if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
+		kill -TERM "$server_pid"
+		wait "$server_pid" || true
+	fi
+	server_pid=''
+}
+
+start_server
+while kill -0 "$server_pid" 2>/dev/null; do
+	if [[ -f "$restart_request" && ! -L "$restart_request" ]]; then
+		restart_id="$(head -c 128 "$restart_request")"
+		rm -f -- "$restart_request"
+		stop_server
+		start_server
+		completed_temporary="$restart_control/restart.completed.$server_pid"
+		printf '%s' "$restart_id" > "$completed_temporary"
+		chmod 600 "$completed_temporary"
+		mv -f -- "$completed_temporary" "$restart_completed"
+	fi
+	sleep 0.05
+done
 if wait "$server_pid"; then
-  server_status=0
+	server_status=0
 else
-  server_status="$?"
+	server_status="$?"
 fi
 server_pid=''
 exit "$server_status"

@@ -21,6 +21,8 @@ import (
 	objectstorageadapter "github.com/fukamu/notes/backend/internal/adapters/objectstorage"
 	otpadapter "github.com/fukamu/notes/backend/internal/adapters/otp"
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
+	privacydeletionadapter "github.com/fukamu/notes/backend/internal/adapters/privacydeletion"
+	privacyunavailableadapter "github.com/fukamu/notes/backend/internal/adapters/privacyunavailable"
 	recoverykeyadapter "github.com/fukamu/notes/backend/internal/adapters/recoverykey"
 	"github.com/fukamu/notes/backend/internal/billing"
 	"github.com/fukamu/notes/backend/internal/config"
@@ -31,6 +33,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/fukamu/notes/backend/internal/legal"
 	"github.com/fukamu/notes/backend/internal/localfixture"
+	"github.com/fukamu/notes/backend/internal/privacyrequest"
 	"github.com/fukamu/notes/backend/internal/runtimefoundation"
 	"github.com/fukamu/notes/backend/internal/syncv2"
 	"github.com/fukamu/notes/backend/internal/telemetry"
@@ -84,6 +87,7 @@ func run() int {
 		LegalRuntime:               runtime.legal,
 		BillingCancellationRuntime: runtime.billingCancellation,
 		AccountDeletionRuntime:     runtime.accountDeletion,
+		PrivacyRequestRuntime:      runtime.privacyRequest,
 		DisableLegacySync:          runtime.disableLegacySync,
 		EnableDisconnectedFixtures: disconnectedFixturesEnabled(configuration.Environment),
 	}); err != nil {
@@ -104,6 +108,9 @@ type runtimeComposition struct {
 	accountDeletion     *httpapi.AccountDeletionRuntime
 	deletionApplication *runtimefoundation.LeaseCheckedAccountDeletionApplication
 	deletionEffects     *composedDeletionEffects
+	privacyRequest      *httpapi.PrivacyRequestRuntime
+	privacyApplication  *privacyrequest.Service
+	privacyStore        *postgresadapter.PrivacyRequestStore
 	disableLegacySync   bool
 }
 
@@ -364,6 +371,37 @@ func composeRuntime(
 		if fencedDeletionErr != nil || leasedDeletionErr != nil {
 			closeRuntime()
 			return runtimeComposition{}, func() {}, errors.New("configure account deletion fence")
+		}
+		privacyStore, privacyStoreErr := postgresadapter.NewPrivacyRequestStore(pool)
+		if privacyStoreErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture privacy request journal")
+		}
+		unavailablePrivacy := privacyunavailableadapter.New()
+		var deletionHandoff privacyrequest.DeletionHandoffPort = unavailablePrivacy
+		if fixtureConfig.LegalEvidencePolicy == config.LocalFixtureDeleteLiveEvidence {
+			deletionHandoff, err = privacydeletionadapter.New(leasedDeletion, fixtureClock)
+			if err != nil {
+				closeRuntime()
+				return runtimeComposition{}, func() {}, errors.New("configure privacy deletion handoff")
+			}
+		}
+		privacyService, privacyServiceErr := privacyrequest.NewService(
+			privacyStore, unavailablePrivacy, unavailablePrivacy, deletionHandoff,
+		)
+		leasedPrivacy, leasedPrivacyErr := runtimefoundation.NewLeaseCheckedPrivacyRequestApplication(
+			fixtureLease, privacyService,
+		)
+		if privacyServiceErr != nil || leasedPrivacyErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture privacy request journal")
+		}
+		composition.privacyStore = privacyStore
+		composition.privacyApplication = privacyService
+		composition.privacyRequest = &httpapi.PrivacyRequestRuntime{
+			ExpectedOrigin: fixtureConfig.PublicOrigin.String(), Clock: fixtureClock,
+			Sessions: scopedSessions, Application: leasedPrivacy,
+			NewRequestID: legalIdentifierGenerator(identifiers),
 		}
 		// An undecided legal-evidence policy must reject admission before the
 		// vault fence is sealed, a deletion operation is created, or the session

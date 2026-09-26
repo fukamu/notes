@@ -180,8 +180,8 @@
         "kind": "retained-frontend",
         "currentPath": "tests/fixtures/privacy-request.ts",
         "evidence": [
-          "tests/unit/http-privacy-request.test.ts",
-          "tests/unit/local-privacy-request.test.ts"
+          "tests/e2e/privacy-request-ui.spec.ts",
+          "tests/unit/http-privacy-request.test.ts"
         ]
       }
     },

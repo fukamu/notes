@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fukamu/notes/backend/internal/accountdeletion"
+	"github.com/fukamu/notes/backend/internal/privacyrequest"
 	"github.com/fukamu/notes/backend/internal/syncv2"
 )
 
@@ -165,11 +166,63 @@ func TestLeaseCheckedApplicationsRejectEveryEntryPointBeforeDelegate(t *testing.
 	); !errors.Is(err, ErrVaultActivityClosed) {
 		t.Fatalf("Resume() error = %v", err)
 	}
+	privacyDelegate := &privacyRequestStub{}
+	privacyApplication, err := NewLeaseCheckedPrivacyRequestApplication(&lease, privacyDelegate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := privacyApplication.Submit(
+		context.Background(), privacyrequest.Scope{}, privacyrequest.SubmitCommand{}, "", 0,
+	); !errors.Is(err, ErrVaultActivityClosed) {
+		t.Fatalf("privacy Submit() error = %v", err)
+	}
+	if _, err := privacyApplication.Status(
+		context.Background(), privacyrequest.Scope{}, "",
+	); !errors.Is(err, ErrVaultActivityClosed) {
+		t.Fatalf("privacy Status() error = %v", err)
+	}
 	if syncDelegate.syncCalls != 0 || syncDelegate.deleteCalls != 0 ||
-		deletionDelegate.startCalls != 0 || deletionDelegate.resumeCalls != 0 || lease.calls != 4 {
-		t.Fatalf("calls lease=%d sync=%d delete=%d start=%d resume=%d",
+		deletionDelegate.startCalls != 0 || deletionDelegate.resumeCalls != 0 ||
+		privacyDelegate.submitCalls != 0 || privacyDelegate.statusCalls != 0 || lease.calls != 6 {
+		t.Fatalf("calls lease=%d sync=%d delete=%d start=%d resume=%d privacy-submit=%d privacy-status=%d",
 			lease.calls, syncDelegate.syncCalls, syncDelegate.deleteCalls,
-			deletionDelegate.startCalls, deletionDelegate.resumeCalls)
+			deletionDelegate.startCalls, deletionDelegate.resumeCalls,
+			privacyDelegate.submitCalls, privacyDelegate.statusCalls)
+	}
+}
+
+func TestLeaseCheckedPrivacyRequestApplicationDelegatesAfterLeaseCheck(t *testing.T) {
+	lease := &leaseCheckStub{}
+	delegate := &privacyRequestStub{result: privacyrequest.ApplicationResult{Kind: privacyrequest.ApplicationAccepted}}
+	application, err := NewLeaseCheckedPrivacyRequestApplication(lease, delegate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := application.Submit(
+		context.Background(), privacyrequest.Scope{}, privacyrequest.SubmitCommand{}, "", 0,
+	); err != nil || result.Kind != privacyrequest.ApplicationAccepted {
+		t.Fatalf("Submit() = %#v, %v", result, err)
+	}
+	if result, err := application.Status(
+		context.Background(), privacyrequest.Scope{}, "",
+	); err != nil || result.Kind != privacyrequest.ApplicationAccepted {
+		t.Fatalf("Status() = %#v, %v", result, err)
+	}
+	if lease.calls != 2 || delegate.submitCalls != 1 || delegate.statusCalls != 1 {
+		t.Fatalf("calls lease=%d submit=%d status=%d", lease.calls, delegate.submitCalls, delegate.statusCalls)
+	}
+}
+
+func TestLeaseCheckedPrivacyRequestApplicationRejectsIncompleteConstruction(t *testing.T) {
+	if _, err := NewLeaseCheckedPrivacyRequestApplication(nil, &privacyRequestStub{}); !errors.Is(err, ErrInvalidFoundation) {
+		t.Fatalf("nil lease error = %v", err)
+	}
+	if _, err := NewLeaseCheckedPrivacyRequestApplication(&leaseCheckStub{}, nil); !errors.Is(err, ErrInvalidFoundation) {
+		t.Fatalf("nil delegate error = %v", err)
+	}
+	var application *LeaseCheckedPrivacyRequestApplication
+	if _, err := application.Status(context.Background(), privacyrequest.Scope{}, ""); !errors.Is(err, ErrInvalidFoundation) {
+		t.Fatalf("nil receiver error = %v", err)
 	}
 }
 
@@ -217,6 +270,32 @@ func (stub *fenceDeletionStub) Resume(context.Context, accountdeletion.ResumeCom
 type leaseCheckStub struct {
 	err   error
 	calls int
+}
+
+type privacyRequestStub struct {
+	result      privacyrequest.ApplicationResult
+	submitCalls int
+	statusCalls int
+}
+
+func (stub *privacyRequestStub) Submit(
+	context.Context,
+	privacyrequest.Scope,
+	privacyrequest.SubmitCommand,
+	privacyrequest.RequestID,
+	int64,
+) (privacyrequest.ApplicationResult, error) {
+	stub.submitCalls++
+	return stub.result, nil
+}
+
+func (stub *privacyRequestStub) Status(
+	context.Context,
+	privacyrequest.Scope,
+	privacyrequest.RequestID,
+) (privacyrequest.ApplicationResult, error) {
+	stub.statusCalls++
+	return stub.result, nil
 }
 
 func (stub *leaseCheckStub) Check(context.Context) error {

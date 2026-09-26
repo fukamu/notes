@@ -57,7 +57,6 @@ export default defineConfig({
         'lib/client/browser-service-worker-purge.ts',
         'lib/client/http-billing-ui.ts',
         'lib/client/http-privacy-request.ts',
-        'lib/client/local-privacy-request.ts',
         'lib/client/card-editor-index-cache.ts',
         'lib/client/browser-connectivity.ts',
         'lib/client/http-account-deletion.ts',
