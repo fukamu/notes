@@ -109,6 +109,7 @@ type VaultPrivateObjectPurgeFailureReason string
 
 const (
 	VaultPrivateObjectPurgeConfirmed        VaultPrivateObjectPurgeResultKind = "confirmed"
+	VaultPrivateObjectPurgeProgressed       VaultPrivateObjectPurgeResultKind = "progressed"
 	VaultPrivateObjectPurgeRetryableFailure VaultPrivateObjectPurgeResultKind = "retryable-failure"
 	VaultPrivateObjectPurgeTerminalFailure  VaultPrivateObjectPurgeResultKind = "terminal-failure"
 
@@ -146,7 +147,8 @@ func EvaluateVaultPrivateObjectPurge(value VaultPrivateObjectPurgeEvaluation) Va
 	if !validPurgeCount(value.PendingBefore) || !validPurgeCount(value.Selected) ||
 		!validPurgeCount(value.Confirmed) || !validPurgeCount(value.StorageFailure) ||
 		!validPurgeCount(value.PendingAfter) || value.Selected > value.PendingBefore ||
-		value.PendingAfter > value.PendingBefore || value.Confirmed+value.StorageFailure != value.Selected {
+		value.PendingAfter > value.PendingBefore || value.Confirmed+value.StorageFailure != value.Selected ||
+		value.PendingAfter > value.PendingBefore-value.Confirmed {
 		return retryableVaultPrivateObjectPurge(VaultPrivateObjectPurgeDeleteConfirmationUnavailable)
 	}
 	if value.PendingAfter == 0 {
@@ -155,6 +157,9 @@ func EvaluateVaultPrivateObjectPurge(value VaultPrivateObjectPurgeEvaluation) Va
 			outcome = VaultPrivateObjectPurgeAlreadyEmpty
 		}
 		return VaultPrivateObjectPurgeResult{Kind: VaultPrivateObjectPurgeConfirmed, Outcome: outcome}
+	}
+	if value.Confirmed > 0 {
+		return VaultPrivateObjectPurgeResult{Kind: VaultPrivateObjectPurgeProgressed}
 	}
 	if value.StorageFailure > 0 {
 		return retryableVaultPrivateObjectPurge(VaultPrivateObjectPurgeStorageUnavailable)
@@ -241,7 +246,6 @@ func (service *VaultPrivateObjectPurgeService) PurgeVaultPrivateObjects(
 		if complete {
 			mutation, err = repository.ConfirmDelete(ctx, entry)
 		} else {
-			storageFailures++
 			if !ValidDeleteOutboxEntry(planned) {
 				return retryableVaultPrivateObjectPurge(VaultPrivateObjectPurgeDeleteConfirmationUnavailable), nil
 			}
@@ -250,8 +254,10 @@ func (service *VaultPrivateObjectPurgeService) PurgeVaultPrivateObjects(
 		if err != nil || (mutation.Kind != DeleteOutboxMutationApplied && mutation.Kind != DeleteOutboxMutationReplayed) {
 			return retryableVaultPrivateObjectPurge(VaultPrivateObjectPurgeDeleteConfirmationUnavailable), nil
 		}
-		if complete {
+		if complete || mutation.Kind == DeleteOutboxMutationReplayed {
 			confirmed++
+		} else {
+			storageFailures++
 		}
 	}
 	pendingAfter, err := repository.CountPending(ctx)

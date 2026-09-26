@@ -44,9 +44,36 @@ func TestEvaluateVaultPrivateObjectPurge(t *testing.T) {
 			},
 		},
 		{
-			name: "objects remaining",
+			name: "mixed durable progress and storage failure",
+			value: encryptedobject.VaultPrivateObjectPurgeEvaluation{
+				PendingBefore: 3, Selected: 3, Confirmed: 2, StorageFailure: 1, PendingAfter: 1,
+			},
+			want: encryptedobject.VaultPrivateObjectPurgeResult{
+				Kind: encryptedobject.VaultPrivateObjectPurgeProgressed,
+			},
+		},
+		{
+			name: "bounded progress",
 			value: encryptedobject.VaultPrivateObjectPurgeEvaluation{
 				PendingBefore: 2, Selected: 1, Confirmed: 1, PendingAfter: 1,
+			},
+			want: encryptedobject.VaultPrivateObjectPurgeResult{
+				Kind: encryptedobject.VaultPrivateObjectPurgeProgressed,
+			},
+		},
+		{
+			name: "concurrent extra drain completes",
+			value: encryptedobject.VaultPrivateObjectPurgeEvaluation{
+				PendingBefore: 2, Selected: 1, Confirmed: 1, PendingAfter: 0,
+			},
+			want: encryptedobject.VaultPrivateObjectPurgeResult{
+				Kind: encryptedobject.VaultPrivateObjectPurgeConfirmed, Outcome: encryptedobject.VaultPrivateObjectPurgeDeleted,
+			},
+		},
+		{
+			name: "objects remaining without progress",
+			value: encryptedobject.VaultPrivateObjectPurgeEvaluation{
+				PendingBefore: 2, PendingAfter: 2,
 			},
 			want: encryptedobject.VaultPrivateObjectPurgeResult{
 				Kind:   encryptedobject.VaultPrivateObjectPurgeRetryableFailure,
@@ -57,6 +84,16 @@ func TestEvaluateVaultPrivateObjectPurge(t *testing.T) {
 			name: "malformed counts",
 			value: encryptedobject.VaultPrivateObjectPurgeEvaluation{
 				PendingBefore: 1, Selected: 2, Confirmed: 2,
+			},
+			want: encryptedobject.VaultPrivateObjectPurgeResult{
+				Kind:   encryptedobject.VaultPrivateObjectPurgeRetryableFailure,
+				Reason: encryptedobject.VaultPrivateObjectPurgeDeleteConfirmationUnavailable,
+			},
+		},
+		{
+			name: "malformed pending delta",
+			value: encryptedobject.VaultPrivateObjectPurgeEvaluation{
+				PendingBefore: 2, Selected: 1, Confirmed: 1, PendingAfter: 2,
 			},
 			want: encryptedobject.VaultPrivateObjectPurgeResult{
 				Kind:   encryptedobject.VaultPrivateObjectPurgeRetryableFailure,
@@ -114,8 +151,7 @@ func TestVaultPrivateObjectPurgeMapsPartialAndStorageFailure(t *testing.T) {
 			},
 			objects: deletePortStub{result: encryptedobject.DeleteDeleted},
 			want: encryptedobject.VaultPrivateObjectPurgeResult{
-				Kind:   encryptedobject.VaultPrivateObjectPurgeRetryableFailure,
-				Reason: encryptedobject.VaultPrivateObjectPurgeObjectsRemaining,
+				Kind: encryptedobject.VaultPrivateObjectPurgeProgressed,
 			},
 		},
 		{
@@ -172,6 +208,29 @@ func TestVaultPrivateObjectPurgeRejectsConfirmationConflict(t *testing.T) {
 	result, err := service.PurgeVaultPrivateObjects(context.Background(), command)
 	if err != nil || result.Kind != encryptedobject.VaultPrivateObjectPurgeRetryableFailure ||
 		result.Reason != encryptedobject.VaultPrivateObjectPurgeDeleteConfirmationUnavailable {
+		t.Fatalf("PurgeVaultPrivateObjects() = %#v, %v", result, err)
+	}
+}
+
+func TestVaultPrivateObjectPurgeCountsConcurrentRescheduleReplayAsProgress(t *testing.T) {
+	t.Parallel()
+	command := privateObjectPurgeCommand(t)
+	repository := &purgeRepositoryStub{
+		counts: []int64{1, 0}, entries: []encryptedobject.DeleteOutboxEntry{privateObjectDeleteEntry(t)},
+		reschedule: encryptedobject.DeleteOutboxMutationResult{Kind: encryptedobject.DeleteOutboxMutationReplayed},
+	}
+	directory := &purgeDirectoryStub{repository: repository}
+	objects := &deletePortStub{err: errors.New("storage unavailable")}
+	service, err := encryptedobject.NewVaultPrivateObjectPurgeService(
+		command.Scope, directory, objects,
+		encryptedobject.VaultPrivateObjectPurgePolicy{BatchLimit: 1, RetryDelayMilli: 100},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.PurgeVaultPrivateObjects(context.Background(), command)
+	if err != nil || result.Kind != encryptedobject.VaultPrivateObjectPurgeConfirmed ||
+		result.Outcome != encryptedobject.VaultPrivateObjectPurgeDeleted {
 		t.Fatalf("PurgeVaultPrivateObjects() = %#v, %v", result, err)
 	}
 }

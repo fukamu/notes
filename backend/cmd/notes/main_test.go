@@ -115,6 +115,9 @@ func TestValidateRuntimeConfigurationRequiresExactPrivateRuntimeReuseBeforeIO(t 
 		{name: "derived path mismatch", mutate: func(value *config.Config) {
 			value.LocalFixture.KeyDirectory = filepath.Join(value.LocalFixture.PrivateRoot, "other")
 		}},
+		{name: "unknown legal evidence policy", mutate: func(value *config.Config) {
+			value.LocalFixture.LegalEvidencePolicy = "retain-and-delete"
+		}},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
@@ -143,9 +146,10 @@ func validRuntimeConfig(t *testing.T) config.Config {
 		},
 		LocalFixture: &config.LocalFixtureConfig{
 			DatabaseURL: databaseURL, PublicOrigin: origin, AllowedSubject: "fixture-owner", PrivateRoot: root,
-			ObjectDirectory: filepath.Join(root, localfixture.ObjectDirectoryName),
-			NonceDirectory:  filepath.Join(root, localfixture.NonceDirectoryName),
-			KeyDirectory:    filepath.Join(root, localfixture.KeyDirectoryName),
+			ObjectDirectory:     filepath.Join(root, localfixture.ObjectDirectoryName),
+			NonceDirectory:      filepath.Join(root, localfixture.NonceDirectoryName),
+			KeyDirectory:        filepath.Join(root, localfixture.KeyDirectoryName),
+			LegalEvidencePolicy: config.LocalFixtureLegalEvidenceUndecided,
 		},
 	}
 }

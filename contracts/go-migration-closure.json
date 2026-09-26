@@ -251,13 +251,19 @@
     },
     {
       "id": "F23",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
-      "verification": ["V03", "V04", "V07", "V08"],
+      "verification": ["V03", "V04", "V07", "V08", "V10"],
       "goEvidence": [
         "backend/internal/accountdeletion/application.go",
-        "backend/internal/httpapi/account_deletion.go"
-      ]
+        "backend/internal/httpapi/account_deletion.go",
+        "backend/internal/adapters/localfixture/deletion_barrier.go",
+        "backend/internal/adapters/postgres/local_fixture_deletion_preflight.go",
+        "backend/internal/adapters/postgres/local_fixture_runtime_lease.go",
+        "backend/internal/runtimefoundation/vault_activity_fence.go",
+        "backend/cmd/notes/main.go"
+      ],
+      "note": "Issue #512 connects the full saga only in the exact disposable local fixture with an explicit delete-live-evidence policy. Undecided/default/production stay closed; non-pristine fixture restart without that policy fails closed."
     },
     {
       "id": "F24",
@@ -361,6 +367,8 @@
         "backend/tests/integration/postgres_foundation_test.go",
         "backend/tests/integration/legacy_sync_test.go",
         "backend/tests/integration/local_fixture_foundation_test.go",
+        "backend/tests/integration/local_fixture_runtime_lease_test.go",
+        "backend/tests/integration/account_deletion_test.go",
         "backend/cmd/notes/main_integration_test.go"
       ]
     },
@@ -407,6 +415,8 @@
         "backend/internal/operations/billing_reconciliation_test.go",
         "backend/internal/operations/dek_reencryption_test.go",
         "backend/tests/integration/account_deletion_test.go",
+        "backend/cmd/notes/main_integration_test.go",
+        "backend/cmd/notesctl/prepare_e2e_integration_test.go",
         "backend/internal/operations/dek_rotation_test.go",
         "backend/internal/operations/delete_outbox_test.go",
         "backend/internal/operations/launch_policy_test.go",
@@ -434,6 +444,9 @@
       "status": "complete",
       "evidence": [
         "tests/e2e/notes.spec.ts",
+        "tests/e2e/logout-purge.spec.ts",
+        "tests/integration/authenticated-notes-account-deletion.test.tsx",
+        "tests/integration/logout-runtime-coordination.test.ts",
         "tests/unit/service-worker.test.ts",
         "backend/cmd/notes/main_integration_test.go"
       ]

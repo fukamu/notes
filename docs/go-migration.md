@@ -89,7 +89,11 @@ delete existing resources.
   routes and external providers initially remained disconnected. Issue #510
   starts from exact integration tip
   `5351ac46b0e960320c4d4fdd2347361e10bb6d80` and connects only local-fixture
-  terms, URL-free checkout, and no-effect period-end cancellation. T17 Issue
+  terms, URL-free checkout, and no-effect period-end cancellation. Issue #511
+  connects the exact local Sync v2/session/encryption graph. Issue #512 starts
+  from integration commit `3931ae7b9d1988cccea8c93d9844ef3bb2d03f54`
+  and is the guarded disposable account-deletion slice described under T12h;
+  it does not select production policy or deploy. T17 Issue
   #498 subsequently retired the legacy server and completed V11; V09 remains
   approval-pending.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
@@ -113,53 +117,53 @@ and a still-absent external-provider proof; F12 uses it to distinguish the local
 fixture key, the production KMS adapters, and the unperformed provider exercise.
 A disconnected handler is not the same contract as its closed route.
 
-| ID  | State | Capability                                  | Go evidence                     | Verification    | Status                                                                                    |
-| --- | ----- | ------------------------------------------- | ------------------------------- | --------------- | ----------------------------------------------------------------------------------------- |
-| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10         | integrated by #420 / PR #421                                                              |
-| F02 | B     | launch gate / private owner                 | T04                             | V02,V03         | signed gate #416; owner/origin enforced #418                                              |
-| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10     | Go/Postgres #418; Go-served UI #420                                                       |
-| F04 | A/B   | session / CSRF                              | T06                             | V02,V03,V04     | local-fixture Sync v2 session connected by #511; production issuance/routes remain closed |
-| F05 | B     | Google OIDC                                 | T06                             | V03             | Go core/provider adapter #424; disconnected                                               |
-| F06 | B     | email OTP                                   | T06                             | V03             | Go core/HMAC/CAS #426; disconnected                                                       |
-| F07 | A/B   | identity / vault context                    | T06                             | V03,V04         | local-fixture session context connected by #511; production identity remains pending      |
-| F08 | B     | signup admission                            | T06,T10                         | V03,V07         | provisioning #426; Go terms adapter #442                                                  |
-| F09 | A/B   | vault content                               | T11                             | V04,V05         | local encrypted hydration connected by #511; production remains closed                    |
-| F10 | A/B   | sync v2                                     | T11                             | V01,V04,V05     | exact local-fixture HTTP/UI connected by #511; production remains closed                  |
-| F11 | A/B   | envelope encryption                         | T07                             | V06             | local AES-GCM content path connected by #511; production remains closed                   |
-| F12 | A/B/C | KMS / DEK                                   | T07                             | V06,V09         | local fixture key connected by #511; production KMS/provider proof open                   |
-| F13 | B     | key rotation                                | T08,T13                         | V04,V06,V08     | state machine/Postgres #432; explicit runner #480                                         |
-| F14 | A/B   | immutable encrypted object                  | T08,T13                         | V04,V06,V08     | local filesystem write/read connected by #511; production provider remains closed         |
-| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08         | reencryption #432/#482; fixture recovery #434/#490                                        |
-| F16 | A/B   | quota                                       | T11                             | V04,V05         | local Sync v2 ledger connected by #511; production remains closed                         |
-| F17 | A/B   | billing projection                          | T09                             | V04,V07         | seeded local entitlement source connected by #511; provider effects remain closed         |
-| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09         | Go core/SDK #438; provider evidence time #476; remains closed                             |
-| F19 | A/B   | entitlement / offline lease                 | T09                             | V05,V07         | real local seeded evaluation connected by #511; production remains closed                 |
-| F20 | A/B   | legal checkout evidence                     | T10                             | V01,V07         | local URL-free/no-charge runtime #510; production closed                                  |
-| F21 | A/B   | terms consent                               | T10                             | V01,V07         | local fixture/PostgreSQL runtime #510; production closed                                  |
-| F22 | A/B   | normal cancellation                         | T09                             | V01,V07         | local no-effect scheduled provider #510; production closed                                |
-| F23 | B     | account deletion                            | T12                             | V03,V04,V07,V08 | saga #458; effects #460/#462/#464; finalizer #466; handoff #468                           |
-| F24 | B     | privacy request journal                     | T12                             | V01,V03,V08     | Go journal/closed HTTP #456; deletion handoff #468                                        |
-| F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11         | core #414; legacy singleton seed #418                                                     |
-| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | quota #470/#472; deletion #474; billing #478; DEK #480/#482; recovery #490                |
-| F27 | A/B   | frontend wire contracts                     | T01,T05,T14,T17                 | V01,V10,V11     | authenticated local Sync v2 route live by #511; production remains approval-pending       |
-| F28 | C     | scheduler / realtime services               | none unless separately approved | V08             | intentionally not added                                                                   |
+| ID  | State | Capability                                  | Go evidence                     | Verification        | Status                                                                                    |
+| --- | ----- | ------------------------------------------- | ------------------------------- | ------------------- | ----------------------------------------------------------------------------------------- |
+| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10             | integrated by #420 / PR #421                                                              |
+| F02 | B     | launch gate / private owner                 | T04                             | V02,V03             | signed gate #416; owner/origin enforced #418                                              |
+| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10         | Go/Postgres #418; Go-served UI #420                                                       |
+| F04 | A/B   | session / CSRF                              | T06                             | V02,V03,V04         | local-fixture Sync v2 session connected by #511; production issuance/routes remain closed |
+| F05 | B     | Google OIDC                                 | T06                             | V03                 | Go core/provider adapter #424; disconnected                                               |
+| F06 | B     | email OTP                                   | T06                             | V03                 | Go core/HMAC/CAS #426; disconnected                                                       |
+| F07 | A/B   | identity / vault context                    | T06                             | V03,V04             | local-fixture session context connected by #511; production identity remains pending      |
+| F08 | B     | signup admission                            | T06,T10                         | V03,V07             | provisioning #426; Go terms adapter #442                                                  |
+| F09 | A/B   | vault content                               | T11                             | V04,V05             | local encrypted hydration connected by #511; production remains closed                    |
+| F10 | A/B   | sync v2                                     | T11                             | V01,V04,V05         | exact local-fixture HTTP/UI connected by #511; production remains closed                  |
+| F11 | A/B   | envelope encryption                         | T07                             | V06                 | local AES-GCM content path connected by #511; production remains closed                   |
+| F12 | A/B/C | KMS / DEK                                   | T07                             | V06,V09             | local fixture key connected by #511; production KMS/provider proof open                   |
+| F13 | B     | key rotation                                | T08,T13                         | V04,V06,V08         | state machine/Postgres #432; explicit runner #480                                         |
+| F14 | A/B   | immutable encrypted object                  | T08,T13                         | V04,V06,V08         | local filesystem write/read connected by #511; production provider remains closed         |
+| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08             | reencryption #432/#482; fixture recovery #434/#490                                        |
+| F16 | A/B   | quota                                       | T11                             | V04,V05             | local Sync v2 ledger connected by #511; production remains closed                         |
+| F17 | A/B   | billing projection                          | T09                             | V04,V07             | seeded local entitlement source connected by #511; provider effects remain closed         |
+| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09             | Go core/SDK #438; provider evidence time #476; remains closed                             |
+| F19 | A/B   | entitlement / offline lease                 | T09                             | V05,V07             | real local seeded evaluation connected by #511; production remains closed                 |
+| F20 | A/B   | legal checkout evidence                     | T10                             | V01,V07             | local URL-free/no-charge runtime #510; production closed                                  |
+| F21 | A/B   | terms consent                               | T10                             | V01,V07             | local fixture/PostgreSQL runtime #510; production closed                                  |
+| F22 | A/B   | normal cancellation                         | T09                             | V01,V07             | local no-effect scheduled provider #510; production closed                                |
+| F23 | A/B   | account deletion                            | T12                             | V03,V04,V07,V08,V10 | exact disposable fixture composition #512; production/default remain closed               |
+| F24 | B     | privacy request journal                     | T12                             | V01,V03,V08         | Go journal/closed HTTP #456; deletion handoff #468                                        |
+| F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11             | core #414; legacy singleton seed #418                                                     |
+| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09             | quota #470/#472; deletion #474; billing #478; DEK #480/#482; recovery #490                |
+| F27 | A/B   | frontend wire contracts                     | T01,T05,T14,T17                 | V01,V10,V11         | authenticated local Sync v2 route live by #511; production remains approval-pending       |
+| F28 | C     | scheduler / realtime services               | none unless separately approved | V08                 | intentionally not added                                                                   |
 
 ## Verification matrix
 
-| ID  | Required evidence                                       | Current evidence                                                                                                                                                             |
-| --- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454/#511; strict local session context #511; legal #442/#444/#446/#510; privacy #456                                                                         |
-| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                                                                                 |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; exact local scope and HTTP-before-body #511; OIDC #424; OTP/owner #426; legal #446; privacy #456; deletion #458; privacy/deletion owner binding #468      |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450/#472; sync #452/#454; real local composition/restart #511; privacy/deletion slices |
-| V05 | sync/quota paging, retry, conflict, limits              | quota #450/#472; journal #452; authenticated encrypted composition #454; live local HTTP/UI connection #511                                                                  |
-| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434; filesystem ciphertext/restart proof #511                                                                                |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438/#476; lease #440; legal #442/#444/#446/#510; scoped reconciliation #478                                                                         |
-| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432/#482; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468; billing #478; rotation runner #480   |
-| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                                    |
-| V10 | browser UI/offline/SW/deep links                        | #420 baseline; authenticated Vault-scoped Sync v2 Playwright coverage #511                                                                                                   |
-| V11 | clean build/migrate/image and server-runtime removal    | Node-free image/config/layer/smoke gate #492; legacy source/config/dependency retirement #498                                                                                |
-| V12 | isolated reference/Go performance comparison            | loopback-only typed runner and isolated D1/PostgreSQL observation in #494                                                                                                    |
+| ID  | Required evidence                                       | Current evidence                                                                                                                                                                                       |
+| --- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454/#511; strict local session context #511; legal #442/#444/#446/#510; privacy #456                                                                                                   |
+| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                                                                                                           |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; exact local scope and HTTP-before-body #511; OIDC #424; OTP/owner #426; legal #446; privacy #456; deletion #458; privacy/deletion owner binding #468                                |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450/#472; sync #452/#454; local composition/restart #511; exact deletion phase/restart/lease #512                |
+| V05 | sync/quota paging, retry, conflict, limits              | quota #450/#472; journal #452; authenticated encrypted composition #454; live local HTTP/UI connection #511                                                                                            |
+| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434; filesystem ciphertext/restart proof #511                                                                                                          |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438/#476; lease #440; legal #442/#444/#446/#510; scoped reconciliation #478                                                                                                   |
+| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432/#482; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468; every receipt/effect crash boundary and filesystem replay #512 |
+| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                                                              |
+| V10 | browser UI/offline/SW/deep links                        | #420 baseline; authenticated Vault-scoped Sync v2 #511; deletion recovery outside launch/session plus existing/new-tab quiescence and retained-before-revoke purge #512                                |
+| V11 | clean build/migrate/image and server-runtime removal    | Node-free image/config/layer/smoke gate #492; legacy source/config/dependency retirement #498                                                                                                          |
+| V12 | isolated reference/Go performance comparison            | loopback-only typed runner and isolated D1/PostgreSQL observation in #494                                                                                                                              |
 
 ## Intentional security differences
 
@@ -1192,19 +1196,19 @@ The start HTTP contract authenticates owner and CSRF before reading its bounded
 body, then persists the initial operation without revoking the session or
 clearing the cookie. The continuation contract requires CSRF but not the live
 session, consumes a sequence, runs at most one effect, and clears the stale
-cookie only for an accepted response. Both handlers remain outside
-`HandlerOptions`; production routes remain closed.
+cookie only for an accepted response. Issue #512 mounts both handlers only in
+the exact disposable fixture under explicit `delete-live-evidence`; the
+default, production-shaped, and `undecided` paths remain closed.
 
-This slice intentionally does not compose any destructive effect. Contract
-evidence currently provides a fail-closed foreign-key hold, and its retention
-or deletion policy still requires the legal/operational decision recorded in
-`docs/go-migration-decisions.md`. Immediate deletion cancellation remains
-distinct from the normal period-end cancellation in Draft PR #404. No Stripe,
-object store, KMS, email, production database, public route, or deployment is
-selected or changed.
+That fixture connects every destructive effect through one scoped PostgreSQL
+pool and anchored private filesystem, while cancellation is a deterministic
+no-network observation. Immediate deletion cancellation remains distinct from
+normal period-end cancellation. No Stripe, remote object store, provider KMS,
+email, production database, public route, or deployment is selected or changed.
 
-Before persistent use, rollback is a code revert and recreation of only the
-disposable test schema. After an accepted operation exists, stop new starts,
+Before persistent use, rollback may recreate only an explicitly disposable
+test schema. After an accepted operation exists, stop new starts but keep its
+Resume/status composition available,
 preserve migration 00014 with every operation/receipt/continuation row, restore
 a compatible artifact or apply a reviewed forward migration, and resume from
 the durable capability. Code rollback cannot restore revoked sessions,
@@ -1325,14 +1329,18 @@ finalization barriers; privacy handoff remains separate.
 
 ## T12f policy-gated account finalization
 
-Issue #466 ports `finalize-account` without composing the closed deletion HTTP
-handler or selecting a production legal-evidence policy. The pure Go service
-requires an explicit `undecided` or `delete-live-evidence` policy and runs four
-ordered barriers: private-object outbox reconfirmation, legal-evidence policy,
-wrapped DEK metadata removal, and live control-plane deletion. `undecided`
-stops an evidence-bearing operation before either destructive stage. The
-delete-live branch is only a locally tested candidate and is not a legal,
-production, or deployment decision.
+Issue #466 ports `finalize-account` without selecting a production
+legal-evidence policy. The pure Go service runs four ordered barriers:
+private-object outbox reconfirmation, legal-evidence policy, wrapped DEK
+metadata removal, and live control-plane deletion. Issue #512 connects it only
+for the exact disposable fixture under explicit `delete-live-evidence`.
+`undecided` now rejects Start before the fence is sealed, an operation is
+created, or any earlier effect runs. The older design that paused only an
+evidence-bearing finalization is not reproduced because preceding irreversible
+effects are not authorized while the legal policy is undecided. The long-lived
+continuation promotion recovers only an explicitly authorized operation; it
+does not supply that missing policy decision. The delete-live branch remains
+local evidence, not a legal, production, or deployment decision.
 
 The PostgreSQL adapter requires the exact Account/Vault owner, running
 operation, matching prior completion time, and an exact ordered set of the four
@@ -1352,7 +1360,8 @@ policy barrier. Once the deletion journal is durable, new evidence insertion is
 rejected, closing the policy-check/wrapped-key race. The minimal deletion and
 privacy journals remain independent and survive owner removal.
 
-Disposable-PostgreSQL tests cover a pending policy, delete-live candidate,
+Disposable-PostgreSQL tests cover undecided admission with zero side effects,
+missing-policy non-pristine restart refusal, the delete-live candidate,
 private-object barrier, missing/wrong receipts, wrong operation and owner,
 legal-evidence write rejection, transaction rollback, retry after partial
 progress, complete response-loss replay, another tenant, retained journals,
@@ -1360,7 +1369,8 @@ and failed old identity/session lookups. No KMS provider is called and no
 production migration, object store, credential, public route, deployment, or
 `main` change is selected or performed.
 
-Rollback first stops finalization attempts and preserves migrations 00014-00016
+Rollback first stops new Start attempts, keeps a compatible Resume/status path
+for accepted operations, and preserves migrations 00014-00016
 plus every operation, receipt, continuation, privacy journal, and pending
 outbox row. It must not drop the legal-evidence gate while an operation exists.
 Already removed keys, evidence, or live owner rows are not reconstructed;
@@ -1392,8 +1402,9 @@ account-deletion start repository together. It proves a lost handoff response
 can replay the same durable start, the operation and continuation remain
 singletons, another owner is isolated, a pre-existing conflicting owner
 operation is preserved, and no deletion effect is invoked. The public privacy
-and deletion routes remain closed, so this is composition evidence rather than
-feature publication.
+route and processor remain closed. T12h separately connects the deletion HTTP
+route only in the exact destructive disposable fixture, so the privacy handoff
+remains composition evidence rather than feature publication.
 
 `account-deletion-started` is not a statement that data has been deleted. The
 explicit runner that advances the stored saga remains T13 work. Recovery for a
@@ -1403,6 +1414,73 @@ legal-evidence policy, and every production configuration remain undecided and
 closed. Rollback stops new privacy processing but preserves migrations
 00013-00016, both journals, continuation digests, receipts, and outbox state; it
 does not delete a started operation or synthesize a privacy completion.
+
+## T12h exact disposable account-deletion connection
+
+Issue #512 connects F23 as guarded `A/B`: executable in the exact local fixture
+and closed in production/default. The destructive route is mounted only when
+`NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY=delete-live-evidence` is explicit.
+`undecided` rejects before operation creation, Vault-fence sealing, session
+revocation, database mutation, or filesystem mutation. If startup observes a
+deleting or completed phase, that same explicit policy is mandatory; otherwise
+the process fails startup rather than serving a silent 404.
+
+Before composition, one serializable snapshot classifies all 41 application
+tables for the exact owner as pristine, deleting, or completed and rejects
+foreign/extra owners, sessions, billing/entitlement projections, deletion
+journals, or impossible receipt/state combinations. Held root handles validate
+the exact private object, key, and nonce trees: directories are owner-only
+0700, regular files are owner-only 0600 with one link, nonce files are empty,
+object/quarantine inventory matches the durable outbox, and wrapped-key bytes
+match the database metadata. Completed phase requires all three private trees
+empty. Every readiness call repeats the phase/inventory proof.
+
+One `VaultActivityFence` covers all Sync v2 paths and deletion Start. Start
+seals admission before waiting for active sync, rejects queued/new work, and
+stays sealed after cancellation or a potentially committed panic. A lifetime
+lease acquires a fixed host flock before a dedicated PostgreSQL advisory-lock
+session; `notesctl prepare-e2e` uses the same order. The directory and lock file
+are anchored and identity-checked across acquisition. Keeper loss fails
+readiness and deletion calls closed while the host FD continues to exclude
+cooperating replacement processes. The fixture threat model assumes same-UID
+Notes/notesctl processes do not rename/unlink that namespace; a same-UID
+adversary could already mutate the disposable fixture and is outside scope.
+
+Private objects are quarantined and deleted through lifetime-anchored roots,
+then PostgreSQL confirmations make bounded durable shrink productive progress
+without consuming the retry budget. Finalization preflights all destructive
+paths before database mutation, removes exact wrapped-key metadata, then the
+matching key and zero-byte nonce files with directory fsync, and finally proves
+the completed trees empty. Real database/filesystem tests close and recompose
+after every receipt and after every effect-before-receipt window, including
+object quarantine, key/file crash windows, lifecycle completion, and lock loss.
+
+The browser first persists its Account-deletion marker and obtains an accepted
+server Start. It then prepares the existing logout marker and quiesces existing
+and new tabs without deleting local data; only a confirmed advance beyond
+revocation runs the normal purge targets. `AccountDeletionBoundary` is outside
+launch/session bootstrap, so a revoked-session or launch 403/503 reload can
+continue status without constructing Notes runtime. The initial capability is
+seven days. Before the revocation claim, only an exact decoded
+`continuation-required` denial lets the browser use its still-live session and
+same durable idempotency key to replay Start. PostgreSQL extends expiry
+atomically only for `InitialOperation` at `Ready(revoke-sessions, attempt=0)`
+with zero receipts and exact credentials; the browser marker CAS commits that
+response before Resume. An unexpired replay is read-only instead of sliding
+the seven-day window, and a lost renewal response preserves the already
+extended expiry. Generic 401, another owner/key, session expiry, and every
+claimed state make no renewal mutation. The same transaction that later claims
+`revoke-sessions` promotes only that already-authorized operation's
+continuation to the maximum safe timestamp before the effect, closing both
+first-effect crash windows without granting a new Start or read capability.
+
+Rollback closes new Starts but must preserve and serve Resume/status for every
+accepted saga, along with migrations 00014-00016, receipts, continuation
+digests, outbox rows, journals, and residual private files. Restore a compatible
+artifact or use a reviewed forward fix; never forge receipts or reconstruct
+deleted state. The guarded fixture prepare/reseed command may replace only the
+explicit disposable graph under both leases. Production policy, provider
+resources, cutover, deployment, and `main` remain separately approval-gated.
 
 ## T13a scoped quota reconciliation audit runner
 
@@ -1936,7 +2014,8 @@ session, Sync v2, Billing, cancellation, privacy/deletion, encrypted-object,
 and recovery routes therefore remained closed. Issue #510 passes
 `LegalRuntime` and `BillingCancellationRuntime`; Issue #511 passes
 `SyncV2Runtime` and exposes the authenticated session-context bootstrap for the
-same guarded profile. All four share the exact scoped session resolver, one
+same guarded profile. Issue #512 adds the complete account-deletion runtime only
+under explicit disposable `delete-live-evidence`. All share the exact scoped session resolver, one
 PostgreSQL pool, and a real HTTP clock. The local commerce provider requires the
 exact active subscription and Entitlement seed, performs no write, and returns
 URL-free checkout confirmation plus a stable period-end cancellation schedule.
@@ -1946,7 +2025,7 @@ Stripe, GCP KMS, identity/mail, remote object, or backup provider is constructed
 or contacted. The profile-disabled and production paths remain closed. #510
 changes F20-F22 to A/B; #511 changes F04, F07, F09-F11, F14, F16-F17, F19, and
 F27 to guarded A/B, while F12 becomes A/B/C because provider proof remains
-absent. Neither slice deploys or authorizes production configuration; T17
+absent. #512 changes F23 to guarded A/B. None deploys or authorizes production configuration; T17
 separately completes only the source/runtime-artifact claim.
 
 The real-PostgreSQL adapter integration tests exercise the migrated schema,
@@ -1954,13 +2033,17 @@ seed/readiness store, session lookup, key unwrap, and local legal/commerce
 service graph, including mutated-state rejection. Issue #511 adds direct
 `composeRuntime` HTTP, ciphertext-at-rest, restart/decrypt, and tombstone
 coverage with the same allowlisted disposable PostgreSQL boundary.
-Whole-process fixture verification remains serial and loopback-only;
+Whole-process fixture verification remains serial and loopback-only. #512 adds
+real destructive phase/restart, effect-boundary, advisory/host-lease, and
+browser cross-tab evidence;
 production composition is still verified closed.
 
-The filesystem checks are path-based rather than descriptor-relative. This is
-an explicit local/test residual risk bounded by the owner-private root and
-trusted-host assumption; the root must not be shared with an untrusted process.
-This slice does not claim hostile multi-user symlink-swap hardening.
+Deletion filesystem operations are descriptor-relative through lifetime-held
+roots and validate device/inode, owner, mode, link count, and expected metadata
+at each boundary. The remaining local/test boundary is a cooperating same-UID
+process model: Notes and notesctl do not rename or unlink the fixed host-lock
+namespace. A hostile same-UID process can already mutate the disposable fixture
+directly, so this is not a multi-user security boundary.
 
 Rollback removes the profile/foundation code and its local fixture data only.
 It is not permission to delete a shared database, key, secret, Stripe object,
@@ -1990,9 +2073,12 @@ the real Billing/Entitlement service at the deterministic seed timestamp; it
 does not pin the HTTP clock, so session expiry and mutation times continue to
 use real time.
 
-The notes layout now starts with `AuthenticatedNotesBootstrap`. Its strict
-client decoder accepts only the four VaultContext fields returned by the
-private, no-store session endpoint. Anonymous, malformed, and dependency
+The notes layout now starts deletion recovery before
+`AuthenticatedNotesBootstrap`. Its strict client decoder accepts the four
+VaultContext fields plus the read-only `accountDeletionAvailable` boolean from
+the private, no-store session endpoint. That bit is true only when explicit
+delete-live composition mounts Start, so undecided/default fixtures expose no
+new-deletion control while existing markers still recover. Anonymous, malformed, and dependency
 responses construct no IndexedDB repository, Sync transport, Service Worker
 preparation, or logout runtime fence. Once authenticated, the existing
 `SessionNotesApp` builds the Vault-scoped IndexedDB and `/api/v2/sync` client.

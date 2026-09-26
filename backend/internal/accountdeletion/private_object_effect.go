@@ -47,6 +47,8 @@ func (effect *PrivateObjectPurgeEffect) DeletePrivateObjects(
 	switch result.Kind {
 	case encryptedobject.VaultPrivateObjectPurgeConfirmed:
 		return StepEffectResult{Kind: EffectSucceeded}, nil
+	case encryptedobject.VaultPrivateObjectPurgeProgressed:
+		return StepEffectResult{Kind: EffectProgressed}, nil
 	case encryptedobject.VaultPrivateObjectPurgeRetryableFailure:
 		switch result.Reason {
 		case encryptedobject.VaultPrivateObjectPurgeObjectsRemaining:

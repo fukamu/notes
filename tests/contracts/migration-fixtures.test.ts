@@ -160,6 +160,18 @@ describe('Go migration browser wire fixtures', () => {
       accountDeletionWireStatusDecoder.decode(field(deletion, 'inProgress')),
     ).toMatchObject({ ok: true, value: { kind: 'in-progress' } });
     expect(
+      accountDeletionWireStatusDecoder.decode(field(deletion, 'retryWait')),
+    ).toMatchObject({
+      ok: true,
+      value: { kind: 'retry-wait', retryAt: 2000 },
+    });
+    expect(
+      accountDeletionWireStatusDecoder.decode(field(deletion, 'failed')),
+    ).toEqual({ ok: true, value: { kind: 'failed' } });
+    expect(
+      accountDeletionWireStatusDecoder.decode(field(deletion, 'terminal')),
+    ).toEqual({ ok: true, value: { kind: 'completed' } });
+    expect(
       accountDeletionWireStatusDecoder.decode(
         field(deletion, 'invalidTerminal'),
       ),

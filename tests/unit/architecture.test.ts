@@ -586,7 +586,7 @@ describe('application and presentation architecture', () => {
 
   it('exposes only the documented deep application routes', async () => {
     const layout = await readFile('app/(notes)/layout.tsx', 'utf8');
-    expect(layout).toContain('<AuthenticatedNotesBootstrap />');
+    expect(layout).toContain('<NotesRouteRuntime>');
     expect(layout).not.toContain('LegacyNotesApp');
     for (const route of [
       'app/(notes)/page.tsx',
@@ -600,16 +600,24 @@ describe('application and presentation architecture', () => {
   });
 
   it('gates vault runtime construction on authenticated Go session context', async () => {
-    const [bootstrap, gate, boundary, sessionHandler] = await Promise.all([
-      readFile('components/authenticated-notes-bootstrap.tsx', 'utf8'),
-      readFile('components/session-notes-app.tsx', 'utf8'),
-      readFile('backend/internal/identity/boundary.go', 'utf8'),
-      readFile('backend/internal/httpapi/session_context.go', 'utf8'),
-    ]);
+    const [routeRuntime, bootstrap, gate, boundary, sessionHandler] =
+      await Promise.all([
+        readFile('app/(notes)/notes-route-runtime.tsx', 'utf8'),
+        readFile('components/authenticated-notes-bootstrap.tsx', 'utf8'),
+        readFile('components/session-notes-app.tsx', 'utf8'),
+        readFile('backend/internal/identity/boundary.go', 'utf8'),
+        readFile('backend/internal/httpapi/session_context.go', 'utf8'),
+      ]);
 
     expect(bootstrap).toContain('loadSessionContext');
     expect(bootstrap).toContain('createVaultNotesRuntimePorts');
-    expect(bootstrap).toContain('createBrowserLogoutPurgeService');
+    expect(routeRuntime).toContain('createBrowserLogoutPurgeService');
+    expect(routeRuntime).toContain(
+      'createBrowserAccountDeletionRunner(logout)',
+    );
+    expect(routeRuntime).toContain('<AccountDeletionBoundary');
+    expect(routeRuntime).toContain('<ProductionLaunchGate>');
+    expect(routeRuntime).toContain('<AuthenticatedNotesBootstrap');
     expect(gate).toContain('planNotesRuntimeLaunch(access)');
     expect(gate).toContain("case 'do-not-start':");
     expect(gate).toContain('createRuntimePorts(context)');

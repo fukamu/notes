@@ -42,6 +42,7 @@ type StepEffectResultKind string
 
 const (
 	EffectSucceeded        StepEffectResultKind = "succeeded"
+	EffectProgressed       StepEffectResultKind = "progressed"
 	EffectRetryableFailure StepEffectResultKind = "retryable-failure"
 	EffectTerminalFailure  StepEffectResultKind = "terminal-failure"
 )
@@ -261,6 +262,8 @@ func (service *Service) executeClaimedStep(
 	switch effect.Kind {
 	case EffectSucceeded:
 		result.Kind = StepSucceeded
+	case EffectProgressed:
+		result.Kind = StepProgressed
 	case EffectRetryableFailure:
 		result.Kind = StepRetryableFailure
 		result.FailureCode = effect.FailureCode
@@ -309,7 +312,8 @@ func (service *Service) executeEffect(ctx context.Context, input StepEffectInput
 	default:
 		err = ErrInvalidServiceConfiguration
 	}
-	if err != nil || !validEffectResult(result) {
+	if err != nil || !validEffectResult(result) ||
+		(result.Kind == EffectProgressed && input.Step != StepDeletePrivateObject) {
 		code, _ := ParseFailureCode("effect-unavailable")
 		return StepEffectResult{Kind: EffectRetryableFailure, FailureCode: code}
 	}
@@ -372,7 +376,7 @@ func validCredentialBundle(bundle CredentialBundle) bool {
 
 func validEffectResult(result StepEffectResult) bool {
 	switch result.Kind {
-	case EffectSucceeded:
+	case EffectSucceeded, EffectProgressed:
 		return result.FailureCode == ""
 	case EffectRetryableFailure, EffectTerminalFailure:
 		_, err := ParseFailureCode(string(result.FailureCode))

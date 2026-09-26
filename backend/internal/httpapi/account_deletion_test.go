@@ -136,6 +136,54 @@ func TestAccountDeletionContinuationRequiresCSRFFirstAndLimitsBody(t *testing.T)
 	}
 }
 
+func TestAccountDeletionMuxAppliesConfiguredLimitOnlyAfterAuthorization(t *testing.T) {
+	staticDirectory := t.TempDir()
+	writeStaticFixture(t, staticDirectory)
+	_, sessions, application, _ := newAccountDeletionHTTPHandlers(t)
+	handler, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory: staticDirectory,
+		BodyLimit:       8,
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		AccountDeletionRuntime: &httpapi.AccountDeletionRuntime{
+			ExpectedOrigin: accountDeletionOrigin, Clock: func() int64 { return 1_500 },
+			Sessions: sessions, Application: application,
+			NewOperationID: func() string { return accountDeletionOperationID },
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unread := &accountDeletionTrackingBody{}
+	request := accountDeletionRequest("/api/account/deletion", "")
+	request.Body = unread
+	request.ContentLength = 10_000
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized || unread.reads != 0 || application.startCalls != 0 {
+		t.Fatalf("anonymous = %d reads=%d calls=%d", response.Code, unread.reads, application.startCalls)
+	}
+
+	request = accountDeletionRequest(
+		"/api/account/deletion", `{"idempotencyKey":"`+strings.Repeat("I", 43)+`"}`,
+	)
+	request.Header.Set("Cookie", identity.SessionCookieName+"="+accountDeletionSession)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge ||
+		!strings.Contains(response.Body.String(), "request-too-large") || application.startCalls != 0 {
+		t.Fatalf("authenticated = %d %s calls=%d", response.Code, response.Body.String(), application.startCalls)
+	}
+
+	resume := accountDeletionRequest(
+		"/api/account/deletion/status", `{"continuationToken":"`+strings.Repeat("S", 43)+`.0"}`,
+	)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, resume)
+	if response.Code != http.StatusRequestEntityTooLarge || application.resumeCalls != 0 {
+		t.Fatalf("resume = %d %s calls=%d", response.Code, response.Body.String(), application.resumeCalls)
+	}
+}
+
 func TestAccountDeletionContinuationUsesOneGenericCapabilityDenial(t *testing.T) {
 	handlers, _, application, token := newAccountDeletionHTTPHandlers(t)
 	malformed := httptest.NewRecorder()
@@ -172,6 +220,28 @@ func TestAccountDeletionErrorsDoNotLogCapabilities(t *testing.T) {
 func TestAccountDeletionConstructorRejectsIncompleteRuntime(t *testing.T) {
 	if _, err := httpapi.NewAccountDeletionContractHandlers(nil, slog.Default()); err == nil {
 		t.Fatal("nil runtime was accepted")
+	}
+}
+
+func TestAccountDeletionRouteWithoutRuntimeFailsClosedWithoutReadingBody(t *testing.T) {
+	staticDirectory := t.TempDir()
+	writeStaticFixture(t, staticDirectory)
+	handler, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory: staticDirectory,
+		BodyLimit:       8,
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := &accountDeletionTrackingBody{}
+	request := accountDeletionRequest("/api/account/deletion", "")
+	request.Body = body
+	request.ContentLength = 10_000
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable || body.reads != 0 {
+		t.Fatalf("disconnected route = %d reads=%d body=%s", response.Code, body.reads, response.Body.String())
 	}
 }
 

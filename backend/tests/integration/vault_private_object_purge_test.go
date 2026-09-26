@@ -87,8 +87,7 @@ func TestVaultPrivateObjectPurgePostgresAndMemoryStorage(t *testing.T) {
 	}
 
 	assertPrivateObjectPurgeResult(t, service, ctx, command,
-		encryptedobject.VaultPrivateObjectPurgeRetryableFailure,
-		encryptedobject.VaultPrivateObjectPurgeObjectsRemaining)
+		encryptedobject.VaultPrivateObjectPurgeProgressed, "")
 	assertOutboxCount(t, ctx, pool, scopeA, 1)
 	assertPrivateObjectPurgeResult(t, service, ctx, command,
 		encryptedobject.VaultPrivateObjectPurgeConfirmed, "")
@@ -114,8 +113,7 @@ func TestVaultPrivateObjectPurgePostgresAndMemoryStorage(t *testing.T) {
 	objectsA.FailDeleteForTest(keyE)
 	command.AttemptedAt = 3_000
 	assertPrivateObjectPurgeResult(t, service, ctx, command,
-		encryptedobject.VaultPrivateObjectPurgeRetryableFailure,
-		encryptedobject.VaultPrivateObjectPurgeStorageUnavailable)
+		encryptedobject.VaultPrivateObjectPurgeProgressed, "")
 	assertOutboxRetry(t, ctx, pool, scopeA, keyE, 1, 3_100)
 	assertOutboxCount(t, ctx, pool, scopeA, 1)
 	deleteCalls := objectsA.Calls().Delete
@@ -183,6 +181,28 @@ func TestVaultPrivateObjectPurgePostgresAndMemoryStorage(t *testing.T) {
 	assertOutboxRetry(t, ctx, pool, scopeA, keyH, 1, 5_000)
 	if _, err := pool.Exec(ctx, "DELETE FROM vault_object_delete_outbox WHERE object_key = $1", string(keyH)); err != nil {
 		t.Fatal(err)
+	}
+
+	keyI := privateObjectPurgeKey(t, 'I')
+	seedPrivateObjectOutbox(t, ctx, pool, scopeA, 5_100, keyI)
+	command.AttemptedAt = 5_100
+	opened, err = directory.Open(ctx, command)
+	if err != nil || opened.Kind != encryptedobject.DeleteOutboxOpened {
+		t.Fatalf("reschedule replay Open() = %#v, %v", opened, err)
+	}
+	entries, err = opened.Repository.ListReady(ctx, 5_100, 1)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("reschedule replay entries = %#v, %v", entries, err)
+	}
+	if _, err := pool.Exec(ctx, "DELETE FROM vault_object_delete_outbox WHERE object_key = $1", string(keyI)); err != nil {
+		t.Fatal(err)
+	}
+	rescheduled := entries[0]
+	rescheduled.AttemptCount++
+	rescheduled.NextAttemptAt = 5_200
+	mutation, err = opened.Repository.RescheduleDelete(ctx, rescheduled)
+	if err != nil || mutation.Kind != encryptedobject.DeleteOutboxMutationReplayed {
+		t.Fatalf("concurrent reschedule replay = %#v, %v", mutation, err)
 	}
 
 	assertOtherPrivateObjectState(t, ctx, pool, objectsB, scopeB, keyOther)

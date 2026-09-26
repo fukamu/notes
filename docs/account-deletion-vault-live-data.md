@@ -23,8 +23,11 @@ Physical objects, outbox rows, wrapped keys and rotation state, live
 control-plane rows, Billing/Entitlement, legal evidence, privacy requests, and
 the deletion journal remain for later ordered barriers. The legacy v1 tables
 have no safe owner partition and are not deleted here. The effect remains
-uncomposed from the closed HTTP runtime, and no real storage/provider or
-production data is touched.
+closed in production/default. Issue #512 composes it only for the exact
+disposable local fixture under explicit `delete-live-evidence`, sharing the
+real PostgreSQL pool and deletion write gate with Sync v2. Its next physical
+object step uses the anchored fixture filesystem; no remote storage, provider,
+or production data is touched.
 
 The sections below remain the TypeScript/D1 compatibility oracle. PostgreSQL
 does not have the D1 partition-route table, so migration 00015 plus the retained

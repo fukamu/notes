@@ -63,8 +63,28 @@ export type RunLogoutPurgeResult =
     };
 
 export type LogoutPurgeRunner = {
+  /**
+   * Durably blocks new runtimes and quiesces existing peer tabs without
+   * deleting local data. Account deletion uses this only after the server has
+   * durably accepted Start and before the first session-revocation resume.
+   */
+  prepare: (
+    generation: LogoutPurgeGeneration,
+  ) => Promise<PrepareLogoutPurgeResult>;
   run: (generation: LogoutPurgeGeneration) => Promise<RunLogoutPurgeResult>;
 };
+
+export type PrepareLogoutPurgeResult =
+  | { readonly kind: 'prepared' }
+  | {
+      readonly kind: 'blocked';
+      readonly reason:
+        | 'another-purge-pending'
+        | 'concurrent-progress-change'
+        | 'progress-recovery-required'
+        | 'progress-unavailable'
+        | LogoutPurgeFailureReason;
+    };
 
 /**
  * Persists every state transition before or after its browser effect. The
@@ -77,6 +97,40 @@ export function createLogoutPurgeRunner(input: {
   readonly targets: LogoutPurgeTargetPort;
 }): LogoutPurgeRunner {
   return {
+    async prepare(generation) {
+      const started = await startOrResumeLogoutPurge(
+        generation,
+        input.progress,
+      );
+      if (started.kind === 'blocked') return started;
+
+      const owner = await input.coordination.acquireOwner(generation);
+      if (owner.kind === 'failed') {
+        return {
+          kind: 'blocked',
+          reason: logoutPurgeFailureReasonForCoordination(owner.reason),
+        };
+      }
+      let peerLease: LogoutPeerQuiescenceLease | undefined;
+      try {
+        const quiescence = await owner.lease.quiescePeers(
+          started.progress.revision,
+        );
+        if (quiescence.kind === 'failed') {
+          return {
+            kind: 'blocked',
+            reason: logoutPurgeFailureReasonForCoordination(
+              coordinationFailure(quiescence.reason),
+            ),
+          };
+        }
+        peerLease = quiescence.lease;
+        return { kind: 'prepared' };
+      } finally {
+        await releaseLeases(peerLease, owner.lease);
+      }
+    },
+
     async run(generation) {
       const started = await startOrResumeLogoutPurge(
         generation,

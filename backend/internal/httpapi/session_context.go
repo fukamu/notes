@@ -7,13 +7,14 @@ import (
 )
 
 type sessionContextResponse struct {
-	AccountID    string `json:"accountId"`
-	VaultID      string `json:"vaultId"`
-	SessionID    string `json:"sessionId"`
-	SessionEpoch int64  `json:"sessionEpoch"`
+	AccountID                string `json:"accountId"`
+	VaultID                  string `json:"vaultId"`
+	SessionID                string `json:"sessionId"`
+	SessionEpoch             int64  `json:"sessionEpoch"`
+	AccountDeletionAvailable bool   `json:"accountDeletionAvailable"`
 }
 
-func sessionContext(runtime *SyncV2Runtime) http.HandlerFunc {
+func sessionContext(runtime *SyncV2Runtime, accountDeletionAvailable bool) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "private, no-store")
 		response.Header().Set("Vary", "Cookie")
@@ -52,6 +53,7 @@ func sessionContext(runtime *SyncV2Runtime) http.HandlerFunc {
 		writeJSON(response, request, http.StatusOK, sessionContextResponse{
 			AccountID: string(resolved.Context.AccountID), VaultID: string(resolved.Context.VaultID),
 			SessionID: string(resolved.Context.SessionID), SessionEpoch: int64(resolved.Context.SessionEpoch),
+			AccountDeletionAvailable: accountDeletionAvailable,
 		})
 	}
 }

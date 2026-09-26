@@ -64,6 +64,14 @@ describe('Go migration closure evidence', () => {
       state: 'A/B/C',
       migration: 'migrated',
     });
+    const accountDeletion = closure.features.find(({ id }) => id === 'F23');
+    expect(accountDeletion).toMatchObject({
+      state: 'A/B',
+      migration: 'migrated',
+    });
+    expect(accountDeletion?.verification).toEqual(
+      expect.arrayContaining(['V04', 'V08', 'V10']),
+    );
     expect(closure.features.find(({ id }) => id === 'F28')).toMatchObject({
       migration: 'intentionally-absent',
     });

@@ -129,53 +129,66 @@ func (store *AccountDeletionStore) replayAccountDeletionStart(
 	scope accountdeletion.Scope,
 	requested accountdeletion.Continuation,
 ) (accountdeletion.StartResult, error) {
-	existing, err := store.FindByOwner(ctx, scope)
+	tx, err := store.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return accountdeletion.StartResult{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	existing, err := findAccountDeletionSnapshot(
+		ctx,
+		tx,
+		" WHERE account_id = $1 AND vault_id = $2 FOR UPDATE",
+		string(scope.AccountID),
+		string(scope.VaultID),
+	)
 	if err != nil {
 		return accountdeletion.StartResult{}, err
 	}
 	if existing == nil {
 		return accountdeletion.StartResult{Kind: accountdeletion.StartRejected, Reason: accountdeletion.StartInvalid}, nil
 	}
-	continuation, err := findAccountDeletionContinuationByOperation(ctx, store.pool, existing.Operation.OperationID)
+	continuation, err := scanOptionalAccountDeletionContinuation(tx.QueryRow(ctx,
+		accountDeletionContinuationSelect+" WHERE operation_id = $1 FOR UPDATE",
+		string(existing.Operation.OperationID),
+	))
 	if err != nil {
 		return accountdeletion.StartResult{}, err
 	}
 	if continuation == nil {
 		return accountdeletion.StartResult{}, ErrInvalidAccountDeletionRecord
 	}
-	if continuation.IdempotencyHash != requested.IdempotencyHash || continuation.SecretHash != requested.SecretHash {
-		return accountdeletion.StartResult{Kind: accountdeletion.StartRejected, Reason: accountdeletion.StartCredentialConflict}, nil
-	}
-	if requested.ExpiresAt > continuation.ExpiresAt {
-		updatedAt := continuation.UpdatedAt
-		if requested.CreatedAt > updatedAt {
-			updatedAt = requested.CreatedAt
+	plan := accountdeletion.PlanContinuationStartReplay(*existing, *continuation, requested)
+	switch plan.Kind {
+	case accountdeletion.ContinuationStartReplayRejected:
+		if plan.Reason == accountdeletion.ContinuationStartReplayCredentialConflict {
+			return accountdeletion.StartResult{Kind: accountdeletion.StartRejected, Reason: accountdeletion.StartCredentialConflict}, nil
 		}
-		candidate := *continuation
-		candidate.ExpiresAt = requested.ExpiresAt
-		candidate.UpdatedAt = updatedAt
-		if !accountdeletion.ValidContinuation(candidate) {
-			return accountdeletion.StartResult{}, ErrInvalidAccountDeletionRecord
-		}
-		tag, updateErr := store.pool.Exec(ctx, `UPDATE account_deletion_continuations
+		return accountdeletion.StartResult{Kind: accountdeletion.StartRejected, Reason: accountdeletion.StartInvalid}, nil
+	case accountdeletion.ContinuationStartReplayRenewed:
+		tag, updateErr := tx.Exec(ctx, `UPDATE account_deletion_continuations
 			SET expires_at = $1, updated_at = $2
 			WHERE operation_id = $3 AND idempotency_key_hash = $4
-			  AND secret_hash = $5 AND sequence = $6 AND expires_at = $7`,
-			candidate.ExpiresAt, candidate.UpdatedAt, string(continuation.OperationID),
-			string(continuation.IdempotencyHash), string(continuation.SecretHash),
-			continuation.Sequence, continuation.ExpiresAt,
+			  AND secret_hash = $5 AND sequence = $6 AND expires_at = $7
+			  AND updated_at = $8`,
+			plan.Continuation.ExpiresAt, plan.Continuation.UpdatedAt,
+			string(continuation.OperationID), string(continuation.IdempotencyHash),
+			string(continuation.SecretHash), continuation.Sequence,
+			continuation.ExpiresAt, continuation.UpdatedAt,
 		)
 		if updateErr != nil {
 			return accountdeletion.StartResult{}, classifyAccountDeletionError(updateErr)
 		}
-		if tag.RowsAffected() == 1 {
-			continuation = &candidate
-		} else {
-			continuation, err = findAccountDeletionContinuationByOperation(ctx, store.pool, existing.Operation.OperationID)
-			if err != nil || continuation == nil {
-				return accountdeletion.StartResult{}, firstAccountDeletionError(err)
-			}
+		if tag.RowsAffected() != 1 {
+			return accountdeletion.StartResult{}, ErrInvalidAccountDeletionRecord
 		}
+		continuation = &plan.Continuation
+	case accountdeletion.ContinuationStartReplayUnchanged:
+		continuation = &plan.Continuation
+	default:
+		return accountdeletion.StartResult{}, ErrInvalidAccountDeletionRecord
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return accountdeletion.StartResult{}, err
 	}
 	return accountdeletion.StartResult{
 		Kind: accountdeletion.StartExisting,
@@ -288,6 +301,9 @@ func (store *AccountDeletionStore) Commit(
 		_ = tx.Rollback(ctx)
 		return store.accountDeletionConflict(ctx, scope, transition)
 	}
+	if err := promoteAccountDeletionContinuation(ctx, tx, transition); err != nil {
+		return accountdeletion.CommitResult{}, err
+	}
 	if transition.Receipt != nil {
 		_, err = tx.Exec(ctx, `INSERT INTO account_deletion_step_receipts(operation_id, step, completed_at)
 			VALUES ($1, $2, $3)`, string(transition.Receipt.OperationID), string(transition.Receipt.Step), transition.Receipt.CompletedAt)
@@ -306,6 +322,10 @@ func (store *AccountDeletionStore) Commit(
 		!accountDeletionReceiptPersisted(*persisted, transition.Receipt) {
 		return accountdeletion.CommitResult{}, ErrInvalidAccountDeletionRecord
 	}
+	promoted, err := accountDeletionRecoveryPromotionPersisted(ctx, store.pool, transition)
+	if err != nil || !promoted {
+		return accountdeletion.CommitResult{}, firstAccountDeletionError(err)
+	}
 	return accountdeletion.CommitResult{Kind: accountdeletion.CommitApplied, Current: persisted}, nil
 }
 
@@ -318,11 +338,69 @@ func (store *AccountDeletionStore) accountDeletionConflict(
 	if err != nil {
 		return accountdeletion.CommitResult{}, err
 	}
+	promoted, promotionErr := accountDeletionRecoveryPromotionPersisted(ctx, store.pool, transition)
+	if promotionErr != nil {
+		return accountdeletion.CommitResult{}, promotionErr
+	}
 	if persisted != nil && accountdeletion.SameOperation(persisted.Operation, transition.Next) &&
-		accountDeletionReceiptPersisted(*persisted, transition.Receipt) {
+		accountDeletionReceiptPersisted(*persisted, transition.Receipt) && promoted {
 		return accountdeletion.CommitResult{Kind: accountdeletion.CommitReplayed, Current: persisted}, nil
 	}
 	return accountdeletion.CommitResult{Kind: accountdeletion.CommitConflict, Current: persisted}, nil
+}
+
+func promoteAccountDeletionContinuation(
+	ctx context.Context,
+	tx pgx.Tx,
+	transition accountdeletion.Transition,
+) error {
+	if !accountdeletion.RequiresContinuationRecoveryPromotion(transition) {
+		return nil
+	}
+	current, err := scanOptionalAccountDeletionContinuation(tx.QueryRow(ctx,
+		accountDeletionContinuationSelect+" WHERE operation_id = $1 FOR UPDATE",
+		string(transition.Current.OperationID),
+	))
+	if err != nil || current == nil {
+		return firstAccountDeletionError(err)
+	}
+	plan := accountdeletion.PlanContinuationRecoveryPromotion(*current, transition)
+	if plan.Kind != accountdeletion.ContinuationRecoveryPromotionAccepted {
+		return ErrInvalidAccountDeletionRecord
+	}
+	tag, err := tx.Exec(ctx, `UPDATE account_deletion_continuations
+		SET expires_at = $1, updated_at = $2
+		WHERE operation_id = $3 AND secret_hash = $4 AND sequence = $5
+		  AND expires_at = $6 AND updated_at = $7`,
+		plan.Next.ExpiresAt, plan.Next.UpdatedAt, string(current.OperationID),
+		string(current.SecretHash), current.Sequence, current.ExpiresAt, current.UpdatedAt,
+	)
+	if err != nil {
+		return classifyAccountDeletionError(err)
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrInvalidAccountDeletionRecord
+	}
+	return nil
+}
+
+func accountDeletionRecoveryPromotionPersisted(
+	ctx context.Context,
+	querier accountDeletionQuerier,
+	transition accountdeletion.Transition,
+) (bool, error) {
+	if !accountdeletion.RequiresContinuationRecoveryPromotion(transition) {
+		return true, nil
+	}
+	continuation, err := findAccountDeletionContinuationByOperation(
+		ctx, querier, transition.Current.OperationID,
+	)
+	if err != nil || continuation == nil {
+		return false, err
+	}
+	plan := accountdeletion.PlanContinuationRecoveryPromotion(*continuation, transition)
+	return plan.Kind == accountdeletion.ContinuationRecoveryPromotionAccepted &&
+		continuation.ExpiresAt == plan.Next.ExpiresAt, nil
 }
 
 type accountDeletionStateColumns struct {

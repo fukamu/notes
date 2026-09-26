@@ -128,6 +128,31 @@ func LoadFixtureMetadata(
 		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
 	}
 	defer clear(encoded)
+	return fixtureMetadataFromEncoded(encoded, vaultID)
+}
+
+// ValidateFixtureKeyFile verifies an already-opened fixture key without
+// reopening its pathname. This lets destructive callers keep directory/file
+// handles anchored while correlating the file to the serializable DB snapshot.
+func ValidateFixtureKeyFile(
+	encoded []byte,
+	vaultID identity.VaultID,
+	expected *cryptocontent.VaultDEKMetadata,
+) error {
+	metadata, err := fixtureMetadataFromEncoded(encoded, vaultID)
+	if err != nil || (expected != nil && metadata != *expected) {
+		return ErrDirectoryOperation
+	}
+	return nil
+}
+
+func fixtureMetadataFromEncoded(
+	encoded []byte,
+	vaultID identity.VaultID,
+) (cryptocontent.VaultDEKMetadata, error) {
+	if _, err := identity.ParseVaultID(string(vaultID)); err != nil {
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
 	wire, err := decodeKeyFile(encoded)
 	if err != nil || wire.Format != FixtureKeyFormat || wire.VaultID != string(vaultID) || wire.DEKVersion != 1 {
 		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation

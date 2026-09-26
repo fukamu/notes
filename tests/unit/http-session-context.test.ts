@@ -20,6 +20,7 @@ describe('HTTP session-context boundary', () => {
         vaultId: sessionFixtureIds.vaultId,
         sessionId: sessionFixtureIds.sessionId,
         sessionEpoch: sessionFixtureIds.epoch,
+        accountDeletionAvailable: true,
       });
     };
 
@@ -31,6 +32,7 @@ describe('HTTP session-context boundary', () => {
         sessionId: sessionFixtureIds.sessionId,
         sessionEpoch: sessionFixtureIds.epoch,
       },
+      accountDeletionAvailable: true,
     });
     expect(captured).toEqual({
       input: '/api/session-context',

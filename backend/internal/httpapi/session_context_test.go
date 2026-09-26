@@ -34,7 +34,7 @@ func TestLocalSyncV2MuxPublishesSessionContextAndClosesLegacySync(t *testing.T) 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	want := `{"accountId":"` + syncV2TestAccountID + `","vaultId":"` + syncV2TestVaultID +
-		`","sessionId":"` + syncV2TestSessionID + `","sessionEpoch":1}`
+		`","sessionId":"` + syncV2TestSessionID + `","sessionEpoch":1,"accountDeletionAvailable":false}`
 	if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != want ||
 		response.Header().Get("Cache-Control") != "private, no-store" ||
 		response.Header().Get("Vary") != "Cookie" || strings.Contains(response.Body.String(), syncV2TestToken) {
@@ -54,6 +54,28 @@ func TestLocalSyncV2MuxPublishesSessionContextAndClosesLegacySync(t *testing.T) 
 	handler.ServeHTTP(syncResponse, authenticatedSyncV2Request(validSyncV2EmptyRequest()))
 	if syncResponse.Code != http.StatusOK {
 		t.Fatalf("Sync v2 route = %d %s", syncResponse.Code, syncResponse.Body.String())
+	}
+
+	_, deletionSessions, deletionApplication, _ := newAccountDeletionHTTPHandlers(t)
+	availableHandler, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory: staticDirectory,
+		BodyLimit:       4_000_000,
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		SyncV2Runtime:   runtime,
+		AccountDeletionRuntime: &httpapi.AccountDeletionRuntime{
+			ExpectedOrigin: accountDeletionOrigin, Clock: func() int64 { return 1_500 },
+			Sessions: deletionSessions, Application: deletionApplication,
+			NewOperationID: func() string { return accountDeletionOperationID },
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	availableResponse := httptest.NewRecorder()
+	availableHandler.ServeHTTP(availableResponse, request)
+	wantAvailable := strings.Replace(want, "false", "true", 1)
+	if availableResponse.Code != http.StatusOK || strings.TrimSpace(availableResponse.Body.String()) != wantAvailable {
+		t.Fatalf("available session context = %d %s", availableResponse.Code, availableResponse.Body.String())
 	}
 }
 

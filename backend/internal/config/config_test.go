@@ -138,6 +138,14 @@ func TestParseAcceptsStrictLocalFixtureConfiguration(t *testing.T) {
 	if bytes.Equal(fixture.CursorHMACKey[:], fixture.DeletionHMACKey[:]) {
 		t.Fatal("fixture secrets were not kept distinct")
 	}
+	if fixture.LegalEvidencePolicy != config.LocalFixtureLegalEvidenceUndecided {
+		t.Fatalf("default legal-evidence policy = %q", fixture.LegalEvidencePolicy)
+	}
+	values["NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY"] = "delete-live-evidence"
+	explicit, err := config.Parse(values)
+	if err != nil || explicit.LocalFixture.LegalEvidencePolicy != config.LocalFixtureDeleteLiveEvidence {
+		t.Fatalf("explicit legal-evidence policy = %#v, %v", explicit.LocalFixture, err)
+	}
 }
 
 func TestParseIgnoresFixtureValuesUnlessExplicitlyEnabled(t *testing.T) {
@@ -210,6 +218,7 @@ func TestParseRejectsUnsafeLocalFixtureConfigurationWithoutEchoingValues(t *test
 		{name: "short cursor key", key: "NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY", value: "c2hvcnQ"},
 		{name: "padded deletion key", key: "NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY", value: strings.Repeat("A", 43) + "="},
 		{name: "equal secrets", key: "NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY", value: equalSecret},
+		{name: "unknown legal evidence policy", key: "NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY", value: "retain-and-delete"},
 	}
 	for _, test := range tests {
 		test := test

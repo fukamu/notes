@@ -17,9 +17,18 @@ tests cover both race outcomes, a later session that forces a retry, replay,
 and cross-owner rejection.
 
 The adapter exposes only fixed saga failure codes. It does not return a token,
-session ID, revocation count, or database error. The account-deletion HTTP
-handlers remain unmounted, so this implementation does not revoke any live or
-production session by itself.
+session ID, revocation count, or database error. Issue #512 mounts the complete
+effect only for the exact disposable fixture under explicit
+`delete-live-evidence`; its first accepted Resume revokes the seeded fixture
+session. Default, production-shaped, and `undecided` profiles remain unmounted,
+so no live production session is revoked.
+
+The transaction that claims this first step also promotes only the accepted
+operation's continuation recovery expiry before invoking revocation. If the
+process crashes either before the effect or before its receipt, the current or
+immediately prior sequence can resume after the initial seven-day period even
+though the session is gone. That credential cannot start another deletion or
+read Account/Vault data.
 
 Issue #169 adds the first external effect used by the account-deletion saga:
 revoking every active session owned by the authenticated Account and Personal

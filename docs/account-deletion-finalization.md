@@ -2,17 +2,25 @@
 
 ## Go migration status (T12f)
 
-Issue #466 implements the disconnected Go terminal barrier in
+Issue #466 implements the Go terminal barrier in
 `backend/internal/accountdeletion`, the scoped PostgreSQL adapter, and migration
-`00016_account_deletion_legal_evidence_gate.sql`. It does not compose the
-account-deletion HTTP runtime, run a production deletion, call a KMS provider,
-destroy a KEK, apply a production migration, or deploy anything.
+`00016_account_deletion_legal_evidence_gate.sql`. Issue #512 composes it only in
+the exact disposable local fixture when
+`NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY=delete-live-evidence` is explicit.
+It does not run a production deletion, call a KMS provider, destroy a provider
+KEK, apply a production migration, or deploy anything.
 
-Legal evidence has no implicit default. `undecided` is the fail-closed policy:
-if terms or contract evidence exists, finalization stops before wrapped DEK
-metadata or control-plane state changes. `delete-live-evidence` is implemented
-only as an explicit candidate exercised against disposable databases; its
-presence is not legal or production approval. Migration 00016 serializes legal
+Legal evidence has no implicit default. An omitted or `undecided` fixture
+policy now rejects deletion admission before sealing the Vault fence, creating
+an operation, revoking sessions, or changing database/filesystem state. The
+earlier design that waited until finalization is deliberately not reproduced:
+an undecided legal policy is not authorization to perform the preceding
+irreversible effects or create a partial deletion. The long-lived continuation
+promotion is only recovery for an explicitly authorized operation; it is not a
+policy decision. A deleting or completed fixture also refuses to
+restart without the explicit destructive policy. `delete-live-evidence` is
+only a disposable local evidence candidate; its presence is not legal or
+production approval. Migration 00016 serializes legal
 evidence insertion with account-deletion start on the exact Personal Vault row.
 Evidence committed first is observed by the policy barrier; evidence attempted
 after the deletion journal exists is rejected, so it cannot appear between the
@@ -31,12 +39,19 @@ this order:
    preceding receipts in nondecreasing order, then reconfirms that the exact
    Vault delete outbox is empty. Missing, extra, stale, or cross-owner state
    rejects finalization before mutation.
-2. The legal-evidence barrier evaluates the explicitly supplied policy. Under
-   `undecided`, any live terms or contract evidence stops the step.
+2. The legal-evidence barrier evaluates the explicitly supplied policy. The
+   exact connected fixture can reach this step only under
+   `delete-live-evidence`; the pure `undecided` finalizer remains fail closed for
+   direct contract tests but is never used to admit a live fixture operation.
 3. The crypto boundary deletes only `vault_dek_versions` for the exact retained
    Account/Vault owner and confirms that no wrapped key metadata remains. This
    removes the server-side path to unwrap deleted Vault content; it is not a KMS
-   key-destruction API.
+   key-destruction API. The local deletion barrier first validates every
+   object/key/nonce directory and exact database-to-key-file metadata through
+   held directory handles. It then removes database metadata, quarantines and
+   unlinks the matching key and zero-byte nonce files, and fsyncs the anchored
+   directories. A DB-absent/file-present crash window is replayable; a missing
+   or mismatched file while DB metadata remains is rejected.
 4. One serializable transaction deletes the policy-selected live evidence and
    scoped sessions, identities, verified-email ownership, signup reservation,
    Personal Vault, and Account, then confirms that no live control-plane row
@@ -54,7 +69,7 @@ or key reference is accepted from a request body by these ports.
 
 - Missing, extra, out-of-order, stale, or malformed preceding receipts reject
   the step without destructive I/O.
-- A non-empty delete outbox, pending legal decision, wrapped-key confirmation
+- A non-empty delete outbox, unavailable legal decision, wrapped-key confirmation
   failure, or control-plane failure returns a non-sensitive retryable result.
   Later effects do not run after an earlier barrier fails.
 - Wrapped-key deletion and control-plane deletion are separately idempotent. If
@@ -95,3 +110,11 @@ journal; dropping the gate could permit new evidence after deletion began.
 Restore a compatible artifact or use a reviewed forward migration and resume.
 Production execution, backup expiry, provider key destruction, and any
 minimised legal-retention record remain separately controlled operations.
+
+For the exact fixture, rollback/restart also preserves residual object
+quarantine, key, and nonce files and uses the same explicit delete-live policy.
+Completed restart requires the real object/key/nonce directories to be empty.
+Never change the policy to `undecided` after admission: startup intentionally
+fails rather than hiding the continuation route. Recreating the fixture is only
+an explicitly reviewed disposable prepare/reseed action, never a production
+recovery procedure.

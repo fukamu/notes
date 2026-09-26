@@ -24,6 +24,13 @@ func TestPrivateObjectPurgeEffectMapsResults(t *testing.T) {
 			want: StepEffectResult{Kind: EffectSucceeded},
 		},
 		{
+			name: "bounded progress",
+			port: privateObjectPurgePortStub{result: encryptedobject.VaultPrivateObjectPurgeResult{
+				Kind: encryptedobject.VaultPrivateObjectPurgeProgressed,
+			}},
+			want: StepEffectResult{Kind: EffectProgressed},
+		},
+		{
 			name: "objects remaining",
 			port: privateObjectPurgePortStub{result: encryptedobject.VaultPrivateObjectPurgeResult{
 				Kind:   encryptedobject.VaultPrivateObjectPurgeRetryableFailure,

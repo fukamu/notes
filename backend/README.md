@@ -162,6 +162,12 @@ absolute `NOTES_STATIC_DIR`. Optional bounded settings are
 10s), and `NOTES_LOG_LEVEL` (`debug`, `info`, `warn`, or `error`). Invalid or
 missing configuration stops the process before it listens.
 
+Shutdown first stops listener admission and waits for active handlers. If the
+bounded graceful timeout expires, the server closes active connections to
+cancel request contexts but still does not return to runtime cleanup until
+every admitted handler has actually returned. This keeps pools, leases, and
+held deletion filesystem roots alive for the complete handler lifetime.
+
 `/healthz` reports process health. With private mode disabled, `/readyz` and
 `/api/launch-status` fail closed. `/api` and API routes other than
 `/api/launch-status`, the conditionally configured `/api/sync`, and the exact
@@ -236,7 +242,11 @@ existing private-runtime database/origin plus these values:
   base64url `NOTES_LOCAL_FIXTURE_SESSION_TOKEN`;
 - distinct canonical 32-byte unpadded base64url secrets in
   `NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY` and
-  `NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY`.
+  `NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY`;
+- optional `NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY`, whose safe default is
+  `undecided`. Only the exact value `delete-live-evidence` mounts the
+  destructive fixture deletion routes. It is disposable test evidence, not a
+  production legal decision.
 
 With this explicit profile, the same `notesctl prepare-e2e` command prepares
 only three fixed owner-only child directories (`objects`, `nonces`, `keys`),
@@ -258,27 +268,38 @@ profile. PostgreSQL supplies Billing/Entitlement, Sync v2 journal,
 encrypted-object metadata, quota, and DEK stores. Guarded fixture directories
 supply immutable objects, nonce reservations, and the fixture key; content is
 sealed with AES-256-GCM. Entitlement evaluation alone is pinned to the
-deterministic fixture timestamp. No external or remote Stripe, KMS, identity,
+deterministic fixture timestamp. Issue #512 mounts the complete account
+deletion Start/Resume graph only under explicit `delete-live-evidence` and
+requires that value again when restarting a deleting or completed fixture.
+Omitted/`undecided` policy rejects admission without sealing Sync, creating a
+journal, revoking a session, or mutating database/filesystem state. No external
+or remote Stripe, KMS, identity,
 mail, object, or backup provider is constructed or contacted. See
 [`docs/local-commerce-runtime.md`](../docs/local-commerce-runtime.md). This is
 local/CI evidence, not production configuration, legal/price approval,
 deployment, charging, or cutover approval.
 
-The live notes layout first fetches the strict, private, no-store session
-context and constructs the Vault-scoped IndexedDB and Sync v2 runtime only after
-authentication. It has no legacy fallback and never returns the bearer token to
-browser code. An offline reload therefore remains closed until the session
-context can be validated again; already saved local content is opened only
-after reconnection. Playwright supplies the deterministic fixture token only as
-a host-only `Secure`, `HttpOnly`, `SameSite=Strict` cookie.
+The live notes layout first recovers any durable deletion handoff. Only its
+idle/no-marker children proceed through the launch gate and then fetch the
+strict, private, no-store session context; Vault-scoped IndexedDB and Sync v2
+are constructed only after authentication. The response includes a boolean
+deletion-availability capability, which is true only when the destructive
+runtime is mounted; existing marker recovery is independent of that bit, while
+a new Start control appears only when it is true. The path has no legacy
+fallback and never returns the bearer token to browser code. An offline reload
+therefore remains closed until the session context can be validated again;
+already saved local content is opened only after reconnection. Playwright
+supplies the deterministic fixture token only as a host-only `Secure`,
+`HttpOnly`, `SameSite=Strict` cookie.
 
 No Stripe, GCP KMS, OIDC/mail, remote object, or backup provider is constructed
 or contacted. Billing is read only as the seeded local entitlement and commerce
 source; checkout never charges and cancellation never contacts a provider. No
-login/session issuance, delete wire operation, or legacy-data migration is
-enabled. Default and production composition pass none of the local-fixture
-Sync v2, session-context, legal, or cancellation runtimes to the HTTP handler,
-so those routes stay closed. This is local/CI composition evidence, not
+login/session issuance or legacy-data migration is enabled. The delete wire is
+available only under the explicit disposable policy. Default and production
+composition pass none of the local-fixture Sync v2, session-context, legal,
+cancellation, or deletion runtimes to the HTTP handler, so those routes stay
+closed. This is local/CI composition evidence, not
 production configuration, deployment, or cutover approval.
 
 The real-PostgreSQL foundation test covers migration, exact closed
@@ -292,15 +313,22 @@ The Issue #510 PostgreSQL and whole-process tests exercise terms acceptance,
 URL-free checkout, period-end cancellation, cross-owner refusal without writes,
 and zero external HTTP(S) requests. Serial Playwright coverage requires real
 200 responses from both the commerce and Sync v2 local-fixture routes.
+The default E2E server keeps deletion policy `undecided`; account-deletion
+browser handoff tests inject test-only Start/Resume responses in their in-page
+harness and do not open the real destructive Go route. Issue #512 real
+PostgreSQL/filesystem tests opt into `delete-live-evidence` explicitly and cover
+all effect/receipt restart windows, runtime-lease loss, and completed restart.
 The existing Sync v2 integration suite remains the evidence for
 object-before-journal retry, cursor/device/owner isolation, conflicts, quota
 admission, dependency failures, and replay. These tests use only the allowlisted
 disposable PostgreSQL database and private temporary directories.
 
-Filesystem validation is path-based rather than descriptor-relative. This is
-accepted only for an owner-private local/test root on a trusted host; do not
-share that root with an untrusted process. Hostile multi-user symlink-swap
-hardening remains outside this fixture foundation.
+Deletion filesystem validation and mutation use lifetime-held roots with
+descriptor-relative operations and device/inode, owner, mode, and link-count
+checks. Runtime and prepare-e2e also hold a fixed host flock plus a PostgreSQL
+advisory lock. Cooperating same-UID Notes/notesctl processes must not rename or
+unlink the lock namespace. A hostile same-UID process can already mutate the
+disposable fixture directly and remains outside this local/test boundary.
 
 ## Local PostgreSQL migration
 
