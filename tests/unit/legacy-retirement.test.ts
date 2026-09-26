@@ -131,6 +131,69 @@ describe('legacy TypeScript test retirement ledger', () => {
     ).not.toThrow();
   });
 
+  it('keeps Go parity evidence on retained tests that also covered the legacy backend', async () => {
+    const ledger = decodeLegacyTestRetirementLedger(await ledgerCandidate());
+    const entries = new Map(
+      ledger.entries.map((entry) => [entry.legacyPath, entry]),
+    );
+    const expected = new Map<string, readonly string[]>([
+      [
+        'tests/contracts/migration-fixtures.test.ts',
+        [
+          'backend/internal/accountdeletion/fixture_test.go',
+          'backend/internal/billing/fixture_test.go',
+          'backend/internal/cryptocontent/model_test.go',
+          'backend/internal/encryptedobject/recovery_test.go',
+          'backend/internal/entitlement/fixture_test.go',
+          'backend/internal/httpapi/legal_test.go',
+          'backend/internal/identity/email_otp_test.go',
+          'backend/internal/identity/oidc_test.go',
+          'backend/internal/identity/session_test.go',
+          'backend/internal/legal/contract_test.go',
+          'backend/internal/legal/terms_fixture_test.go',
+          'backend/internal/privacyrequest/fixture_test.go',
+          'backend/internal/stripebilling/fixture_test.go',
+          'backend/internal/synclegacy/decode_test.go',
+          'backend/internal/syncv2/protocol_cursor_test.go',
+          'tests/contracts/migration-fixtures.test.ts',
+        ],
+      ],
+      [
+        'tests/unit/card-payment-security.test.ts',
+        [
+          'backend/internal/adapters/stripe/provider_test.go',
+          'backend/internal/stripebilling/core_test.go',
+          'tests/unit/card-payment-security.test.ts',
+        ],
+      ],
+      [
+        'tests/unit/external-transmission.test.ts',
+        [
+          'backend/internal/httpapi/handler_test.go',
+          'backend/internal/identity/boundary_test.go',
+          'backend/internal/identity/oidc_boundary_test.go',
+          'tests/unit/external-transmission.test.ts',
+        ],
+      ],
+      [
+        'tests/unit/privacy-processing-registry.test.ts',
+        [
+          'backend/internal/accountdeletion/model_protocol_test.go',
+          'backend/internal/identity/boundary_test.go',
+          'tests/unit/privacy-processing-registry.test.ts',
+        ],
+      ],
+    ]);
+
+    for (const [path, evidence] of expected) {
+      const entry = entries.get(path);
+      if (entry?.disposition.kind !== 'retained-frontend') {
+        throw new TypeError(`missing mixed retained entry: ${path}`);
+      }
+      expect(entry.disposition.evidence).toEqual(evidence);
+    }
+  });
+
   it('rejects missing, duplicate, unsorted, unsafe, and unknown entry data', async () => {
     const missing = clone(await ledgerCandidate());
     list(Reflect.get(object(missing), 'entries')).pop();

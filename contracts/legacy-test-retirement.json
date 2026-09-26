@@ -37,7 +37,24 @@
       "disposition": {
         "kind": "retained-frontend",
         "currentPath": "tests/contracts/migration-fixtures.test.ts",
-        "evidence": ["tests/contracts/migration-fixtures.test.ts"]
+        "evidence": [
+          "backend/internal/accountdeletion/fixture_test.go",
+          "backend/internal/billing/fixture_test.go",
+          "backend/internal/cryptocontent/model_test.go",
+          "backend/internal/encryptedobject/recovery_test.go",
+          "backend/internal/entitlement/fixture_test.go",
+          "backend/internal/httpapi/legal_test.go",
+          "backend/internal/identity/email_otp_test.go",
+          "backend/internal/identity/oidc_test.go",
+          "backend/internal/identity/session_test.go",
+          "backend/internal/legal/contract_test.go",
+          "backend/internal/legal/terms_fixture_test.go",
+          "backend/internal/privacyrequest/fixture_test.go",
+          "backend/internal/stripebilling/fixture_test.go",
+          "backend/internal/synclegacy/decode_test.go",
+          "backend/internal/syncv2/protocol_cursor_test.go",
+          "tests/contracts/migration-fixtures.test.ts"
+        ]
       }
     },
     {
@@ -891,7 +908,11 @@
       "disposition": {
         "kind": "retained-frontend",
         "currentPath": "tests/unit/card-payment-security.test.ts",
-        "evidence": ["tests/unit/card-payment-security.test.ts"]
+        "evidence": [
+          "backend/internal/adapters/stripe/provider_test.go",
+          "backend/internal/stripebilling/core_test.go",
+          "tests/unit/card-payment-security.test.ts"
+        ]
       }
     },
     {
@@ -1129,7 +1150,12 @@
       "disposition": {
         "kind": "retained-frontend",
         "currentPath": "tests/unit/external-transmission.test.ts",
-        "evidence": ["tests/unit/external-transmission.test.ts"]
+        "evidence": [
+          "backend/internal/httpapi/handler_test.go",
+          "backend/internal/identity/boundary_test.go",
+          "backend/internal/identity/oidc_boundary_test.go",
+          "tests/unit/external-transmission.test.ts"
+        ]
       }
     },
     {
@@ -1295,7 +1321,11 @@
       "disposition": {
         "kind": "retained-frontend",
         "currentPath": "tests/unit/privacy-processing-registry.test.ts",
-        "evidence": ["tests/unit/privacy-processing-registry.test.ts"]
+        "evidence": [
+          "backend/internal/accountdeletion/model_protocol_test.go",
+          "backend/internal/identity/boundary_test.go",
+          "tests/unit/privacy-processing-registry.test.ts"
+        ]
       }
     },
     {
