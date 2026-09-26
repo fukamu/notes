@@ -364,7 +364,8 @@
         "backend/internal/adapters/stripe/provider_test.go",
         "backend/internal/httpapi/billing_cancellation_test.go",
         "backend/tests/integration/billing_projection_test.go",
-        "backend/tests/integration/contract_evidence_test.go"
+        "backend/tests/integration/contract_evidence_test.go",
+        "backend/tests/integration/local_commerce_runtime_test.go"
       ]
     },
     {

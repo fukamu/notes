@@ -45,8 +45,8 @@ var (
 
 // LegalRuntime is deliberately separate from PrivateRuntime. Supplying the
 // launch-gate runtime must not accidentally publish signup, terms, or billing.
-// The command composition leaves this nil until identity, legal text, pricing,
-// and provider configuration have been reviewed together.
+// Only the explicit local-fixture composition supplies this runtime today;
+// default and production composition leave it nil.
 type LegalRuntime struct {
 	ExpectedOrigin        string
 	Clock                 func() int64
