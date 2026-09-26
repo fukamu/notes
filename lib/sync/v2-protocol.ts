@@ -39,6 +39,7 @@ export const SYNC_V2_LIMITS = {
   mutationsPerRequest: CONTRACT_LIMITS.mutations,
   changesPerPage: 500,
   receiptsPerPage: CONTRACT_LIMITS.mutations,
+  maximumRevision: 2_147_483_647,
 } as const;
 
 declare const syncV2CursorBrand: unique symbol;
@@ -132,11 +133,19 @@ export const syncV2PageDecoder = unionDecoder(
   completePageDecoder,
 );
 
+const syncV2PendingMutationDecoder = refineDecoder(
+  pendingMutationDecoder,
+  (mutation) =>
+    mutation.baseServerRevision === null ||
+    mutation.baseServerRevision <= SYNC_V2_LIMITS.maximumRevision,
+  'baseServerRevision exceeds the Sync v2 server maximum',
+);
+
 export const syncV2RequestDecoder = objectDecoder({
   version: literalDecoder(SYNC_V2_VERSION),
   deviceId: deviceIdDecoder,
   cursor: nullableDecoder(syncV2CursorDecoder),
-  mutations: arrayDecoder(pendingMutationDecoder, {
+  mutations: arrayDecoder(syncV2PendingMutationDecoder, {
     maxLength: SYNC_V2_LIMITS.mutationsPerRequest,
     uniqueBy: (mutation) => mutation.mutationId,
   }),
@@ -350,12 +359,12 @@ export function encodeSyncV2Request(request: {
   readonly cursor: SyncV2Cursor | null;
   readonly mutations: readonly PendingMutation[];
 }) {
-  return {
+  return decodeSyncV2Request({
     version: SYNC_V2_VERSION,
     deviceId: wireString(request.deviceId),
     cursor: request.cursor === null ? null : wireString(request.cursor),
     mutations: request.mutations.map(encodeMutation),
-  };
+  });
 }
 
 export function encodeSyncV2Response(response: SyncV2Response) {

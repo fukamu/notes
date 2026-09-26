@@ -110,7 +110,7 @@ func TestBillingCancellationContractAuthenticatesBeforeReadingOrUsingOwnerInput(
 	}
 }
 
-func TestMainHandlerMountsCancellationAndAuthenticatesBeforeGlobalBodyLimit(t *testing.T) {
+func TestMainHandlerMountsCancellationAndAppliesConfiguredBodyLimitAfterAuthentication(t *testing.T) {
 	application := &billingCancellationApplicationStub{result: billing.SubscriptionCancellationResult{
 		Kind: billing.SubscriptionCancellationConfirmed, Outcome: billing.SubscriptionCancellationScheduled,
 		ConfirmedAt: 1_500, AccessEndsAt: 9_000,
@@ -151,7 +151,9 @@ func TestMainHandlerMountsCancellationAndAuthenticatesBeforeGlobalBodyLimit(t *t
 	)
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticated)
-	if response.Code != http.StatusOK || application.calls != 1 {
+	if response.Code != http.StatusRequestEntityTooLarge ||
+		response.Body.String() != "{\"error\":\"request-too-large\"}\n" ||
+		application.calls != 0 {
 		t.Fatalf("authenticated = %d calls=%d body=%s", response.Code, application.calls, response.Body.String())
 	}
 }

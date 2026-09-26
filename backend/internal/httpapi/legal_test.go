@@ -325,6 +325,87 @@ func TestLegalHandlersAuthorizeBeforeReadingAndRejectInvalidBodies(t *testing.T)
 	}
 }
 
+func TestLegalHandlersApplyConfiguredBodyLimitAndRejectGETBodiesAfterAuthentication(t *testing.T) {
+	terms := legalTermsApplication()
+	checkout := legalCheckoutApplication()
+	runtime := legalRuntime(terms, checkout)
+	staticDirectory := t.TempDir()
+	writeStaticFixture(t, staticDirectory)
+	handler, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory: staticDirectory,
+		BodyLimit:       8,
+		Logger:          telemetry.NewLogger(&bytes.Buffer{}, slog.LevelDebug),
+		LegalRuntime:    runtime,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	anonymousBody := &trackingReadCloser{}
+	anonymous := legalRequest(http.MethodPost, "/api/account/terms-consent", "")
+	anonymous.Header.Del("Cookie")
+	anonymous.Body = anonymousBody
+	anonymous.ContentLength = 10_000
+	response := serveLegal(handler, anonymous)
+	if response.Code != http.StatusUnauthorized || anonymousBody.reads != 0 {
+		t.Fatalf("anonymous = %d reads=%d body=%s", response.Code, anonymousBody.reads, response.Body.String())
+	}
+
+	oversized := legalRequest(
+		http.MethodPost,
+		"/api/account/terms-consent",
+		`{"submissionId":"`+legalTestTermsSubmit+`"}`,
+	)
+	response = serveLegal(handler, oversized)
+	if response.Code != http.StatusRequestEntityTooLarge ||
+		response.Body.String() != "{\"error\":\"request-too-large\"}\n" ||
+		terms.acceptCalls != 0 {
+		t.Fatalf("oversized = %d calls=%d body=%s", response.Code, terms.acceptCalls, response.Body.String())
+	}
+
+	anonymousReadBody := &trackingReadCloser{}
+	anonymousRead := legalRequest(http.MethodGet, "/api/account/terms-consent", "")
+	anonymousRead.Header.Del("Cookie")
+	anonymousRead.Body = anonymousReadBody
+	anonymousRead.ContentLength = 1
+	response = serveLegal(handler, anonymousRead)
+	if response.Code != http.StatusUnauthorized || anonymousReadBody.reads != 0 || terms.statusCalls != 0 {
+		t.Fatalf(
+			"anonymous GET = %d reads=%d calls=%d body=%s",
+			response.Code,
+			anonymousReadBody.reads,
+			terms.statusCalls,
+			response.Body.String(),
+		)
+	}
+
+	for _, test := range []struct {
+		path  string
+		calls func() int
+	}{
+		{path: "/api/account/terms-consent", calls: func() int { return terms.statusCalls }},
+		{path: "/api/billing/checkout", calls: func() int { return checkout.prepareCalls }},
+	} {
+		body := &trackingReadCloser{}
+		request := legalRequest(http.MethodGet, test.path, "")
+		request.Body = body
+		request.ContentLength = 1
+		response = serveLegal(handler, request)
+		if response.Code != http.StatusBadRequest ||
+			response.Body.String() != "{\"error\":\"invalid-request\"}\n" ||
+			body.reads != 0 || test.calls() != 0 {
+			t.Fatalf(
+				"GET %s = %d reads=%d calls=%d body=%s",
+				test.path,
+				response.Code,
+				body.reads,
+				test.calls(),
+				response.Body.String(),
+			)
+		}
+	}
+}
+
 func TestLegalHandlersMapApplicationFailuresAndSanitizePanics(t *testing.T) {
 	terms := legalTermsApplication()
 	checkout := legalCheckoutApplication()

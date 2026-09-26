@@ -145,12 +145,31 @@ func TestSyncV2ProtocolRejectsAmbiguousAndInvalidInput(t *testing.T) {
 	withMutations := func(items string) string {
 		return strings.Replace(base, `"mutations":[]`, `"mutations":[`+items+`]`, 1)
 	}
+	validUpsertWithBase := strings.Replace(validMutation, `"baseServerRevision":null`, `"baseServerRevision":1`, 1)
+	validResolve := strings.NewReplacer(
+		`"baseServerRevision":null`, `"baseServerRevision":1`,
+		`"kind":"upsert"`, `"kind":"resolve"`,
+		`"conflictIds":[]`, `"conflictIds":["`+testMutationID+`"]`,
+	).Replace(validMutation)
 	for name, candidate := range map[string]string{
-		"duplicate mutation": withMutations(validMutation + "," + validMutation),
-		"unknown mutation":   strings.Replace(withMutations(validMutation), `"conflictIds":[]`, `"conflictIds":[],"extra":0`, 1),
-		"upsert conflicts":   strings.Replace(withMutations(validMutation), `"conflictIds":[]`, `"conflictIds":["`+testMutationID+`"]`, 1),
-		"resolve no base":    strings.Replace(withMutations(validMutation), `"kind":"upsert"`, `"kind":"resolve"`, 1),
-		"timeline":           strings.Replace(withMutations(validMutation), `"createdAt":1`, `"createdAt":2`, 1),
+		"upsert with null base":     validMutation,
+		"upsert with positive base": validUpsertWithBase,
+		"resolve":                   validResolve,
+	} {
+		if _, err := syncv2.DecodeRequest([]byte(withMutations(candidate))); err != nil {
+			t.Fatalf("valid %s error = %v", name, err)
+		}
+	}
+	for name, candidate := range map[string]string{
+		"duplicate mutation":      withMutations(validMutation + "," + validMutation),
+		"unknown mutation":        strings.Replace(withMutations(validMutation), `"conflictIds":[]`, `"conflictIds":[],"extra":0`, 1),
+		"upsert conflicts":        strings.Replace(withMutations(validMutation), `"conflictIds":[]`, `"conflictIds":["`+testMutationID+`"]`, 1),
+		"resolve null base":       strings.Replace(withMutations(validResolve), `"baseServerRevision":1`, `"baseServerRevision":null`, 1),
+		"resolve empty conflicts": strings.Replace(withMutations(validResolve), `"conflictIds":["`+testMutationID+`"]`, `"conflictIds":[]`, 1),
+		"zero base":               strings.Replace(withMutations(validUpsertWithBase), `"baseServerRevision":1`, `"baseServerRevision":0`, 1),
+		"base above maximum":      strings.Replace(withMutations(validUpsertWithBase), `"baseServerRevision":1`, `"baseServerRevision":2147483648`, 1),
+		"duplicate conflict":      strings.Replace(withMutations(validResolve), `"conflictIds":["`+testMutationID+`"]`, `"conflictIds":["`+testMutationID+`","`+testMutationID+`"]`, 1),
+		"timeline":                strings.Replace(withMutations(validMutation), `"createdAt":1`, `"createdAt":2`, 1),
 	} {
 		if _, err := syncv2.DecodeRequest([]byte(candidate)); !errors.Is(err, syncv2.ErrInvalidRequest) {
 			t.Fatalf("%s error = %v", name, err)

@@ -71,9 +71,23 @@ describe('shared runtime codecs', () => {
 
   it('makes mutation kind field combinations valid only as a discriminated union', () => {
     const fixture = createCompatibilityFixture();
+    expect(
+      pendingMutationDecoder.decode({
+        ...fixture.mutation,
+        kind: 'resolve',
+        baseServerRevision: 1,
+        conflictIds: [compatibilityIds.conflict],
+      }).ok,
+    ).toBe(true);
     expectFailure(pendingMutationDecoder, {
       ...fixture.mutation,
       kind: 'upsert',
+      conflictIds: [compatibilityIds.conflict],
+    });
+    expectFailure(pendingMutationDecoder, {
+      ...fixture.mutation,
+      kind: 'resolve',
+      baseServerRevision: null,
       conflictIds: [compatibilityIds.conflict],
     });
     expectFailure(pendingMutationDecoder, {
@@ -85,6 +99,10 @@ describe('shared runtime codecs', () => {
       ...fixture.mutation,
       kind: 'resolve',
       conflictIds: [compatibilityIds.conflict, compatibilityIds.conflict],
+    });
+    expectFailure(pendingMutationDecoder, {
+      ...fixture.mutation,
+      baseServerRevision: 0,
     });
   });
 

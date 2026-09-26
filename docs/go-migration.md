@@ -107,8 +107,11 @@ decision.
 
 State `A` means connected now, `B` means implemented/tested but disconnected,
 and `C` means absent or only a fake/provider gap. `A/B` records a guarded local
-connection whose production composition remains disconnected. A disconnected
-handler is not the same contract as its closed route.
+connection whose production composition remains disconnected. `A/B/C` records
+that same guarded local connection together with a disconnected implementation
+and a still-absent external-provider proof; F12 uses it to distinguish the local
+fixture key, the production KMS adapters, and the unperformed provider exercise.
+A disconnected handler is not the same contract as its closed route.
 
 | ID  | State | Capability                                  | Go evidence                     | Verification    | Status                                                                                    |
 | --- | ----- | ------------------------------------------- | ------------------------------- | --------------- | ----------------------------------------------------------------------------------------- |
@@ -1941,9 +1944,10 @@ The Sync v2 graph uses the same Billing/Entitlement records with PostgreSQL
 journal/metadata/quota stores and guarded AES-GCM filesystem adapters. No
 Stripe, GCP KMS, identity/mail, remote object, or backup provider is constructed
 or contacted. The profile-disabled and production paths remain closed. #510
-changes F20-F22 to A/B; #511 changes F04, F07, F09-F12, F14, F16-F17, F19, and
-F27 to guarded A/B. Neither slice deploys or authorizes production
-configuration; T17 separately completes only the source/runtime-artifact claim.
+changes F20-F22 to A/B; #511 changes F04, F07, F09-F11, F14, F16-F17, F19, and
+F27 to guarded A/B, while F12 becomes A/B/C because provider proof remains
+absent. Neither slice deploys or authorizes production configuration; T17
+separately completes only the source/runtime-artifact claim.
 
 The real-PostgreSQL adapter integration tests exercise the migrated schema,
 seed/readiness store, session lookup, key unwrap, and local legal/commerce

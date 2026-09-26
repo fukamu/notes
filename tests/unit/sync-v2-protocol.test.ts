@@ -174,6 +174,29 @@ describe('sync v2 wire codecs', () => {
     ).toThrow(BoundaryDecodeError);
     expect(() => parseSyncV2Cursor('short')).toThrow(BoundaryDecodeError);
   });
+
+  it('rejects revisions above the Sync v2 server maximum before transmission', () => {
+    const fixture = createCompatibilityFixture();
+    const mutation = {
+      ...fixture.mutation,
+      baseServerRevision: 2_147_483_648,
+    };
+    const wire = {
+      version: SYNC_V2_VERSION,
+      deviceId: compatibilityIds.device,
+      cursor: null,
+      mutations: [mutation],
+    };
+
+    expect(() => decodeSyncV2Request(wire)).toThrow(BoundaryDecodeError);
+    expect(() =>
+      encodeSyncV2Request({
+        deviceId: compatibilityIds.device,
+        cursor: null,
+        mutations: [mutation],
+      }),
+    ).toThrow(BoundaryDecodeError);
+  });
 });
 
 describe('authenticated cursor claims', () => {

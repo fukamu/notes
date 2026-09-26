@@ -66,7 +66,11 @@ func termsConsentRoute(options HandlerOptions) http.HandlerFunc {
 			http.MethodPost,
 		)
 	}
-	return termsConsentHandler(options.LegalRuntime, options.Logger)
+	return termsConsentHandler(
+		options.LegalRuntime,
+		options.Logger,
+		effectiveLegalBodyLimit(options.BodyLimit),
+	)
 }
 
 func checkoutRoute(options HandlerOptions) http.HandlerFunc {
@@ -78,10 +82,14 @@ func checkoutRoute(options HandlerOptions) http.HandlerFunc {
 			http.MethodPost,
 		)
 	}
-	return contractCheckoutHandler(options.LegalRuntime, options.Logger)
+	return contractCheckoutHandler(
+		options.LegalRuntime,
+		options.Logger,
+		effectiveLegalBodyLimit(options.BodyLimit),
+	)
 }
 
-func termsConsentHandler(runtime *LegalRuntime, logger *slog.Logger) http.HandlerFunc {
+func termsConsentHandler(runtime *LegalRuntime, logger *slog.Logger, bodyLimit int64) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		if !allowMethods(response, request, http.MethodGet, http.MethodPost) {
 			return
@@ -96,6 +104,10 @@ func termsConsentHandler(runtime *LegalRuntime, logger *slog.Logger) http.Handle
 			return
 		}
 		if request.Method == http.MethodGet {
+			if legalReadHasBody(request) {
+				writeLegalError(response, request, http.StatusBadRequest, "invalid-request")
+				return
+			}
 			result, ok := callTermsStatus(request.Context(), runtime.Terms, legal.TermsScope{
 				AccountID: vaultContext.AccountID,
 				VaultID:   vaultContext.VaultID,
@@ -110,7 +122,7 @@ func termsConsentHandler(runtime *LegalRuntime, logger *slog.Logger) http.Handle
 		}
 
 		var body termsConsentCommandBody
-		switch readLegalJSON(response, request, &body) {
+		switch readLegalJSON(response, request, &body, bodyLimit) {
 		case legalBodyTooLarge:
 			writeLegalError(response, request, http.StatusRequestEntityTooLarge, "request-too-large")
 			return
@@ -149,7 +161,7 @@ func termsConsentHandler(runtime *LegalRuntime, logger *slog.Logger) http.Handle
 	}
 }
 
-func contractCheckoutHandler(runtime *LegalRuntime, logger *slog.Logger) http.HandlerFunc {
+func contractCheckoutHandler(runtime *LegalRuntime, logger *slog.Logger, bodyLimit int64) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		if !allowMethods(response, request, http.MethodGet, http.MethodPost) {
 			return
@@ -164,6 +176,10 @@ func contractCheckoutHandler(runtime *LegalRuntime, logger *slog.Logger) http.Ha
 			return
 		}
 		if request.Method == http.MethodGet {
+			if legalReadHasBody(request) {
+				writeLegalError(response, request, http.StatusBadRequest, "invalid-request")
+				return
+			}
 			result, ok := callPrepareOffer(request.Context(), runtime.Checkout)
 			if !ok {
 				logLegalFailure(logger, "checkout_offer_panic")
@@ -181,7 +197,7 @@ func contractCheckoutHandler(runtime *LegalRuntime, logger *slog.Logger) http.Ha
 		}
 
 		var body contractConfirmationCommandBody
-		switch readLegalJSON(response, request, &body) {
+		switch readLegalJSON(response, request, &body, bodyLimit) {
 		case legalBodyTooLarge:
 			writeLegalError(response, request, http.StatusRequestEntityTooLarge, "request-too-large")
 			return
@@ -281,14 +297,30 @@ const (
 	legalBodyTooLarge legalBodyResult = "too-large"
 )
 
-func readLegalJSON(response http.ResponseWriter, request *http.Request, destination any) legalBodyResult {
+func effectiveLegalBodyLimit(configured int64) int64 {
+	if configured < legalRequestBodyLimitBytes {
+		return configured
+	}
+	return legalRequestBodyLimitBytes
+}
+
+func legalReadHasBody(request *http.Request) bool {
+	return request.ContentLength != 0 || len(request.TransferEncoding) != 0
+}
+
+func readLegalJSON(
+	response http.ResponseWriter,
+	request *http.Request,
+	destination any,
+	limit int64,
+) legalBodyResult {
 	if request.ContentLength < -1 {
 		return legalBodyInvalid
 	}
-	if request.ContentLength > legalRequestBodyLimitBytes {
+	if request.ContentLength > limit {
 		return legalBodyTooLarge
 	}
-	limited := http.MaxBytesReader(response, request.Body, legalRequestBodyLimitBytes)
+	limited := http.MaxBytesReader(response, request.Body, limit)
 	content, err := io.ReadAll(limited)
 	if err != nil {
 		var maximumBytesError *http.MaxBytesError
