@@ -14,6 +14,8 @@ import {
 import { createBillingUiHttpTransport } from '@/lib/client/http-billing-ui';
 import { createPrivacyRequestUiHttpTransport } from '@/lib/client/http-privacy-request';
 import { createTermsConsentUiHttpTransport } from '@/lib/client/terms-consent-ui';
+import { parseContractSubmissionId } from '@/lib/contracts/contract-checkout';
+import { parseTermsConsentSubmissionId } from '@/lib/contracts/terms-consent';
 import {
   decodeSyncRequest,
   decodeSyncResponse,
@@ -141,7 +143,12 @@ describe('Go migration browser wire fixtures', () => {
           termsHash: `sha256:${'a'.repeat(64)}`,
           effectiveDate: '2026-09-15',
         },
-        submissionId: '01991f20-61d2-7000-8000-000000002401',
+        submissionId: parseContractSubmissionId(
+          '01991f20-61d2-7000-8000-000000002401',
+        ),
+        termsSubmissionId: parseTermsConsentSubmissionId(
+          '01991f20-61d2-7000-8000-000000002501',
+        ),
       }),
     ).resolves.toEqual({ kind: 'unavailable' });
   });

@@ -26,7 +26,7 @@ describe('Go local fixture foundation boundary', () => {
     );
   });
 
-  it('does not expose the prepared foundation to business HTTP routes or provider adapters', async () => {
+  it('exposes only reviewed local legal runtimes without leaking the foundation or external providers', async () => {
     const [main, handler] = await Promise.all([
       readFile('backend/cmd/notes/main.go', 'utf8'),
       readFile('backend/internal/httpapi/handler.go', 'utf8'),
@@ -35,12 +35,15 @@ describe('Go local fixture foundation boundary', () => {
     expect(main).not.toContain('internal/adapters/stripe');
     expect(main).not.toContain('internal/adapters/kms');
     expect(handler).not.toContain('runtimefoundation.LocalFixture');
-    expect(main).toContain('localFixture *runtimefoundation.LocalFixture');
+    expect(main).toMatch(/localFixture\s+\*runtimefoundation\.LocalFixture/);
+    expect(main).toContain('internal/adapters/localcommerce');
     const serverOptions = main.slice(
       main.indexOf('httpapi.ServerOptions{'),
       main.indexOf('}); err != nil', main.indexOf('httpapi.ServerOptions{')),
     );
     expect(serverOptions).not.toContain('LocalFixture:');
+    expect(serverOptions).toContain('LegalRuntime:');
+    expect(serverOptions).toContain('BillingCancellationRuntime:');
   });
 
   it('keeps every destructive E2E reset behind the exact disposable database guard', async () => {

@@ -1120,7 +1120,13 @@ describe('terms consent presentation architecture', () => {
     expect(client).toContain('termsConsentSubmissionIdDecoder.decode');
     expect(client).toContain("credentials: 'same-origin'");
     expect(client).not.toMatch(/accountId|vaultId/);
-    expect(checkout).toContain('submissionId: review.submissionId');
+    expect(checkout).toContain(
+      'submissionId: createBillingCheckoutSubmissionId()',
+    );
+    expect(checkout).toContain(
+      'termsSubmissionId: createTermsConsentSubmissionId()',
+    );
+    expect(checkout).toContain('submissionId: review.termsSubmissionId');
     expect(checkout).toContain("subject: 'subscription'");
     expect(checkout).toContain("subject: 'terms'");
     expect(account).toContain('createLocalTermsConsentUiTransport');

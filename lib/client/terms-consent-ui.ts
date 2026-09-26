@@ -20,6 +20,7 @@ import {
   termsConsentSubmissionIdDecoder,
   termsDocumentHashDecoder,
   termsVersionDecoder,
+  type TermsConsentSubmissionId,
 } from '@/lib/contracts/terms-consent';
 
 type FetchRequest = (
@@ -52,7 +53,7 @@ export type TermsConsentUiTransport = Readonly<{
   loadStatus(): Promise<TermsConsentStatusLoadResult>;
   accept(input: {
     readonly current: TermsConsentUiReference;
-    readonly submissionId: string;
+    readonly submissionId: TermsConsentSubmissionId;
   }): Promise<TermsConsentAcceptResult>;
 }>;
 
@@ -277,7 +278,7 @@ export function createRemoteFirstTermsConsentUiTransport(
   };
 }
 
-export function createTermsConsentSubmissionId(): string {
+export function createTermsConsentSubmissionId(): TermsConsentSubmissionId {
   const decoded = termsConsentSubmissionIdDecoder.decode(uuidv7());
   if (!decoded.ok) throw new Error('generated invalid terms submission ID');
   return decoded.value;

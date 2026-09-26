@@ -21,6 +21,7 @@ import {
 import {
   createLocalTermsConsentUiTransport,
   createRemoteFirstTermsConsentUiTransport,
+  createTermsConsentSubmissionId,
   createTermsConsentUiHttpTransport,
   type TermsConsentStatusLoadResult,
   type TermsConsentUiTransport,
@@ -78,6 +79,7 @@ export function BillingCheckoutBoundary({
             offerHash: result.offerHash,
             terms: result.terms.current,
             submissionId: createBillingCheckoutSubmissionId(),
+            termsSubmissionId: createTermsConsentSubmissionId(),
           },
           notice: refresh ? changed : null,
         });
@@ -107,7 +109,7 @@ export function BillingCheckoutBoundary({
     dispatch({ type: 'submit-requested' });
     const termsResult = await termsTransport.accept({
       current: review.terms,
-      submissionId: review.submissionId,
+      submissionId: review.termsSubmissionId,
     });
     if (termsResult.kind !== 'accepted') {
       pending.current = false;

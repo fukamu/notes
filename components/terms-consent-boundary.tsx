@@ -16,6 +16,7 @@ import {
   createTermsConsentSubmissionId,
   createTermsConsentUiHttpTransport,
 } from '@/lib/client/terms-consent-ui';
+import type { TermsConsentSubmissionId } from '@/lib/contracts/terms-consent';
 
 export type TermsConsentSource =
   | {
@@ -42,7 +43,7 @@ export function TermsConsentBoundary({
     termsConsentUiReducer,
     initialTermsConsentUiState,
   );
-  const submissionId = useRef<string | undefined>(undefined);
+  const submissionId = useRef<TermsConsentSubmissionId | undefined>(undefined);
   const pending = useRef(false);
   const generation = useRef(0);
 

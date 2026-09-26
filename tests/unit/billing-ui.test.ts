@@ -49,7 +49,10 @@ describe('billing checkout UI pure state', () => {
     });
     expect(submitting).toMatchObject({
       kind: 'submitting',
-      review: { submissionId: billingUiContractIds.submissionA },
+      review: {
+        submissionId: billingUiContractIds.submissionA,
+        termsSubmissionId: billingUiContractIds.termsSubmissionA,
+      },
     });
     expect(
       billingCheckoutUiReducer(submitting, { type: 'submit-requested' }),
@@ -66,7 +69,10 @@ describe('billing checkout UI pure state', () => {
       kind: 'review',
       subscriptionConsent: true,
       termsConsent: true,
-      review: { submissionId: billingUiContractIds.submissionA },
+      review: {
+        submissionId: billingUiContractIds.submissionA,
+        termsSubmissionId: billingUiContractIds.termsSubmissionA,
+      },
     });
 
     const loading = billingCheckoutUiReducer(submitting, {
@@ -81,6 +87,7 @@ describe('billing checkout UI pure state', () => {
       review: {
         ...review(),
         submissionId: billingUiContractIds.submissionB,
+        termsSubmissionId: billingUiContractIds.termsSubmissionB,
       },
       notice: 'offer-changed',
     });
@@ -89,7 +96,10 @@ describe('billing checkout UI pure state', () => {
       subscriptionConsent: false,
       termsConsent: false,
       notice: 'offer-changed',
-      review: { submissionId: billingUiContractIds.submissionB },
+      review: {
+        submissionId: billingUiContractIds.submissionB,
+        termsSubmissionId: billingUiContractIds.termsSubmissionB,
+      },
     });
   });
 

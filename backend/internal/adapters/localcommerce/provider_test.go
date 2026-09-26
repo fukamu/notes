@@ -32,6 +32,15 @@ func TestNoNetworkProviderConfirmsOnlyExactSeededFacts(t *testing.T) {
 		t.Fatalf("checkout = %#v reads=%d/%d", result, subscriptions.reads, entitlements.reads)
 	}
 
+	wrongOffer := command
+	wrongOffer.Contract.OfferHash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	result = provider.BeginHostedCheckout(context.Background(), seed.Context, wrongOffer)
+	if result.Kind != stripebilling.HostedCheckoutRejected ||
+		result.Reason != stripebilling.ReasonProviderMappingMismatch ||
+		subscriptions.reads != 1 || entitlements.reads != 1 {
+		t.Fatalf("wrong offer checkout = %#v reads=%d/%d", result, subscriptions.reads, entitlements.reads)
+	}
+
 	wrongContext := seed.Context
 	wrongContext.VaultID = "01999c20-9e33-7000-8000-000000000099"
 	result = provider.BeginHostedCheckout(context.Background(), wrongContext, command)
@@ -50,10 +59,12 @@ func TestNoNetworkProviderConfirmsOnlyExactSeededFacts(t *testing.T) {
 func TestNoNetworkProviderSchedulesStablePeriodEndCancellation(t *testing.T) {
 	t.Parallel()
 	seed := providerSeed(t)
+	subscriptions := &subscriptionStub{record: seed.Subscription}
+	entitlements := &entitlementStub{record: seed.Entitlement}
 	provider, err := NewProvider(
 		seed,
-		&subscriptionStub{record: seed.Subscription},
-		&entitlementStub{record: seed.Entitlement},
+		subscriptions,
+		entitlements,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -74,9 +85,16 @@ func TestNoNetworkProviderSchedulesStablePeriodEndCancellation(t *testing.T) {
 	if err != nil || second != first {
 		t.Fatalf("stable cancellation = %#v, %v; want %#v", second, err, first)
 	}
-
-	command.ProviderSubscriptionReference = "fixture-subscription-other"
+	command.Effect = billing.ProviderCancellationImmediate
 	rejected, err := provider.CancelSubscription(context.Background(), command)
+	if err != nil || rejected.Kind != billing.ProviderCancellationTerminalFailure ||
+		subscriptions.reads != 2 || entitlements.reads != 2 {
+		t.Fatalf("immediate cancellation = %#v, %v reads=%d/%d", rejected, err, subscriptions.reads, entitlements.reads)
+	}
+
+	command.Effect = billing.ProviderCancellationPeriodEnd
+	command.ProviderSubscriptionReference = "fixture-subscription-other"
+	rejected, err = provider.CancelSubscription(context.Background(), command)
 	if err != nil || rejected.Kind != billing.ProviderCancellationTerminalFailure ||
 		rejected.AccessEndsAt != 0 {
 		t.Fatalf("mapping mismatch = %#v, %v", rejected, err)
@@ -98,8 +116,29 @@ func TestNoNetworkProviderFailsClosedOnDependenciesAndConfiguration(t *testing.T
 		t.Fatal(err)
 	}
 	result := provider.BeginHostedCheckout(context.Background(), seed.Context, providerCheckoutCommand())
-	if result.Kind != stripebilling.HostedCheckoutRejected || result.Reason != stripebilling.ReasonProviderMappingMismatch {
+	if result.Kind != stripebilling.HostedCheckoutRejected || result.Reason != stripebilling.ReasonProviderUnavailable {
 		t.Fatalf("dependency failure = %#v", result)
+	}
+	key, _ := billing.ParseCancellationIdempotencyKey("cancel_fixture_dependency")
+	observation, err := provider.CancelSubscription(context.Background(), billing.ProviderCancellationCommand{
+		Provider: seed.Subscription.Provider, ProviderSubscriptionReference: seed.Subscription.ProviderSubscriptionReference,
+		IdempotencyKey: key, RequestedAt: 1_000, Effect: billing.ProviderCancellationPeriodEnd,
+	})
+	if !errors.Is(err, errSeededFactsUnavailable) || observation != (billing.ProviderCancellationObservation{}) {
+		t.Fatalf("cancellation dependency failure = %#v, %v", observation, err)
+	}
+
+	provider, err = NewProvider(
+		seed,
+		&subscriptionStub{record: seed.Subscription},
+		&entitlementStub{record: seed.Entitlement, err: errors.New("database detail")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result = provider.BeginHostedCheckout(context.Background(), seed.Context, providerCheckoutCommand())
+	if result.Kind != stripebilling.HostedCheckoutRejected || result.Reason != stripebilling.ReasonProviderUnavailable {
+		t.Fatalf("entitlement dependency failure = %#v", result)
 	}
 }
 

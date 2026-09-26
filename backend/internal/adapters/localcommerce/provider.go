@@ -12,7 +12,10 @@ import (
 	"github.com/fukamu/notes/backend/internal/stripebilling"
 )
 
-var ErrInvalidProviderConfiguration = errors.New("invalid local commerce provider configuration")
+var (
+	ErrInvalidProviderConfiguration = errors.New("invalid local commerce provider configuration")
+	errSeededFactsUnavailable       = errors.New("local commerce seeded facts unavailable")
+)
 
 const localOfferHash = "sha256:19edccf0f78bed73624638cb28459a185150fa7f945bd694213fe7d851f71a9d"
 
@@ -58,10 +61,18 @@ func (provider *Provider) BeginHostedCheckout(
 	vaultContext identity.VaultContext,
 	command stripebilling.HostedCheckoutCommand,
 ) stripebilling.HostedCheckoutResult {
-	if provider == nil || vaultContext != provider.context || !validCheckoutCommand(command) ||
-		provider.verifySeededFacts(ctx) != nil {
+	if provider == nil || vaultContext != provider.context || !validCheckoutCommand(command) {
 		return stripebilling.HostedCheckoutResult{
 			Kind: stripebilling.HostedCheckoutRejected, Reason: stripebilling.ReasonProviderMappingMismatch,
+		}
+	}
+	if err := provider.verifySeededFacts(ctx); err != nil {
+		reason := stripebilling.ReasonProviderMappingMismatch
+		if errors.Is(err, errSeededFactsUnavailable) {
+			reason = stripebilling.ReasonProviderUnavailable
+		}
+		return stripebilling.HostedCheckoutResult{
+			Kind: stripebilling.HostedCheckoutRejected, Reason: reason,
 		}
 	}
 	return stripebilling.HostedCheckoutResult{Kind: stripebilling.HostedCheckoutLocalConfirmed}
@@ -73,8 +84,17 @@ func (provider *Provider) CancelSubscription(
 ) (billing.ProviderCancellationObservation, error) {
 	if provider == nil || command.Effect != billing.ProviderCancellationPeriodEnd ||
 		command.Provider != provider.expected.Subscription.Provider ||
-		command.ProviderSubscriptionReference != provider.expected.Subscription.ProviderSubscriptionReference ||
-		provider.verifySeededFacts(ctx) != nil {
+		command.ProviderSubscriptionReference != provider.expected.Subscription.ProviderSubscriptionReference {
+		return billing.ProviderCancellationObservation{
+			Kind:     billing.ProviderCancellationTerminalFailure,
+			Provider: command.Provider, ProviderSubscriptionReference: command.ProviderSubscriptionReference,
+			IdempotencyKey: command.IdempotencyKey, ObservedAt: identity.MaximumSafeInteger,
+		}, nil
+	}
+	if err := provider.verifySeededFacts(ctx); err != nil {
+		if errors.Is(err, errSeededFactsUnavailable) {
+			return billing.ProviderCancellationObservation{}, errSeededFactsUnavailable
+		}
 		return billing.ProviderCancellationObservation{
 			Kind:     billing.ProviderCancellationTerminalFailure,
 			Provider: command.Provider, ProviderSubscriptionReference: command.ProviderSubscriptionReference,
@@ -96,11 +116,17 @@ func (provider *Provider) verifySeededFacts(ctx context.Context) error {
 	storedSubscription, err := provider.subscriptions.FindByOwner(ctx, billing.OwnerScope{
 		AccountID: provider.context.AccountID, VaultID: provider.context.VaultID,
 	})
-	if err != nil || storedSubscription == nil || !matchesSubscription(*storedSubscription, provider.expected.Subscription) {
+	if err != nil {
+		return errSeededFactsUnavailable
+	}
+	if storedSubscription == nil || !matchesSubscription(*storedSubscription, provider.expected.Subscription) {
 		return ErrInvalidProviderConfiguration
 	}
 	storedEntitlement, err := provider.entitlements.FindProjection(ctx, provider.context)
-	if err != nil || storedEntitlement == nil || *storedEntitlement != provider.expected.Entitlement {
+	if err != nil {
+		return errSeededFactsUnavailable
+	}
+	if storedEntitlement == nil || *storedEntitlement != provider.expected.Entitlement {
 		return ErrInvalidProviderConfiguration
 	}
 	return nil

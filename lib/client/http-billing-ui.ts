@@ -21,6 +21,7 @@ import {
   contractOfferHashDecoder,
   contractOfferSnapshotDecoder,
   parseContractSubmissionId,
+  type ContractSubmissionId,
 } from '@/lib/contracts/contract-checkout';
 
 type FetchRequest = (
@@ -224,7 +225,7 @@ export function createBillingUiHttpTransport(
   };
 }
 
-export function createBillingCheckoutSubmissionId(): string {
+export function createBillingCheckoutSubmissionId(): ContractSubmissionId {
   return parseContractSubmissionId(uuidv7());
 }
 
