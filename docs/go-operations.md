@@ -326,13 +326,64 @@ an in-memory adapter, and the disposable loopback database only. A real object
 provider, production inventory or enqueue, provider credentials, region,
 retention, monitoring, cost, and scheduler remain unapproved.
 
+## Encrypted-object delete outbox
+
+The T13h command drains one bounded due batch for an exact Account/Vault. It is
+available only for `local` and `test`; it has no production-form syntax. Use it
+only with the disposable database and directory created for the drill. The
+directory must be absolute, resolve without symlinks, and deny group/other
+access (normally mode `0700`).
+
+```bash
+NOTES_ENVIRONMENT=test \
+NOTES_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend run ./cmd/notesctl objects delete-outbox \
+  --environment=test \
+  --account-id=01991f20-61d2-7000-8000-000000000101 \
+  --vault-id=01991f20-61d2-7000-8000-000000000201 \
+  --attempted-at-millis=1725000000000 \
+  --retry-delay-millis=60000 \
+  --limit=100 \
+  --object-root=/absolute/private/object-directory \
+  --confirm-local-object-deletes \
+  --confirm-delete-outbox-mutation
+```
+
+The exact owner check precedes selection and object deletion. Selection is
+stable by `next_attempt_at` then opaque object key and excludes any key that is
+currently committed or held by an active write intent. Such a protected row is
+not discarded; the outcome remains `pending` so the inconsistency can be
+investigated.
+
+For each selected row, storage `deleted` and `not-found` both advance the
+outbox. This makes an uncertain response resumable: if bytes were removed but
+PostgreSQL confirmation was lost, the repeat sees `not-found` and confirms the
+same row. Other storage failures reschedule the row at
+`attempted-at-millis + retry-delay-millis` with its attempt incremented once.
+Applied, already-replayed, and losing-CAS mutations are reported separately;
+a competing row is never overwritten.
+
+`completed` means the scoped outbox count was zero after this pass. `pending`
+includes additional due rows, future retries, protected rows, and a competing
+mutation. Repeat with a new explicit attempted time appropriate for the retry
+policy; do not edit attempts or delete rows/files manually. Successful output
+contains only command/outcome, completed/retried/replayed/contended counts, and
+the declared limit. It never includes Account/Vault IDs, object keys, paths,
+database configuration, file contents, or dependency errors.
+
+The two confirmations guard accidental local invocation only. They do not
+authorize a shared database/directory, production provider, credential,
+scheduler, deployment, cost, or external request. The account-deletion purge is
+a different operation and continues to require its running saga state and
+prior receipt.
+
 ## Remaining operations boundaries
 
 - checking application/provider evidence for a reservation;
 - deriving release evidence or automatically releasing a reservation;
 - pagination beyond the explicit bounded first page;
 - recurring scheduling or cron registration;
-- delete outbox, account-deletion advancement, or recovery drill runners;
+- account-deletion advancement or recovery drill runners;
 - production KMS identity/resource composition and recurring scheduling.
 
 Those effects require separate typed commands, tests, and review. Age alone is
@@ -341,7 +392,7 @@ never evidence that a quota reservation is safe to release.
 ## Rollback
 
 Stop invoking the commands and roll back the application artifact to the prior
-integration commit. T13a through T13g add no schema. T13a and T13c write no
+integration commit. T13a through T13h add no schema. T13a and T13c write no
 data. A T13b commit is an intentional quota-ledger transition backed by an
 existing Sync receipt and must not be reversed by deleting rows or
 synthesizing a release. A T13d applied/ignored provider snapshot and its
@@ -360,4 +411,9 @@ do not reset it, delete a newly written orphan by hand, remove an old object,
 or retire either DEK version to reverse application code. A T13g rollback
 stops new scans but preserves every enqueued outbox row and object. Resume or
 drain those rows only through reviewed operations; never remove rows or object
-files by hand to reverse the application artifact.
+files by hand to reverse the application artifact. A T13h rollback stops new
+drains but cannot restore bytes already deleted from disposable storage. Keep
+every remaining outbox row and its retry metadata, reconcile any uncertain
+invocation by replaying the same scoped operation, and never recreate an
+immutable key or delete a row by hand. Production recovery and backup restore
+remain unapproved and were not exercised by this command.

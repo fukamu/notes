@@ -53,6 +53,7 @@ func run(ctx context.Context, arguments []string, stdout io.Writer, stderr io.Wr
 		rotateVaultDEK,
 		reencryptVaultDEK,
 		scanVaultOrphans,
+		drainVaultDeleteOutbox,
 	)
 }
 
@@ -102,6 +103,12 @@ type scanOrphansFunction func(
 	string,
 	operations.OrphanScanCommand,
 ) (operations.OrphanScanResult, error)
+type drainDeleteOutboxFunction func(
+	context.Context,
+	string,
+	string,
+	operations.DeleteOutboxCommand,
+) (operations.DeleteOutboxResult, error)
 
 func runWithDependencies(
 	parent context.Context,
@@ -118,9 +125,11 @@ func runWithDependencies(
 	rotateDEK rotateDEKFunction,
 	reencryptDEK reencryptDEKFunction,
 	scanOrphans scanOrphansFunction,
+	drainDeleteOutbox drainDeleteOutboxFunction,
 ) int {
 	if parent == nil || listQuotaCandidates == nil || finalizeQuotaCommit == nil || inspectDeletion == nil ||
-		reconcileBilling == nil || rotateDEK == nil || reencryptDEK == nil || scanOrphans == nil {
+		reconcileBilling == nil || rotateDEK == nil || reencryptDEK == nil || scanOrphans == nil ||
+		drainDeleteOutbox == nil {
 		_, _ = fmt.Fprintln(stderr, "operation dependencies invalid")
 		return 1
 	}
@@ -196,6 +205,14 @@ func runWithDependencies(
 			return 2
 		}
 		return runOrphanScan(parent, orphanScan, stdout, stderr, lookup, scanOrphans)
+	}
+	deleteOutbox, deleteOutboxRequested, deleteOutboxErr := parseDeleteOutboxArguments(arguments)
+	if deleteOutboxRequested {
+		if deleteOutboxErr != nil {
+			printUsage(stderr)
+			return 2
+		}
+		return runDeleteOutbox(parent, deleteOutbox, stdout, stderr, lookup, drainDeleteOutbox)
 	}
 	prepareE2ERequested := len(arguments) == 3 && arguments[0] == "prepare-e2e" &&
 		arguments[1] == "--environment=test" && strings.HasPrefix(arguments[2], "--allowed-subject=")
@@ -1251,8 +1268,148 @@ func runOrphanScan(
 	return 0
 }
 
+type deleteOutboxArguments struct {
+	environment config.Environment
+	objectRoot  string
+	command     operations.DeleteOutboxCommand
+}
+
+func parseDeleteOutboxArguments(arguments []string) (deleteOutboxArguments, bool, error) {
+	if len(arguments) < 2 || arguments[0] != "objects" || arguments[1] != "delete-outbox" {
+		return deleteOutboxArguments{}, false, nil
+	}
+	values := make(map[string]string, 7)
+	confirmedDelete := false
+	confirmedMutation := false
+	for _, argument := range arguments[2:] {
+		switch argument {
+		case "--confirm-local-object-deletes":
+			if confirmedDelete {
+				return deleteOutboxArguments{}, true, operations.ErrDeleteOutboxDrain
+			}
+			confirmedDelete = true
+			continue
+		case "--confirm-delete-outbox-mutation":
+			if confirmedMutation {
+				return deleteOutboxArguments{}, true, operations.ErrDeleteOutboxDrain
+			}
+			confirmedMutation = true
+			continue
+		}
+		name, value, found := strings.Cut(argument, "=")
+		if !found || value == "" || strings.ContainsAny(value, "\r\n\x00") ||
+			(name != "--environment" && name != "--account-id" && name != "--vault-id" &&
+				name != "--attempted-at-millis" && name != "--retry-delay-millis" &&
+				name != "--limit" && name != "--object-root") {
+			return deleteOutboxArguments{}, true, operations.ErrDeleteOutboxDrain
+		}
+		if _, duplicate := values[name]; duplicate {
+			return deleteOutboxArguments{}, true, operations.ErrDeleteOutboxDrain
+		}
+		values[name] = value
+	}
+	if len(values) != 7 || !confirmedDelete || !confirmedMutation {
+		return deleteOutboxArguments{}, true, operations.ErrDeleteOutboxDrain
+	}
+	environment := config.Environment(values["--environment"])
+	if environment != config.EnvironmentLocal && environment != config.EnvironmentTest {
+		return deleteOutboxArguments{}, true, operations.ErrDeleteOutboxDrain
+	}
+	objectRoot := values["--object-root"]
+	if len(objectRoot) > 4_096 || !filepath.IsAbs(objectRoot) {
+		return deleteOutboxArguments{}, true, operations.ErrDeleteOutboxDrain
+	}
+	accountID, err := identity.ParseAccountID(values["--account-id"])
+	if err != nil {
+		return deleteOutboxArguments{}, true, operations.ErrDeleteOutboxDrain
+	}
+	vaultID, err := identity.ParseVaultID(values["--vault-id"])
+	if err != nil {
+		return deleteOutboxArguments{}, true, operations.ErrDeleteOutboxDrain
+	}
+	attemptedAt, err := strconv.ParseInt(values["--attempted-at-millis"], 10, 64)
+	if err != nil {
+		return deleteOutboxArguments{}, true, operations.ErrDeleteOutboxDrain
+	}
+	retryDelay, err := strconv.ParseInt(values["--retry-delay-millis"], 10, 64)
+	if err != nil {
+		return deleteOutboxArguments{}, true, operations.ErrDeleteOutboxDrain
+	}
+	limit, err := strconv.Atoi(values["--limit"])
+	if err != nil {
+		return deleteOutboxArguments{}, true, operations.ErrDeleteOutboxDrain
+	}
+	command := operations.DeleteOutboxCommand{
+		Scope:       operations.DeleteOutboxScope{AccountID: accountID, VaultID: vaultID},
+		AttemptedAt: attemptedAt, RetryDelayMilli: retryDelay, Limit: limit,
+	}
+	if operations.ValidateDeleteOutboxCommand(command) != nil {
+		return deleteOutboxArguments{}, true, operations.ErrDeleteOutboxDrain
+	}
+	return deleteOutboxArguments{environment: environment, objectRoot: objectRoot, command: command}, true, nil
+}
+
+func runDeleteOutbox(
+	parent context.Context,
+	arguments deleteOutboxArguments,
+	stdout io.Writer,
+	stderr io.Writer,
+	lookup func(string) (string, bool),
+	drain drainDeleteOutboxFunction,
+) int {
+	databaseConfig, err := config.LoadDatabase(lookup)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "delete outbox configuration invalid")
+		return 1
+	}
+	if arguments.environment != databaseConfig.Environment {
+		_, _ = fmt.Fprintln(stderr, "delete outbox environment refused")
+		return 1
+	}
+	if err := postgresadapter.ValidateTestDatabaseURL(databaseConfig.URL); err != nil {
+		_, _ = fmt.Fprintln(stderr, "delete outbox target refused")
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	defer cancel()
+	result, err := drain(ctx, databaseConfig.URL, arguments.objectRoot, arguments.command)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "delete outbox drain failed")
+		return 1
+	}
+	if result.Kind == operations.DeleteOutboxRefused {
+		_, _ = fmt.Fprintln(stderr, "delete outbox scope refused")
+		return 1
+	}
+	processed := result.Completed + result.Retried + result.Replayed + result.Contended
+	if (result.Kind != operations.DeleteOutboxCompleted && result.Kind != operations.DeleteOutboxPending) ||
+		result.Completed < 0 || result.Retried < 0 || result.Replayed < 0 || result.Contended < 0 ||
+		processed > arguments.command.Limit {
+		_, _ = fmt.Fprintln(stderr, "delete outbox drain failed")
+		return 1
+	}
+	output := struct {
+		Command   string `json:"command"`
+		Outcome   string `json:"outcome"`
+		Completed int    `json:"completed"`
+		Retried   int    `json:"retried"`
+		Replayed  int    `json:"replayed"`
+		Contended int    `json:"contended"`
+		Limit     int    `json:"limit"`
+	}{
+		Command: "objects-delete-outbox", Outcome: string(result.Kind),
+		Completed: result.Completed, Retried: result.Retried,
+		Replayed: result.Replayed, Contended: result.Contended, Limit: arguments.command.Limit,
+	}
+	if err := json.NewEncoder(stdout).Encode(output); err != nil {
+		_, _ = fmt.Fprintln(stderr, "delete outbox output failed")
+		return 1
+	}
+	return 0
+}
+
 func printUsage(output io.Writer) {
-	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read] | notesctl dek rotate --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --operation-id=<uuidv7> --requested-at-millis=<unix-ms> --generated-at-millis=<unix-ms> --completed-at-millis=<unix-ms> --confirm-kms-key-generation [--confirm-production-kms-mutation] | notesctl dek reencrypt --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --target-version=<version> --limit=1..100 --performed-at-millis=<unix-ms> --object-root=<absolute-secure-directory> --nonce-root=<absolute-secure-directory> --confirm-local-object-writes --confirm-kms-unwrapping | notesctl objects orphan-scan --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --scan-started-at-millis=<unix-ms> --grace-period-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-scan --confirm-delete-enqueue")
+	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read] | notesctl dek rotate --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --operation-id=<uuidv7> --requested-at-millis=<unix-ms> --generated-at-millis=<unix-ms> --completed-at-millis=<unix-ms> --confirm-kms-key-generation [--confirm-production-kms-mutation] | notesctl dek reencrypt --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --target-version=<version> --limit=1..100 --performed-at-millis=<unix-ms> --object-root=<absolute-secure-directory> --nonce-root=<absolute-secure-directory> --confirm-local-object-writes --confirm-kms-unwrapping | notesctl objects orphan-scan --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --scan-started-at-millis=<unix-ms> --grace-period-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-scan --confirm-delete-enqueue | notesctl objects delete-outbox --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --attempted-at-millis=<unix-ms> --retry-delay-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-deletes --confirm-delete-outbox-mutation")
 }
 
 func prepareE2EDatabase(ctx context.Context, databaseURL string, allowedSubject string) error {
@@ -1553,6 +1710,40 @@ func scanVaultOrphans(
 	service, err := operations.NewOrphanScanService(loader, collector)
 	if err != nil {
 		return operations.OrphanScanResult{}, err
+	}
+	return service.Run(ctx, command)
+}
+
+func drainVaultDeleteOutbox(
+	ctx context.Context,
+	databaseURL string,
+	objectRoot string,
+	command operations.DeleteOutboxCommand,
+) (operations.DeleteOutboxResult, error) {
+	objects, err := objectstorageadapter.NewDirectory(objectRoot)
+	if err != nil {
+		return operations.DeleteOutboxResult{}, err
+	}
+	pool, err := postgresadapter.OpenPool(ctx, databaseURL, 2)
+	if err != nil {
+		return operations.DeleteOutboxResult{}, err
+	}
+	defer pool.Close()
+	loader, err := postgresadapter.NewDeleteOutboxScopeStore(pool)
+	if err != nil {
+		return operations.DeleteOutboxResult{}, err
+	}
+	repository, err := postgresadapter.NewScopedDeleteOutboxStore(pool, command.Scope)
+	if err != nil {
+		return operations.DeleteOutboxResult{}, err
+	}
+	drainer, err := encryptedobject.NewDeleteOutboxDrainer(repository, objects)
+	if err != nil {
+		return operations.DeleteOutboxResult{}, err
+	}
+	service, err := operations.NewDeleteOutboxService(command.Scope, loader, drainer)
+	if err != nil {
+		return operations.DeleteOutboxResult{}, err
 	}
 	return service.Run(ctx, command)
 }

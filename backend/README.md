@@ -97,6 +97,16 @@ only redacted counts, and never deletes object bytes. It adds no production
 object provider, credential, route, scheduler, deployment, or external
 resource operation.
 
+T13h Issue #488 composes only explicit `notesctl objects delete-outbox`. It
+checks the exact Account/Vault before selecting or deleting, drains at most an
+explicit 1..100 due batch, treats storage `not-found` as an idempotent replay,
+reschedules storage failures, and distinguishes applied, replayed, and losing
+CAS mutations. Referenced object keys are excluded and remain pending for
+investigation. The command accepts only a loopback disposable database and an
+existing private local directory and emits redacted counts. It adds no
+production object provider, credential, route, scheduler, deployment, or
+external resource operation.
+
 T09c Issue #440 adds the disconnected Go Entitlement core, service, and
 PostgreSQL repository. Migration 00008 stores Account/Vault-scoped projections
 and Session/SessionEpoch-bound offline leases. Projection CAS and active-lease
