@@ -125,6 +125,50 @@ func TestSessionContextAuthenticatesBeforeRejectingBodiesAndFailsClosed(t *testi
 	}
 }
 
+func TestLocalSyncV2MuxAppliesConfiguredBodyLimitAfterAuthentication(t *testing.T) {
+	t.Parallel()
+	staticDirectory := t.TempDir()
+	writeStaticFixture(t, staticDirectory)
+	runtime := muxSyncV2Runtime()
+	body := validSyncV2EmptyRequest()
+	handler, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory: staticDirectory,
+		BodyLimit:       int64(len(body) - 1),
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		SyncV2Runtime:   runtime,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tracking := &syncV2TrackingBody{}
+	request := httptest.NewRequest(http.MethodPost, "/api/v2/sync", nil)
+	request.Body = tracking
+	request.ContentLength = int64(len(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", syncV2TestOrigin)
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized || tracking.reads != 0 {
+		t.Fatalf("anonymous oversized body = %d, reads=%d", response.Code, tracking.reads)
+	}
+
+	authenticated := httptest.NewRecorder()
+	handler.ServeHTTP(authenticated, authenticatedSyncV2Request(body))
+	application := runtime.Application.(*syncV2ApplicationStub)
+	if authenticated.Code != http.StatusRequestEntityTooLarge ||
+		strings.TrimSpace(authenticated.Body.String()) != `{"error":"request-too-large"}` ||
+		application.calls != 0 {
+		t.Fatalf(
+			"authenticated oversized body = %d %q, application calls=%d",
+			authenticated.Code,
+			authenticated.Body.String(),
+			application.calls,
+		)
+	}
+}
+
 func muxSyncV2Runtime() *httpapi.SyncV2Runtime {
 	session := &identity.Session{
 		Kind: identity.SessionActive, SessionID: syncV2TestSessionID,

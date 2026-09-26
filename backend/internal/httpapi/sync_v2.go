@@ -43,10 +43,14 @@ func NewSyncV2ContractHandler(runtime *SyncV2Runtime, logger *slog.Logger) (http
 	if !syncV2RuntimeComplete(runtime) || logger == nil {
 		return nil, errors.New("complete Sync v2 runtime and logger are required")
 	}
-	return http.HandlerFunc(syncV2ContractHandler(runtime, logger)), nil
+	return http.HandlerFunc(syncV2ContractHandler(runtime, logger, syncv2.MaximumRequestBytes)), nil
 }
 
-func syncV2ContractHandler(runtime *SyncV2Runtime, logger *slog.Logger) http.HandlerFunc {
+func syncV2ContractHandler(
+	runtime *SyncV2Runtime,
+	logger *slog.Logger,
+	bodyLimit int64,
+) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		if !allowMethods(response, request, http.MethodPost) {
 			return
@@ -65,7 +69,7 @@ func syncV2ContractHandler(runtime *SyncV2Runtime, logger *slog.Logger) http.Han
 			writeSyncV2Error(response, request, http.StatusBadRequest, "invalid-request")
 			return
 		}
-		body, status := readSyncV2Body(response, request)
+		body, status := readSyncV2Body(response, request, bodyLimit)
 		if status != 0 {
 			code := "invalid-request"
 			if status == http.StatusRequestEntityTooLarge {
@@ -167,7 +171,14 @@ func authenticateSyncV2Request(
 	return identity.VaultContext{}, true
 }
 
-func readSyncV2Body(response http.ResponseWriter, request *http.Request) ([]byte, int) {
+func effectiveSyncV2BodyLimit(configured int64) int64 {
+	if configured < syncv2.MaximumRequestBytes {
+		return configured
+	}
+	return syncv2.MaximumRequestBytes
+}
+
+func readSyncV2Body(response http.ResponseWriter, request *http.Request, limit int64) ([]byte, int) {
 	declared := request.Header.Values("Content-Length")
 	if len(declared) > 1 {
 		return nil, http.StatusBadRequest
@@ -177,11 +188,11 @@ func readSyncV2Body(response http.ResponseWriter, request *http.Request) ([]byte
 		if err != nil || length < 0 {
 			return nil, http.StatusBadRequest
 		}
-		if length > syncv2.MaximumRequestBytes {
+		if length > limit {
 			return nil, http.StatusRequestEntityTooLarge
 		}
 	}
-	limited := http.MaxBytesReader(response, request.Body, syncv2.MaximumRequestBytes)
+	limited := http.MaxBytesReader(response, request.Body, limit)
 	body, err := io.ReadAll(limited)
 	if err != nil {
 		var maximum *http.MaxBytesError

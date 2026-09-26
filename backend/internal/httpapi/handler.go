@@ -96,7 +96,11 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 	)
 	if options.SyncV2Runtime != nil {
 		legacyHandler = closedAPI
-		syncV2Handler = syncV2ContractHandler(options.SyncV2Runtime, options.Logger)
+		syncV2Handler = syncV2ContractHandler(
+			options.SyncV2Runtime,
+			options.Logger,
+			effectiveSyncV2BodyLimit(options.BodyLimit),
+		)
 		sessionContextHandler = sessionContext(options.SyncV2Runtime)
 	}
 	mux.HandleFunc("/api/sync", exact("/api/sync", legacyHandler))
