@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { lstat, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import {
   legacyTestCorpusDigest,
@@ -7,6 +7,10 @@ import {
 } from './legacy-retirement-core.mts';
 import {
   decodeMigrationClosure,
+  reachableNpmScripts,
+  validateEvidenceFileIdentity,
+  validateExecutableEvidenceGate,
+  validateExecutableEvidenceSource,
   validateLegacyCoverage,
 } from './migration-closure-core.mts';
 
@@ -14,18 +18,59 @@ const manifestPath = 'contracts/go-migration-closure.json';
 const manifest: unknown = JSON.parse(await readFile(manifestPath, 'utf8'));
 const closure = decodeMigrationClosure(manifest);
 
+const packageCandidate: unknown = JSON.parse(
+  await readFile('package.json', 'utf8'),
+);
+if (!isRecord(packageCandidate) || !isRecord(packageCandidate.scripts)) {
+  throw new TypeError('package scripts are unavailable');
+}
+const packageScripts = packageCandidate.scripts;
+const reachableScripts = reachableNpmScripts(
+  packageScripts,
+  closure.gate.rootScript,
+);
+
 const evidencePaths = new Set([
   ...closure.features.flatMap(({ goEvidence }) => goEvidence),
   ...closure.verifications.flatMap(({ evidence }) => evidence),
+  ...closure.executableEvidence.map(({ path: evidencePath }) => evidencePath),
+  ...closure.executableEvidence
+    .filter(({ kind }) => kind === 'playwright-test')
+    .flatMap(({ selector }) => [selector, 'scripts/run-deletion-live-e2e.mts']),
 ]);
 await Promise.all(
   [...evidencePaths].map(async (evidencePath) => {
-    const details = await stat(evidencePath);
-    if (!details.isFile()) {
-      throw new TypeError(`migration evidence is not a file: ${evidencePath}`);
-    }
+    const details = await lstat(evidencePath);
+    validateEvidenceFileIdentity({
+      tracked: gitTracked(evidencePath),
+      regularFile: details.isFile(),
+      symbolicLink: details.isSymbolicLink(),
+    });
   }),
 );
+for (const evidence of closure.executableEvidence) {
+  if (!reachableScripts.has(evidence.gate)) {
+    throw new TypeError(
+      `executable evidence gate is unreachable from npm run verify: ${evidence.gate}`,
+    );
+  }
+  validateExecutableEvidenceSource(
+    evidence,
+    await readFile(evidence.path, 'utf8'),
+    packageScripts,
+  );
+  const supportingSources: Readonly<Record<string, string>> =
+    evidence.kind === 'playwright-test'
+      ? {
+          [evidence.selector]: await readFile(evidence.selector, 'utf8'),
+          'scripts/run-deletion-live-e2e.mts': await readFile(
+            'scripts/run-deletion-live-e2e.mts',
+            'utf8',
+          ),
+        }
+      : {};
+  validateExecutableEvidenceGate(evidence, packageScripts, supportingSources);
+}
 
 const sourcePaths = (
   await Promise.all(
@@ -142,4 +187,22 @@ function gitOutput(arguments_: readonly string[]): string {
     throw result.error ?? new Error(`git ${arguments_.join(' ')} failed`);
   }
   return result.stdout;
+}
+
+function gitTracked(evidencePath: string): boolean {
+  const result = spawnSync(
+    'git',
+    ['ls-files', '--error-unmatch', '--', evidencePath],
+    { encoding: 'utf8' },
+  );
+  return (
+    result.status === 0 &&
+    result.signal === null &&
+    result.stderr.length === 0 &&
+    result.stdout.trim() === evidencePath
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

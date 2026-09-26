@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 
-export const RELEASE_ARTIFACT_SCHEMA_VERSION = 1;
-export const RELEASE_ARTIFACT_VERIFIER_VERSION = 1;
+export const RELEASE_ARTIFACT_SCHEMA_VERSION = 2;
+export const RELEASE_ARTIFACT_VERIFIER_VERSION = 2;
 
 const sha256Pattern = /^[a-f0-9]{64}$/u;
 const imageIDPattern = /^sha256:[a-f0-9]{64}$/u;
@@ -37,8 +38,238 @@ export type ReleaseManifest = Readonly<{
     method: string;
     path: string;
     status: number;
+    bodyKind: string;
+    bodySha256: string;
+    contentType: string;
+    cacheControl: string;
+    vary: string;
   }>[];
+  loopbackSmoke: Readonly<{
+    runtime: string;
+    bindAddress: string;
+    exitCode: number;
+    signal: string;
+    gracefulShutdown: boolean;
+    logsSha256: string;
+  }>;
+  networkNoneLifecycles: readonly Readonly<{
+    containerID: string;
+    imageID: string;
+    networkMode: string;
+    exitCode: number;
+    signal: string;
+    gracefulShutdown: boolean;
+    logsSha256: string;
+  }>[];
+  productionTransition: Readonly<{
+    status: string;
+    reason: string;
+  }>;
 }>;
+
+type ExpectedReleaseRoute = Readonly<{
+  method: 'GET' | 'POST';
+  path: string;
+  status: number;
+  bodyKind:
+    | 'health-ok'
+    | 'not-ready'
+    | 'notes-html'
+    | 'pricing-html'
+    | 'not-found-code'
+    | 'launch-unavailable'
+    | 'unavailable';
+  contentType: string;
+  cacheControl: string;
+  vary: string;
+}>;
+
+const jsonContentType = 'application/json; charset=utf-8';
+const privateVary = 'Cookie, X-Fukamu-Local-Identity-Assertion';
+
+export const EXPECTED_PRODUCTION_DISABLED_ROUTES: readonly ExpectedReleaseRoute[] =
+  [
+    {
+      method: 'GET',
+      path: '/healthz',
+      status: 200,
+      bodyKind: 'health-ok',
+      contentType: jsonContentType,
+      cacheControl: 'no-store',
+      vary: '',
+    },
+    {
+      method: 'GET',
+      path: '/readyz',
+      status: 503,
+      bodyKind: 'not-ready',
+      contentType: jsonContentType,
+      cacheControl: 'no-store',
+      vary: '',
+    },
+    {
+      method: 'GET',
+      path: '/',
+      status: 200,
+      bodyKind: 'notes-html',
+      contentType: 'text/html; charset=utf-8',
+      cacheControl: 'no-store',
+      vary: '',
+    },
+    {
+      method: 'GET',
+      path: '/pricing',
+      status: 200,
+      bodyKind: 'pricing-html',
+      contentType: 'text/html; charset=utf-8',
+      cacheControl: 'no-store',
+      vary: '',
+    },
+    {
+      method: 'GET',
+      path: '/cards/release-verification/history',
+      status: 200,
+      bodyKind: 'notes-html',
+      contentType: 'text/html; charset=utf-8',
+      cacheControl: 'no-store',
+      vary: '',
+    },
+    {
+      method: 'GET',
+      path: '/not-a-release-route',
+      status: 404,
+      bodyKind: 'not-found-code',
+      contentType: jsonContentType,
+      cacheControl: 'no-store',
+      vary: '',
+    },
+    {
+      method: 'GET',
+      path: '/api/not-a-release-route',
+      status: 404,
+      bodyKind: 'not-found-code',
+      contentType: jsonContentType,
+      cacheControl: 'no-store',
+      vary: '',
+    },
+    {
+      method: 'GET',
+      path: '/api/launch-status',
+      status: 503,
+      bodyKind: 'launch-unavailable',
+      contentType: jsonContentType,
+      cacheControl: 'private, no-store',
+      vary: privateVary,
+    },
+    {
+      method: 'POST',
+      path: '/api/sync',
+      status: 404,
+      bodyKind: 'not-found-code',
+      contentType: jsonContentType,
+      cacheControl: 'no-store',
+      vary: '',
+    },
+    {
+      method: 'POST',
+      path: '/api/v2/sync',
+      status: 503,
+      bodyKind: 'launch-unavailable',
+      contentType: jsonContentType,
+      cacheControl: 'private, no-store',
+      vary: privateVary,
+    },
+    {
+      method: 'GET',
+      path: '/api/session-context',
+      status: 503,
+      bodyKind: 'launch-unavailable',
+      contentType: jsonContentType,
+      cacheControl: 'private, no-store',
+      vary: privateVary,
+    },
+    {
+      method: 'GET',
+      path: '/api/billing/checkout',
+      status: 503,
+      bodyKind: 'launch-unavailable',
+      contentType: jsonContentType,
+      cacheControl: 'private, no-store',
+      vary: privateVary,
+    },
+    {
+      method: 'POST',
+      path: '/api/billing/checkout',
+      status: 503,
+      bodyKind: 'launch-unavailable',
+      contentType: jsonContentType,
+      cacheControl: 'private, no-store',
+      vary: privateVary,
+    },
+    {
+      method: 'GET',
+      path: '/api/account/terms-consent',
+      status: 503,
+      bodyKind: 'launch-unavailable',
+      contentType: jsonContentType,
+      cacheControl: 'private, no-store',
+      vary: privateVary,
+    },
+    {
+      method: 'POST',
+      path: '/api/account/terms-consent',
+      status: 503,
+      bodyKind: 'launch-unavailable',
+      contentType: jsonContentType,
+      cacheControl: 'private, no-store',
+      vary: privateVary,
+    },
+    {
+      method: 'POST',
+      path: '/api/billing/cancel',
+      status: 503,
+      bodyKind: 'unavailable',
+      contentType: jsonContentType,
+      cacheControl: 'no-store',
+      vary: '',
+    },
+    {
+      method: 'POST',
+      path: '/api/account/deletion',
+      status: 503,
+      bodyKind: 'unavailable',
+      contentType: jsonContentType,
+      cacheControl: 'no-store',
+      vary: '',
+    },
+    {
+      method: 'POST',
+      path: '/api/account/deletion/status',
+      status: 503,
+      bodyKind: 'unavailable',
+      contentType: jsonContentType,
+      cacheControl: 'no-store',
+      vary: '',
+    },
+    {
+      method: 'POST',
+      path: '/api/account/privacy-requests',
+      status: 503,
+      bodyKind: 'unavailable',
+      contentType: jsonContentType,
+      cacheControl: 'no-store',
+      vary: '',
+    },
+    {
+      method: 'POST',
+      path: '/api/account/privacy-requests/status',
+      status: 503,
+      bodyKind: 'unavailable',
+      contentType: jsonContentType,
+      cacheControl: 'no-store',
+      vary: '',
+    },
+  ] as const;
 
 export type DependencyPackage = Readonly<{
   ecosystem: 'golang' | 'npm';
@@ -282,6 +513,22 @@ export function parseLatestMigrationVersion(source: string): number {
 
 export function validateReleaseManifest(candidate: unknown): ReleaseManifest {
   const manifest = record(candidate, 'release manifest');
+  exactKeys(manifest, 'release manifest', [
+    'schemaVersion',
+    'verifierVersion',
+    'sourceRevision',
+    'imageID',
+    'imageReference',
+    'schemaMigrationVersion',
+    'runtimeUser',
+    'entrypoint',
+    'notesBinary',
+    'frontend',
+    'verifiedRoutes',
+    'loopbackSmoke',
+    'networkNoneLifecycles',
+    'productionTransition',
+  ]);
   const schemaVersion = safeInteger(
     manifest.schemaVersion,
     'release manifest schema version',
@@ -319,6 +566,8 @@ export function validateReleaseManifest(candidate: unknown): ReleaseManifest {
     'release notes binary',
   );
   const frontendRecord = record(manifest.frontend, 'release frontend');
+  exactKeys(notesBinaryRecord, 'release notes binary', ['sha256', 'bytes']);
+  exactKeys(frontendRecord, 'release frontend', ['sha256', 'files', 'bytes']);
   const notesBinary = {
     sha256: digest(notesBinaryRecord.sha256, 'release binary digest'),
     bytes: positiveInteger(notesBinaryRecord.bytes, 'release binary bytes'),
@@ -328,27 +577,212 @@ export function validateReleaseManifest(candidate: unknown): ReleaseManifest {
     files: positiveInteger(frontendRecord.files, 'release frontend files'),
     bytes: positiveInteger(frontendRecord.bytes, 'release frontend bytes'),
   };
-  if (
-    !Array.isArray(manifest.verifiedRoutes) ||
-    manifest.verifiedRoutes.length < 6
-  ) {
+  if (!Array.isArray(manifest.verifiedRoutes)) {
     throw new TypeError('release verified routes are incomplete');
   }
   const verifiedRoutes = manifest.verifiedRoutes.map((rawRoute) => {
     const route = record(rawRoute, 'release verified route');
+    exactKeys(route, 'release verified route', [
+      'method',
+      'path',
+      'status',
+      'bodyKind',
+      'bodySha256',
+      'contentType',
+      'cacheControl',
+      'vary',
+    ]);
     const method = boundedString(route.method, 'release route method', 16);
     const routePath = boundedString(route.path, 'release route path', 256);
     const status = safeInteger(route.status, 'release route status');
+    const bodyKind = boundedString(
+      route.bodyKind,
+      'release route body kind',
+      64,
+    );
+    const bodySha256 = digest(route.bodySha256, 'release route body digest');
+    const contentType = boundedString(
+      route.contentType,
+      'release route content type',
+      128,
+    );
+    const cacheControl = boundedString(
+      route.cacheControl,
+      'release route cache control',
+      128,
+    );
+    if (typeof route.vary !== 'string' || route.vary.length > 128) {
+      throw new TypeError('release route vary header is invalid');
+    }
+    const vary = route.vary;
     if (
-      !/^(?:GET|HEAD|POST)$/u.test(method) ||
+      !/^(?:GET|POST)$/u.test(method) ||
       !routePath.startsWith('/') ||
       status < 100 ||
       status > 599
     ) {
       throw new TypeError('release verified route is invalid');
     }
-    return { method, path: routePath, status };
+    return {
+      method,
+      path: routePath,
+      status,
+      bodyKind,
+      bodySha256,
+      contentType,
+      cacheControl,
+      vary,
+    };
   });
+  validateProductionDisabledRouteEvidence(verifiedRoutes);
+
+  const loopbackRecord = record(
+    manifest.loopbackSmoke,
+    'release loopback smoke',
+  );
+  exactKeys(loopbackRecord, 'release loopback smoke', [
+    'runtime',
+    'bindAddress',
+    'exitCode',
+    'signal',
+    'gracefulShutdown',
+    'logsSha256',
+  ]);
+  const loopbackSmoke = {
+    runtime: boundedString(
+      loopbackRecord.runtime,
+      'release loopback runtime',
+      64,
+    ),
+    bindAddress: boundedString(
+      loopbackRecord.bindAddress,
+      'release loopback address',
+      64,
+    ),
+    exitCode: safeInteger(
+      loopbackRecord.exitCode,
+      'release loopback exit code',
+    ),
+    signal: boundedString(loopbackRecord.signal, 'release loopback signal', 32),
+    gracefulShutdown: exactBoolean(
+      loopbackRecord.gracefulShutdown,
+      'release loopback graceful shutdown',
+    ),
+    logsSha256: digest(
+      loopbackRecord.logsSha256,
+      'release loopback logs digest',
+    ),
+  };
+  if (
+    loopbackSmoke.runtime !== 'extracted-image-binary' ||
+    loopbackSmoke.bindAddress !== '127.0.0.1' ||
+    loopbackSmoke.exitCode !== 0 ||
+    loopbackSmoke.signal !== 'SIGTERM' ||
+    loopbackSmoke.gracefulShutdown !== true
+  ) {
+    throw new TypeError('release loopback smoke is invalid');
+  }
+
+  if (
+    !Array.isArray(manifest.networkNoneLifecycles) ||
+    manifest.networkNoneLifecycles.length !== 2
+  ) {
+    throw new TypeError(
+      'release network-none lifecycle evidence is incomplete',
+    );
+  }
+  const networkNoneLifecycles = manifest.networkNoneLifecycles.map(
+    (rawLifecycle) => {
+      const lifecycle = record(rawLifecycle, 'release network-none lifecycle');
+      exactKeys(lifecycle, 'release network-none lifecycle', [
+        'containerID',
+        'imageID',
+        'networkMode',
+        'exitCode',
+        'signal',
+        'gracefulShutdown',
+        'logsSha256',
+      ]);
+      const parsed = {
+        containerID: boundedString(
+          lifecycle.containerID,
+          'release lifecycle container id',
+          64,
+        ),
+        imageID: boundedString(
+          lifecycle.imageID,
+          'release lifecycle image id',
+          80,
+        ),
+        networkMode: boundedString(
+          lifecycle.networkMode,
+          'release lifecycle network mode',
+          32,
+        ),
+        exitCode: safeInteger(
+          lifecycle.exitCode,
+          'release lifecycle exit code',
+        ),
+        signal: boundedString(lifecycle.signal, 'release lifecycle signal', 32),
+        gracefulShutdown: exactBoolean(
+          lifecycle.gracefulShutdown,
+          'release lifecycle graceful shutdown',
+        ),
+        logsSha256: digest(
+          lifecycle.logsSha256,
+          'release lifecycle logs digest',
+        ),
+      };
+      if (
+        !/^[a-f0-9]{64}$/u.test(parsed.containerID) ||
+        parsed.imageID !== imageID ||
+        parsed.networkMode !== 'none' ||
+        parsed.exitCode !== 0 ||
+        parsed.signal !== 'SIGTERM' ||
+        parsed.gracefulShutdown !== true
+      ) {
+        throw new TypeError('release network-none lifecycle is invalid');
+      }
+      return parsed;
+    },
+  );
+  if (
+    networkNoneLifecycles[0]?.containerID ===
+      networkNoneLifecycles[1]?.containerID ||
+    networkNoneLifecycles[0]?.logsSha256 ===
+      networkNoneLifecycles[1]?.logsSha256
+  ) {
+    throw new TypeError(
+      'release network-none containers and logs must be distinct',
+    );
+  }
+
+  const transitionRecord = record(
+    manifest.productionTransition,
+    'release production transition',
+  );
+  exactKeys(transitionRecord, 'release production transition', [
+    'status',
+    'reason',
+  ]);
+  const productionTransition = {
+    status: boundedString(
+      transitionRecord.status,
+      'release production transition status',
+      64,
+    ),
+    reason: boundedString(
+      transitionRecord.reason,
+      'release production transition reason',
+      128,
+    ),
+  };
+  if (
+    productionTransition.status !== 'not-performed' ||
+    productionTransition.reason !== 'explicit-production-approval-required'
+  ) {
+    throw new TypeError('release production transition evidence is invalid');
+  }
   if (
     schemaVersion !== RELEASE_ARTIFACT_SCHEMA_VERSION ||
     verifierVersion !== RELEASE_ARTIFACT_VERIFIER_VERSION ||
@@ -374,7 +808,74 @@ export function validateReleaseManifest(candidate: unknown): ReleaseManifest {
     notesBinary,
     frontend,
     verifiedRoutes,
+    loopbackSmoke,
+    networkNoneLifecycles,
+    productionTransition,
   };
+}
+
+function validateProductionDisabledRouteEvidence(
+  routes: readonly ReleaseManifest['verifiedRoutes'][number][],
+): void {
+  if (routes.length !== EXPECTED_PRODUCTION_DISABLED_ROUTES.length) {
+    throw new TypeError('release verified routes are incomplete');
+  }
+  const seen = new Set<string>();
+  const byKey = new Map(
+    EXPECTED_PRODUCTION_DISABLED_ROUTES.map((route) => [
+      `${route.method} ${route.path}`,
+      route,
+    ]),
+  );
+  let notesDigest = '';
+  for (const route of routes) {
+    const key = `${route.method} ${route.path}`;
+    const expected = byKey.get(key);
+    if (expected === undefined || seen.has(key)) {
+      throw new TypeError('release verified route set is invalid');
+    }
+    seen.add(key);
+    if (
+      route.status !== expected.status ||
+      route.bodyKind !== expected.bodyKind ||
+      route.contentType !== expected.contentType ||
+      route.cacheControl !== expected.cacheControl ||
+      route.vary !== expected.vary
+    ) {
+      throw new TypeError('release verified route result is invalid');
+    }
+    const fixedBody = fixedReleaseBody(expected.bodyKind);
+    if (fixedBody !== undefined && route.bodySha256 !== sha256Text(fixedBody)) {
+      throw new TypeError('release verified route body is invalid');
+    }
+    if (expected.bodyKind === 'notes-html') {
+      if (notesDigest === '') notesDigest = route.bodySha256;
+      else if (notesDigest !== route.bodySha256) {
+        throw new TypeError('release notes fallback body is inconsistent');
+      }
+    }
+  }
+}
+
+function fixedReleaseBody(bodyKind: string): string | undefined {
+  switch (bodyKind) {
+    case 'health-ok':
+      return '{"status":"ok"}\n';
+    case 'not-ready':
+      return '{"status":"not_ready"}\n';
+    case 'not-found-code':
+      return '{"code":"not_found"}\n';
+    case 'launch-unavailable':
+      return '{"error":"launch-gate-unavailable"}\n';
+    case 'unavailable':
+      return '{"error":"unavailable"}\n';
+    default:
+      return undefined;
+  }
+}
+
+function sha256Text(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
 }
 
 export function createSpdxDocument(
@@ -442,7 +943,7 @@ export function createSpdxDocument(
     name: 'fukamu-notes-runtime',
     documentNamespace: `https://github.com/fukamu/notes/releases/sbom/${imageID.slice('sha256:'.length)}`,
     creationInfo: {
-      creators: ['Tool: fukamu-notes-release-verifier-1'],
+      creators: ['Tool: fukamu-notes-release-verifier-2'],
       created: createdAt,
     },
     documentDescribes: ['SPDXRef-Package-FukamuNotes'],
@@ -470,7 +971,7 @@ export function validateSpdxDocument(candidate: unknown): void {
     !Array.isArray(document.relationships) ||
     !Array.isArray(creationInfo.creators) ||
     creationInfo.creators.length !== 1 ||
-    creationInfo.creators[0] !== 'Tool: fukamu-notes-release-verifier-1' ||
+    creationInfo.creators[0] !== 'Tool: fukamu-notes-release-verifier-2' ||
     typeof creationInfo.created !== 'string' ||
     !isRfc3339Timestamp(creationInfo.created)
   ) {
@@ -522,6 +1023,21 @@ function record(value: unknown, label: string): Record<string, unknown> {
     throw new TypeError(`${label} must be an object`);
   }
   return value;
+}
+
+function exactKeys(
+  value: Record<string, unknown>,
+  label: string,
+  expected: readonly string[],
+): void {
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  if (
+    actual.length !== wanted.length ||
+    actual.some((key, index) => key !== wanted[index])
+  ) {
+    throw new TypeError(`${label} contains unexpected fields`);
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -579,6 +1095,11 @@ function positiveInteger(value: unknown, label: string): number {
   const parsed = safeInteger(value, label);
   if (parsed < 1) throw new TypeError(`${label} must be positive`);
   return parsed;
+}
+
+function exactBoolean(value: unknown, label: string): boolean {
+  if (typeof value !== 'boolean') throw new TypeError(`${label} is invalid`);
+  return value;
 }
 
 function digest(value: unknown, label: string): string {

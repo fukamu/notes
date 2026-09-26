@@ -369,19 +369,30 @@ does not match `NOTES_ENVIRONMENT`. It does not print connection values.
 ## Checks
 
 With the Compose database running, run `npm run go:check` from the repository
-root. It verifies formatting, vet, unit/process/integration tests, the race
-detector, both commands, and Go-served desktop/mobile browser behavior. The
-same gate is part of `npm run verify`.
+root. It verifies Go formatting, vet, unit/process/integration tests, the race
+detector, and both commands. The parent `npm run verify` gate runs that Go gate
+and then the separate Go-served desktop/mobile browser suites.
 
 `npm run verify:release` builds the production-shaped scratch image, rejects
-Node and legacy server artifacts in every runtime layer, verifies the fixed
-non-root identity and Git provenance, runs closed-route and graceful-shutdown
-smoke checks on a random loopback port, and writes ignored local manifest/SBOM
-evidence. See [`docs/go-release-artifact.md`](../docs/go-release-artifact.md).
-The command never pushes or deploys the disposable image.
+Node and legacy server artifacts in every runtime layer, and uses the validated
+immutable image ID for normal post-build operations. Release manifest v2 pins
+the fixed non-root identity and Git provenance, exact foundation plus all 13
+OpenAPI production-disabled route responses, one minimal-environment loopback
+smoke, and exactly two distinct `--network=none` lifecycle records. It writes
+ignored local manifest/SBOM evidence and records every production transition as
+`not-performed`. See
+[`docs/go-release-artifact.md`](../docs/go-release-artifact.md). The command
+never pushes or deploys the disposable image.
 
-`npm run verify:migration-closure` strictly checks the complete F01-F28 and
-V01-V12 evidence inventory and the completed T17 retirement state.
+`npm run verify:migration-closure` strictly checks the exact F01-F28 and
+V01-V12 evidence inventory (including V12's explicit in-progress baseline),
+the completed T17 source/config retirement state, and closure
+schema v3: exactly four profiles, exact per-feature truth, direct same-profile
+E01-E05 executable evidence, and shared-gate reachability. Actual-process
+evidence builds/runs `notes` and `notesctl` for two no-reseed cycles, while the
+separate Chromium lane proves explicitly opted-in disposable deletion across
+real Go restarts. See
+[`docs/go-runtime-closure.md`](../docs/go-runtime-closure.md).
 `npm run verify:legacy-retirement` checks all 142 frozen test paths, per-file
 digests and dispositions, requires the 127 Go-replaced paths to be absent and
 the 11 frontend plus four tooling paths to remain legacy-free, validates

@@ -56,6 +56,20 @@ storage or key provider is contacted.
 unique, is documented, and references tracked executable evidence. This is a
 traceability index, not a claim of exhaustive penetration testing.
 
+## Whole-runtime and release closure
+
+| ID             | Required invariant                                                                                                                                                                      | Automated evidence                                                                       |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| SEC-CLOSURE-01 | Every F01-F28 state is exact for each of four profiles and names live, same-profile, shared-gate-reachable evidence.                                                                    | `tests/unit/migration-closure.test.ts`, `scripts/verify-migration-closure.mts`           |
+| SEC-CLOSURE-02 | Actual Go processes preserve owner/auth/body ordering, encrypted durable state, lease exclusion, restart behavior, graceful shutdown, and secret-free logs.                             | `backend/cmd/notes/runtime_closure_integration_test.go`                                  |
+| SEC-CLOSURE-03 | Destructive local deletion requires invocation-level opt-in, uses a fresh loopback-only fixture, survives an actual Go restart, purges browser/server state, and does not resurrect it. | `tests/e2e-live-deletion/account-deletion-live.spec.ts`, `tests/unit/e2e-server.test.ts` |
+| SEC-CLOSURE-04 | The production-disabled scratch artifact is identified immutably, exposes the exact closed route matrix, and repeats lifecycle twice with no container network.                         | `tests/unit/release-artifact.test.ts`, `scripts/verify-release-artifact.mts`             |
+
+These rows are executed by the same `npm run verify` gate. The destructive
+browser child is absent from normal discovery and receives its exact confirmation
+only from the reviewed root gate. The release evidence records every production
+transition as `not-performed`; it is not deployment or provider authorization.
+
 ## Residual verification boundary
 
 Local adapters cannot prove provider IAM, real network timeout behavior,
@@ -63,4 +77,8 @@ production WAF, credential rotation, Stripe delivery, 3-D Secure, backup
 retention, restore timing, or production load. These remain V09
 approval-pending and require separate production/provider authorization. No
 live key, payment, message, storage, webhook, database, or deployment is used
-by this evidence.
+by this evidence. The remaining production identity, persistence, KMS/object,
+billing, privacy fulfillment, scheduler/realtime, backup/restore, hosting,
+telemetry/SLO, cost, and legal-policy choices are explicit absent or
+approval-pending inventory in
+[`go-runtime-closure.md`](go-runtime-closure.md).

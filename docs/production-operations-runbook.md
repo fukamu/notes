@@ -21,6 +21,13 @@ their separate explicit-approval requirement.
 Go `operations.PlanEnvironmentAction` is the authoritative matrix. A restore
 drill must target isolated staging, never production.
 
+Issue #514 adds no production executor. Its exact local/CI runtime profiles and
+named evidence are documented in
+[`go-runtime-closure.md`](go-runtime-closure.md). The production-shaped profile
+serves health/static content while business routes remain closed; release
+manifest schema v2 records deployment, database migration, traffic cutover,
+and external-resource change as `not-performed`, with approval pending.
+
 Data deletion and key destruction are outside this launch workflow in every
 environment. Provider webhook and alert configuration also remain outside it
 until a provider, account, retention policy, and destination have been approved.
@@ -131,6 +138,47 @@ or resolved provider decisions: those failures are reasons to abort. Removing a
 production canary or performing a rollback remains an external operation requiring
 the separately identified approval.
 
+## Future approval packet and cutover sequence
+
+No item below was executed by Issue #514. Before requesting a separate
+production approval, the owner must assemble one immutable, reviewable packet:
+
+1. **Release identity** — exact source SHA, release-manifest/SBOM v2, local
+   image-ID-to-immutable-registry-digest provenance, signature/provenance result,
+   migration version, and the retained previous complete release identity.
+2. **State and recovery** — exact non-secret configuration plus secret-version
+   references, PostgreSQL migration and backup IDs, object/key/nonce inventory,
+   isolated restore evidence, RPO/RTO decision, recovery owner, and explicit
+   confirmation that the candidate code understands current schema/ciphertext.
+3. **Identity/browser contract** — approved issuer, audience, opaque-subject
+   mapping, trusted ingress, public origin, cookie/session issuance and
+   revocation behavior, frontend/SW artifact and cache versions, and a
+   forward-only cache recovery procedure that cannot restore private data.
+4. **Provider/operations plan** — exact provider commands or API changes,
+   accounts/regions/owners, expected costs, canary cohort, observability and
+   alert destinations, exact smoke assertions, traffic controls, stop-writes
+   control, maintenance window, and named decision/incident owners.
+5. **Last safe rollback boundary** — retain and revalidate the complete
+   immutable Sites/D1 unit under separate approval, classify every proposed
+   migration/write as backward-compatible or incompatible, and record the
+   boundary before any migration, write, or traffic. Place the operative
+   boundary immediately before the first potentially incompatible migration or
+   write; when all migrations are proven backward-compatible, place it before
+   canary traffic. Atomically mark Sites/D1 rollback closed with the first
+   incompatible schema/data write and activate compatible-Go/forward recovery.
+   Traffic timing cannot preserve eligibility after an earlier incompatible
+   migration/write has closed it.
+
+After approval, the future operator sequence is: revalidate the packet and old
+unit; keep general access/providers closed; verify backup/restore; classify
+migration/write compatibility; record the last-safe boundary; apply only the
+reviewed forward migration while closing Sites rollback atomically on the first
+incompatible write; run closed-route and owner-denial smoke; begin the bounded
+canary; observe all required signals; then promote or abort. Every deployment,
+migration, provider change, traffic action, stop-writes action, and rollback
+remains an external step requiring its named approval. This repository supplies
+no executable production command.
+
 ## Rollback decision tree
 
 1. If the change is code-only and the prior code understands the current schema
@@ -148,6 +196,13 @@ the separately identified approval.
 5. Account deletion, session revocation, paid entitlement lock, and confirmed
    tombstones are monotonic security state. Rollback must not resurrect deleted
    live data, revoked sessions, destroyed keys, or unpaid online access.
+6. A complete retained Sites/D1 release unit is a possible first-cutover
+   rollback candidate only before any incompatible Go/PostgreSQL durable write.
+   Once such a write exists, stop writes and use a compatible immutable Go
+   image or reviewed forward recovery. Never route Sites to PostgreSQL, Go to
+   D1, dual-write, reverse-copy/backfill/replay PostgreSQL/Go writes into D1,
+   replay an external effect, synthesize consent/billing/privacy evidence, or
+   delete either datastore/evidence as a recovery shortcut.
 
 Code rollback and data recovery are distinct operations. Neither is authorized by
 this document, a CI result, a merge, or a passing launch gate.
@@ -188,8 +243,9 @@ obtain the separately required explicit user approval.
 
 Before any production procedure exists, replace provider-neutral placeholders in
 an independently reviewed provider adapter/runbook, conduct an approved staging
-drill, and obtain legal/security/operations review. This Issue performs no
-production operation and changes neither `main` nor production.
+drill, and obtain legal/security/operations review. Issue #514 performs no
+production operation: `main`, hosting, databases, providers, data, deployment,
+traffic, and external resources remain unchanged and approval-pending.
 
 ## Local verification
 
@@ -209,4 +265,7 @@ Then run `git diff --check` and `npm run verify`. Reverting Issue #502's pure Go
 policy is a repository change only and has no schema, data migration, operation
 executor, or external effect to undo. T17 must not be rolled back by restoring
 the retired TypeScript server roots; production recovery uses only the reviewed
-immutable release units and datastore procedure described above.
+immutable release units and datastore procedure described above. Issue #514's
+closure and release evidence are additionally enforced by
+`verify:migration-closure`, `go:test:integration`, the isolated destructive
+Chromium lane, and `verify:release`; none is an operator command.

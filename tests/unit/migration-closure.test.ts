@@ -2,6 +2,10 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import {
   decodeMigrationClosure,
+  reachableNpmScripts,
+  validateEvidenceFileIdentity,
+  validateExecutableEvidenceGate,
+  validateExecutableEvidenceSource,
   validateLegacyCoverage,
 } from '../../scripts/migration-closure-core.mts';
 
@@ -90,9 +94,11 @@ describe('Go migration closure evidence', () => {
     expect(closure.features.find(({ id }) => id === 'F28')).toMatchObject({
       migration: 'intentionally-absent',
     });
-    expect(closure.verifications.find(({ id }) => id === 'V12')).toMatchObject({
-      status: 'complete',
-    });
+    const performanceComparison = closure.verifications.find(
+      ({ id }) => id === 'V12',
+    );
+    expect(performanceComparison).toMatchObject({ status: 'in-progress' });
+    expect(performanceComparison?.note).toContain('100/1,000/10,000-card');
     expect(closure.verifications.find(({ id }) => id === 'V11')).toMatchObject({
       status: 'complete',
     });
@@ -100,6 +106,160 @@ describe('Go migration closure evidence', () => {
       status: 'approval-pending',
     });
     expect(closure.retirement.phase).toBe('retired');
+    expect(closure.profiles.map(({ id }) => id)).toEqual([
+      'local-private-legacy',
+      'local-fixture-undecided',
+      'local-fixture-delete-live-evidence',
+      'production-disabled',
+    ]);
+    expect(
+      closure.profiles.every(({ features }) => features.length === 28),
+    ).toBe(true);
+    expect(
+      closure.profiles
+        .find(({ id }) => id === 'production-disabled')
+        ?.features.filter(({ state }) => state === 'connected')
+        .map(({ id }) => id),
+    ).toEqual(['F01']);
+    expect(
+      closure.profiles.map(({ id, features }) => ({
+        profile: id,
+        state: features.find(({ id: featureID }) => featureID === 'F26')?.state,
+      })),
+    ).toEqual([
+      { profile: 'local-private-legacy', state: 'partially-connected' },
+      { profile: 'local-fixture-undecided', state: 'partially-connected' },
+      {
+        profile: 'local-fixture-delete-live-evidence',
+        state: 'partially-connected',
+      },
+      { profile: 'production-disabled', state: 'partially-connected' },
+    ]);
+    expect(closure.productionTransition).toMatchObject({
+      deployment: 'not-performed',
+      databaseMigration: 'not-performed',
+      trafficCutover: 'not-performed',
+      externalResources: 'not-performed',
+      approval: 'pending',
+    });
+  });
+
+  it('rejects v2, unknown keys, missing profiles, and duplicate feature rows', async () => {
+    const oldVersion = clone(await manifestCandidate());
+    Reflect.set(object(oldVersion), 'schemaVersion', 2);
+    expect(() => decodeMigrationClosure(oldVersion)).toThrow(
+      'schema version is unsupported',
+    );
+
+    const unknown = clone(await manifestCandidate());
+    Reflect.set(object(unknown), 'unreviewed', true);
+    expect(() => decodeMigrationClosure(unknown)).toThrow('unknown key');
+
+    const missingProfile = clone(await manifestCandidate());
+    list(Reflect.get(object(missingProfile), 'profiles')).pop();
+    expect(() => decodeMigrationClosure(missingProfile)).toThrow(
+      'runtime profile evidence is incomplete',
+    );
+
+    const duplicateFeature = clone(await manifestCandidate());
+    const profile = identified(
+      list(Reflect.get(object(duplicateFeature), 'profiles')),
+      'local-private-legacy',
+    );
+    const runtimeFeatures = list(Reflect.get(profile, 'features'));
+    runtimeFeatures.push(identified(runtimeFeatures, 'F01'));
+    expect(() => decodeMigrationClosure(duplicateFeature)).toThrow(
+      'runtime profile feature id must be unique',
+    );
+  });
+
+  it('binds every feature row to same-profile named evidence without orphans', async () => {
+    const crossProfile = clone(await manifestCandidate());
+    const crossEvidence = identified(
+      list(Reflect.get(object(crossProfile), 'executableEvidence')),
+      'E01',
+    );
+    Reflect.set(crossEvidence, 'profile', 'production-disabled');
+    expect(() => decodeMigrationClosure(crossProfile)).toThrow(
+      'cross-profile evidence',
+    );
+
+    const orphan = clone(await manifestCandidate());
+    const orphanEvidence = list(
+      Reflect.get(object(orphan), 'executableEvidence'),
+    );
+    const additional = clone(identified(orphanEvidence, 'E05'));
+    Reflect.set(object(additional), 'id', 'E99');
+    Reflect.set(object(additional), 'path', 'scripts/orphan-verifier.mts');
+    Reflect.set(object(additional), 'name', 'verify:orphan');
+    Reflect.set(object(additional), 'gate', 'verify:orphan');
+    Reflect.set(object(additional), 'selector', 'scripts/orphan-verifier.mts');
+    orphanEvidence.push(additional);
+    expect(() => decodeMigrationClosure(orphan)).toThrow(
+      'not assigned to a runtime feature',
+    );
+
+    const movedBrowserEvidence = clone(await manifestCandidate());
+    const destructive = identified(
+      list(Reflect.get(object(movedBrowserEvidence), 'profiles')),
+      'local-fixture-delete-live-evidence',
+    );
+    const destructiveFeatures = list(Reflect.get(destructive, 'features'));
+    Reflect.set(identified(destructiveFeatures, 'F23'), 'evidence', ['E03']);
+    Reflect.set(identified(destructiveFeatures, 'F01'), 'evidence', [
+      'E03',
+      'E04',
+    ]);
+    expect(() => decodeMigrationClosure(movedBrowserEvidence)).toThrow(
+      'feature evidence is inaccurate',
+    );
+
+    const duplicateAnchor = clone(await manifestCandidate());
+    const evidence = list(
+      Reflect.get(object(duplicateAnchor), 'executableEvidence'),
+    );
+    const duplicate = clone(identified(evidence, 'E01'));
+    Reflect.set(object(duplicate), 'id', 'E99');
+    evidence.push(duplicate);
+    const privateProfile = identified(
+      list(Reflect.get(object(duplicateAnchor), 'profiles')),
+      'local-private-legacy',
+    );
+    const privateFeature = identified(
+      list(Reflect.get(privateProfile, 'features')),
+      'F01',
+    );
+    Reflect.set(privateFeature, 'evidence', ['E01', 'E99']);
+    expect(() => decodeMigrationClosure(duplicateAnchor)).toThrow(
+      'executable evidence anchor must be unique',
+    );
+  });
+
+  it('rejects runtime state drift from the exact four-profile truth matrix', async () => {
+    for (const mutation of [
+      ['local-fixture-undecided', 'F23', 'connected'],
+      ['local-fixture-undecided', 'F03', 'connected'],
+      ['local-private-legacy', 'F28', 'connected'],
+      ['production-disabled', 'F27', 'connected'],
+      ['local-private-legacy', 'F26', 'not-connected'],
+      ['production-disabled', 'F26', 'not-connected'],
+      ['production-disabled', 'F12', 'closed'],
+      ['production-disabled', 'F18', 'not-connected'],
+    ] as const) {
+      const candidate = clone(await manifestCandidate());
+      const profile = identified(
+        list(Reflect.get(object(candidate), 'profiles')),
+        mutation[0],
+      );
+      const feature = identified(
+        list(Reflect.get(profile, 'features')),
+        mutation[1],
+      );
+      Reflect.set(feature, 'state', mutation[2]);
+      expect(() => decodeMigrationClosure(candidate)).toThrow(
+        `feature state is inaccurate: ${mutation[0]}/${mutation[1]}`,
+      );
+    }
   });
 
   it('rejects missing or duplicated feature evidence', async () => {
@@ -228,5 +388,235 @@ describe('Go migration closure evidence', () => {
     expect(Reflect.get(scripts, 'verify')).toContain(
       'npm run contracts:check && npm run verify:migration-closure',
     );
+  });
+
+  it('binds named evidence to exact symbols, titles, and reachable selectors', async () => {
+    const closure = decodeMigrationClosure(await manifestCandidate());
+    const goEvidence = closure.executableEvidence.find(
+      ({ id }) => id === 'E01',
+    );
+    const browserEvidence = closure.executableEvidence.find(
+      ({ id }) => id === 'E04',
+    );
+    const releaseEvidence = closure.executableEvidence.find(
+      ({ id }) => id === 'E05',
+    );
+    if (
+      goEvidence === undefined ||
+      browserEvidence === undefined ||
+      releaseEvidence === undefined
+    ) {
+      throw new TypeError('test evidence is incomplete');
+    }
+    const scripts = {
+      verify:
+        'npm run go:test:integration && FUKAMU_E2E_USE_PREBUILT=1 FUKAMU_DELETION_E2E_CONFIRM=delete-live-evidence npm run test:e2e:deletion-live && npm run verify:release',
+      'go:test:integration':
+        'NOTES_TEST_DATABASE_URL=${NOTES_TEST_DATABASE_URL:-postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable} go -C backend test -p=1 -tags=integration ./tests/integration/... ./cmd/notes ./cmd/notesctl',
+      'test:e2e:deletion-live':
+        'node --experimental-strip-types scripts/run-deletion-live-e2e.mts playwright.deletion-live.config.ts',
+      'verify:release':
+        'node --experimental-strip-types scripts/verify-release-artifact.mts',
+    };
+    expect(reachableNpmScripts(scripts, 'verify')).toEqual(
+      new Set([
+        'verify',
+        'go:test:integration',
+        'test:e2e:deletion-live',
+        'verify:release',
+      ]),
+    );
+    for (const masked of [
+      'echo npm run verify:release',
+      'true || npm run verify:release',
+      'npm run verify:release | cat',
+      'npm run verify:release; true',
+    ]) {
+      expect(() =>
+        reachableNpmScripts({ ...scripts, verify: masked }, 'verify'),
+      ).toThrow();
+    }
+    expect(() =>
+      validateExecutableEvidenceSource(
+        goEvidence,
+        '\nfunc TestWholeRuntimeLocalPrivateLegacy(t *testing.T) {}\n',
+        scripts,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateExecutableEvidenceSource(
+        goEvidence,
+        '\nfunc TestRenamed(t *testing.T) {}\n',
+        scripts,
+      ),
+    ).toThrow('renamed or removed');
+    for (const inertOldAnchor of [
+      '// func TestWholeRuntimeLocalPrivateLegacy(t *testing.T) {}',
+      '/* func TestWholeRuntimeLocalPrivateLegacy(t *testing.T) {} */',
+      'var old = `func TestWholeRuntimeLocalPrivateLegacy(t *testing.T) {}`',
+      'var old = "func TestWholeRuntimeLocalPrivateLegacy(t *testing.T) {}"',
+    ]) {
+      expect(() =>
+        validateExecutableEvidenceSource(
+          goEvidence,
+          `${inertOldAnchor}\nfunc TestRenamed(t *testing.T) {}`,
+          scripts,
+        ),
+      ).toThrow('renamed or removed');
+    }
+    for (const skipped of [
+      '\nfunc TestWholeRuntimeLocalPrivateLegacy(t *testing.T) { t.Skip() }\n',
+      '\nfunc TestWholeRuntimeLocalPrivateLegacy(t *testing.T) { t.SkipNow() }\n',
+    ]) {
+      expect(() =>
+        validateExecutableEvidenceSource(goEvidence, skipped, scripts),
+      ).toThrow('must not be skipped');
+    }
+    expect(() =>
+      validateExecutableEvidenceSource(
+        browserEvidence,
+        "test('live disposable account deletion survives an actual Go restart', async () => {})",
+        scripts,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateExecutableEvidenceSource(
+        browserEvidence,
+        "test.skip('live disposable account deletion survives an actual Go restart', async () => {})",
+        scripts,
+      ),
+    ).toThrow('must not be skipped or focused');
+    expect(() =>
+      validateExecutableEvidenceSource(
+        browserEvidence,
+        "test.only('live disposable account deletion survives an actual Go restart', async () => {})",
+        scripts,
+      ),
+    ).toThrow('must not be skipped or focused');
+    for (const inertOldAnchor of [
+      "// test('live disposable account deletion survives an actual Go restart', async () => {})",
+      "/* test('live disposable account deletion survives an actual Go restart', async () => {}) */",
+      'const old = "test(\\\'live disposable account deletion survives an actual Go restart\\\', async () => {})"',
+    ]) {
+      expect(() =>
+        validateExecutableEvidenceSource(
+          browserEvidence,
+          `${inertOldAnchor}\ntest('renamed destructive evidence', async () => {})`,
+          scripts,
+        ),
+      ).toThrow('renamed or removed');
+    }
+    for (const skipped of [
+      "test.describe.skip('group', () => { test('live disposable account deletion survives an actual Go restart', async () => {}) })",
+      "test.describe.only('group', () => { test('live disposable account deletion survives an actual Go restart', async () => {}) })",
+      "test('live disposable account deletion survives an actual Go restart', async () => { test.skip() })",
+      "test('live disposable account deletion survives an actual Go restart', async () => { test.fixme() })",
+      "test('live disposable account deletion survives an actual Go restart', async () => { test.fail() })",
+    ]) {
+      expect(() =>
+        validateExecutableEvidenceSource(browserEvidence, skipped, scripts),
+      ).toThrow('must not be skipped or focused');
+    }
+    expect(() =>
+      validateExecutableEvidenceGate(goEvidence, scripts),
+    ).not.toThrow();
+    expect(() =>
+      validateExecutableEvidenceGate(browserEvidence, scripts, {
+        'playwright.deletion-live.config.ts':
+          "export default { testDir: './tests/e2e-live-deletion' }",
+        'scripts/run-deletion-live-e2e.mts':
+          "const config = 'playwright.deletion-live.config.ts'",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateExecutableEvidenceSource(
+        releaseEvidence,
+        'const RELEASE_ARTIFACT_VERIFIER_VERSION = 2;',
+        scripts,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateExecutableEvidenceGate(releaseEvidence, scripts),
+    ).not.toThrow();
+    expect(() =>
+      validateExecutableEvidenceGate(releaseEvidence, {
+        ...scripts,
+        'verify:release': 'true',
+      }),
+    ).toThrow('exact gate');
+    for (const suffix of [' || true', '; true', ' | cat', ' &']) {
+      expect(() =>
+        validateExecutableEvidenceGate(releaseEvidence, {
+          ...scripts,
+          'verify:release': `node --experimental-strip-types scripts/verify-release-artifact.mts${suffix}`,
+        }),
+      ).toThrow('exact gate');
+    }
+    expect(() =>
+      validateExecutableEvidenceGate(releaseEvidence, {
+        ...scripts,
+        'verify:release': 'node scripts/other-release-verifier.mts',
+      }),
+    ).toThrow('exact gate');
+    expect(() =>
+      validateExecutableEvidenceGate(
+        {
+          ...releaseEvidence,
+          path: 'scripts/other-release-verifier.mts',
+          selector: 'scripts/other-release-verifier.mts',
+        },
+        scripts,
+      ),
+    ).toThrow('exact gate');
+    expect(() =>
+      validateExecutableEvidenceGate(goEvidence, {
+        ...scripts,
+        'go:test:integration': `true || ${String(scripts['go:test:integration'])}`,
+      }),
+    ).toThrow('does not execute');
+    expect(() =>
+      validateExecutableEvidenceGate(browserEvidence, {
+        ...scripts,
+        'test:e2e:deletion-live': `true || ${String(scripts['test:e2e:deletion-live'])}`,
+      }),
+    ).toThrow('does not execute');
+    for (const suffix of [' || true', '; true', ' | cat', ' &']) {
+      expect(() =>
+        validateExecutableEvidenceGate(goEvidence, {
+          ...scripts,
+          'go:test:integration': `${String(scripts['go:test:integration'])}${suffix}`,
+        }),
+      ).toThrow('does not execute');
+      expect(() =>
+        validateExecutableEvidenceGate(browserEvidence, {
+          ...scripts,
+          'test:e2e:deletion-live': `${String(scripts['test:e2e:deletion-live'])}${suffix}`,
+        }),
+      ).toThrow('does not execute');
+    }
+  });
+
+  it('rejects untracked, symlinked, or non-regular evidence', () => {
+    expect(() =>
+      validateEvidenceFileIdentity({
+        tracked: true,
+        regularFile: true,
+        symbolicLink: false,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateEvidenceFileIdentity({
+        tracked: false,
+        regularFile: true,
+        symbolicLink: false,
+      }),
+    ).toThrow('tracked by Git');
+    expect(() =>
+      validateEvidenceFileIdentity({
+        tracked: true,
+        regularFile: true,
+        symbolicLink: true,
+      }),
+    ).toThrow('non-symlink');
   });
 });

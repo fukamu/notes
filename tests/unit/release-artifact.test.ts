@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import {
@@ -12,6 +13,7 @@ import {
   validateReleaseManifest,
   validateRuntimePaths,
   validateSpdxDocument,
+  EXPECTED_PRODUCTION_DISABLED_ROUTES,
 } from '../../scripts/release-artifact-core.mts';
 
 const revision = 'a'.repeat(40);
@@ -59,9 +61,20 @@ function validRuntimePaths(): string[] {
 }
 
 function validManifest(): Record<string, unknown> {
+  const fixedBodies: Readonly<Record<string, string>> = {
+    'health-ok': '{"status":"ok"}\n',
+    'not-ready': '{"status":"not_ready"}\n',
+    'not-found-code': '{"code":"not_found"}\n',
+    'launch-unavailable': '{"error":"launch-gate-unavailable"}\n',
+    unavailable: '{"error":"unavailable"}\n',
+  };
+  const staticHashes: Readonly<Record<string, string>> = {
+    'notes-html': 'e'.repeat(64),
+    'pricing-html': 'f'.repeat(64),
+  };
   return {
-    schemaVersion: 1,
-    verifierVersion: 1,
+    schemaVersion: 2,
+    verifierVersion: 2,
     sourceRevision: revision,
     imageID,
     imageReference: 'fukamu-notes-release-verify:abc-123',
@@ -70,22 +83,240 @@ function validManifest(): Record<string, unknown> {
     entrypoint: ['/notes'],
     notesBinary: { sha256: 'c'.repeat(64), bytes: 10 },
     frontend: { sha256: 'd'.repeat(64), files: 4, bytes: 20 },
-    verifiedRoutes: [
-      { method: 'GET', path: '/healthz', status: 200 },
-      { method: 'GET', path: '/readyz', status: 503 },
-      { method: 'GET', path: '/', status: 200 },
-      { method: 'GET', path: '/pricing', status: 200 },
-      { method: 'GET', path: '/missing', status: 404 },
-      { method: 'POST', path: '/api/v2/sync', status: 503 },
+    verifiedRoutes: EXPECTED_PRODUCTION_DISABLED_ROUTES.map((route) => ({
+      ...route,
+      bodySha256:
+        staticHashes[route.bodyKind] ??
+        createHash('sha256')
+          .update(fixedBodies[route.bodyKind] ?? '')
+          .digest('hex'),
+    })),
+    loopbackSmoke: {
+      runtime: 'extracted-image-binary',
+      bindAddress: '127.0.0.1',
+      exitCode: 0,
+      signal: 'SIGTERM',
+      gracefulShutdown: true,
+      logsSha256: '1'.repeat(64),
+    },
+    networkNoneLifecycles: [
+      {
+        containerID: '2'.repeat(64),
+        imageID,
+        networkMode: 'none',
+        exitCode: 0,
+        signal: 'SIGTERM',
+        gracefulShutdown: true,
+        logsSha256: '3'.repeat(64),
+      },
+      {
+        containerID: '4'.repeat(64),
+        imageID,
+        networkMode: 'none',
+        exitCode: 0,
+        signal: 'SIGTERM',
+        gracefulShutdown: true,
+        logsSha256: '5'.repeat(64),
+      },
     ],
+    productionTransition: {
+      status: 'not-performed',
+      reason: 'explicit-production-approval-required',
+    },
   };
 }
 
 describe('release image boundary', () => {
+  it('pins the exact production-disabled route matrix independently', () => {
+    expect(EXPECTED_PRODUCTION_DISABLED_ROUTES).toEqual([
+      {
+        method: 'GET',
+        path: '/healthz',
+        status: 200,
+        bodyKind: 'health-ok',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'no-store',
+        vary: '',
+      },
+      {
+        method: 'GET',
+        path: '/readyz',
+        status: 503,
+        bodyKind: 'not-ready',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'no-store',
+        vary: '',
+      },
+      {
+        method: 'GET',
+        path: '/',
+        status: 200,
+        bodyKind: 'notes-html',
+        contentType: 'text/html; charset=utf-8',
+        cacheControl: 'no-store',
+        vary: '',
+      },
+      {
+        method: 'GET',
+        path: '/pricing',
+        status: 200,
+        bodyKind: 'pricing-html',
+        contentType: 'text/html; charset=utf-8',
+        cacheControl: 'no-store',
+        vary: '',
+      },
+      {
+        method: 'GET',
+        path: '/cards/release-verification/history',
+        status: 200,
+        bodyKind: 'notes-html',
+        contentType: 'text/html; charset=utf-8',
+        cacheControl: 'no-store',
+        vary: '',
+      },
+      {
+        method: 'GET',
+        path: '/not-a-release-route',
+        status: 404,
+        bodyKind: 'not-found-code',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'no-store',
+        vary: '',
+      },
+      {
+        method: 'GET',
+        path: '/api/not-a-release-route',
+        status: 404,
+        bodyKind: 'not-found-code',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'no-store',
+        vary: '',
+      },
+      {
+        method: 'GET',
+        path: '/api/launch-status',
+        status: 503,
+        bodyKind: 'launch-unavailable',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'private, no-store',
+        vary: 'Cookie, X-Fukamu-Local-Identity-Assertion',
+      },
+      {
+        method: 'POST',
+        path: '/api/sync',
+        status: 404,
+        bodyKind: 'not-found-code',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'no-store',
+        vary: '',
+      },
+      {
+        method: 'POST',
+        path: '/api/v2/sync',
+        status: 503,
+        bodyKind: 'launch-unavailable',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'private, no-store',
+        vary: 'Cookie, X-Fukamu-Local-Identity-Assertion',
+      },
+      {
+        method: 'GET',
+        path: '/api/session-context',
+        status: 503,
+        bodyKind: 'launch-unavailable',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'private, no-store',
+        vary: 'Cookie, X-Fukamu-Local-Identity-Assertion',
+      },
+      {
+        method: 'GET',
+        path: '/api/billing/checkout',
+        status: 503,
+        bodyKind: 'launch-unavailable',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'private, no-store',
+        vary: 'Cookie, X-Fukamu-Local-Identity-Assertion',
+      },
+      {
+        method: 'POST',
+        path: '/api/billing/checkout',
+        status: 503,
+        bodyKind: 'launch-unavailable',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'private, no-store',
+        vary: 'Cookie, X-Fukamu-Local-Identity-Assertion',
+      },
+      {
+        method: 'GET',
+        path: '/api/account/terms-consent',
+        status: 503,
+        bodyKind: 'launch-unavailable',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'private, no-store',
+        vary: 'Cookie, X-Fukamu-Local-Identity-Assertion',
+      },
+      {
+        method: 'POST',
+        path: '/api/account/terms-consent',
+        status: 503,
+        bodyKind: 'launch-unavailable',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'private, no-store',
+        vary: 'Cookie, X-Fukamu-Local-Identity-Assertion',
+      },
+      {
+        method: 'POST',
+        path: '/api/billing/cancel',
+        status: 503,
+        bodyKind: 'unavailable',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'no-store',
+        vary: '',
+      },
+      {
+        method: 'POST',
+        path: '/api/account/deletion',
+        status: 503,
+        bodyKind: 'unavailable',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'no-store',
+        vary: '',
+      },
+      {
+        method: 'POST',
+        path: '/api/account/deletion/status',
+        status: 503,
+        bodyKind: 'unavailable',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'no-store',
+        vary: '',
+      },
+      {
+        method: 'POST',
+        path: '/api/account/privacy-requests',
+        status: 503,
+        bodyKind: 'unavailable',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'no-store',
+        vary: '',
+      },
+      {
+        method: 'POST',
+        path: '/api/account/privacy-requests/status',
+        status: 503,
+        bodyKind: 'unavailable',
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'no-store',
+        vary: '',
+      },
+    ]);
+  });
+
   it('keeps the final stage scratch-only and wires verification into the shared gate', async () => {
-    const [dockerfile, packageSource] = await Promise.all([
+    const [dockerfile, packageSource, verifierSource] = await Promise.all([
       readFile('deploy/Dockerfile', 'utf8'),
       readFile('package.json', 'utf8'),
+      readFile('scripts/verify-release-artifact.mts', 'utf8'),
     ]);
     const runtimeStage = dockerfile.split('FROM scratch')[1];
     expect(runtimeStage).toBeDefined();
@@ -93,9 +324,17 @@ describe('release image boundary', () => {
     expect(runtimeStage).toContain('org.opencontainers.image.revision');
     expect(runtimeStage).not.toMatch(/\b(?:node|npm|npx|node_modules)\b/iu);
     expect(packageSource).toContain('"verify:release"');
-    expect(packageSource).toContain(
-      'npm run test:e2e && npm run verify:release',
+    expect(packageSource).toContain('npm run test:e2e &&');
+    expect(packageSource).toContain('&& npm run verify:release');
+    expect(verifierSource).toContain("'--iidfile'");
+    expect(verifierSource).toContain("'--network',\n    'none'");
+    expect(verifierSource).toContain("runtime: 'extracted-image-binary'");
+    expect(verifierSource).toContain(
+      "reason: 'explicit-production-approval-required'",
     );
+    expect(verifierSource).not.toContain("'image', 'inspect', imageReference");
+    expect(verifierSource).not.toContain('imageArchive,\n    imageReference');
+    expect(verifierSource).not.toContain("'none',\n    imageReference");
   });
 
   it('accepts only the fixed non-root Go runtime and reviewed provenance', () => {
@@ -225,5 +464,107 @@ describe('release evidence boundary', () => {
     expect(() =>
       validateReleaseManifest({ ...validManifest(), runtimeUser: '0:0' }),
     ).toThrow('identity');
+    expect(() =>
+      validateReleaseManifest({ ...validManifest(), schemaVersion: 1 }),
+    ).toThrow('identity');
+    expect(() =>
+      validateReleaseManifest({ ...validManifest(), verifierVersion: 1 }),
+    ).toThrow('identity');
+    expect(() =>
+      validateReleaseManifest({ ...validManifest(), unexpected: true }),
+    ).toThrow('unexpected fields');
+
+    const extraRouteField = structuredClone(validManifest());
+    const extraRoutes = extraRouteField.verifiedRoutes as Record<
+      string,
+      unknown
+    >[];
+    extraRoutes[0] = { ...extraRoutes[0], unexpected: true };
+    expect(() => validateReleaseManifest(extraRouteField)).toThrow(
+      'unexpected fields',
+    );
+
+    const extraLifecycleField = structuredClone(validManifest());
+    const extraLifecycles = extraLifecycleField.networkNoneLifecycles as Record<
+      string,
+      unknown
+    >[];
+    extraLifecycles[0] = { ...extraLifecycles[0], unexpected: true };
+    expect(() => validateReleaseManifest(extraLifecycleField)).toThrow(
+      'unexpected fields',
+    );
+
+    const missingRoute = structuredClone(validManifest());
+    (missingRoute.verifiedRoutes as unknown[]).pop();
+    expect(() => validateReleaseManifest(missingRoute)).toThrow(
+      'routes are incomplete',
+    );
+
+    const duplicateRoute = structuredClone(validManifest());
+    const duplicateRoutes = duplicateRoute.verifiedRoutes as Record<
+      string,
+      unknown
+    >[];
+    const firstRoute = duplicateRoutes[0];
+    if (firstRoute === undefined) throw new Error('invalid release test setup');
+    duplicateRoutes[1] = structuredClone(firstRoute);
+    expect(() => validateReleaseManifest(duplicateRoute)).toThrow('route set');
+
+    const changedRoute = structuredClone(validManifest());
+    const routes = changedRoute.verifiedRoutes as Record<string, unknown>[];
+    routes[0] = { ...routes[0], status: 204 };
+    expect(() => validateReleaseManifest(changedRoute)).toThrow('route result');
+
+    const wrongBody = structuredClone(validManifest());
+    const wrongBodyRoutes = wrongBody.verifiedRoutes as Record<
+      string,
+      unknown
+    >[];
+    wrongBodyRoutes[0] = {
+      ...wrongBodyRoutes[0],
+      bodySha256: '9'.repeat(64),
+    };
+    expect(() => validateReleaseManifest(wrongBody)).toThrow('route body');
+
+    const oneNetworkNone = structuredClone(validManifest());
+    (oneNetworkNone.networkNoneLifecycles as unknown[]).pop();
+    expect(() => validateReleaseManifest(oneNetworkNone)).toThrow(
+      'network-none lifecycle evidence',
+    );
+
+    const duplicateContainer = structuredClone(validManifest());
+    const lifecycles = duplicateContainer.networkNoneLifecycles as Record<
+      string,
+      unknown
+    >[];
+    lifecycles[1] = {
+      ...lifecycles[1],
+      containerID: lifecycles[0]?.containerID,
+    };
+    expect(() => validateReleaseManifest(duplicateContainer)).toThrow(
+      'must be distinct',
+    );
+
+    const copiedLogs = structuredClone(validManifest());
+    const copiedLogLifecycles = copiedLogs.networkNoneLifecycles as Record<
+      string,
+      unknown
+    >[];
+    copiedLogLifecycles[1] = {
+      ...copiedLogLifecycles[1],
+      logsSha256: copiedLogLifecycles[0]?.logsSha256,
+    };
+    expect(() => validateReleaseManifest(copiedLogs)).toThrow(
+      'must be distinct',
+    );
+
+    const transitioned = structuredClone(validManifest());
+    transitioned.productionTransition = {
+      status: 'performed',
+      reason: 'explicit-production-approval-required',
+    };
+    expect(() => validateReleaseManifest(transitioned)).toThrow(
+      'production transition',
+    );
   });
 });

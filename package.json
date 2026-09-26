@@ -14,7 +14,7 @@
     "lint": "npm run lint:app && npm run lint:service-worker && npm run lint:tooling && npm run lint:test",
     "lint:app": "oxlint --tsconfig=tsconfig.json app/layout.tsx 'app/(notes)' 'app/(public)' components frontend hooks lib",
     "lint:service-worker": "oxlint --tsconfig=tsconfig.service-worker.json service-worker",
-    "lint:tooling": "oxlint --tsconfig=tsconfig.tooling.json playwright.config.ts scripts vite.config.ts vite.frontend.config.ts vite.frontend.ssr.config.ts vitest.config.ts vitest.benchmark.config.ts vitest.client-benchmark.config.ts",
+    "lint:tooling": "oxlint --tsconfig=tsconfig.tooling.json playwright.config.ts playwright.deletion-live.config.ts scripts vite.config.ts vite.frontend.config.ts vite.frontend.ssr.config.ts vitest.config.ts vitest.benchmark.config.ts vitest.client-benchmark.config.ts",
     "lint:test": "oxlint --tsconfig=tsconfig.test.json tests",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
@@ -30,6 +30,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "node --experimental-strip-types scripts/run-e2e.mts",
     "test:e2e:server": "bash scripts/e2e-server.sh",
+    "test:e2e:deletion-live": "node --experimental-strip-types scripts/run-deletion-live-e2e.mts playwright.deletion-live.config.ts",
     "benchmark:connections": "vitest run --config vitest.benchmark.config.ts --disableConsoleIntercept",
     "benchmark:client": "vitest run --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
     "benchmark:client:presentation": "vitest run tests/benchmarks/client-demand-driven-presentation.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
@@ -54,7 +55,7 @@
     "verify:migration-closure": "node --experimental-strip-types scripts/verify-migration-closure.mts",
     "verify:legacy-retirement": "node --experimental-strip-types scripts/verify-legacy-retirement.mts",
     "verify:release": "node --experimental-strip-types scripts/verify-release-artifact.mts",
-    "verify": "npm run contracts:check && npm run verify:migration-closure && npm run verify:legacy-retirement && npm run format:check && npm run check && npm run go:check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e && npm run verify:release"
+    "verify": "npm run contracts:check && npm run verify:migration-closure && npm run verify:legacy-retirement && npm run format:check && npm run check && npm run go:check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e && FUKAMU_E2E_USE_PREBUILT=1 FUKAMU_DELETION_E2E_CONFIRM=delete-live-evidence npm run test:e2e:deletion-live && npm run verify:release"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

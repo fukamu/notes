@@ -97,7 +97,12 @@ delete existing resources.
   and connects only the exact-fixture privacy Submit/Status journal described
   under T12i. Neither slice selects production policy or deploys. T17 Issue
   #498 subsequently retired the legacy server and completed V11; V09 remains
-  approval-pending.
+  approval-pending. Whole-runtime evidence Issue #514 starts from integration merge
+  `4639f5a06fcb8f0d78a08cf20278ee80cdd7808e`; it adds schema-v3 four-profile
+  executable closure, whole-process restart/lease/shutdown evidence, the
+  isolated destructive Chromium lane, and release verifier v2. It performs no
+  production deployment, database migration, traffic cutover, external
+  resource, or paid operation.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -152,20 +157,20 @@ A disconnected handler is not the same contract as its closed route.
 
 ## Verification matrix
 
-| ID  | Required evidence                                       | Current evidence                                                                                                                                                                                       |
-| --- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454/#511; strict local session context #511; legal #442/#444/#446/#510; privacy #456                                                                                                   |
-| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                                                                                                           |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; exact local scope and HTTP-before-body #511; OIDC #424; OTP/owner #426; legal #446; privacy #456; deletion #458; privacy/deletion owner binding #468                                |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450/#472; sync #452/#454; local composition/restart #511; exact deletion phase/restart/lease #512                |
-| V05 | sync/quota paging, retry, conflict, limits              | quota #450/#472; journal #452; authenticated encrypted composition #454; live local HTTP/UI connection #511                                                                                            |
-| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434; filesystem ciphertext/restart proof #511                                                                                                          |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438/#476; lease #440; legal #442/#444/#446/#510; scoped reconciliation #478                                                                                                   |
-| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432/#482; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468; every receipt/effect crash boundary and filesystem replay #512 |
-| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                                                              |
-| V10 | browser UI/offline/SW/deep links                        | #420 baseline; authenticated Vault-scoped Sync v2 #511; deletion recovery outside launch/session plus existing/new-tab quiescence and retained-before-revoke purge #512                                |
-| V11 | clean build/migrate/image and server-runtime removal    | Node-free image/config/layer/smoke gate #492; legacy source/config/dependency retirement #498                                                                                                          |
-| V12 | isolated reference/Go performance comparison            | loopback-only typed runner and isolated D1/PostgreSQL observation in #494                                                                                                                              |
+| ID  | Required evidence                                       | Current evidence                                                                                                                                                                                                                   |
+| --- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454/#511; strict local session context #511; legal #442/#444/#446/#510; privacy #456/#513; exact four-profile actual-process route matrix #514                                                                     |
+| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                                                                                                                                       |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; exact local scope and HTTP-before-body #511; OIDC #424; OTP/owner #426; legal #446; privacy #456; deletion #458; privacy/deletion owner binding #468                                                            |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450/#472; sync #452/#454; local composition/restart #511; exact deletion phase/restart/lease #512; no-reseed process restart/lease #514      |
+| V05 | sync/quota paging, retry, conflict, limits              | quota #450/#472; journal #452; authenticated encrypted composition #454; live local HTTP/UI connection #511                                                                                                                        |
+| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434; filesystem ciphertext/restart proof #511                                                                                                                                      |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438/#476; lease #440; legal #442/#444/#446/#510; scoped reconciliation #478                                                                                                                               |
+| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432/#482; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468; every receipt/effect crash boundary and filesystem replay #512                             |
+| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                                                                                          |
+| V10 | browser UI/offline/SW/deep links                        | #420 baseline; authenticated Vault-scoped Sync v2 #511; deletion recovery outside launch/session plus existing/new-tab quiescence and retained-before-revoke purge #512; fresh live deletion/restart/no-resurrection #514          |
+| V11 | clean build/migrate/image and server-runtime removal    | Node-free image/config/layer/smoke gate #492; legacy source/config/dependency retirement #498; immutable-ID exact-route and two-cycle network-none release v2 #514                                                                 |
+| V12 | isolated reference/Go performance comparison            | **in progress**: #494 supplies one loopback typed-runner D1/PostgreSQL observation, but the required 100/1,000/10,000-card, batch-500, two-device/full-sync, cold/warm/query/memory, and Sync v2 load baseline remains a follow-up |
 
 ## Intentional security differences
 
@@ -607,18 +612,26 @@ keys as part of a code rollback.
 
 ## Build, cutover, and rollback status
 
-A local-only Go bootstrap, PostgreSQL schema and legacy sync route, signed test
-identity boundary, launch-status route, static frontend artifact, and
-reviewable Dockerfile now exist. The old production routing is unchanged. No
-managed PostgreSQL instance, pushed image, staging environment, cutover
-rehearsal, or production operation exists yet. The eventual release unit must
+A local-only Go runtime now has exact executable evidence for its private
+legacy and two local-fixture profiles, while the production-shaped artifact
+keeps all business routes closed. This work did not inspect or change any
+external production routing, or inspect, create, change, push, or operate a managed
+PostgreSQL instance, image registry, staging environment, production
+environment, Sites deployment, or D1 database; their external inventory and
+state remain unverified. Issue #514 records only the repository work's
+deployment, database migration, traffic cutover, and external-resource actions
+as `not-performed`, with approval pending. The eventual release unit must
 bind one frontend hash, Go image digest, schema version, public
 configuration, secret version references, and identity mapping. T17 removed
 the old server source, so it cannot be rebuilt as a rollback from this tree. A
 separately approved first-cutover plan may retain only an exact immutable
 pre-cutover Sites artifact with its matching configuration, D1, and identity
-entry as a time-bounded emergency route; it never points that artifact at the
-new PostgreSQL database or copies writes in both directions. T05 rollback now
+entry as a time-bounded emergency route, but only before any incompatible
+Go/PostgreSQL durable write. After such a write, stop writes and use a
+compatible immutable Go image or reviewed forward recovery; Sites/D1 is not a
+rollback target. Never cross-connect datastores, dual-write, replay provider
+effects, synthesize evidence, restore revoked sessions, resurrect deleted
+content, or delete either datastore/evidence. T05 rollback now
 requires reverting the PR #421 merge as a reviewed integration change; it has no
 persistent schema or data effect. T06 #422 reuses the T03 session schema and is
 still disconnected, so its rollback removes Go code without migrating or
@@ -1939,16 +1952,21 @@ Node/npm, `node_modules`, legacy server/database/API source, TypeScript, SQL,
 root execution, unexpected entrypoints, missing production defaults,
 secret-bearing environment keys, and mismatched OCI provenance.
 
-The disposable container binds only to a random loopback port with private
-runtime composition disabled. It verifies health, honest database-not-ready
-state, Notes/public/deep-link delivery, unknown-route denial, closed
-disconnected APIs, and graceful `SIGTERM` exit. It does not supply a database,
-identity, provider credential, public address, or feature-enablement setting.
-The unique image and container are removed before the command returns.
+Issue #514 advances this to release-manifest schema/verifier v2. The build's
+validated immutable image ID—not its disposable cleanup tag—is used for image
+inspection/save and container creation; each later container operation uses
+the complete returned container ID. An extracted binary runs with an exact
+minimal environment on a random loopback port and pins exact bytes/headers for
+foundation routes plus all 13 OpenAPI operations.
+Two additional fresh containers run with `--network=none`, no port bindings,
+distinct IDs/log digests, and graceful `SIGTERM`/zero exit. It does not supply a
+database, identity, provider credential, public address, or feature-enablement
+setting, and cleanup removes every local image/container target.
 
 Successful runs create ignored `dist/release/manifest.json` and SPDX 2.3 JSON
-evidence. The manifest binds revision, image ID, migration version,
-binary/frontend hashes, runtime identity, and smoke results. The dependency
+evidence. The v2 manifest binds revision, immutable image ID, migration version,
+binary/frontend hashes, runtime identity, exact smoke results, and exactly two
+network-none lifecycle records. The dependency
 inventory contains modules embedded in the Go binary and a conservative
 production npm lockfile graph; no Node package is present in the runtime
 filesystem. [`go-release-artifact.md`](go-release-artifact.md) defines the
@@ -1958,12 +1976,14 @@ rollback.
 This slice proves the production-shaped artifact without pushing it. Registry,
 hosting, database, identity, domain/TLS, resource/cost, staging, deployment,
 production migration, and traffic cutover remain separate decisions and
-approvals. T17 has since removed the legacy TypeScript server source; the
-frozen ledger and Git revisions retain compatibility evidence.
+approvals. The manifest records deployment, database migration, traffic
+cutover, and external resources as `not-performed`. T17 has since removed the
+legacy TypeScript server source; the frozen ledger and Git revisions retain
+compatibility evidence.
 
 ## T14b migration closure and retirement evidence
 
-Issue #494 adds the machine-checked
+Issue #494 added the machine-checked
 [`go-migration-closure.json`](../contracts/go-migration-closure.json) inventory.
 It requires exactly F01-F28 and V01-V12 and verifies that every implemented
 feature has Go evidence. At the T14b checkpoint it kept F22 explicitly blocked
@@ -1982,6 +2002,24 @@ the phase to `retired`: 127 Go-replaced paths must be absent, 11 retained
 frontend and four retained tooling paths must be free of legacy references,
 and all named Go evidence must remain executable. A residual guard rejects retired roots, config files,
 scripts, package dependencies, and lockfile entries.
+
+Issue #514 upgrades the closure to schema version 3 with exactly four profiles:
+`local-private-legacy`, `local-fixture-undecided`,
+`local-fixture-delete-live-evidence`, and `production-disabled`. Every one of
+the 28 feature rows in each profile has an exact state and direct same-profile
+named executable evidence. The verifier rejects duplicate/orphan/cross-profile
+anchors, skipped/focused/expected-failure/comment-only declarations, shell-
+masked commands, and unreachable gates. E01-E03 run actual built
+`notes`/`notesctl` processes through two no-reseed cycles; E04 is the separately
+confirmed destructive Chromium deletion/restart lane; E05 is release verifier
+v2. Full details are in [`go-runtime-closure.md`](go-runtime-closure.md).
+
+V12 remains explicitly `in-progress`. The typed benchmark below is a
+single-fixture observation; it does not provide the planned repeated fixed-host
+100/1,000/10,000-card, batch-500, two-device/full-sync,
+cold/warm/query/memory, or separate Sync v2 load evidence. Consequently T01
+and T14 remain in progress until a follow-up Issue/PR adds that baseline. The
+T00-T17 status table in `go-runtime-closure.md` is the concise closure view.
 
 The T14b typed migration benchmark accepted only a root loopback HTTP URL,
 required a unique disposable-store label, used the same checked-in legacy sync

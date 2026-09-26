@@ -319,6 +319,7 @@ async function expectMapNodeFullyVisible(node: Locator, graph: Locator) {
 }
 
 async function replaceLocalCards(page: Page, cards: LocalFixtureCard[]) {
+  await awaitInitialSyncCheckpoint(page);
   const fixture = createSyncV2Fixture({ cards: [] });
   await page.route('**/api/v2/sync', async (route) => {
     const { response } = fixture.respond(route.request().postDataJSON());
@@ -380,6 +381,69 @@ async function replaceLocalCards(page: Page, cards: LocalFixtureCard[]) {
     },
     { accountId: e2eFixtureAccountId, vaultId: e2eFixtureVaultId, cards },
   );
+}
+
+async function awaitInitialSyncCheckpoint(page: Page): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          async (scope) =>
+            new Promise<boolean>((resolve, reject) => {
+              const databaseName = `fukamu-notes:v1:vault:${scope.accountId}:${scope.vaultId}`;
+              const request = indexedDB.open(databaseName, 2);
+              request.addEventListener('error', () => reject(request.error), {
+                once: true,
+              });
+              request.addEventListener(
+                'success',
+                () => {
+                  const database = request.result;
+                  const transaction = database.transaction(
+                    'sync-v2',
+                    'readonly',
+                  );
+                  const checkpoint = transaction
+                    .objectStore('sync-v2')
+                    .get('checkpoint');
+                  let present = false;
+                  checkpoint.addEventListener(
+                    'success',
+                    () => {
+                      present = checkpoint.result !== undefined;
+                    },
+                    { once: true },
+                  );
+                  checkpoint.addEventListener(
+                    'error',
+                    () => reject(checkpoint.error),
+                    { once: true },
+                  );
+                  transaction.addEventListener(
+                    'complete',
+                    () => {
+                      database.close();
+                      resolve(present);
+                    },
+                    { once: true },
+                  );
+                  transaction.addEventListener(
+                    'abort',
+                    () => {
+                      database.close();
+                      reject(transaction.error);
+                    },
+                    { once: true },
+                  );
+                },
+                { once: true },
+              );
+            }),
+          { accountId: e2eFixtureAccountId, vaultId: e2eFixtureVaultId },
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
 }
 
 test('offline creation fails closed before session validation, then reconnects and syncs to another device', async ({

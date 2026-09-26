@@ -97,11 +97,26 @@ async function createHarness(options: {
 
 describe('Go E2E server', () => {
   it('keeps the seeded browser session tied to the local fixture profile', async () => {
-    const [server, identity, playwright, launcher] = await Promise.all([
+    const [
+      server,
+      identity,
+      playwright,
+      launcher,
+      deletionServer,
+      deletionPlaywright,
+      deletionLauncher,
+      deletionSpec,
+      packageManifest,
+    ] = await Promise.all([
       readFile('scripts/e2e-server.sh', 'utf8'),
       readFile('tests/e2e/identity-fixture.ts', 'utf8'),
       readFile('playwright.config.ts', 'utf8'),
       readFile('scripts/run-e2e.mts', 'utf8'),
+      readFile('scripts/e2e-deletion-live-server.sh', 'utf8'),
+      readFile('playwright.deletion-live.config.ts', 'utf8'),
+      readFile('scripts/run-deletion-live-e2e.mts', 'utf8'),
+      readFile('tests/e2e-live-deletion/account-deletion-live.spec.ts', 'utf8'),
+      readFile('package.json', 'utf8'),
     ]);
     expect(server).toContain(
       '${NOTES_LOCAL_FIXTURE_SESSION_TOKEN:?E2E fixture session token is required}',
@@ -138,6 +153,84 @@ describe('Go E2E server', () => {
       'NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY=undecided',
     );
     expect(server).not.toContain('NOTES_APPLICATION_PROFILE=disabled');
+    expect(deletionLauncher).toContain(
+      'process.env.FUKAMU_DELETION_E2E_CONFIRM !== exactConfirmation',
+    );
+    expect(deletionLauncher).toContain(
+      'delete childEnvironment.NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY',
+    );
+    expect(deletionLauncher).toContain(
+      'delete childEnvironment.FUKAMU_E2E_LOCAL_AUTH_PRIVATE_KEY',
+    );
+    expect(deletionPlaywright).toContain(
+      "testDir: './tests/e2e-live-deletion'",
+    );
+    expect(deletionPlaywright).toContain(
+      "testMatch: 'account-deletion-live.spec.ts'",
+    );
+    expect(deletionPlaywright).toContain("projects: [{ name: 'chromium'");
+    expect(deletionPlaywright).toContain('workers: 1');
+    expect(deletionPlaywright).toContain(
+      "gracefulShutdown: { signal: 'SIGTERM', timeout: 20_000 }",
+    );
+    expect(deletionServer).toContain('NOTES_SHUTDOWN_TIMEOUT=10s');
+    expect(deletionServer).toContain('restart_failed=');
+    expect(deletionSpec).toContain('waitForActualGoRestart');
+    expect(deletionServer).toContain(
+      'unset NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY',
+    );
+    expect(deletionServer).toContain(
+      'NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY="$exact_confirmation"',
+    );
+    expect(deletionServer).toContain(
+      'fixture_record="$control_directory/fixture.path"',
+    );
+    expect(deletionLauncher).toContain('await cleanDeletionFixture(directory)');
+    expect(
+      deletionServer.indexOf('FUKAMU_DELETION_E2E_CONFIRM:-'),
+    ).toBeLessThan(deletionServer.indexOf('run ./cmd/notesctl prepare-e2e'));
+    expect(playwright).not.toContain('tests/e2e-live-deletion');
+    const parsedPackage: unknown = JSON.parse(packageManifest);
+    expect(parsedPackage).toMatchObject({
+      scripts: {
+        'test:e2e:deletion-live':
+          'node --experimental-strip-types scripts/run-deletion-live-e2e.mts playwright.deletion-live.config.ts',
+      },
+    });
+    expect(packageManifest).toContain(
+      'FUKAMU_DELETION_E2E_CONFIRM=delete-live-evidence npm run test:e2e:deletion-live',
+    );
+  });
+
+  it('rejects a raw destructive policy before the deletion runner can spawn Playwright', async () => {
+    const environment: NodeJS.ProcessEnv = {
+      ...process.env,
+      NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY: 'delete-live-evidence',
+    };
+    delete environment.FUKAMU_DELETION_E2E_CONFIRM;
+    const result = await new Promise<{ code: number | null; stderr: string }>(
+      (resolve) => {
+        const child = spawn(
+          process.execPath,
+          [
+            '--experimental-strip-types',
+            path.resolve('scripts/run-deletion-live-e2e.mts'),
+            'playwright.deletion-live.config.ts',
+          ],
+          { env: environment, stdio: ['ignore', 'ignore', 'pipe'] },
+        );
+        let stderr = '';
+        child.stderr.setEncoding('utf8');
+        child.stderr.on('data', (chunk: string) => {
+          stderr += chunk;
+        });
+        child.on('close', (code) => resolve({ code, stderr }));
+      },
+    );
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain(
+      'live deletion E2E requires the exact destructive confirmation',
+    );
   });
 
   it('builds for standalone E2E and prepares an isolated allowlisted database', async () => {

@@ -230,6 +230,14 @@ Do not delete test coverage merely because its old implementation was removed.
 Move still-applicable behavior to Go tests or frontend-only tests first. A
 capability that is truly absent must remain explicit in the manifest.
 
+Issue #514 advances the manifest to schema version 3. It no longer treats a
+global profile test as sufficient evidence: each F01-F28/profile row names an
+executable same-profile anchor, and the verifier proves that anchor is live,
+unskipped, unmasked, and reachable from the shared gate. The four exact profiles
+and E01-E05 anchors are documented in
+[`go-runtime-closure.md`](go-runtime-closure.md). This strengthens current Go
+closure evidence without restoring any retired TypeScript server path.
+
 ## Cutover and recovery limits
 
 Source retirement and implementation completion are not production migration.
@@ -241,7 +249,15 @@ traffic switch, and recovery owner. No long-lived dual write is planned.
 If the Go release fails before traffic changes, stop and keep the old service
 unchanged. After traffic changes but before any incompatible durable write, a
 reviewed rollback may restore the complete old release unit. Once PostgreSQL
-contains state that the old D1 runtime cannot interpret, stop writes and use an
-approved forward recovery or data-reconciliation plan; do not point either
-runtime at the other datastore, replay external side effects, synthesize
-consent/billing evidence, restore revoked sessions, or delete either datastore.
+contains state that the old D1 runtime cannot interpret, Sites/D1 is no longer
+a rollback target: stop writes and use a compatible immutable Go image or an
+approved Go/PostgreSQL forward recovery or reconciliation plan. Never back-copy,
+backfill, or replay PostgreSQL/Go writes into D1/Sites. Do not point either
+runtime at the other datastore, dual-write, replay external side effects,
+synthesize consent/billing/privacy evidence, restore revoked sessions,
+resurrect deleted data, or delete either datastore/evidence. The old complete
+unit must be retained and revalidated immediately before any separately
+approved cutover; a historical source revision is insufficient. Issue #514
+performs no production transition; its manifest records deployment, database
+migration, traffic cutover, and external resources as `not-performed` with
+approval pending.
