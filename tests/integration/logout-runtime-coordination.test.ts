@@ -11,6 +11,10 @@ import {
 } from '@/lib/application/logout-purge';
 import { startOrResumeLogoutPurge } from '@/lib/application/logout-purge-progress';
 import {
+  createLogoutPurgeRunner,
+  type LogoutPurgeTargetPort,
+} from '@/lib/application/logout-purge-runner';
+import {
   createLogoutPurgeCoordination,
   createLogoutRuntimeFence,
   type LogoutRuntimeFenceLease,
@@ -33,6 +37,91 @@ const nextOwnerTabId = parseTabInstanceId(
 );
 
 describe('logout runtime fence and multi-tab coordination', () => {
+  it('prepares two tabs immediately, blocks a new tab, and retains data until purge runs', async () => {
+    const progress = createFakeLogoutPurgeProgressPort();
+    const platform = new InMemoryLogoutCoordinationPlatform();
+    const firstStopped = vi.fn();
+    const secondStopped = vi.fn();
+    const firstLease: { current?: LogoutRuntimeFenceLease } = {};
+    const secondLease: { current?: LogoutRuntimeFenceLease } = {};
+    const first = await createLogoutRuntimeFence({
+      progressPort: progress,
+      platform,
+      tabId: firstTabId,
+      lockTimeoutMs: 100,
+    }).enter({
+      generation,
+      onPurgeRequested: () => {
+        firstStopped();
+        if (firstLease.current) void firstLease.current.quiesce();
+      },
+    });
+    const second = await createLogoutRuntimeFence({
+      progressPort: progress,
+      platform,
+      tabId: secondTabId,
+      lockTimeoutMs: 100,
+    }).enter({
+      generation,
+      onPurgeRequested: () => {
+        secondStopped();
+        if (secondLease.current) void secondLease.current.quiesce();
+      },
+    });
+    if (first.kind !== 'entered' || second.kind !== 'entered') {
+      throw new Error('expected both runtime fences to enter');
+    }
+    firstLease.current = first.lease;
+    secondLease.current = second.lease;
+
+    let localDataPresent = true;
+    const completed = async () => ({ kind: 'completed' as const });
+    const targets: LogoutPurgeTargetPort = {
+      closeLocalRuntime: completed,
+      resetGraphWorker: completed,
+      purgeServiceWorkerCache: completed,
+      async deleteVaultDatabase() {
+        localDataPresent = false;
+        return { kind: 'completed' };
+      },
+      verifyDeletion: completed,
+    };
+    const runner = createLogoutPurgeRunner({
+      progress,
+      coordination: createLogoutPurgeCoordination({
+        platform,
+        tabId: ownerTabId,
+        lockTimeoutMs: 100,
+      }),
+      targets,
+    });
+
+    await expect(runner.prepare(generation)).resolves.toEqual({
+      kind: 'prepared',
+    });
+    await Promise.resolve();
+    expect(firstStopped).toHaveBeenCalledOnce();
+    expect(secondStopped).toHaveBeenCalledOnce();
+    expect(localDataPresent).toBe(true);
+    expect(progress.marker()).toMatchObject({ kind: 'pending' });
+    await expect(
+      createLogoutRuntimeFence({
+        progressPort: progress,
+        platform,
+        tabId: nextOwnerTabId,
+        lockTimeoutMs: 100,
+      }).enter({ generation, onPurgeRequested: vi.fn() }),
+    ).resolves.toEqual({ kind: 'blocked', reason: 'purge-pending' });
+
+    await expect(runner.run(generation)).resolves.toMatchObject({
+      kind: 'completed',
+    });
+    expect(localDataPresent).toBe(false);
+    expect(progress.marker()).toBeUndefined();
+    await firstLease.current.close();
+    await secondLease.current.close();
+  });
+
   it('quiesces two runtimes, proves their shared locks drained, and elects one owner', async () => {
     const progress = createFakeLogoutPurgeProgressPort();
     const platform = new InMemoryLogoutCoordinationPlatform();

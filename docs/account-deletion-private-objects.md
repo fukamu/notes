@@ -5,9 +5,9 @@
 Issue #464 implements the provider-neutral Go purge in
 `backend/internal/encryptedobject`, its account-deletion effect mapping, and an
 Account/Vault-scoped PostgreSQL outbox directory. It remains disconnected from
-the closed account-deletion HTTP runtime and uses only the isolated in-memory
-object-storage adapter in tests; no production bucket, credential, object, or
-provider call is configured.
+production. Issue #512 connects it only in the exact disposable fixture through
+a lifetime-anchored local object directory and real outbox rows; no production
+bucket, credential, object, or provider call is configured.
 
 The Go boundary is stricter than the TypeScript compatibility oracle: before
 exposing any outbox inventory, PostgreSQL verifies the retained owner, the
@@ -23,7 +23,10 @@ attempt count as a compare-and-swap guard: a missing row is a concurrent replay
 and a changed row is a conflict. Storage failures increment the attempt and
 move `next_attempt_at` by the configured retry delay, while successful rows in
 the same batch stay complete. The account-deletion step succeeds only after a
-post-attempt scoped count is zero.
+post-attempt scoped count is zero. Confirmed durable shrink—including a row
+concurrently confirmed by an idempotent replay—is productive same-step progress
+and resets the saga retry budget. Zero durable progress uses the normal finite
+retry delay sequence. No other saga step may report this progress transition.
 
 Tests cover exact operation/receipt authorization, owner and scope rejection,
 bounded batches, not-found replay, partial failure and backoff, storage success

@@ -141,8 +141,22 @@ func TestAccountFinalizationPostgresPolicyRaceAndRollback(t *testing.T) {
 		Kind: accountdeletion.LegalEvidencePolicyUndecided,
 	}
 	preflight, err := store.EvaluateLegalEvidence(ctx, raceCommand, undecided)
+	if err != nil || preflight.Kind != accountdeletion.AccountFinalizationRetryableFailure ||
+		preflight.Reason != accountdeletion.AccountFinalizationLegalPolicyPending {
+		t.Fatalf("undecided legal preflight = %#v, %v", preflight, err)
+	}
+	pendingKeys, err := store.FinalizeWrappedKeys(ctx, raceCommand, undecided)
+	if err != nil || pendingKeys.Kind != accountdeletion.AccountFinalizationRetryableFailure ||
+		pendingKeys.Reason != accountdeletion.AccountFinalizationLegalPolicyPending {
+		t.Fatalf("undecided wrapped keys = %#v, %v", pendingKeys, err)
+	}
+	assertRowCount(t, ctx, pool, "vault_dek_versions", "vault_id", string(raceScope.VaultID), 1)
+	deleteLive := accountdeletion.LegalEvidenceFinalizationPolicy{
+		Kind: accountdeletion.LegalEvidenceDeleteLive,
+	}
+	preflight, err = store.EvaluateLegalEvidence(ctx, raceCommand, deleteLive)
 	if err != nil || preflight.Kind != accountdeletion.AccountFinalizationConfirmed {
-		t.Fatalf("legal preflight = %#v, %v", preflight, err)
+		t.Fatalf("delete-live legal preflight = %#v, %v", preflight, err)
 	}
 	legalWriteErr := insertFinalizationTermsEvidence(ctx, pool, raceScope, 83)
 	var postgresError *pgconn.PgError
@@ -150,7 +164,7 @@ func TestAccountFinalizationPostgresPolicyRaceAndRollback(t *testing.T) {
 		postgresError.ConstraintName != "account_deletion_legal_evidence_gate" {
 		t.Fatalf("post-deletion legal evidence write = %v", legalWriteErr)
 	}
-	raceResult, err := store.FinalizeWrappedKeys(ctx, raceCommand, undecided)
+	raceResult, err := store.FinalizeWrappedKeys(ctx, raceCommand, deleteLive)
 	if err != nil || raceResult.Kind != accountdeletion.AccountFinalizationConfirmed {
 		t.Fatalf("policy race result = %#v, %v", raceResult, err)
 	}
@@ -162,9 +176,6 @@ func TestAccountFinalizationPostgresPolicyRaceAndRollback(t *testing.T) {
 	rollbackOperation := startVaultPurgeDeletion(t, ctx, pool, rollbackScope, 3_184, 'Y', 'Z')
 	rollbackReceiptAt := markAccountFinalizationRunning(t, ctx, pool, rollbackOperation, 1_700)
 	rollbackCommand := accountFinalizationCommand(rollbackOperation, rollbackReceiptAt, 1_800)
-	deleteLive := accountdeletion.LegalEvidenceFinalizationPolicy{
-		Kind: accountdeletion.LegalEvidenceDeleteLive,
-	}
 	service := newAccountFinalizationService(t, rollbackScope, deleteLive, store)
 	if _, err := pool.Exec(ctx, `CREATE FUNCTION fail_test_account_finalization() RETURNS trigger
 		LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''injected account finalization failure''; END'`); err != nil {

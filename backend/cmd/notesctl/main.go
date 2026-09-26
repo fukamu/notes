@@ -1614,10 +1614,23 @@ func printUsage(output io.Writer) {
 	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read] | notesctl dek rotate --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --operation-id=<uuidv7> --requested-at-millis=<unix-ms> --generated-at-millis=<unix-ms> --completed-at-millis=<unix-ms> --confirm-kms-key-generation [--confirm-production-kms-mutation] | notesctl dek reencrypt --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --target-version=<version> --limit=1..100 --performed-at-millis=<unix-ms> --object-root=<absolute-secure-directory> --nonce-root=<absolute-secure-directory> --confirm-local-object-writes --confirm-kms-unwrapping | notesctl objects orphan-scan --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --scan-started-at-millis=<unix-ms> --grace-period-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-scan --confirm-delete-enqueue | notesctl objects delete-outbox --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --attempted-at-millis=<unix-ms> --retry-delay-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-deletes --confirm-delete-outbox-mutation | notesctl recovery drill --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --drilled-at-millis=<unix-ms> --backup-root=<absolute-private-directory> --key-root=<absolute-private-directory> --confirm-local-backup-read --confirm-local-fixture-key-read")
 }
 
-func prepareE2EDatabase(ctx context.Context, databaseURL string, allowedSubject string) error {
+func prepareE2EDatabase(
+	ctx context.Context,
+	databaseURL string,
+	allowedSubject string,
+) (returnErr error) {
 	if err := postgresadapter.ValidateTestDatabaseURL(databaseURL); err != nil {
 		return err
 	}
+	lease, err := postgresadapter.AcquireLocalFixtureRuntimeLease(ctx, databaseURL)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := lease.Close(); returnErr == nil && closeErr != nil {
+			returnErr = closeErr
+		}
+	}()
 	database, err := postgresadapter.OpenSQL(ctx, databaseURL)
 	if err != nil {
 		return err
@@ -1646,7 +1659,7 @@ func prepareLocalFixtureE2EDatabase(
 	ctx context.Context,
 	configuration config.LocalFixtureConfig,
 	allowedSubject access.Subject,
-) error {
+) (returnErr error) {
 	if err := postgresadapter.ValidateTestDatabaseURL(configuration.DatabaseURL); err != nil {
 		return err
 	}
@@ -1662,6 +1675,15 @@ func prepareLocalFixtureE2EDatabase(
 	) {
 		return errors.New("local fixture directory configuration mismatch")
 	}
+	lease, err := postgresadapter.AcquireLocalFixtureRuntimeLease(ctx, configuration.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := lease.Close(); returnErr == nil && closeErr != nil {
+			returnErr = closeErr
+		}
+	}()
 	layout, err := localfixtureadapter.PrepareLayout(configuration.PrivateRoot)
 	if err != nil {
 		return err

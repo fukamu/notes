@@ -91,6 +91,45 @@ function createTargets() {
 }
 
 describe('logout purge runner', () => {
+  it('durably blocks new runtimes and quiesces peers without deleting local data', async () => {
+    const progress = createFakeLogoutPurgeProgressPort();
+    const coordination = createCoordination();
+    const targets = createTargets();
+    const runner = createLogoutPurgeRunner({
+      progress,
+      coordination: coordination.port,
+      targets: targets.port,
+    });
+
+    await expect(runner.prepare(generation)).resolves.toEqual({
+      kind: 'prepared',
+    });
+    expect(progress.marker()).toMatchObject({
+      kind: 'pending',
+      target: 'runtime-fence',
+      attempt: 0,
+    });
+    expect(targets.calls).toEqual([]);
+    expect(coordination.calls).toEqual([
+      'acquire-owner',
+      'quiesce:1',
+      'release-peer',
+      'release-owner',
+    ]);
+
+    coordination.calls.length = 0;
+    await expect(runner.run(generation)).resolves.toMatchObject({
+      kind: 'completed',
+    });
+    expect(targets.calls).toEqual([
+      'local-runtime',
+      'graph-worker',
+      'service-worker-cache',
+      'vault-database',
+      'deletion-verification',
+    ]);
+  });
+
   it('persists the ordered browser effects and clears only after verification', async () => {
     const progress = createFakeLogoutPurgeProgressPort();
     const coordination = createCoordination();

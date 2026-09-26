@@ -150,6 +150,7 @@ type StepResultKind string
 
 const (
 	StepSucceeded        StepResultKind = "succeeded"
+	StepProgressed       StepResultKind = "progressed"
 	StepRetryableFailure StepResultKind = "retryable-failure"
 	StepTerminalFailure  StepResultKind = "terminal-failure"
 )
@@ -223,6 +224,11 @@ func PlanStepCompletion(
 	switch result.Kind {
 	case StepSucceeded:
 		return planSuccess(operation, state, result.FinishedAt)
+	case StepProgressed:
+		if state.Step != StepDeletePrivateObject || result.FailureCode != "" {
+			return Plan{Kind: PlanRejected, Reason: ReasonInvalidInput}
+		}
+		return planProgress(operation, state, result.FinishedAt)
 	case StepRetryableFailure:
 		if _, err := ParseFailureCode(string(result.FailureCode)); err != nil {
 			return Plan{Kind: PlanRejected, Reason: ReasonInvalidInput}
@@ -276,6 +282,12 @@ func planSuccess(operation Operation, state Running, completedAt int64) Plan {
 		return advance(operation, Completed{CompletedAt: completedAt}, completedAt, receipt)
 	}
 	return advance(operation, Ready{Step: next, Attempt: 0, NotBefore: completedAt}, completedAt, receipt)
+}
+
+func planProgress(operation Operation, state Running, progressedAt int64) Plan {
+	return advance(operation, Ready{
+		Step: state.Step, Attempt: 0, NotBefore: progressedAt,
+	}, progressedAt, nil)
 }
 
 func planFailure(
@@ -405,6 +417,10 @@ func ValidTransition(scope Scope, transition Transition) bool {
 		case TerminalFailure:
 			return transition.Receipt == nil && sameActiveStep(currentState, nextState.Step, nextState.Attempt)
 		case Ready:
+			if nextState.Step == currentState.Step {
+				return currentState.Step == StepDeletePrivateObject && transition.Receipt == nil && nextState.Attempt == 0 &&
+					nextState.NotBefore == next.UpdatedAt
+			}
 			following, hasFollowing := nextStep(currentState.Step)
 			return hasFollowing && following == nextState.Step && nextState.Attempt == 0 &&
 				nextState.NotBefore == next.UpdatedAt && validSuccessReceipt(current, next, transition.Receipt)

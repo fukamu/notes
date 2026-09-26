@@ -144,7 +144,8 @@ export type AccountDeletionRemoteResult =
   | {
       readonly kind: 'rejected';
       readonly reason:
-        | 'authorization-required'
+        | 'authentication-required'
+        | 'continuation-required'
         | 'request-conflict'
         | 'remote-unavailable';
     };
@@ -204,12 +205,18 @@ export const accountDeletionContinuationTokenDecoder: Decoder<AccountDeletionCon
   transformDecoder(
     refineDecoder(
       stringDecoder({ minLength: 49, maxLength: 58 }),
-      (value) => /^ad1\.[A-Za-z0-9_-]{43}\.(?:0|[1-9][0-9]{0,9})$/.test(value),
+      isAccountDeletionContinuationToken,
       'expected an account deletion continuation token',
     ),
     // The versioned bounded token shape above is the runtime proof for this brand.
     (value) => value as AccountDeletionContinuationToken,
   );
+
+function isAccountDeletionContinuationToken(value: string): boolean {
+  const match = /^ad1\.[A-Za-z0-9_-]{43}\.(0|[1-9][0-9]{0,9})$/.exec(value);
+  const sequence = match?.[1];
+  return sequence !== undefined && Number(sequence) <= 2_147_483_647;
+}
 
 const timestampDecoder = safeIntegerDecoder({ minimum: 0 });
 const revisionDecoder = safeIntegerDecoder({
@@ -337,6 +344,16 @@ export function planAccountDeletionRevokeAccepted(
   return server.kind === 'retry-wait'
     ? advance(handoff, { kind: 'revoke-pending', server })
     : advance(handoff, { kind: 'purge-pending', server });
+}
+
+export function planAccountDeletionContinuationRenewed(
+  handoff: AccountDeletionHandoff,
+  server: AccountDeletionServerStatus,
+): AccountDeletionHandoffTransition {
+  if (handoff.kind !== 'revoke-pending' || server.kind !== 'in-progress') {
+    return rejected('invalid-state');
+  }
+  return advance(handoff, { kind: 'revoke-pending', server });
 }
 
 export function planAccountDeletionLocalPurgeCompleted(

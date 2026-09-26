@@ -62,21 +62,29 @@ type PrivateRuntimeConfig struct {
 }
 
 type LocalFixtureConfig struct {
-	DatabaseURL     string
-	PublicOrigin    *url.URL
-	AllowedSubject  access.Subject
-	AccountID       identity.AccountID
-	VaultID         identity.VaultID
-	SessionID       identity.SessionID
-	SessionEpoch    identity.SessionEpoch
-	SessionToken    identity.SessionToken
-	PrivateRoot     string
-	ObjectDirectory string
-	NonceDirectory  string
-	KeyDirectory    string
-	CursorHMACKey   [32]byte
-	DeletionHMACKey [32]byte
+	DatabaseURL         string
+	PublicOrigin        *url.URL
+	AllowedSubject      access.Subject
+	AccountID           identity.AccountID
+	VaultID             identity.VaultID
+	SessionID           identity.SessionID
+	SessionEpoch        identity.SessionEpoch
+	SessionToken        identity.SessionToken
+	PrivateRoot         string
+	ObjectDirectory     string
+	NonceDirectory      string
+	KeyDirectory        string
+	CursorHMACKey       [32]byte
+	DeletionHMACKey     [32]byte
+	LegalEvidencePolicy LocalFixtureLegalEvidencePolicy
 }
+
+type LocalFixtureLegalEvidencePolicy string
+
+const (
+	LocalFixtureLegalEvidenceUndecided LocalFixtureLegalEvidencePolicy = "undecided"
+	LocalFixtureDeleteLiveEvidence     LocalFixtureLegalEvidencePolicy = "delete-live-evidence"
+)
 
 type DatabaseConfig struct {
 	Environment Environment
@@ -127,6 +135,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 			"NOTES_LOCAL_FIXTURE_SESSION_TOKEN",
 			"NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY",
 			"NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY",
+			"NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY",
 		} {
 			if value, ok := lookup(key); ok {
 				values[key] = value
@@ -360,22 +369,36 @@ func parseLocalFixture(
 			"must be distinct from the cursor HMAC key",
 		)
 	}
+	legalEvidencePolicy := LocalFixtureLegalEvidencePolicy(
+		values["NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY"],
+	)
+	if legalEvidencePolicy == "" {
+		legalEvidencePolicy = LocalFixtureLegalEvidenceUndecided
+	}
+	if legalEvidencePolicy != LocalFixtureLegalEvidenceUndecided &&
+		legalEvidencePolicy != LocalFixtureDeleteLiveEvidence {
+		return nil, invalid(
+			"NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY",
+			"must be undecided or delete-live-evidence",
+		)
+	}
 	fixtureOrigin := *privateRuntime.PublicOrigin
 	return &LocalFixtureConfig{
-		DatabaseURL:     privateRuntime.DatabaseURL,
-		PublicOrigin:    &fixtureOrigin,
-		AllowedSubject:  privateRuntime.LegacyOwner,
-		AccountID:       accountID,
-		VaultID:         vaultID,
-		SessionID:       sessionID,
-		SessionEpoch:    sessionEpoch,
-		SessionToken:    sessionToken,
-		PrivateRoot:     root,
-		ObjectDirectory: filepath.Join(root, localfixture.ObjectDirectoryName),
-		NonceDirectory:  filepath.Join(root, localfixture.NonceDirectoryName),
-		KeyDirectory:    filepath.Join(root, localfixture.KeyDirectoryName),
-		CursorHMACKey:   cursorKey,
-		DeletionHMACKey: deletionKey,
+		DatabaseURL:         privateRuntime.DatabaseURL,
+		PublicOrigin:        &fixtureOrigin,
+		AllowedSubject:      privateRuntime.LegacyOwner,
+		AccountID:           accountID,
+		VaultID:             vaultID,
+		SessionID:           sessionID,
+		SessionEpoch:        sessionEpoch,
+		SessionToken:        sessionToken,
+		PrivateRoot:         root,
+		ObjectDirectory:     filepath.Join(root, localfixture.ObjectDirectoryName),
+		NonceDirectory:      filepath.Join(root, localfixture.NonceDirectoryName),
+		KeyDirectory:        filepath.Join(root, localfixture.KeyDirectoryName),
+		CursorHMACKey:       cursorKey,
+		DeletionHMACKey:     deletionKey,
+		LegalEvidencePolicy: legalEvidencePolicy,
 	}, nil
 }
 

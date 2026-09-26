@@ -2,6 +2,7 @@ import {
   accountDeletionIdempotencyKeyDecoder,
   createAccountDeletionHandoff,
   inspectAccountDeletionHandoff,
+  planAccountDeletionContinuationRenewed,
   planAccountDeletionLocalPurgeCompleted,
   planAccountDeletionRevokeAccepted,
   planAccountDeletionServerAccepted,
@@ -134,15 +135,51 @@ async function drivePrePurge(
   }
 
   if (current.kind === 'revoke-pending') {
+    // Start has been durably accepted and the revoke-pending handoff was
+    // committed above. Only now may we create the existing logout marker and
+    // quiesce peer tabs. This blocks new runtimes immediately while retaining
+    // all local content until session revocation is confirmed.
+    const prepared = await input.logoutPurge.prepare(
+      generationSnapshot(current),
+    );
+    if (prepared.kind === 'blocked') {
+      return failure('local-purge-failed');
+    }
     const due = dueDecision(current.server, input.clock);
     if (due === 'unavailable') return failure('remote-unavailable');
     if (due === 'not-due') return pending(current.server, 'retained');
-    const continuationToken = current.server.continuationToken;
-    const remote = await callRemote(() =>
+    let continuationToken = current.server.continuationToken;
+    let remote = await callRemote(() =>
       input.remote.resume({
         continuationToken,
       }),
     );
+    if (
+      remote.kind === 'rejected' &&
+      remote.reason === 'continuation-required'
+    ) {
+      const renewed = await callRemote(() =>
+        input.remote.start({ idempotencyKey: current.idempotencyKey }),
+      );
+      if (renewed.kind === 'rejected') return remoteFailure(renewed);
+      const persistedRenewal = await persistTransition(
+        current,
+        planAccountDeletionContinuationRenewed(current, renewed.status),
+        input.progress,
+      );
+      if (
+        persistedRenewal.kind === 'failed' ||
+        persistedRenewal.kind === 'cleared'
+      ) {
+        return persistedRenewal.result;
+      }
+      current = persistedRenewal.handoff;
+      if (current.kind !== 'revoke-pending') return failure('invalid-state');
+      continuationToken = current.server.continuationToken;
+      remote = await callRemote(() =>
+        input.remote.resume({ continuationToken }),
+      );
+    }
     if (remote.kind === 'rejected') return remoteFailure(remote);
     const persisted = await persistTransition(
       current,
@@ -348,7 +385,16 @@ function dueDecision(
 function remoteFailure(
   result: Extract<AccountDeletionRemoteResult, { readonly kind: 'rejected' }>,
 ): AccountDeletionRunResult {
-  return failure(result.reason);
+  switch (result.reason) {
+    case 'authentication-required':
+    case 'continuation-required':
+      return failure('authorization-required');
+    case 'request-conflict':
+    case 'remote-unavailable':
+      return failure(result.reason);
+    default:
+      return assertNever(result.reason, 'Unsupported account deletion denial');
+  }
 }
 
 function localPurgeFailure(

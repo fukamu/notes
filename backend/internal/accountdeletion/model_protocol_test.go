@@ -129,6 +129,99 @@ func TestEveryAccountDeletionStepCanRecoverRetryAndExpiredLease(t *testing.T) {
 	}
 }
 
+func TestStepProgressReturnsReadyWithoutReceiptOrRetryAttempt(t *testing.T) {
+	operation, receipts := operationReadyAtStep(t, 3, 3_500)
+	claimed := PlanStepClaim(operation, 3_600, 3_700)
+	running := claimed.Transition.Next.State.(Running)
+	progressed := PlanStepCompletion(claimed.Transition.Next, StepResult{
+		Kind: StepProgressed, Step: running.Step, Attempt: running.Attempt, FinishedAt: 3_650,
+	}, nil, RetryPolicy{})
+	state, ok := progressed.Transition.Next.State.(Ready)
+	if progressed.Kind != PlanAccepted || !ok || state.Step != StepDeletePrivateObject ||
+		state.Attempt != 0 || state.NotBefore != 3_650 || progressed.Transition.Receipt != nil ||
+		!ValidSnapshot(Snapshot{Operation: progressed.Transition.Next, Receipts: receipts}) {
+		t.Fatalf("progress completion = %#v", progressed)
+	}
+	reclaimed := PlanStepClaim(progressed.Transition.Next, 3_650, 3_750)
+	if next := reclaimed.Transition.Next.State.(Running); next.Attempt != 1 || next.Step != StepDeletePrivateObject {
+		t.Fatalf("progress reclaim = %#v", reclaimed)
+	}
+	code, _ := ParseFailureCode("not-a-progress-detail")
+	if invalid := PlanStepCompletion(claimed.Transition.Next, StepResult{
+		Kind: StepProgressed, Step: running.Step, Attempt: running.Attempt,
+		FinishedAt: 3_650, FailureCode: code,
+	}, nil, RetryPolicy{}); invalid.Reason != ReasonInvalidInput {
+		t.Fatalf("progress with failure code = %#v", invalid)
+	}
+	receipt := Receipt{OperationID: operation.OperationID, Step: StepDeletePrivateObject, CompletedAt: 3_650}
+	if invalid := PlanStepCompletion(claimed.Transition.Next, StepResult{
+		Kind: StepProgressed, Step: running.Step, Attempt: running.Attempt, FinishedAt: 3_650,
+	}, &receipt, RetryPolicy{}); invalid.Reason != ReasonReceiptMismatch {
+		t.Fatalf("progress with receipt = %#v", invalid)
+	}
+	first := mustStartOperation(t, 3_500)
+	firstClaim := PlanStepClaim(first, 3_600, 3_700)
+	firstRunning := firstClaim.Transition.Next.State.(Running)
+	if invalid := PlanStepCompletion(firstClaim.Transition.Next, StepResult{
+		Kind: StepProgressed, Step: firstRunning.Step, Attempt: firstRunning.Attempt, FinishedAt: 3_650,
+	}, nil, RetryPolicy{}); invalid.Reason != ReasonInvalidInput {
+		t.Fatalf("non-private progress = %#v", invalid)
+	}
+	forged := Transition{
+		Current: firstClaim.Transition.Next,
+		Next: Operation{
+			Scope: firstClaim.Transition.Next.Scope, OperationID: firstClaim.Transition.Next.OperationID,
+			Revision:  firstClaim.Transition.Next.Revision + 1,
+			State:     Ready{Step: StepRevokeSessions, Attempt: 0, NotBefore: 3_650},
+			CreatedAt: firstClaim.Transition.Next.CreatedAt, UpdatedAt: 3_650,
+		},
+	}
+	if ValidTransition(first.Scope, forged) {
+		t.Fatal("non-private same-step reset transition was valid")
+	}
+}
+
+func TestPrivateObjectProgressResetsTheNextFailureToRetryPolicyIndexZero(t *testing.T) {
+	operation, receipts := operationReadyAtStep(t, 3, 6_000)
+	policy := RetryPolicy{DelaysMilli: []int64{100, 1_000}}
+	firstClaim := PlanStepClaim(operation, operation.UpdatedAt+10, operation.UpdatedAt+20)
+	firstRunning := firstClaim.Transition.Next.State.(Running)
+	code, _ := ParseFailureCode("storage-unavailable")
+	firstFailure := PlanStepCompletion(firstClaim.Transition.Next, StepResult{
+		Kind: StepRetryableFailure, Step: firstRunning.Step, Attempt: firstRunning.Attempt,
+		FinishedAt: firstClaim.Transition.Next.UpdatedAt + 5, FailureCode: code,
+	}, nil, policy)
+	firstRetry := firstFailure.Transition.Next.State.(RetryWait)
+	resumed := PlanRetryResume(firstFailure.Transition.Next, firstRetry.RetryAt)
+	secondClaim := PlanStepClaim(resumed.Transition.Next, firstRetry.RetryAt, firstRetry.RetryAt+10)
+	secondRunning := secondClaim.Transition.Next.State.(Running)
+	if secondRunning.Attempt != 2 {
+		t.Fatalf("second attempt = %d", secondRunning.Attempt)
+	}
+	progressed := PlanStepCompletion(secondClaim.Transition.Next, StepResult{
+		Kind: StepProgressed, Step: secondRunning.Step, Attempt: secondRunning.Attempt,
+		FinishedAt: secondClaim.Transition.Next.UpdatedAt + 5,
+	}, nil, policy)
+	if state := progressed.Transition.Next.State.(Ready); state.Attempt != 0 ||
+		!ValidSnapshot(Snapshot{Operation: progressed.Transition.Next, Receipts: receipts}) {
+		t.Fatalf("progress reset = %#v", progressed)
+	}
+	resetClaim := PlanStepClaim(
+		progressed.Transition.Next, progressed.Transition.Next.UpdatedAt,
+		progressed.Transition.Next.UpdatedAt+10,
+	)
+	resetRunning := resetClaim.Transition.Next.State.(Running)
+	resetFailedAt := resetClaim.Transition.Next.UpdatedAt + 5
+	resetFailure := PlanStepCompletion(resetClaim.Transition.Next, StepResult{
+		Kind: StepRetryableFailure, Step: resetRunning.Step, Attempt: resetRunning.Attempt,
+		FinishedAt: resetFailedAt, FailureCode: code,
+	}, nil, policy)
+	resetWait := resetFailure.Transition.Next.State.(RetryWait)
+	if resetRunning.Attempt != 1 || resetWait.Attempt != 1 || resetWait.RetryAt != resetFailedAt+100 {
+		t.Fatalf("reset failure = %#v", resetFailure)
+	}
+}
+
 func TestContinuationSequenceAndRunPlanning(t *testing.T) {
 	operation := mustStartOperation(t, 4_000)
 	hashA, _ := ParseCredentialHash(strings.Repeat("H", 43))
@@ -162,6 +255,86 @@ func TestContinuationSequenceAndRunPlanning(t *testing.T) {
 	}
 	if recovery := PlanRun(running, 4_200, 100, RetryPolicy{DelaysMilli: []int64{50}}); recovery.Kind != RunAdvanceState {
 		t.Fatalf("expired run = %#v", recovery)
+	}
+}
+
+func TestContinuationStartReplayRenewsOnlyExactPreEffectOperation(t *testing.T) {
+	operation := mustStartOperation(t, 4_000)
+	hashA, _ := ParseCredentialHash(strings.Repeat("H", 43))
+	hashB, _ := ParseCredentialHash(strings.Repeat("S", 43))
+	started := PlanContinuationStart(operation, hashA, hashB, 9_000)
+	consumed := PlanContinuationConsume(started.Continuation, 0, 4_100)
+	unexpiredOperationID, _ := ParseOperationID("01991f20-61d2-7000-8000-000000003002")
+	unexpiredOperation := PlanStart(operation.Scope, unexpiredOperationID, 5_000)
+	unexpiredRequested := PlanContinuationStart(unexpiredOperation.Operation, hashA, hashB, 10_000)
+	unexpired := PlanContinuationStartReplay(
+		Snapshot{Operation: operation}, consumed.Next, unexpiredRequested.Continuation,
+	)
+	if unexpired.Kind != ContinuationStartReplayUnchanged || unexpired.Continuation != consumed.Next {
+		t.Fatalf("unexpired replay = %#v", unexpired)
+	}
+	requestedOperationID, _ := ParseOperationID("01991f20-61d2-7000-8000-000000003003")
+	requestedOperation := PlanStart(operation.Scope, requestedOperationID, 10_000)
+	requested := PlanContinuationStart(requestedOperation.Operation, hashA, hashB, 15_000)
+
+	renewed := PlanContinuationStartReplay(
+		Snapshot{Operation: operation}, consumed.Next, requested.Continuation,
+	)
+	if renewed.Kind != ContinuationStartReplayRenewed ||
+		renewed.Continuation.OperationID != operation.OperationID ||
+		renewed.Continuation.Sequence != consumed.Next.Sequence ||
+		renewed.Continuation.ExpiresAt != requested.Continuation.ExpiresAt ||
+		renewed.Continuation.UpdatedAt != requested.Continuation.CreatedAt {
+		t.Fatalf("pre-effect renewal = %#v", renewed)
+	}
+	if replayed := PlanContinuationStartReplay(
+		Snapshot{Operation: operation}, renewed.Continuation, requested.Continuation,
+	); replayed.Kind != ContinuationStartReplayUnchanged || replayed.Continuation != renewed.Continuation {
+		t.Fatalf("renewal replay = %#v", replayed)
+	}
+
+	claim := PlanStepClaim(operation, 10_100, 10_200)
+	if rejected := PlanContinuationStartReplay(
+		Snapshot{Operation: claim.Transition.Next}, consumed.Next, requested.Continuation,
+	); rejected.Kind != ContinuationStartReplayRejected ||
+		rejected.Reason != ContinuationStartReplayUnsafeState {
+		t.Fatalf("post-claim renewal = %#v", rejected)
+	}
+	conflictingHash, _ := ParseCredentialHash(strings.Repeat("C", 43))
+	conflicting := requested.Continuation
+	conflicting.IdempotencyHash = conflictingHash
+	if rejected := PlanContinuationStartReplay(
+		Snapshot{Operation: operation}, consumed.Next, conflicting,
+	); rejected.Kind != ContinuationStartReplayRejected ||
+		rejected.Reason != ContinuationStartReplayCredentialConflict {
+		t.Fatalf("conflicting renewal = %#v", rejected)
+	}
+}
+
+func TestContinuationRecoveryPromotionRequiresRevocationClaim(t *testing.T) {
+	operation := mustStartOperation(t, 4_000)
+	hashA, _ := ParseCredentialHash(strings.Repeat("H", 43))
+	hashB, _ := ParseCredentialHash(strings.Repeat("S", 43))
+	started := PlanContinuationStart(operation, hashA, hashB, 9_000)
+	consumed := PlanContinuationConsume(started.Continuation, 0, 4_100)
+	claim := PlanStepClaim(operation, 4_200, 4_300)
+	promotion := PlanContinuationRecoveryPromotion(consumed.Next, claim.Transition)
+	if promotion.Kind != ContinuationRecoveryPromotionAccepted ||
+		promotion.Next.ExpiresAt != identity.MaximumSafeInteger ||
+		promotion.Next.UpdatedAt != claim.Transition.Next.UpdatedAt ||
+		promotion.Next.Sequence != consumed.Next.Sequence {
+		t.Fatalf("recovery promotion = %#v", promotion)
+	}
+	if !RequiresContinuationRecoveryPromotion(claim.Transition) {
+		t.Fatal("revocation claim did not require recovery promotion")
+	}
+
+	cancelReady, _ := operationReadyAtStep(t, 1, 5_000)
+	cancelClaim := PlanStepClaim(cancelReady, 5_100, 5_200)
+	if rejected := PlanContinuationRecoveryPromotion(consumed.Next, cancelClaim.Transition); rejected.Kind != ContinuationRecoveryPromotionRejected ||
+		rejected.Reason != ContinuationRecoveryInvalidClaim ||
+		RequiresContinuationRecoveryPromotion(cancelClaim.Transition) {
+		t.Fatalf("non-revocation promotion = %#v", rejected)
 	}
 }
 

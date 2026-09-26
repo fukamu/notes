@@ -12,6 +12,7 @@ import (
 
 	"github.com/fukamu/notes/backend/internal/accountdeletion"
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
+	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/fukamu/notes/backend/internal/privacyrequest"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -34,7 +35,7 @@ func TestAccountDeletionPostgres(t *testing.T) {
 
 	assertAccountDeletionStartReplayAndIsolation(t, ctx, pool, store, scope, operation, continuation)
 	consumed := assertAccountDeletionContinuationCAS(t, ctx, store, continuation)
-	assertAccountDeletionTransitionCAS(t, ctx, store, scope, consumed.Snapshot)
+	assertAccountDeletionTransitionCAS(t, ctx, pool, store, scope, consumed.Snapshot)
 	assertAccountDeletionJournalSurvivesOwnerRemoval(t, ctx, pool, store)
 	assertMalformedAccountDeletionFailsClosed(t, ctx, pool, store, scope)
 
@@ -57,8 +58,20 @@ func assertAccountDeletionStartReplayAndIsolation(
 	replayContinuation := accountDeletionContinuation(t, replayOperation, 'A', 'B', 10_000)
 	replayed, err := store.Start(ctx, replayOperation, replayContinuation)
 	if err != nil || replayed.Kind != accountdeletion.StartExisting ||
-		replayed.Snapshot.Operation.OperationID != operation.OperationID || replayed.Continuation.ExpiresAt != 10_000 {
+		replayed.Snapshot.Operation.OperationID != operation.OperationID || replayed.Continuation.ExpiresAt != 9_000 {
 		t.Fatalf("replayed Start() = %#v, %v", replayed, err)
+	}
+	renewOperation := accountDeletionOperation(t, scope, 2_706, 9_000)
+	renewContinuation := accountDeletionContinuation(t, renewOperation, 'A', 'B', 17_000)
+	renewed, err := store.Start(ctx, renewOperation, renewContinuation)
+	if err != nil || renewed.Kind != accountdeletion.StartExisting || renewed.Continuation.ExpiresAt != 17_000 ||
+		renewed.Continuation.Sequence != continuation.Sequence {
+		t.Fatalf("expired renewal Start() = %#v, %v", renewed, err)
+	}
+	replayedAgain, err := store.Start(ctx, renewOperation, renewContinuation)
+	if err != nil || replayedAgain.Kind != accountdeletion.StartExisting ||
+		replayedAgain.Continuation != renewed.Continuation {
+		t.Fatalf("renewal replay Start() = %#v, %v", replayedAgain, err)
 	}
 
 	conflictingContinuation := accountDeletionContinuation(t, replayOperation, 'C', 'D', 10_000)
@@ -156,6 +169,7 @@ func assertAccountDeletionContinuationCAS(
 func assertAccountDeletionTransitionCAS(
 	t *testing.T,
 	ctx context.Context,
+	pool *pgxpool.Pool,
 	store *postgresadapter.AccountDeletionStore,
 	scope accountdeletion.Scope,
 	snapshot accountdeletion.Snapshot,
@@ -195,6 +209,23 @@ func assertAccountDeletionTransitionCAS(
 	if strings.Join(kinds, ",") != "applied,replayed" {
 		t.Fatalf("concurrent Commit() kinds = %v", kinds)
 	}
+	postClaimOperation := accountDeletionOperation(t, scope, 2_707, 1_350)
+	postClaimContinuation := accountDeletionContinuation(t, postClaimOperation, 'A', 'B', 20_000)
+	postClaim, err := store.Start(ctx, postClaimOperation, postClaimContinuation)
+	if err != nil || postClaim.Kind != accountdeletion.StartExisting ||
+		postClaim.Continuation.ExpiresAt != identity.MaximumSafeInteger {
+		t.Fatalf("post-claim Start() = %#v, %v", postClaim, err)
+	}
+	var sequence, expiresAt, updatedAt int64
+	if err := pool.QueryRow(ctx, `SELECT sequence, expires_at, updated_at
+		FROM account_deletion_continuations WHERE operation_id = $1`,
+		string(snapshot.Operation.OperationID),
+	).Scan(&sequence, &expiresAt, &updatedAt); err != nil {
+		t.Fatal(err)
+	}
+	if sequence != 1 || expiresAt != identity.MaximumSafeInteger || updatedAt != claim.Transition.Next.UpdatedAt {
+		t.Fatalf("claim recovery credential sequence=%d expires=%d updated=%d", sequence, expiresAt, updatedAt)
+	}
 
 	code, _ := accountdeletion.ParseFailureCode("provider-unavailable")
 	alternate := accountdeletion.PlanStepCompletion(claim.Transition.Next, accountdeletion.StepResult{
@@ -219,6 +250,64 @@ func assertAccountDeletionTransitionCAS(
 	conflict, err := store.Commit(ctx, scope, alternate.Transition)
 	if err != nil || conflict.Kind != accountdeletion.CommitConflict {
 		t.Fatalf("alternate Commit() = %#v, %v", conflict, err)
+	}
+
+	current := *applied.Current
+	for _, step := range []accountdeletion.Step{
+		accountdeletion.StepCancelSubscription,
+		accountdeletion.StepDeleteVaultData,
+	} {
+		claimed := accountdeletion.PlanStepClaim(current.Operation, current.Operation.UpdatedAt+10, current.Operation.UpdatedAt+20)
+		claimedResult, commitErr := store.Commit(ctx, scope, claimed.Transition)
+		if commitErr != nil || claimedResult.Kind != accountdeletion.CommitApplied || claimedResult.Current == nil {
+			t.Fatalf("claim %s Commit() = %#v, %v", step, claimedResult, commitErr)
+		}
+		running := claimedResult.Current.Operation.State.(accountdeletion.Running)
+		completed := accountdeletion.PlanStepCompletion(claimedResult.Current.Operation, accountdeletion.StepResult{
+			Kind: accountdeletion.StepSucceeded, Step: step, Attempt: running.Attempt,
+			FinishedAt: claimedResult.Current.Operation.UpdatedAt + 5,
+		}, nil, accountdeletion.RetryPolicy{})
+		completedResult, commitErr := store.Commit(ctx, scope, completed.Transition)
+		if commitErr != nil || completedResult.Kind != accountdeletion.CommitApplied || completedResult.Current == nil {
+			t.Fatalf("complete %s Commit() = %#v, %v", step, completedResult, commitErr)
+		}
+		current = *completedResult.Current
+	}
+	privateClaim := accountdeletion.PlanStepClaim(
+		current.Operation, current.Operation.UpdatedAt+10, current.Operation.UpdatedAt+20,
+	)
+	privateRunningResult, err := store.Commit(ctx, scope, privateClaim.Transition)
+	if err != nil || privateRunningResult.Kind != accountdeletion.CommitApplied || privateRunningResult.Current == nil {
+		t.Fatalf("private claim Commit() = %#v, %v", privateRunningResult, err)
+	}
+	privateRunning := privateRunningResult.Current.Operation.State.(accountdeletion.Running)
+	progress := accountdeletion.PlanStepCompletion(
+		privateRunningResult.Current.Operation,
+		accountdeletion.StepResult{
+			Kind: accountdeletion.StepProgressed, Step: accountdeletion.StepDeletePrivateObject,
+			Attempt: privateRunning.Attempt, FinishedAt: privateRunningResult.Current.Operation.UpdatedAt + 5,
+		}, nil, accountdeletion.RetryPolicy{},
+	)
+	progressed, err := store.Commit(ctx, scope, progress.Transition)
+	if err != nil || progressed.Kind != accountdeletion.CommitApplied || progressed.Current == nil ||
+		len(progressed.Current.Receipts) != 3 {
+		t.Fatalf("progress Commit() = %#v, %v", progressed, err)
+	}
+	progressReplay, err := store.Commit(ctx, scope, progress.Transition)
+	if err != nil || progressReplay.Kind != accountdeletion.CommitReplayed || progressReplay.Current == nil ||
+		len(progressReplay.Current.Receipts) != 3 {
+		t.Fatalf("progress replay Commit() = %#v, %v", progressReplay, err)
+	}
+	privateSuccess := accountdeletion.PlanStepCompletion(
+		privateRunningResult.Current.Operation,
+		accountdeletion.StepResult{
+			Kind: accountdeletion.StepSucceeded, Step: accountdeletion.StepDeletePrivateObject,
+			Attempt: privateRunning.Attempt, FinishedAt: privateRunningResult.Current.Operation.UpdatedAt + 5,
+		}, nil, accountdeletion.RetryPolicy{},
+	)
+	progressConflict, err := store.Commit(ctx, scope, privateSuccess.Transition)
+	if err != nil || progressConflict.Kind != accountdeletion.CommitConflict {
+		t.Fatalf("progress conflict Commit() = %#v, %v", progressConflict, err)
 	}
 }
 

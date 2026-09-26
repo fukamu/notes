@@ -133,15 +133,16 @@ func TestNoNetworkProviderSchedulesStablePeriodEndCancellation(t *testing.T) {
 		t.Fatalf("stable cancellation = %#v, %v; want %#v", second, err, first)
 	}
 	command.Effect = billing.ProviderCancellationImmediate
-	rejected, err := provider.CancelSubscription(context.Background(), command)
-	if err != nil || rejected.Kind != billing.ProviderCancellationTerminalFailure ||
-		subscriptions.reads != 2 || entitlements.reads != 2 {
-		t.Fatalf("immediate cancellation = %#v, %v reads=%d/%d", rejected, err, subscriptions.reads, entitlements.reads)
+	immediate, err := provider.CancelSubscription(context.Background(), command)
+	if err != nil || immediate.Kind != billing.ProviderCancellationCancelled ||
+		immediate.ObservedAt != command.RequestedAt || immediate.AccessEndsAt != command.RequestedAt ||
+		subscriptions.reads != 3 || entitlements.reads != 3 {
+		t.Fatalf("immediate cancellation = %#v, %v reads=%d/%d", immediate, err, subscriptions.reads, entitlements.reads)
 	}
 
 	command.Effect = billing.ProviderCancellationPeriodEnd
 	command.ProviderSubscriptionReference = "fixture-subscription-other"
-	rejected, err = provider.CancelSubscription(context.Background(), command)
+	rejected, err := provider.CancelSubscription(context.Background(), command)
 	if err != nil || rejected.Kind != billing.ProviderCancellationTerminalFailure ||
 		rejected.AccessEndsAt != 0 {
 		t.Fatalf("mapping mismatch = %#v, %v", rejected, err)
@@ -186,6 +187,37 @@ func TestNoNetworkProviderFailsClosedOnDependenciesAndConfiguration(t *testing.T
 	result = provider.BeginHostedCheckout(context.Background(), seed.Context, providerCheckoutCommand())
 	if result.Kind != stripebilling.HostedCheckoutRejected || result.Reason != stripebilling.ReasonProviderUnavailable {
 		t.Fatalf("entitlement dependency failure = %#v", result)
+	}
+}
+
+func TestNoNetworkProviderRejectsEntitlementSourceMismatchAtConstruction(t *testing.T) {
+	t.Parallel()
+	seed := providerSeed(t)
+	facts, err := fixture.NewCommerceFacts(seed.Context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongSubscription, err := billing.ParseSubscriptionID("01999c20-9e33-7000-8000-000000000099")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mismatchedSubscription := facts
+	mismatchedSubscription.Entitlement.SourceSubscriptionID = wrongSubscription
+	if _, err := NewProviderForCommerce(
+		mismatchedSubscription, &subscriptionStub{}, &entitlementStub{},
+	); !errors.Is(err, ErrInvalidProviderConfiguration) {
+		t.Fatalf("source subscription mismatch error = %v", err)
+	}
+	wrongVersion, err := billing.ParseVersion(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mismatchedVersion := facts
+	mismatchedVersion.Entitlement.SourceBillingVersion = wrongVersion
+	if _, err := NewProviderForCommerce(
+		mismatchedVersion, &subscriptionStub{}, &entitlementStub{},
+	); !errors.Is(err, ErrInvalidProviderConfiguration) {
+		t.Fatalf("source version mismatch error = %v", err)
 	}
 }
 

@@ -1,4 +1,4 @@
-import { objectDecoder } from '@/lib/codec/core';
+import { booleanDecoder, objectDecoder } from '@/lib/codec/core';
 import {
   accountIdDecoder,
   sessionEpochDecoder,
@@ -8,7 +8,11 @@ import {
 } from '@/lib/domain/identity';
 
 export type SessionContextLoadResult =
-  | { readonly kind: 'authenticated'; readonly context: VaultContext }
+  | {
+      readonly kind: 'authenticated';
+      readonly context: VaultContext;
+      readonly accountDeletionAvailable: boolean;
+    }
   | { readonly kind: 'anonymous' }
   | { readonly kind: 'unavailable' };
 
@@ -22,6 +26,7 @@ const sessionContextDecoder = objectDecoder({
   vaultId: vaultIdDecoder,
   sessionId: sessionIdDecoder,
   sessionEpoch: sessionEpochDecoder,
+  accountDeletionAvailable: booleanDecoder,
 });
 
 export async function loadSessionContext(
@@ -41,7 +46,16 @@ export async function loadSessionContext(
     const input: unknown = await response.json();
     const decoded = sessionContextDecoder.decode(input);
     return decoded.ok
-      ? { kind: 'authenticated', context: decoded.value }
+      ? {
+          kind: 'authenticated',
+          context: {
+            accountId: decoded.value.accountId,
+            vaultId: decoded.value.vaultId,
+            sessionId: decoded.value.sessionId,
+            sessionEpoch: decoded.value.sessionEpoch,
+          },
+          accountDeletionAvailable: decoded.value.accountDeletionAvailable,
+        }
       : { kind: 'unavailable' };
   } catch {
     return { kind: 'unavailable' };

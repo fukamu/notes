@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/fukamu/notes/backend/internal/accountdeletion"
+	"github.com/fukamu/notes/backend/internal/cryptocontent"
 	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,6 +29,39 @@ func NewAccountFinalizationStore(pool *pgxpool.Pool) (*AccountFinalizationStore,
 		return nil, ErrInvalidAccountFinalizationOperation
 	}
 	return &AccountFinalizationStore{pool: pool}, nil
+}
+
+func (store *AccountFinalizationStore) FixtureWrappedKeyMetadata(
+	ctx context.Context,
+	scope accountdeletion.Scope,
+) (*cryptocontent.VaultDEKMetadata, error) {
+	if store == nil || store.pool == nil || !accountdeletion.ValidScope(scope) {
+		return nil, ErrInvalidAccountFinalizationOperation
+	}
+	var rawVaultID, keyReference, wrappedDEK string
+	var rawVersion, createdAt int64
+	var count int64
+	var writeKey bool
+	err := store.pool.QueryRow(ctx, `SELECT key.vault_id, key.dek_version,
+		key.kek_key_reference, key.wrapped_dek, key.is_write_key, key.created_at, COUNT(*) OVER ()
+		FROM vault_dek_versions key JOIN personal_vaults owner USING (vault_id)
+		WHERE owner.account_id = $1 AND key.vault_id = $2`,
+		string(scope.AccountID), string(scope.VaultID),
+	).Scan(&rawVaultID, &rawVersion, &keyReference, &wrappedDEK, &writeKey, &createdAt, &count)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	version, versionErr := cryptocontent.ParseDEKVersion(rawVersion)
+	vaultID, vaultErr := identity.ParseVaultID(rawVaultID)
+	metadata := cryptocontent.VaultDEKMetadata{
+		VaultID: vaultID, DEKVersion: version, KEKReference: keyReference,
+		WrappedDEK: wrappedDEK, CreatedAtMilli: createdAt,
+	}
+	if err != nil || count != 1 || versionErr != nil || vaultErr != nil || vaultID != scope.VaultID || !writeKey ||
+		cryptocontent.ValidateVaultDEKMetadata(metadata) != nil {
+		return nil, ErrInvalidAccountFinalizationOperation
+	}
+	return &metadata, nil
 }
 
 func (store *AccountFinalizationStore) Evaluate(
@@ -65,7 +99,7 @@ func (store *AccountFinalizationStore) EvaluateLegalEvidence(
 	if rejected := rejectAccountFinalizationState(state); rejected != nil {
 		return *rejected, nil
 	}
-	if state.legalEvidenceCount() != 0 && policy.Kind == accountdeletion.LegalEvidencePolicyUndecided {
+	if policy.Kind == accountdeletion.LegalEvidencePolicyUndecided {
 		return accountFinalizationRetryable(accountdeletion.AccountFinalizationLegalPolicyPending), nil
 	}
 	return accountFinalizationReady(state), nil
@@ -97,7 +131,7 @@ func (store *AccountFinalizationStore) FinalizeWrappedKeys(
 	if state.objectDeleteCount != 0 {
 		return accountFinalizationRetryable(accountdeletion.AccountFinalizationPrivateObjectsRemaining), nil
 	}
-	if state.legalEvidenceCount() != 0 && policy.Kind == accountdeletion.LegalEvidencePolicyUndecided {
+	if policy.Kind == accountdeletion.LegalEvidencePolicyUndecided {
 		return accountFinalizationRetryable(accountdeletion.AccountFinalizationLegalPolicyPending), nil
 	}
 
@@ -128,7 +162,7 @@ func (store *AccountFinalizationStore) FinalizeWrappedKeys(
 	if rejected := rejectAccountFinalizationState(after); rejected != nil {
 		return *rejected, nil
 	}
-	if after.legalEvidenceCount() != 0 && policy.Kind == accountdeletion.LegalEvidencePolicyUndecided {
+	if policy.Kind == accountdeletion.LegalEvidencePolicyUndecided {
 		return accountFinalizationRetryable(accountdeletion.AccountFinalizationLegalPolicyPending), nil
 	}
 	if after.wrappedKeyCount != 0 {
@@ -166,7 +200,7 @@ func (store *AccountFinalizationStore) FinalizeLiveState(
 	if before.objectDeleteCount != 0 || before.wrappedKeyCount != 0 {
 		return accountFinalizationRetryable(accountdeletion.AccountFinalizationLiveStateRemaining), nil
 	}
-	if before.legalEvidenceCount() != 0 && policy.Kind == accountdeletion.LegalEvidencePolicyUndecided {
+	if policy.Kind == accountdeletion.LegalEvidencePolicyUndecided {
 		return accountFinalizationRetryable(accountdeletion.AccountFinalizationLegalPolicyPending), nil
 	}
 

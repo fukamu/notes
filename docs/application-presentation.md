@@ -25,10 +25,13 @@ rules.
    remains a pure application codec; the `window` adapter stays in `lib/client`.
 6. `components/notes-app.tsx` selects the concrete notes, editor, and
    connections renderers and connects them to injected runtime ports.
-   `components/authenticated-notes-bootstrap.tsx` is the live composition root:
-   it validates the Go session context before constructing Vault storage,
-   Sync v2, or the logout fence. A renderer receives only the typed
-   presentation model, semantic actions, and feature render callbacks.
+   `app/(notes)/notes-route-runtime.tsx` is the live composition root: it first
+   recovers the durable account-deletion handoff with the shared logout
+   service, then its idle/no-marker child passes the launch gate and mounts
+   `components/authenticated-notes-bootstrap.tsx`. That adapter validates the
+   Go session context before constructing Vault storage, Sync v2, or entering
+   the logout fence. A renderer receives only the typed presentation model,
+   semantic actions, and feature render callbacks.
 
 The five supported application pages share `app/(notes)/layout.tsx`. That
 layout mounts the composition root once while its empty route children change,

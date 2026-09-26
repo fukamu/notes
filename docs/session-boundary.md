@@ -54,16 +54,22 @@ key. It checks that the returned repository/transport scope matches the
 VaultContext before mounting `NotesProvider`. This prevents IndexedDB, sync, or
 Service Worker preparation from starting for anonymous or purge-blocked access.
 
-When the optional account-deletion runner is supplied, its durable handoff
-boundary wraps both authenticated and anonymous branches. It checks progress
-before the runtime fence is entered and therefore resumes local purge even
-after the server has revoked the browser session. The legacy route does not
-supply this runner. See
+The current `NotesRouteRuntime` constructs one logout service and one
+account-deletion runner, then places `AccountDeletionBoundary` outside both the
+production launch gate and `AuthenticatedNotesBootstrap`. It checks progress
+before any launch/session request or runtime-fence entry and therefore resumes
+status/local purge after the server revokes the browser session or when launch
+would return 403/503. Pending, error, and terminal deletion states never mount
+the normal Notes children. See
 [Account deletion browser handoff](account-deletion-browser-handoff.md).
 
-The current notes route mounts `AuthenticatedNotesBootstrap`. It calls the
-local-only Go `GET /api/session-context`, strictly decodes exactly the four
-VaultContext fields, and passes authenticated access to `SessionNotesApp`.
+Only the deletion boundary's idle children mount the launch gate and
+`AuthenticatedNotesBootstrap`. The bootstrap calls the
+local-only Go `GET /api/session-context`, strictly decodes the four VaultContext
+fields plus `accountDeletionAvailable`, and passes authenticated access to
+`SessionNotesApp`. The boolean is true only when the explicit destructive
+fixture runtime is mounted; existing marker recovery is always available, but
+a new deletion button receives the generation only when this bit is true.
 Until that succeeds it does not construct the Vault IndexedDB repository, Sync
 transport, Service Worker preparation, or logout fence. The endpoint is
 private/no-store, never returns the bearer token, and is closed outside the
@@ -73,9 +79,13 @@ can validate the cookie again.
 The authenticated composition requires the browser logout runtime fence,
 stops operations in the layout phase, and uses the typed
 BroadcastChannel/Web Locks coordination from #147. Actual browser deletion
-remains #148. `LegacyNotesApp` remains compatibility/test code but is not a
-route fallback. This connects local/E2E behavior without Google, email, Stripe,
-or production configuration; it is not the production public-service
+remains #148. The same service instance supplies the runner's prepare/run ports
+and `SessionNotesApp` fence, which prevents a split coordination graph. An
+accepted Account-deletion Start persists the logout marker and quiesces peers
+before the first Resume; it retains local data until session revocation is
+confirmed. `LegacyNotesApp` remains compatibility/test code but is not a route
+fallback. This connects local/E2E behavior without Google, email, Stripe, or
+production configuration; it is not the production public-service
 composition. See
 [Notes operation lifecycle boundary](notes-operation-lifecycle.md).
 

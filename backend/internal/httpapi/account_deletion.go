@@ -19,9 +19,9 @@ type AccountDeletionApplication interface {
 
 var _ AccountDeletionApplication = (*accountdeletion.Service)(nil)
 
-// AccountDeletionRuntime is deliberately separate from HandlerOptions. These
-// contract handlers stay disconnected until deletion effects, evidence policy,
-// provider choice, and production recovery have a separate enablement review.
+// AccountDeletionRuntime is mounted only when an explicit composition supplies
+// the complete application graph. Default and production-shaped compositions
+// leave it nil and therefore fail closed.
 type AccountDeletionRuntime struct {
 	ExpectedOrigin string
 	Clock          func() int64
@@ -39,16 +39,27 @@ func NewAccountDeletionContractHandlers(
 	runtime *AccountDeletionRuntime,
 	logger *slog.Logger,
 ) (AccountDeletionContractHandlers, error) {
+	return newAccountDeletionContractHandlers(runtime, logger, accountdeletion.MaximumRequestBytes)
+}
+
+func newAccountDeletionContractHandlers(
+	runtime *AccountDeletionRuntime,
+	logger *slog.Logger,
+	bodyLimit int64,
+) (AccountDeletionContractHandlers, error) {
 	if !accountDeletionRuntimeComplete(runtime) || logger == nil {
 		return AccountDeletionContractHandlers{}, errors.New("complete account deletion runtime and logger are required")
 	}
+	if bodyLimit < 1 || bodyLimit > accountdeletion.MaximumRequestBytes {
+		return AccountDeletionContractHandlers{}, errors.New("valid account deletion body limit is required")
+	}
 	return AccountDeletionContractHandlers{
-		Start:  http.HandlerFunc(accountDeletionStartHandler(runtime, logger)),
-		Resume: http.HandlerFunc(accountDeletionResumeHandler(runtime, logger)),
+		Start:  http.HandlerFunc(accountDeletionStartHandler(runtime, logger, bodyLimit)),
+		Resume: http.HandlerFunc(accountDeletionResumeHandler(runtime, logger, bodyLimit)),
 	}, nil
 }
 
-func accountDeletionStartHandler(runtime *AccountDeletionRuntime, logger *slog.Logger) http.HandlerFunc {
+func accountDeletionStartHandler(runtime *AccountDeletionRuntime, logger *slog.Logger, bodyLimit int64) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		if !allowMethods(response, request, http.MethodPost) {
 			return
@@ -57,7 +68,7 @@ func accountDeletionStartHandler(runtime *AccountDeletionRuntime, logger *slog.L
 		if handled {
 			return
 		}
-		body, status := readAccountDeletionBody(response, request)
+		body, status := readAccountDeletionBody(response, request, bodyLimit)
 		if status != 0 {
 			writeAccountDeletionBodyError(response, request, status)
 			return
@@ -79,7 +90,7 @@ func accountDeletionStartHandler(runtime *AccountDeletionRuntime, logger *slog.L
 	}
 }
 
-func accountDeletionResumeHandler(runtime *AccountDeletionRuntime, logger *slog.Logger) http.HandlerFunc {
+func accountDeletionResumeHandler(runtime *AccountDeletionRuntime, logger *slog.Logger, bodyLimit int64) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		if !allowMethods(response, request, http.MethodPost) {
 			return
@@ -88,7 +99,7 @@ func accountDeletionResumeHandler(runtime *AccountDeletionRuntime, logger *slog.
 		if handled {
 			return
 		}
-		body, status := readAccountDeletionBody(response, request)
+		body, status := readAccountDeletionBody(response, request, bodyLimit)
 		if status != 0 {
 			writeAccountDeletionBodyError(response, request, status)
 			return
@@ -172,7 +183,7 @@ func authorizeAccountDeletionContinuation(
 	return now, false
 }
 
-func readAccountDeletionBody(response http.ResponseWriter, request *http.Request) ([]byte, int) {
+func readAccountDeletionBody(response http.ResponseWriter, request *http.Request, limit int64) ([]byte, int) {
 	declared := request.Header.Values("Content-Length")
 	if len(declared) > 1 {
 		return nil, http.StatusBadRequest
@@ -182,11 +193,11 @@ func readAccountDeletionBody(response http.ResponseWriter, request *http.Request
 		if err != nil || length < 0 {
 			return nil, http.StatusBadRequest
 		}
-		if length > accountdeletion.MaximumRequestBytes {
+		if length > limit {
 			return nil, http.StatusRequestEntityTooLarge
 		}
 	}
-	limited := http.MaxBytesReader(response, request.Body, accountdeletion.MaximumRequestBytes)
+	limited := http.MaxBytesReader(response, request.Body, limit)
 	body, err := io.ReadAll(limited)
 	if err != nil {
 		var maximum *http.MaxBytesError

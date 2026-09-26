@@ -184,7 +184,8 @@ async function accountDeletionFetch(
     accountDeletionRemoteCalls.push('resume:0');
     return Response.json(
       {
-        status: 'in-progress',
+        status: 'retry-wait',
+        retryAt: 2_000,
         continuationToken: `ad1.${'S'.repeat(43)}.1`,
       },
       { status: 202 },
@@ -192,6 +193,16 @@ async function accountDeletionFetch(
   }
   if (body.continuationToken === `ad1.${'S'.repeat(43)}.1`) {
     accountDeletionRemoteCalls.push('resume:1');
+    return Response.json(
+      {
+        status: 'in-progress',
+        continuationToken: `ad1.${'S'.repeat(43)}.2`,
+      },
+      { status: 202 },
+    );
+  }
+  if (body.continuationToken === `ad1.${'S'.repeat(43)}.2`) {
+    accountDeletionRemoteCalls.push('resume:2');
     return Response.json({ status: 'completed' });
   }
   return Response.json({ error: 'invalid-fixture-token' }, { status: 401 });

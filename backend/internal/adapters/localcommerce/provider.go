@@ -32,7 +32,7 @@ type entitlementReader interface {
 // no network or provider client dependency.
 type Provider struct {
 	context       identity.VaultContext
-	expected      fixture.Seed
+	expected      fixture.CommerceFacts
 	subscriptions subscriptionReader
 	entitlements  entitlementReader
 }
@@ -50,8 +50,27 @@ func NewProvider(
 	if !fixture.ValidSeed(seed) || subscriptions == nil || entitlements == nil {
 		return nil, ErrInvalidProviderConfiguration
 	}
+	return NewProviderForCommerce(fixture.CommerceFacts{
+		Context: seed.Context, Subscription: seed.Subscription, Entitlement: seed.Entitlement,
+	}, subscriptions, entitlements)
+}
+
+func NewProviderForCommerce(
+	facts fixture.CommerceFacts,
+	subscriptions subscriptionReader,
+	entitlements entitlementReader,
+) (*Provider, error) {
+	if !entitlement.ValidVaultContext(facts.Context) || !billing.ValidRecord(facts.Subscription) ||
+		!entitlement.ValidProjectionRecord(facts.Entitlement) ||
+		facts.Subscription.AccountID != facts.Context.AccountID || facts.Subscription.VaultID != facts.Context.VaultID ||
+		facts.Entitlement.AccountID != facts.Context.AccountID || facts.Entitlement.VaultID != facts.Context.VaultID ||
+		facts.Entitlement.SourceSubscriptionID != facts.Subscription.SubscriptionID ||
+		facts.Entitlement.SourceBillingVersion != facts.Subscription.Version ||
+		subscriptions == nil || entitlements == nil {
+		return nil, ErrInvalidProviderConfiguration
+	}
 	return &Provider{
-		context: seed.Context, expected: seed,
+		context: facts.Context, expected: facts,
 		subscriptions: subscriptions, entitlements: entitlements,
 	}, nil
 }
@@ -83,7 +102,8 @@ func (provider *Provider) CancelSubscription(
 	ctx context.Context,
 	command billing.ProviderCancellationCommand,
 ) (billing.ProviderCancellationObservation, error) {
-	if provider == nil || command.Effect != billing.ProviderCancellationPeriodEnd ||
+	if provider == nil || (command.Effect != billing.ProviderCancellationPeriodEnd &&
+		command.Effect != billing.ProviderCancellationImmediate) ||
 		command.Provider != provider.expected.Subscription.Provider ||
 		command.ProviderSubscriptionReference != provider.expected.Subscription.ProviderSubscriptionReference {
 		return billing.ProviderCancellationObservation{
@@ -102,11 +122,19 @@ func (provider *Provider) CancelSubscription(
 			IdempotencyKey: command.IdempotencyKey, ObservedAt: identity.MaximumSafeInteger,
 		}, nil
 	}
+	kind := billing.ProviderCancellationScheduled
+	observedAt := identity.MaximumSafeInteger
+	accessEndsAt := identity.MaximumSafeInteger
+	if command.Effect == billing.ProviderCancellationImmediate {
+		kind = billing.ProviderCancellationCancelled
+		observedAt = command.RequestedAt
+		accessEndsAt = command.RequestedAt
+	}
 	return billing.ProviderCancellationObservation{
-		Kind:     billing.ProviderCancellationScheduled,
+		Kind:     kind,
 		Provider: command.Provider, ProviderSubscriptionReference: command.ProviderSubscriptionReference,
-		IdempotencyKey: command.IdempotencyKey, ObservedAt: identity.MaximumSafeInteger,
-		AccessEndsAt: identity.MaximumSafeInteger,
+		IdempotencyKey: command.IdempotencyKey, ObservedAt: observedAt,
+		AccessEndsAt: accessEndsAt,
 	}, nil
 }
 

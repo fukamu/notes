@@ -26,6 +26,13 @@ classification. No API key is configured by the Go runtime, the adapter is not
 composed into account deletion, and no real Stripe request is made by this
 slice.
 
+Issue #512 instead composes the immediate port only in the exact disposable
+fixture through `localcommerce.Provider`. It verifies the exact seeded
+Account/Vault subscription and Entitlement source/version, returns an immediate
+cancelled observation for the saga, and has no network or write capability.
+This is deterministic deletion-path evidence, not a Stripe call, Billing
+mutation, production cancellation, or approval to enable the provider adapter.
+
 Issue #170 adds the second external effect used by the account-deletion saga:
 immediately cancelling the subscription owned by the persisted Account and
 Personal Vault. It does not add a Stripe adapter, contact a payment provider,
@@ -75,15 +82,18 @@ state ingestion.
 
 ## Local development and rollback
 
-Local and test compositions must inject the fake provider explicitly. No
-environment fallback enables or disables paid service behavior, no secret is
-needed, and no real charge or cancellation occurs.
+The exact fixture injects the scoped no-network provider explicitly; unit tests
+may still use the fake response-loss provider. No environment fallback enables
+paid service behavior, no secret is needed, and no real charge or cancellation
+occurs. Default/production profiles do not mount the deletion route or
+construct the Stripe adapter.
 
 No schema migration is added. Rolling back the code stops new cancellation
 attempts, but it cannot and must not restore subscriptions already cancelled by
 a completed provider effect. Stripe adapter implementation, real provider
 credentials or calls, production webhooks, production data, deployment, and
 main remain separately approved actions. The final sentence in the historical
-#170 record that deferred the Stripe adapter is superseded only for local
-implementation and stub verification; connection and execution remain
+#170 record that deferred the Stripe adapter is superseded for local
+implementation, loopback-stub verification, and the no-network exact-fixture
+connection only; production provider connection and execution remain
 unapproved.

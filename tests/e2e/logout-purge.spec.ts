@@ -44,9 +44,7 @@ test('logout purge drains tabs and prevents browser content resurrection', async
         'Vault B retained content',
       );
       await window.__fukamuLogoutPurgeHarness.seedNotesCache();
-      void window.__fukamuLogoutPurgeHarness
-        .prepareGraphWorker()
-        .catch(() => undefined);
+      await window.__fukamuLogoutPurgeHarness.prepareGraphWorker();
       history.pushState({}, '', `/cards/${cardId}`);
       history.pushState({}, '', '/history');
     },
@@ -200,9 +198,10 @@ test('account deletion survives reload after revocation and reuses verified logo
     ),
   ).resolves.toEqual({
     kind: 'pending',
-    localContent: 'deleted',
+    localContent: 'retained',
     status: {
-      kind: 'in-progress',
+      kind: 'retry-wait',
+      retryAt: 2_000,
       continuationToken: `ad1.${'S'.repeat(43)}.1`,
     },
   });
@@ -220,14 +219,20 @@ test('account deletion survives reload after revocation and reuses verified logo
     page.evaluate(() =>
       window.__fukamuLogoutPurgeHarness.accountDeletionMarker(),
     ),
-  ).resolves.toMatchObject({ kind: 'server-pending', revision: 4 });
+  ).resolves.toMatchObject({ kind: 'revoke-pending', revision: 3 });
+  await expect(
+    page.evaluate(() => window.__fukamuLogoutPurgeHarness.progressMarker()),
+  ).resolves.toMatchObject({ kind: 'pending', target: 'runtime-fence' });
   await expect(
     page.evaluate(
       (generation) =>
         window.__fukamuLogoutPurgeHarness.snapshotVault(generation),
       vaultA,
     ),
-  ).resolves.toEqual({ present: false, titles: [] });
+  ).resolves.toEqual({
+    present: true,
+    titles: ['Vault A account deletion content'],
+  });
   await expect(
     page.evaluate(
       (generation) =>
@@ -240,13 +245,71 @@ test('account deletion survives reload after revocation and reuses verified logo
   });
   await expect(
     page.evaluate(() => window.__fukamuLogoutPurgeHarness.cacheNames()),
+  ).resolves.toContain('fukamu-notes-e2e-private');
+  await expect(
+    page.evaluate(() => window.__fukamuLogoutPurgeHarness.graphWorkerIsReset()),
+  ).resolves.toBe(false);
+
+  const postAdmission = await context.newPage();
+  await postAdmission.goto('/pricing');
+  await installHarness(postAdmission);
+  await expect(
+    postAdmission.evaluate(
+      (generation) => window.__fukamuLogoutPurgeHarness.enterFence(generation),
+      vaultA,
+    ),
+  ).resolves.toEqual({ kind: 'blocked', reason: 'purge-pending' });
+  await expect(
+    postAdmission.evaluate(
+      (generation) =>
+        window.__fukamuLogoutPurgeHarness.snapshotVault(generation),
+      vaultA,
+    ),
+  ).resolves.toEqual({
+    present: true,
+    titles: ['Vault A account deletion content'],
+  });
+
+  await expect(
+    page.evaluate(() =>
+      window.__fukamuLogoutPurgeHarness.recoverAccountDeletion(),
+    ),
+  ).resolves.toEqual({
+    kind: 'pending',
+    localContent: 'deleted',
+    status: {
+      kind: 'in-progress',
+      continuationToken: `ad1.${'S'.repeat(43)}.2`,
+    },
+  });
+  await expect(
+    page.evaluate(() =>
+      window.__fukamuLogoutPurgeHarness.accountDeletionRemoteCalls(),
+    ),
+  ).resolves.toEqual(['start', 'resume:0', 'resume:1']);
+  await expect(
+    page.evaluate(() =>
+      window.__fukamuLogoutPurgeHarness.accountDeletionMarker(),
+    ),
+  ).resolves.toMatchObject({ kind: 'server-pending', revision: 5 });
+  await expect(
+    page.evaluate(() => window.__fukamuLogoutPurgeHarness.progressMarker()),
+  ).resolves.toBeUndefined();
+  await expect(
+    page.evaluate(
+      (generation) =>
+        window.__fukamuLogoutPurgeHarness.snapshotVault(generation),
+      vaultA,
+    ),
+  ).resolves.toEqual({ present: false, titles: [] });
+  await expect(
+    page.evaluate(() => window.__fukamuLogoutPurgeHarness.cacheNames()),
   ).resolves.not.toContain('fukamu-notes-e2e-private');
   await expect(
     page.evaluate(() => window.__fukamuLogoutPurgeHarness.graphWorkerIsReset()),
   ).resolves.toBe(true);
 
   await page.reload();
-  await expect(page.getByTestId('new-card')).toBeVisible();
   await installHarness(page);
   await expect(
     page.evaluate(() =>
@@ -270,7 +333,7 @@ test('account deletion survives reload after revocation and reuses verified logo
     page.evaluate(() =>
       window.__fukamuLogoutPurgeHarness.accountDeletionRemoteCalls(),
     ),
-  ).resolves.toEqual(['resume:1']);
+  ).resolves.toEqual(['resume:2']);
   await expect(
     page.evaluate(() =>
       window.__fukamuLogoutPurgeHarness.accountDeletionMarker(),
@@ -290,6 +353,9 @@ test('account deletion survives reload after revocation and reuses verified logo
   await Promise.all([
     page.evaluate(() => window.__fukamuLogoutPurgeHarness.closeFence()),
     peer.evaluate(() => window.__fukamuLogoutPurgeHarness.closeFence()),
+    postAdmission.evaluate(() =>
+      window.__fukamuLogoutPurgeHarness.closeFence(),
+    ),
   ]);
 });
 

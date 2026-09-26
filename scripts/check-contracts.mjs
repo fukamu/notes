@@ -28,6 +28,8 @@ for (const marker of [
   '/api/session-context:',
   '/api/billing/checkout:',
   '/api/account/deletion:',
+  'x-handler-contract: account-deletion-start',
+  'x-handler-contract: account-deletion-resume-one-step',
   'x-fukamu-state: disconnected',
   'x-fukamu-state: connected-local-fixture-production-closed',
   'x-handler-contract: sync-v2',
@@ -38,10 +40,43 @@ for (const marker of [
   'x-handler-contract: authenticated-session-context',
   'x-handler-contract: billing-cancellation-period-end',
   'x-go-handler: backend/internal/httpapi/billing_cancellation.go',
+  'AccountDeletionResponse:',
+  "in-progress: '#/components/schemas/AccountDeletionInProgress'",
+  "retry-wait: '#/components/schemas/AccountDeletionRetryWait'",
+  "completed: '#/components/schemas/AccountDeletionCompleted'",
 ]) {
   if (!spec.includes(marker))
     throw new Error(`OpenAPI marker missing: ${marker}`);
 }
+
+const accountDeletionStartPath = pathContract(spec, '/api/account/deletion');
+const accountDeletionResumePath = pathContract(
+  spec,
+  '/api/account/deletion/status',
+);
+assertMarkers('account deletion Start path', accountDeletionStartPath, [
+  'x-fukamu-state: connected-local-fixture-production-closed',
+  'x-handler-contract: account-deletion-start',
+  '#/components/schemas/AccountDeletionStartRequest',
+  '#/components/schemas/AccountDeletionResponse',
+  "'202':",
+  "'401':",
+  "'403':",
+  "'409':",
+  "'413':",
+]);
+assertMarkers('account deletion Resume path', accountDeletionResumePath, [
+  'x-fukamu-state: connected-local-fixture-production-closed',
+  'x-handler-contract: account-deletion-resume-one-step',
+  '#/components/schemas/AccountDeletionResumeRequest',
+  '#/components/schemas/AccountDeletionResponse',
+  "'200':",
+  "'202':",
+  "'401':",
+  "'403':",
+  "'413':",
+  '#/components/responses/ContinuationRequired',
+]);
 
 const syncV2Mutation = componentSchema(spec, 'SyncV2Mutation');
 const syncV2Upsert = componentSchema(spec, 'SyncV2UpsertMutation');
@@ -53,6 +88,35 @@ const syncV2ServerCard = componentSchema(spec, 'SyncV2ServerCard');
 const syncV2Conflict = componentSchema(spec, 'SyncV2Conflict');
 const syncV2Change = componentSchema(spec, 'SyncV2Change');
 const syncV2Receipt = componentSchema(spec, 'SyncV2MutationReceipt');
+const accountDeletionKey = componentSchema(
+  spec,
+  'AccountDeletionIdempotencyKey',
+);
+const accountDeletionToken = componentSchema(
+  spec,
+  'AccountDeletionContinuationToken',
+);
+const accountDeletionStart = componentSchema(
+  spec,
+  'AccountDeletionStartRequest',
+);
+const accountDeletionResume = componentSchema(
+  spec,
+  'AccountDeletionResumeRequest',
+);
+const accountDeletionResponse = componentSchema(
+  spec,
+  'AccountDeletionResponse',
+);
+const authenticationRequiredError = componentSchema(
+  spec,
+  'AuthenticationRequiredError',
+);
+const continuationRequiredError = componentSchema(
+  spec,
+  'ContinuationRequiredError',
+);
+const sessionContext = componentSchema(spec, 'SessionContext');
 assertMarkers('SyncV2Mutation', syncV2Mutation, [
   '#/components/schemas/SyncV2UpsertMutation',
   '#/components/schemas/SyncV2ResolveMutation',
@@ -103,6 +167,64 @@ assertMarkers('SyncV2Change', syncV2Change, [
 ]);
 assertMarkers('SyncV2MutationReceipt', syncV2Receipt, [
   '{ type: integer, minimum: 1, maximum: 2147483647 }',
+]);
+assertMarkers('AccountDeletionIdempotencyKey', accountDeletionKey, [
+  'minLength: 43',
+  'maxLength: 43',
+  "pattern: '^[A-Za-z0-9_-]{43}$'",
+]);
+assertMarkers('AccountDeletionContinuationToken', accountDeletionToken, [
+  'minLength: 49',
+  'maxLength: 58',
+  "pattern: '^ad1\\.[A-Za-z0-9_-]{43}\\.(?:0|[1-9][0-9]{0,8}|1[0-9]{9}|20[0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]|214748364[0-7])$'",
+]);
+assertMarkers('AccountDeletionStartRequest', accountDeletionStart, [
+  'additionalProperties: false',
+  'required: [idempotencyKey]',
+  '#/components/schemas/AccountDeletionIdempotencyKey',
+]);
+assertMarkers('AccountDeletionResumeRequest', accountDeletionResume, [
+  'additionalProperties: false',
+  'required: [continuationToken]',
+  '#/components/schemas/AccountDeletionContinuationToken',
+]);
+assertMarkers('AccountDeletionResponse', accountDeletionResponse, [
+  '#/components/schemas/AccountDeletionInProgress',
+  '#/components/schemas/AccountDeletionRetryWait',
+  '#/components/schemas/AccountDeletionFailed',
+  '#/components/schemas/AccountDeletionCompleted',
+  'propertyName: status',
+]);
+assertMarkers('AuthenticationRequiredError', authenticationRequiredError, [
+  'additionalProperties: false',
+  'required: [error]',
+  'error: { type: string, enum: [authentication-required] }',
+]);
+assertMarkers('ContinuationRequiredError', continuationRequiredError, [
+  'additionalProperties: false',
+  'required: [error]',
+  'error: { type: string, enum: [continuation-required] }',
+]);
+assertMarkers(
+  'AuthenticationRequired response',
+  componentResponse(spec, 'AuthenticationRequired'),
+  [
+    '#/components/schemas/AuthenticationRequiredError',
+    'example: { error: authentication-required }',
+  ],
+);
+assertMarkers(
+  'ContinuationRequired response',
+  componentResponse(spec, 'ContinuationRequired'),
+  [
+    '#/components/schemas/ContinuationRequiredError',
+    'example: { error: continuation-required }',
+  ],
+);
+assertMarkers('SessionContext', sessionContext, [
+  'additionalProperties: false',
+  'accountDeletionAvailable',
+  'accountDeletionAvailable: { type: boolean }',
 ]);
 
 const files = await jsonFiles(fixtureRoot);
@@ -182,6 +304,45 @@ function componentSchema(source, name) {
   if (start < 0) throw new Error(`OpenAPI component missing: ${name}`);
   const remainder = source.slice(start + marker.length);
   const next = remainder.search(/^    [A-Za-z0-9_-]+:\n/m);
+  return next < 0 ? remainder : remainder.slice(0, next);
+}
+
+/**
+ * @param {string} source
+ * @param {string} name
+ * @returns {string}
+ */
+function componentResponse(source, name) {
+  const responsesStart = source.indexOf('\n  responses:\n');
+  const schemasStart = source.indexOf('\n  schemas:\n');
+  if (
+    responsesStart < 0 ||
+    schemasStart < 0 ||
+    schemasStart <= responsesStart
+  ) {
+    throw new Error('OpenAPI components.responses missing');
+  }
+  const marker = `    ${name}:\n`;
+  const start = source.indexOf(marker, responsesStart);
+  if (start < 0 || start >= schemasStart) {
+    throw new Error(`OpenAPI response missing: ${name}`);
+  }
+  const remainder = source.slice(start + marker.length, schemasStart);
+  const next = remainder.search(/^    [A-Za-z0-9_-]+:\n/m);
+  return next < 0 ? remainder : remainder.slice(0, next);
+}
+
+/**
+ * @param {string} source
+ * @param {string} name
+ * @returns {string}
+ */
+function pathContract(source, name) {
+  const marker = `  ${name}:\n`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`OpenAPI path missing: ${name}`);
+  const remainder = source.slice(start + marker.length);
+  const next = remainder.search(/^  \/api\//m);
   return next < 0 ? remainder : remainder.slice(0, next);
 }
 

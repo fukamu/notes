@@ -9,11 +9,14 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/{unit,integration,contracts}/**/*.test.ts'],
+    include: ['tests/{unit,integration,contracts}/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary'],
       include: [
+        'app/(notes)/notes-route-runtime.tsx',
+        'app/(notes)/production-launch-gate.tsx',
+        'components/authenticated-notes-bootstrap.tsx',
         'components/billing-checkout-boundary.tsx',
         'components/account-deletion-boundary.tsx',
         'components/history-view.tsx',

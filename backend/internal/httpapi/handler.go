@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/fukamu/notes/backend/internal/access"
+	"github.com/fukamu/notes/backend/internal/accountdeletion"
 	accessadapter "github.com/fukamu/notes/backend/internal/adapters/access"
 	"github.com/fukamu/notes/backend/internal/launchgate"
 	"github.com/fukamu/notes/backend/internal/synclegacy"
@@ -27,6 +28,8 @@ type HandlerOptions struct {
 	SyncV2Runtime              *SyncV2Runtime
 	LegalRuntime               *LegalRuntime
 	BillingCancellationRuntime *BillingCancellationRuntime
+	AccountDeletionRuntime     *AccountDeletionRuntime
+	DisableLegacySync          bool
 	EnableDisconnectedFixtures bool
 }
 
@@ -76,6 +79,9 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 	if options.SyncV2Runtime != nil && !syncV2RuntimeComplete(options.SyncV2Runtime) {
 		return nil, errors.New("Sync v2 runtime is incomplete")
 	}
+	if options.AccountDeletionRuntime != nil && !accountDeletionRuntimeComplete(options.AccountDeletionRuntime) {
+		return nil, errors.New("account deletion runtime is incomplete")
+	}
 	staticSite, err := loadStaticSite(options.StaticDirectory)
 	if err != nil {
 		return nil, err
@@ -89,6 +95,9 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 		exact("/api/launch-status", launchStatus(options.PrivateRuntime)),
 	)
 	legacyHandler := legacySync(options.PrivateRuntime, options.BodyLimit)
+	if options.DisableLegacySync {
+		legacyHandler = closedAPI
+	}
 	syncV2Handler := disconnectedProtectedAPI(
 		options.PrivateRuntime, options.EnableDisconnectedFixtures, http.MethodPost,
 	)
@@ -102,7 +111,10 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 			options.Logger,
 			effectiveSyncV2BodyLimit(options.BodyLimit),
 		)
-		sessionContextHandler = sessionContext(options.SyncV2Runtime)
+		sessionContextHandler = sessionContext(
+			options.SyncV2Runtime,
+			options.AccountDeletionRuntime != nil,
+		)
 	}
 	mux.HandleFunc("/api/sync", exact("/api/sync", legacyHandler))
 	mux.HandleFunc("/api/v2/sync", exact("/api/v2/sync", syncV2Handler))
@@ -122,9 +134,21 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 		"/api/billing/cancel",
 		exact("/api/billing/cancel", billingCancellationRoute(options)),
 	)
+	deletionStart := http.HandlerFunc(disconnectedPublicAPI(options.EnableDisconnectedFixtures, http.MethodGet, http.MethodPost))
+	deletionResume := http.HandlerFunc(disconnectedPublicAPI(options.EnableDisconnectedFixtures, http.MethodGet, http.MethodPost))
+	if options.AccountDeletionRuntime != nil {
+		deletionHandlers, deletionErr := newAccountDeletionContractHandlers(
+			options.AccountDeletionRuntime, options.Logger, effectiveAccountDeletionBodyLimit(options.BodyLimit),
+		)
+		if deletionErr != nil {
+			return nil, deletionErr
+		}
+		deletionStart = deletionHandlers.Start.ServeHTTP
+		deletionResume = deletionHandlers.Resume.ServeHTTP
+	}
+	mux.HandleFunc("/api/account/deletion", exact("/api/account/deletion", deletionStart))
+	mux.HandleFunc("/api/account/deletion/status", exact("/api/account/deletion/status", deletionResume))
 	for _, path := range []string{
-		"/api/account/deletion",
-		"/api/account/deletion/status",
 		"/api/account/privacy-requests",
 		"/api/account/privacy-requests/status",
 	} {
@@ -447,11 +471,18 @@ func limitBody(limit int64, next http.Handler) http.Handler {
 
 func authorizesBeforeBody(path string) bool {
 	switch path {
-	case "/api/sync", "/api/v2/sync", "/api/session-context", "/api/billing/checkout", "/api/account/terms-consent", "/api/billing/cancel":
+	case "/api/sync", "/api/v2/sync", "/api/session-context", "/api/billing/checkout", "/api/account/terms-consent", "/api/billing/cancel", "/api/account/deletion", "/api/account/deletion/status":
 		return true
 	default:
 		return false
 	}
+}
+
+func effectiveAccountDeletionBodyLimit(configured int64) int64 {
+	if configured < accountdeletion.MaximumRequestBytes {
+		return configured
+	}
+	return accountdeletion.MaximumRequestBytes
 }
 
 func writeBodyTooLarge(response http.ResponseWriter, request *http.Request) {

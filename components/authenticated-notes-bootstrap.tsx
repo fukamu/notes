@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { SessionNotesApp } from '@/components/session-notes-app';
 import type { NotesAccess } from '@/lib/application/notes-access';
-import { createBrowserLogoutPurgeService } from '@/lib/client/browser-logout-purge';
+import type { BrowserLogoutPurgeService } from '@/lib/client/browser-logout-purge';
 import { loadSessionContext } from '@/lib/client/http-session-context';
 import { createVaultNotesRuntimePorts } from '@/lib/client/vault-notes-runtime';
 import type { VaultContext } from '@/lib/domain/identity';
@@ -13,7 +13,13 @@ type BootstrapState =
   | { readonly kind: 'loaded'; readonly access: NotesAccess }
   | { readonly kind: 'unavailable' };
 
-export function AuthenticatedNotesBootstrap() {
+export function AuthenticatedNotesBootstrap({
+  logout,
+  onGeneration,
+}: {
+  readonly logout: BrowserLogoutPurgeService;
+  readonly onGeneration: (generation: VaultContext | undefined) => void;
+}) {
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<BootstrapState>({ kind: 'loading' });
 
@@ -24,25 +30,33 @@ export function AuthenticatedNotesBootstrap() {
       switch (result.kind) {
         case 'authenticated':
           setState({ kind: 'loaded', access: result });
+          onGeneration(
+            result.accountDeletionAvailable ? result.context : undefined,
+          );
           break;
         case 'anonymous':
           setState({ kind: 'loaded', access: result });
+          onGeneration(undefined);
           break;
         case 'unavailable':
           setState(result);
+          onGeneration(undefined);
           break;
       }
     });
-    return () => controller.abort();
-  }, [attempt]);
+    return () => {
+      controller.abort();
+      onGeneration(undefined);
+    };
+  }, [attempt, onGeneration]);
 
+  let content: ReactNode;
   if (state.kind === 'loading') {
-    return (
+    content = (
       <NotesRuntimeMessage>セッションを確認しています。</NotesRuntimeMessage>
     );
-  }
-  if (state.kind === 'unavailable') {
-    return (
+  } else if (state.kind === 'unavailable') {
+    content = (
       <NotesRuntimeMessage>
         <p>セッションを確認できませんでした。</p>
         <button
@@ -57,15 +71,26 @@ export function AuthenticatedNotesBootstrap() {
         </button>
       </NotesRuntimeMessage>
     );
+  } else if (state.access.kind === 'anonymous') {
+    content = <NotesRuntimeMessage>ログインが必要です。</NotesRuntimeMessage>;
+  } else {
+    content = (
+      <AuthenticatedNotesRuntime
+        context={state.access.context}
+        logout={logout}
+      />
+    );
   }
-  if (state.access.kind === 'anonymous') {
-    return <NotesRuntimeMessage>ログインが必要です。</NotesRuntimeMessage>;
-  }
-  return <AuthenticatedNotesRuntime context={state.access.context} />;
+  return content;
 }
 
-function AuthenticatedNotesRuntime({ context }: { context: VaultContext }) {
-  const [logout] = useState(createBrowserLogoutPurgeService);
+function AuthenticatedNotesRuntime({
+  context,
+  logout,
+}: {
+  readonly context: VaultContext;
+  readonly logout: BrowserLogoutPurgeService;
+}) {
   return (
     <SessionNotesApp
       access={{ kind: 'authenticated', context }}

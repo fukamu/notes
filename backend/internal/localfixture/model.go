@@ -33,6 +33,87 @@ type Seed struct {
 	DEK            cryptocontent.VaultDEKMetadata
 }
 
+type CommerceFacts struct {
+	Context      identity.VaultContext
+	Subscription billing.SubscriptionRecord
+	Entitlement  entitlement.ProjectionRecord
+}
+
+// NewCommerceFacts derives the deterministic no-network billing facts without
+// requiring recovery-key material. This permits deletion continuation after
+// the filesystem key has already been destroyed.
+func NewCommerceFacts(vaultContext identity.VaultContext) (CommerceFacts, error) {
+	if !entitlement.ValidVaultContext(vaultContext) {
+		return CommerceFacts{}, ErrInvalidFixture
+	}
+	version, err := billing.ParseVersion(1)
+	if err != nil {
+		return CommerceFacts{}, ErrInvalidFixture
+	}
+	provider, err := billing.ParseProvider("local-fixture")
+	if err != nil {
+		return CommerceFacts{}, ErrInvalidFixture
+	}
+	subscriptionID, err := billing.ParseSubscriptionID(string(vaultContext.AccountID))
+	if err != nil {
+		return CommerceFacts{}, ErrInvalidFixture
+	}
+	customerReference, err := billing.ParseProviderCustomerReference("fixture-customer-" + string(vaultContext.AccountID))
+	if err != nil {
+		return CommerceFacts{}, ErrInvalidFixture
+	}
+	subscriptionReference, err := billing.ParseProviderSubscriptionReference("fixture-subscription-" + string(vaultContext.AccountID))
+	if err != nil {
+		return CommerceFacts{}, ErrInvalidFixture
+	}
+	invoiceReference, err := billing.ParseProviderInvoiceReference("fixture-invoice-" + string(vaultContext.AccountID))
+	if err != nil {
+		return CommerceFacts{}, ErrInvalidFixture
+	}
+	paidAt := FixtureTimestamp
+	paymentMethodUpdatedAt := FixtureTimestamp
+	subscription := billing.SubscriptionRecord{
+		SubscriptionID:                subscriptionID,
+		AccountID:                     vaultContext.AccountID,
+		VaultID:                       vaultContext.VaultID,
+		Provider:                      provider,
+		ProviderCustomerReference:     customerReference,
+		ProviderSubscriptionReference: subscriptionReference,
+		Version:                       version,
+		Lifecycle: billing.Lifecycle{
+			Kind: billing.LifecycleActive, PaidPeriodStartedAt: FixtureTimestamp,
+			PaidThrough: identity.MaximumSafeInteger,
+		},
+		PaymentMethodReady:       true,
+		PaymentMethodUpdatedAt:   &paymentMethodUpdatedAt,
+		LastPaidAt:               &paidAt,
+		LastPaidInvoiceReference: invoiceReference,
+		CreatedAt:                FixtureTimestamp,
+		UpdatedAt:                FixtureTimestamp,
+	}
+	projectionVersion, err := entitlement.ParseProjectionVersion(1)
+	if err != nil || !billing.ValidRecord(subscription) {
+		return CommerceFacts{}, ErrInvalidFixture
+	}
+	projection := entitlement.ProjectionRecord{
+		AccountID:            vaultContext.AccountID,
+		VaultID:              vaultContext.VaultID,
+		Version:              projectionVersion,
+		SourceSubscriptionID: subscriptionID,
+		SourceBillingVersion: version,
+		State: entitlement.State{
+			Kind: entitlement.StatePaidActive, ValidUntil: identity.MaximumSafeInteger,
+		},
+		CheckedAt: FixtureTimestamp,
+		CreatedAt: FixtureTimestamp,
+		UpdatedAt: FixtureTimestamp,
+	}
+	if !entitlement.ValidProjectionRecord(projection) {
+		return CommerceFacts{}, ErrInvalidFixture
+	}
+	return CommerceFacts{Context: vaultContext, Subscription: subscription, Entitlement: projection}, nil
+}
+
 func NewSeed(
 	allowedSubject access.Subject,
 	accountID identity.AccountID,

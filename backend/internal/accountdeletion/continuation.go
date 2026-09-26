@@ -58,6 +58,80 @@ func PlanContinuationStart(
 	return ContinuationStartPlan{Kind: ContinuationStartAccepted, Continuation: continuation}
 }
 
+type ContinuationStartReplayKind string
+type ContinuationStartReplayReason string
+
+const (
+	ContinuationStartReplayUnchanged ContinuationStartReplayKind = "unchanged"
+	ContinuationStartReplayRenewed   ContinuationStartReplayKind = "renewed"
+	ContinuationStartReplayRejected  ContinuationStartReplayKind = "rejected"
+
+	ContinuationStartReplayCredentialConflict ContinuationStartReplayReason = "credential-conflict"
+	ContinuationStartReplayInvalid            ContinuationStartReplayReason = "invalid-replay"
+	ContinuationStartReplayUnsafeState        ContinuationStartReplayReason = "unsafe-state"
+)
+
+type ContinuationStartReplayPlan struct {
+	Kind         ContinuationStartReplayKind
+	Reason       ContinuationStartReplayReason
+	Continuation Continuation
+}
+
+// PlanContinuationStartReplay keeps ordinary idempotent Start replay
+// read-only. It may extend the existing credential only while the operation is
+// still the exact pre-effect initial state. This closes the crash window where
+// a browser persisted revoke-pending but did not claim session revocation
+// before the initial credential expired; once any step is claimed or receipted,
+// Start is never a renewal authority.
+func PlanContinuationStartReplay(
+	snapshot Snapshot,
+	current Continuation,
+	requested Continuation,
+) ContinuationStartReplayPlan {
+	if !ValidSnapshot(snapshot) || !ValidContinuation(current) || !ValidContinuation(requested) ||
+		current.OperationID != snapshot.Operation.OperationID {
+		return ContinuationStartReplayPlan{
+			Kind: ContinuationStartReplayRejected, Reason: ContinuationStartReplayInvalid,
+		}
+	}
+	if current.IdempotencyHash != requested.IdempotencyHash || current.SecretHash != requested.SecretHash {
+		return ContinuationStartReplayPlan{
+			Kind: ContinuationStartReplayRejected, Reason: ContinuationStartReplayCredentialConflict,
+		}
+	}
+	// An ordinary replay before the exclusive expiry boundary is read-only;
+	// repeated Start requests must not turn the initial seven-day window into a
+	// sliding lease.
+	if requested.CreatedAt < current.ExpiresAt {
+		return ContinuationStartReplayPlan{
+			Kind: ContinuationStartReplayUnchanged, Continuation: current,
+		}
+	}
+	if !InitialOperation(snapshot.Operation) || len(snapshot.Receipts) != 0 {
+		return ContinuationStartReplayPlan{
+			Kind: ContinuationStartReplayRejected, Reason: ContinuationStartReplayUnsafeState,
+		}
+	}
+	if requested.ExpiresAt <= current.ExpiresAt {
+		return ContinuationStartReplayPlan{
+			Kind: ContinuationStartReplayRejected, Reason: ContinuationStartReplayInvalid,
+		}
+	}
+	next := current
+	next.ExpiresAt = requested.ExpiresAt
+	if requested.CreatedAt > next.UpdatedAt {
+		next.UpdatedAt = requested.CreatedAt
+	}
+	if !ValidContinuation(next) {
+		return ContinuationStartReplayPlan{
+			Kind: ContinuationStartReplayRejected, Reason: ContinuationStartReplayInvalid,
+		}
+	}
+	return ContinuationStartReplayPlan{
+		Kind: ContinuationStartReplayRenewed, Continuation: next,
+	}
+}
+
 type ContinuationConsumeKind string
 type ContinuationConsumeReason string
 
@@ -100,6 +174,66 @@ func PlanContinuationConsume(current Continuation, presentedSequence, consumedAt
 		return ContinuationConsumePlan{Kind: ContinuationConsumeRejected, Reason: ContinuationInvalidCapability}
 	}
 	return ContinuationConsumePlan{Kind: ContinuationConsumeAdvance, Next: next}
+}
+
+type ContinuationRecoveryPromotionKind string
+type ContinuationRecoveryPromotionReason string
+
+const (
+	ContinuationRecoveryPromotionAccepted ContinuationRecoveryPromotionKind = "accepted"
+	ContinuationRecoveryPromotionRejected ContinuationRecoveryPromotionKind = "rejected"
+
+	ContinuationRecoveryInvalidClaim        ContinuationRecoveryPromotionReason = "invalid-claim"
+	ContinuationRecoveryInvalidContinuation ContinuationRecoveryPromotionReason = "invalid-continuation"
+)
+
+type ContinuationRecoveryPromotionPlan struct {
+	Kind   ContinuationRecoveryPromotionKind
+	Reason ContinuationRecoveryPromotionReason
+	Next   Continuation
+}
+
+// PlanContinuationRecoveryPromotion promotes the already-authorized
+// continuation into a recovery credential at the durable admission boundary:
+// the claim of the session-revocation step. The credential remains scoped to
+// one operation and can only advance/report that saga; it cannot authorize a
+// new deletion or read account data.
+func PlanContinuationRecoveryPromotion(
+	current Continuation,
+	claim Transition,
+) ContinuationRecoveryPromotionPlan {
+	ready, readyOK := claim.Current.State.(Ready)
+	running, runningOK := claim.Next.State.(Running)
+	if !readyOK || !runningOK || ready.Step != StepRevokeSessions ||
+		running.Step != StepRevokeSessions ||
+		!ValidTransition(claim.Current.Scope, claim) {
+		return ContinuationRecoveryPromotionPlan{
+			Kind: ContinuationRecoveryPromotionRejected, Reason: ContinuationRecoveryInvalidClaim,
+		}
+	}
+	if !ValidContinuation(current) || current.OperationID != claim.Current.OperationID {
+		return ContinuationRecoveryPromotionPlan{
+			Kind: ContinuationRecoveryPromotionRejected, Reason: ContinuationRecoveryInvalidContinuation,
+		}
+	}
+	next := current
+	next.ExpiresAt = identity.MaximumSafeInteger
+	if claim.Next.UpdatedAt > next.UpdatedAt {
+		next.UpdatedAt = claim.Next.UpdatedAt
+	}
+	if !ValidContinuation(next) {
+		return ContinuationRecoveryPromotionPlan{
+			Kind: ContinuationRecoveryPromotionRejected, Reason: ContinuationRecoveryInvalidContinuation,
+		}
+	}
+	return ContinuationRecoveryPromotionPlan{Kind: ContinuationRecoveryPromotionAccepted, Next: next}
+}
+
+func RequiresContinuationRecoveryPromotion(transition Transition) bool {
+	ready, readyOK := transition.Current.State.(Ready)
+	running, runningOK := transition.Next.State.(Running)
+	return readyOK && runningOK && ready.Step == StepRevokeSessions &&
+		running.Step == StepRevokeSessions
 }
 
 func ValidContinuation(continuation Continuation) bool {

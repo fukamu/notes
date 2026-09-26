@@ -8,6 +8,7 @@ import {
   accountDeletionWireStatusDecoder,
   createAccountDeletionHandoff,
   inspectAccountDeletionHandoff,
+  planAccountDeletionContinuationRenewed,
   planAccountDeletionLocalPurgeCompleted,
   planAccountDeletionRevokeAccepted,
   planAccountDeletionServerAccepted,
@@ -60,23 +61,35 @@ describe('account deletion browser handoff core', () => {
     );
     expect(revocation).toMatchObject({ kind: 'revoke-pending', revision: 2 });
 
+    const renewed = advanced(
+      planAccountDeletionContinuationRenewed(revocation, {
+        kind: 'in-progress',
+        continuationToken: token0,
+      }),
+    );
+    expect(renewed).toMatchObject({
+      kind: 'revoke-pending',
+      revision: 3,
+      server: { continuationToken: token0 },
+    });
+
     const purge = advanced(
-      planAccountDeletionRevokeAccepted(revocation, {
+      planAccountDeletionRevokeAccepted(renewed, {
         kind: 'in-progress',
         continuationToken: token1,
       }),
     );
-    expect(purge).toMatchObject({ kind: 'purge-pending', revision: 3 });
+    expect(purge).toMatchObject({ kind: 'purge-pending', revision: 4 });
 
     const server = advanced(planAccountDeletionLocalPurgeCompleted(purge));
-    expect(server).toMatchObject({ kind: 'server-pending', revision: 4 });
+    expect(server).toMatchObject({ kind: 'server-pending', revision: 5 });
 
     expect(
       planAccountDeletionServerAccepted(server, { kind: 'completed' }),
     ).toEqual({
       kind: 'ready-to-clear',
       generation,
-      expectedRevision: 4,
+      expectedRevision: 5,
       terminalStatus: 'completed',
     });
   });
@@ -103,6 +116,12 @@ describe('account deletion browser handoff core', () => {
     });
     expect(
       planAccountDeletionServerAccepted(starting, { kind: 'failed' }),
+    ).toEqual({ kind: 'rejected', reason: 'invalid-state' });
+    expect(
+      planAccountDeletionContinuationRenewed(starting, {
+        kind: 'in-progress',
+        continuationToken: token0,
+      }),
     ).toEqual({ kind: 'rejected', reason: 'invalid-state' });
   });
 
@@ -156,6 +175,16 @@ describe('account deletion browser handoff core', () => {
     expect(accountDeletionContinuationTokenDecoder.decode('ad1.bad.0').ok).toBe(
       false,
     );
+    expect(
+      accountDeletionContinuationTokenDecoder.decode(
+        `ad1.${'S'.repeat(43)}.2147483647`,
+      ).ok,
+    ).toBe(true);
+    expect(
+      accountDeletionContinuationTokenDecoder.decode(
+        `ad1.${'S'.repeat(43)}.2147483648`,
+      ).ok,
+    ).toBe(false);
     expect(accountDeletionIdempotencyKeyDecoder.decode('I'.repeat(42)).ok).toBe(
       false,
     );

@@ -5,6 +5,6 @@
     "types": ["node"],
     "jsx": "react-jsx"
   },
-  "include": ["tests/**/*.ts"],
+  "include": ["tests/**/*.ts", "tests/**/*.tsx"],
   "exclude": ["node_modules"]
 }
