@@ -260,6 +260,11 @@
       "goEvidence": [
         "backend/internal/operations/quota_reconciliation.go",
         "backend/internal/operations/launch_policy.go",
+        "backend/internal/telemetry/policy.go",
+        "backend/internal/telemetry/codec.go",
+        "backend/internal/telemetry/metrics.go",
+        "backend/internal/telemetry/alert.go",
+        "backend/internal/telemetry/delivery.go",
         "backend/internal/telemetry/logger.go",
         "backend/cmd/notesctl/main.go"
       ]
