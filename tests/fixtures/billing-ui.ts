@@ -11,9 +11,7 @@ import {
 } from '@/lib/contracts/contract-checkout';
 
 export const billingUiContractIds = {
-  evidenceA: parseContractEvidenceId(
-    '01991f20-61d2-7000-8000-000000002301',
-  ),
+  evidenceA: parseContractEvidenceId('01991f20-61d2-7000-8000-000000002301'),
   submissionA: parseContractSubmissionId(
     '01991f20-61d2-7000-8000-000000002401',
   ),

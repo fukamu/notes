@@ -287,6 +287,113 @@ export function validateRetiredTree(
   }
 }
 
+export function validateRetiredRepository(
+  trackedPaths: ReadonlySet<string>,
+  packageCandidate: unknown,
+): void {
+  const forbiddenRoots = ['app/api', 'db', 'drizzle', 'server'] as const;
+  const forbiddenFiles = new Set([
+    '.openai/hosting.json',
+    'drizzle.config.ts',
+    'tsconfig.api.json',
+    'vitest.server-load.config.ts',
+  ]);
+  for (const path of trackedPaths) {
+    if (
+      forbiddenFiles.has(path) ||
+      forbiddenRoots.some(
+        (root) => path === root || path.startsWith(`${root}/`),
+      )
+    ) {
+      throw new TypeError(`retired server artifact is tracked: ${path}`);
+    }
+  }
+
+  const packageJson = record(packageCandidate, 'package manifest');
+  const scripts = record(packageJson.scripts, 'package scripts');
+  for (const name of ['db:generate', 'lint:api', 'typecheck:api']) {
+    if (Object.hasOwn(scripts, name)) {
+      throw new TypeError(`retired server script is configured: ${name}`);
+    }
+  }
+  const retiredConfigReferences = [
+    '.openai/hosting.json',
+    'drizzle.config.ts',
+    'tsconfig.api.json',
+    'vitest.server-load.config.ts',
+  ] as const;
+  const retiredRootReference =
+    /(?:^|[\s'"])(?:\.\/)?(?:app\/api|db|drizzle|server)(?=$|[/\s'"])/u;
+  for (const [name, command] of Object.entries(scripts)) {
+    if (typeof command !== 'string') {
+      throw new TypeError(`package script is not text: ${name}`);
+    }
+    if (
+      retiredConfigReferences.some((reference) =>
+        command.includes(reference),
+      ) ||
+      retiredRootReference.test(command)
+    ) {
+      throw new TypeError(
+        `package script references retired server code: ${name}`,
+      );
+    }
+  }
+
+  const forbiddenPackages = new Set([
+    '@cloudflare/workers-types',
+    'drizzle-kit',
+    'drizzle-orm',
+    'miniflare',
+  ]);
+  for (const field of [
+    'dependencies',
+    'devDependencies',
+    'optionalDependencies',
+    'peerDependencies',
+    'overrides',
+  ]) {
+    const candidate = packageJson[field];
+    if (candidate === undefined) continue;
+    const dependencies = record(candidate, `package ${field}`);
+    for (const name of forbiddenPackages) {
+      if (Object.hasOwn(dependencies, name)) {
+        throw new TypeError(
+          `retired server dependency is configured in ${field}: ${name}`,
+        );
+      }
+    }
+  }
+}
+
+export function validateRetiredPackageLock(lockCandidate: unknown): void {
+  const lock = record(lockCandidate, 'package lock');
+  const packages = record(lock.packages, 'package lock packages');
+  const forbiddenPackagePath =
+    /(?:^|\/)node_modules\/(?:@cloudflare\/workers-types|drizzle-kit|drizzle-orm|miniflare)$/u;
+  for (const path of Object.keys(packages)) {
+    if (forbiddenPackagePath.test(path)) {
+      throw new TypeError(`retired server dependency is locked: ${path}`);
+    }
+  }
+  const root = record(packages[''], 'package lock root');
+  for (const field of ['dependencies', 'devDependencies']) {
+    const candidate = root[field];
+    if (candidate === undefined) continue;
+    const dependencies = record(candidate, `package lock root ${field}`);
+    for (const name of [
+      '@cloudflare/workers-types',
+      'drizzle-kit',
+      'drizzle-orm',
+      'miniflare',
+    ]) {
+      if (Object.hasOwn(dependencies, name)) {
+        throw new TypeError(`retired server dependency is locked: ${name}`);
+      }
+    }
+  }
+}
+
 export function validateExecutableEvidence(
   evidencePath: string,
   source: string,

@@ -14,8 +14,6 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json-summary'],
       include: [
-        'app/api/account/deletion/handler.ts',
-        'app/api/account/terms-consent/handler.ts',
         'components/billing-checkout-boundary.tsx',
         'components/account-deletion-boundary.tsx',
         'components/history-view.tsx',
@@ -73,7 +71,6 @@ export default defineConfig({
         'lib/editor/body-document.ts',
         'lib/sync/**/*.ts',
         'lib/storage/**/*.ts',
-        'server/**/*.ts',
       ],
     },
   },

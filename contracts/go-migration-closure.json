@@ -378,12 +378,13 @@
     },
     {
       "id": "V11",
-      "status": "in-progress",
+      "status": "complete",
       "evidence": [
         "scripts/verify-release-artifact.mts",
-        "docs/go-release-artifact.md"
-      ],
-      "note": "Node-free runtime artifact is proven; checked-in legacy source retirement remains T17."
+        "docs/go-release-artifact.md",
+        "scripts/verify-legacy-retirement.mts",
+        "docs/legacy-typescript-retirement.md"
+      ]
     },
     {
       "id": "V12",
@@ -395,7 +396,7 @@
     }
   ],
   "retirement": {
-    "phase": "reference-present",
+    "phase": "retired",
     "sourceRevision": "e8936ab90768774371d84b4808c100d546649943",
     "sourceTrees": [
       {

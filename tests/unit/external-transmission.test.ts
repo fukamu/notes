@@ -7,16 +7,6 @@ import {
   decodeExternalTransmissionManifest,
   externalTransmissionManifest,
 } from '@/lib/application/external-transmission';
-import {
-  parseOidcAuthorizationEndpoint,
-  parseOidcClientId,
-  parseOidcNonce,
-  parseOidcRedirectUri,
-  parseOidcState,
-  parsePkceCodeChallenge,
-} from '@/lib/domain/oidc';
-import { serializeOidcAuthorizationRequest } from '@/server/adapters/web-oidc';
-import { SESSION_COOKIE_NAME } from '@/server/core/session-cookie';
 
 describe('external transmission manifest', () => {
   it('decodes the complete manifest and exactly matches the browser destination catalog', () => {
@@ -31,7 +21,7 @@ describe('external transmission manifest', () => {
     ).toEqual(browserExternalDestinations.map((entry) => entry.id));
     expect(externalTransmissionManifest.optionalTracking).toBe('none');
     expect(externalTransmissionManifest.firstPartySession.cookieName).toBe(
-      SESSION_COOKIE_NAME,
+      '__Host-fukamu_session',
     );
   });
 
@@ -99,28 +89,6 @@ describe('external transmission manifest', () => {
     }
   });
 
-  it('fails closed before serializing an undeclared OIDC authorization destination', () => {
-    expect(() =>
-      serializeOidcAuthorizationRequest({
-        authorizationEndpoint: parseOidcAuthorizationEndpoint(
-          'https://identity.example.test/authorize',
-        ),
-        responseType: 'code',
-        clientId: parseOidcClientId('client.apps.googleusercontent.com'),
-        redirectUri: parseOidcRedirectUri(
-          'https://notes.example/auth/google/callback',
-        ),
-        scope: 'openid email',
-        state: parseOidcState(`${'C'.repeat(42)}A`),
-        nonce: parseOidcNonce(`${'D'.repeat(42)}A`),
-        codeChallenge: parsePkceCodeChallenge(
-          'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
-        ),
-        codeChallengeMethod: 'S256',
-      }),
-    ).toThrow('destination is not declared');
-  });
-
   it('runs the build gate and keeps provider navigation behind the shared policy', async () => {
     const result = spawnSync(
       process.execPath,
@@ -132,18 +100,35 @@ describe('external transmission manifest', () => {
     );
     expect(result.status).toBe(0);
 
-    const [oidc, checkout, page, layout, privacy, notes, staticHandler] =
-      await Promise.all([
-        readFile('server/adapters/web-oidc.ts', 'utf8'),
-        readFile('lib/client/http-billing-ui.ts', 'utf8'),
-        readFile('app/(public)/legal/external-transmission/page.tsx', 'utf8'),
-        readFile('app/(public)/layout.tsx', 'utf8'),
-        readFile('app/(public)/legal/privacy/page.tsx', 'utf8'),
-        readFile('components/notes-presentation.tsx', 'utf8'),
-        readFile('backend/internal/httpapi/static.go', 'utf8'),
-      ]);
-    expect(oidc).toContain(
-      "decideBrowserExternalDestination(\n    'google-oidc'",
+    const [
+      oidcBoundary,
+      oidcEvidence,
+      cookieBoundary,
+      checkout,
+      page,
+      layout,
+      privacy,
+      notes,
+      staticHandler,
+    ] = await Promise.all([
+      readFile('backend/internal/identity/oidc_boundary.go', 'utf8'),
+      readFile('backend/internal/identity/oidc_destination_test.go', 'utf8'),
+      readFile('backend/internal/identity/cookie.go', 'utf8'),
+      readFile('lib/client/http-billing-ui.ts', 'utf8'),
+      readFile('app/(public)/legal/external-transmission/page.tsx', 'utf8'),
+      readFile('app/(public)/layout.tsx', 'utf8'),
+      readFile('app/(public)/legal/privacy/page.tsx', 'utf8'),
+      readFile('components/notes-presentation.tsx', 'utf8'),
+      readFile('backend/internal/httpapi/static.go', 'utf8'),
+    ]);
+    expect(oidcBoundary).toContain(
+      'https://accounts.google.com/o/oauth2/v2/auth',
+    );
+    expect(oidcEvidence).toContain(
+      'func TestSerializeGoogleOidcAuthorizationRequestRejectsNonExactDestination',
+    );
+    expect(cookieBoundary).toContain(
+      'SessionCookieName              = "__Host-fukamu_session"',
     );
     expect(checkout).toContain(
       "decideBrowserExternalDestination('stripe-checkout'",

@@ -7,6 +7,8 @@ import {
   validateExecutableEvidence,
   validateLedgerClosure,
   validateReferenceCorpus,
+  validateRetiredPackageLock,
+  validateRetiredRepository,
   validateRetiredTree,
 } from './legacy-retirement-core.mts';
 import { decodeMigrationClosure } from './migration-closure-core.mts';
@@ -81,6 +83,14 @@ if (closure.retirement.phase === 'reference-present') {
     trackedPaths,
     currentSources,
   );
+  const packageCandidate: unknown = JSON.parse(
+    await readFile('package.json', 'utf8'),
+  );
+  validateRetiredRepository(trackedPaths, packageCandidate);
+  const packageLockCandidate: unknown = JSON.parse(
+    await readFile('package-lock.json', 'utf8'),
+  );
+  validateRetiredPackageLock(packageLockCandidate);
 }
 
 const retained = ledger.entries.filter(

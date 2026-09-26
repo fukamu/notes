@@ -64,6 +64,13 @@ describe('Go migration closure evidence', () => {
     expect(closure.verifications.find(({ id }) => id === 'V12')).toMatchObject({
       status: 'complete',
     });
+    expect(closure.verifications.find(({ id }) => id === 'V11')).toMatchObject({
+      status: 'complete',
+    });
+    expect(closure.verifications.find(({ id }) => id === 'V09')).toMatchObject({
+      status: 'approval-pending',
+    });
+    expect(closure.retirement.phase).toBe('retired');
   });
 
   it('rejects missing or duplicated feature evidence', async () => {
@@ -109,7 +116,7 @@ describe('Go migration closure evidence', () => {
     const missingNote = clone(await manifestCandidate());
     const pending = identified(
       list(Reflect.get(object(missingNote), 'verifications')),
-      'V11',
+      'V09',
     );
     Reflect.deleteProperty(pending, 'note');
     expect(() => decodeMigrationClosure(missingNote)).toThrow(
@@ -130,6 +137,20 @@ describe('Go migration closure evidence', () => {
 
     expect(() => decodeMigrationClosure(mismatched)).toThrow(
       'retirement revision does not match the baseline',
+    );
+  });
+
+  it('requires completed V11 evidence before declaring retirement', async () => {
+    const incomplete = clone(await manifestCandidate());
+    const verification = identified(
+      list(Reflect.get(object(incomplete), 'verifications')),
+      'V11',
+    );
+    Reflect.set(verification, 'status', 'in-progress');
+    Reflect.set(verification, 'note', 'synthetic incomplete retirement');
+
+    expect(() => decodeMigrationClosure(incomplete)).toThrow(
+      'retired phase requires complete V11 verification',
     );
   });
 

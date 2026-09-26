@@ -8,6 +8,8 @@ import {
   validateExecutableEvidence,
   validateLedgerClosure,
   validateReferenceCorpus,
+  validateRetiredPackageLock,
+  validateRetiredRepository,
   validateRetiredTree,
 } from '../../scripts/legacy-retirement-core.mts';
 import { decodeMigrationClosure } from '../../scripts/migration-closure-core.mts';
@@ -386,6 +388,100 @@ describe('legacy TypeScript test retirement ledger', () => {
         new Map([['tests/unit/example.test.ts', 'frontend-only']]),
       ),
     ).not.toThrow();
+  });
+
+  it('rejects retired roots, configs, scripts, and dependencies', () => {
+    const cleanPackage = {
+      scripts: { build: 'vite build', start: 'go -C backend run ./cmd/notes' },
+      dependencies: { react: '19.2.6' },
+      devDependencies: { vitest: '5.0.0' },
+    };
+    expect(() =>
+      validateRetiredRepository(
+        new Set(['backend/cmd/notes/main.go', 'frontend/entry-client.tsx']),
+        cleanPackage,
+      ),
+    ).not.toThrow();
+
+    for (const path of [
+      'app/api/sync/route.ts',
+      'db/schema.ts',
+      'drizzle/0000.sql',
+      'server/core/session.ts',
+      '.openai/hosting.json',
+      'drizzle.config.ts',
+      'tsconfig.api.json',
+      'vitest.server-load.config.ts',
+    ]) {
+      expect(() =>
+        validateRetiredRepository(new Set([path]), cleanPackage),
+      ).toThrow('retired server');
+    }
+    for (const name of ['db:generate', 'lint:api', 'typecheck:api']) {
+      expect(() =>
+        validateRetiredRepository(new Set(), {
+          ...cleanPackage,
+          scripts: { ...cleanPackage.scripts, [name]: 'retired command' },
+        }),
+      ).toThrow('retired server script');
+    }
+    for (const name of [
+      '@cloudflare/workers-types',
+      'drizzle-kit',
+      'drizzle-orm',
+      'miniflare',
+    ]) {
+      expect(() =>
+        validateRetiredRepository(new Set(), {
+          ...cleanPackage,
+          dependencies: { ...cleanPackage.dependencies, [name]: '1' },
+        }),
+      ).toThrow('retired server dependency');
+    }
+    for (const command of [
+      'oxlint app/api',
+      'oxlint db server',
+      'tsc db/schema.ts',
+      'node drizzle/migrate.mjs',
+      'oxlint server/**/*.ts',
+      'node ./server/index.ts',
+      'tsc ./db/schema.ts',
+      'node ./app/api/sync.ts',
+      'tsc -p tsconfig.api.json',
+      'node .openai/hosting.json',
+    ]) {
+      expect(() =>
+        validateRetiredRepository(new Set(), {
+          ...cleanPackage,
+          scripts: { ...cleanPackage.scripts, check: command },
+        }),
+      ).toThrow('references retired server code');
+    }
+  });
+
+  it('rejects retired direct and transitive package-lock entries', () => {
+    const cleanLock = {
+      packages: {
+        '': { dependencies: { react: '19' }, devDependencies: { vitest: '5' } },
+        'node_modules/react': { version: '19.2.6' },
+      },
+    };
+    expect(() => validateRetiredPackageLock(cleanLock)).not.toThrow();
+    for (const name of [
+      '@cloudflare/workers-types',
+      'drizzle-kit',
+      'drizzle-orm',
+      'miniflare',
+    ]) {
+      expect(() =>
+        validateRetiredPackageLock({
+          packages: {
+            ...cleanLock.packages,
+            [`node_modules/${name}`]: { version: '1.0.0' },
+          },
+        }),
+      ).toThrow('retired server dependency is locked');
+    }
   });
 
   it('does not allow executable coverage to be classified as historical-only', () => {
