@@ -66,6 +66,7 @@ func TestRunMigratesOnlyTheExplicitAllowlistedEnvironment(t *testing.T) {
 		billingReconciliationMustNotRun(t),
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
+		orphanScanMustNotRun(t),
 	)
 	if code != 0 || !called || stdout.String() != "migration complete\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
@@ -103,6 +104,7 @@ func TestRunRefusesMigrationEnvironmentMismatchWithoutDisclosingURL(t *testing.T
 		billingReconciliationMustNotRun(t),
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
+		orphanScanMustNotRun(t),
 	)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "refused") {
 		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
@@ -150,6 +152,7 @@ func TestRunPreparesOnlyTheAllowlistedE2EDatabase(t *testing.T) {
 		billingReconciliationMustNotRun(t),
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
+		orphanScanMustNotRun(t),
 	)
 	if code != 0 || !called || stdout.String() != "e2e database prepared\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
@@ -408,6 +411,7 @@ func runQuotaAuditForTest(
 		billingReconciliationMustNotRun(t),
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
+		orphanScanMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -608,6 +612,7 @@ func runQuotaCommitForTest(
 		billingReconciliationMustNotRun(t),
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
+		orphanScanMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -826,6 +831,7 @@ func runAccountDeletionAuditForTest(
 		billingReconciliationMustNotRun(t),
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
+		orphanScanMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -1093,6 +1099,7 @@ func runBillingReconciliationForTest(
 		reconcile,
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
+		orphanScanMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -1364,6 +1371,7 @@ func runDEKRotationForTest(
 		billingReconciliationMustNotRun(t),
 		rotate,
 		dekReencryptionMustNotRun(t),
+		orphanScanMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -1588,6 +1596,7 @@ func runDEKReencryptionForTest(
 		billingReconciliationMustNotRun(t),
 		dekRotationMustNotRun(t),
 		reencrypt,
+		orphanScanMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -1676,6 +1685,242 @@ func dekReencryptionMustNotRun(t *testing.T) reencryptDEKFunction {
 	) (operations.DEKReencryptionResult, error) {
 		t.Fatal("DEK re-encryption must not run")
 		return operations.DEKReencryptionResult{}, nil
+	}
+}
+
+func TestRunOrphanScanUsesBoundedScopeAndRedactedOutput(t *testing.T) {
+	root := t.TempDir()
+	arguments := orphanScanCLIArguments("test", root)
+	values := map[string]string{
+		"NOTES_ENVIRONMENT":  "test",
+		"NOTES_DATABASE_URL": "postgres://notes:PRIVATE_DATABASE@127.0.0.1:55432/fukamu_notes_go_test",
+	}
+	called := false
+	code, stdout, stderr := runOrphanScanForTest(
+		t,
+		context.Background(),
+		arguments,
+		values,
+		func(
+			_ context.Context,
+			databaseURL string,
+			objectRoot string,
+			command operations.OrphanScanCommand,
+		) (operations.OrphanScanResult, error) {
+			called = true
+			if !strings.Contains(databaseURL, "fukamu_notes_go_test") || objectRoot != root ||
+				command.ScanStartedAt != 10_000 || command.GracePeriodMilli != 1_000 || command.Limit != 2 {
+				t.Fatalf("unexpected inputs: %q, %q, %#v", databaseURL, objectRoot, command)
+			}
+			return operations.OrphanScanResult{Kind: operations.OrphanScanPending, Enqueued: 2}, nil
+		},
+	)
+	if code != 0 || !called || stderr != "" {
+		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout, stderr)
+	}
+	var output map[string]any
+	if err := json.Unmarshal([]byte(stdout), &output); err != nil {
+		t.Fatal(err)
+	}
+	if output["command"] != "objects-orphan-scan" || output["outcome"] != "pending" ||
+		output["enqueued"] != float64(2) || output["limit"] != float64(2) || len(output) != 4 {
+		t.Fatalf("output = %#v", output)
+	}
+	for _, private := range []string{
+		"PRIVATE_DATABASE", root,
+		"01991f20-61d2-7000-8000-000000000101",
+		"01991f20-61d2-7000-8000-000000000201",
+	} {
+		if strings.Contains(stdout+stderr, private) {
+			t.Fatalf("output disclosed private value %q", private)
+		}
+	}
+}
+
+func TestParseOrphanScanRejectsInvalidAndProductionCommands(t *testing.T) {
+	valid := orphanScanCLIArguments("test", t.TempDir())
+	tests := [][]string{
+		removeCLIArgument(valid, "--confirm-local-object-scan"),
+		removeCLIArgument(valid, "--confirm-delete-enqueue"),
+		replaceCLIArgument(valid, "--environment=", "--environment=production"),
+		replaceCLIArgument(valid, "--limit=", "--limit=0"),
+		replaceCLIArgument(valid, "--scan-started-at-millis=", "--scan-started-at-millis=0"),
+		replaceCLIArgument(valid, "--grace-period-millis=", "--grace-period-millis=-1"),
+		replaceCLIArgument(valid, "--object-root=", "--object-root=relative"),
+		append(append([]string(nil), valid...), "--unknown=value"),
+	}
+	for index, arguments := range tests {
+		if _, requested, err := parseOrphanScanArguments(arguments); !requested || err == nil {
+			t.Fatalf("case %d parsed: requested=%t err=%v", index, requested, err)
+		}
+	}
+	if _, requested, err := parseOrphanScanArguments([]string{"dek", "reencrypt"}); requested || err != nil {
+		t.Fatalf("unrelated command requested=%t err=%v", requested, err)
+	}
+}
+
+func TestRunOrphanScanRefusesUnsafeTargetsAndRedactsFailures(t *testing.T) {
+	arguments := orphanScanCLIArguments("test", t.TempDir())
+	tests := []struct {
+		name   string
+		ctx    context.Context
+		values map[string]string
+		scan   scanOrphansFunction
+		want   string
+	}{
+		{
+			name: "environment mismatch",
+			values: map[string]string{
+				"NOTES_ENVIRONMENT":  "local",
+				"NOTES_DATABASE_URL": "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+			},
+			scan: orphanScanMustNotRun(t), want: "orphan scan environment refused\n",
+		},
+		{
+			name: "remote database",
+			values: map[string]string{
+				"NOTES_ENVIRONMENT":  "test",
+				"NOTES_DATABASE_URL": "postgres://notes:secret@database.example/notes",
+			},
+			scan: orphanScanMustNotRun(t), want: "orphan scan target refused\n",
+		},
+		{
+			name: "scope refused",
+			values: map[string]string{
+				"NOTES_ENVIRONMENT":  "test",
+				"NOTES_DATABASE_URL": "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+			},
+			scan: func(context.Context, string, string, operations.OrphanScanCommand) (operations.OrphanScanResult, error) {
+				return operations.OrphanScanResult{Kind: operations.OrphanScanRefused}, nil
+			},
+			want: "orphan scan scope refused\n",
+		},
+		{
+			name: "dependency failure",
+			values: map[string]string{
+				"NOTES_ENVIRONMENT":  "test",
+				"NOTES_DATABASE_URL": "postgres://notes:PRIVATE_DATABASE@127.0.0.1:55432/fukamu_notes_go_test",
+			},
+			scan: func(context.Context, string, string, operations.OrphanScanCommand) (operations.OrphanScanResult, error) {
+				return operations.OrphanScanResult{}, errors.New("PRIVATE OBJECT FAILURE")
+			},
+			want: "orphan scan failed\n",
+		},
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	tests = append(tests, struct {
+		name   string
+		ctx    context.Context
+		values map[string]string
+		scan   scanOrphansFunction
+		want   string
+	}{
+		name: "cancelled", ctx: cancelled,
+		values: map[string]string{
+			"NOTES_ENVIRONMENT":  "test",
+			"NOTES_DATABASE_URL": "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+		},
+		scan: func(ctx context.Context, _ string, _ string, _ operations.OrphanScanCommand) (operations.OrphanScanResult, error) {
+			return operations.OrphanScanResult{}, ctx.Err()
+		},
+		want: "orphan scan failed\n",
+	})
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := testCase.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			code, stdout, stderr := runOrphanScanForTest(t, ctx, arguments, testCase.values, testCase.scan)
+			if code != 1 || stdout != "" || stderr != testCase.want ||
+				strings.Contains(stderr, "PRIVATE") || strings.Contains(stderr, "secret") {
+				t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
+			}
+		})
+	}
+
+	parsed, requested, err := parseOrphanScanArguments(arguments)
+	if err != nil || !requested {
+		t.Fatalf("parse = %#v, %t, %v", parsed, requested, err)
+	}
+	values := map[string]string{
+		"NOTES_ENVIRONMENT":  "test",
+		"NOTES_DATABASE_URL": "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+	}
+	var stderr bytes.Buffer
+	code := runOrphanScan(
+		context.Background(), parsed, rejectingWriter{}, &stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string, string, operations.OrphanScanCommand) (operations.OrphanScanResult, error) {
+			return operations.OrphanScanResult{Kind: operations.OrphanScanCompleted}, nil
+		},
+	)
+	if code != 1 || stderr.String() != "orphan scan output failed\n" {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+}
+
+func runOrphanScanForTest(
+	t *testing.T,
+	ctx context.Context,
+	arguments []string,
+	values map[string]string,
+	scan scanOrphansFunction,
+) (int, string, string) {
+	t.Helper()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithDependencies(
+		ctx, arguments, &stdout, &stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
+		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
+			t.Fatal("quota audit must not run")
+			return operations.QuotaAuditResult{}, nil
+		},
+		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			t.Fatal("quota commit must not run")
+			return operations.QuotaCommitResult{}, nil
+		},
+		func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			t.Fatal("account deletion audit must not run")
+			return operations.AccountDeletionAuditResult{}, nil
+		},
+		billingReconciliationMustNotRun(t),
+		dekRotationMustNotRun(t),
+		dekReencryptionMustNotRun(t),
+		scan,
+	)
+	return code, stdout.String(), stderr.String()
+}
+
+func orphanScanCLIArguments(environment, objectRoot string) []string {
+	return []string{
+		"objects", "orphan-scan",
+		"--environment=" + environment,
+		"--account-id=01991f20-61d2-7000-8000-000000000101",
+		"--vault-id=01991f20-61d2-7000-8000-000000000201",
+		"--scan-started-at-millis=10000",
+		"--grace-period-millis=1000",
+		"--limit=2",
+		"--object-root=" + objectRoot,
+		"--confirm-local-object-scan",
+		"--confirm-delete-enqueue",
+	}
+}
+
+func orphanScanMustNotRun(t *testing.T) scanOrphansFunction {
+	t.Helper()
+	return func(
+		context.Context,
+		string,
+		string,
+		operations.OrphanScanCommand,
+	) (operations.OrphanScanResult, error) {
+		t.Fatal("orphan scan must not run")
+		return operations.OrphanScanResult{}, nil
 	}
 }
 

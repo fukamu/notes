@@ -401,6 +401,9 @@ func (repo *memoryRepository) ListProtectedObjectKeys(context.Context) (map[encr
 	for _, intent := range repo.intents {
 		result[intent.ObjectKey] = struct{}{}
 	}
+	for objectKey := range repo.outbox {
+		result[objectKey] = struct{}{}
+	}
 	return result, nil
 }
 

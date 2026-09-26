@@ -52,6 +52,7 @@ func run(ctx context.Context, arguments []string, stdout io.Writer, stderr io.Wr
 		reconcileBillingSubscription,
 		rotateVaultDEK,
 		reencryptVaultDEK,
+		scanVaultOrphans,
 	)
 }
 
@@ -95,6 +96,12 @@ type reencryptDEKFunction func(
 	string,
 	operations.DEKReencryptionCommand,
 ) (operations.DEKReencryptionResult, error)
+type scanOrphansFunction func(
+	context.Context,
+	string,
+	string,
+	operations.OrphanScanCommand,
+) (operations.OrphanScanResult, error)
 
 func runWithDependencies(
 	parent context.Context,
@@ -110,9 +117,10 @@ func runWithDependencies(
 	reconcileBilling reconcileBillingFunction,
 	rotateDEK rotateDEKFunction,
 	reencryptDEK reencryptDEKFunction,
+	scanOrphans scanOrphansFunction,
 ) int {
 	if parent == nil || listQuotaCandidates == nil || finalizeQuotaCommit == nil || inspectDeletion == nil ||
-		reconcileBilling == nil || rotateDEK == nil || reencryptDEK == nil {
+		reconcileBilling == nil || rotateDEK == nil || reencryptDEK == nil || scanOrphans == nil {
 		_, _ = fmt.Fprintln(stderr, "operation dependencies invalid")
 		return 1
 	}
@@ -180,6 +188,14 @@ func runWithDependencies(
 			return 2
 		}
 		return runDEKReencryption(parent, dekReencryption, stdout, stderr, lookup, reencryptDEK)
+	}
+	orphanScan, orphanScanRequested, orphanScanErr := parseOrphanScanArguments(arguments)
+	if orphanScanRequested {
+		if orphanScanErr != nil {
+			printUsage(stderr)
+			return 2
+		}
+		return runOrphanScan(parent, orphanScan, stdout, stderr, lookup, scanOrphans)
 	}
 	prepareE2ERequested := len(arguments) == 3 && arguments[0] == "prepare-e2e" &&
 		arguments[1] == "--environment=test" && strings.HasPrefix(arguments[2], "--allowed-subject=")
@@ -1100,8 +1116,143 @@ func validKMSAccessToken(value string) bool {
 	return true
 }
 
+type orphanScanArguments struct {
+	environment config.Environment
+	objectRoot  string
+	command     operations.OrphanScanCommand
+}
+
+func parseOrphanScanArguments(arguments []string) (orphanScanArguments, bool, error) {
+	if len(arguments) < 2 || arguments[0] != "objects" || arguments[1] != "orphan-scan" {
+		return orphanScanArguments{}, false, nil
+	}
+	values := make(map[string]string, 7)
+	confirmedScan := false
+	confirmedEnqueue := false
+	for _, argument := range arguments[2:] {
+		switch argument {
+		case "--confirm-local-object-scan":
+			if confirmedScan {
+				return orphanScanArguments{}, true, operations.ErrOrphanScan
+			}
+			confirmedScan = true
+			continue
+		case "--confirm-delete-enqueue":
+			if confirmedEnqueue {
+				return orphanScanArguments{}, true, operations.ErrOrphanScan
+			}
+			confirmedEnqueue = true
+			continue
+		}
+		name, value, found := strings.Cut(argument, "=")
+		if !found || value == "" || strings.ContainsAny(value, "\r\n\x00") ||
+			(name != "--environment" && name != "--account-id" && name != "--vault-id" &&
+				name != "--scan-started-at-millis" && name != "--grace-period-millis" &&
+				name != "--limit" && name != "--object-root") {
+			return orphanScanArguments{}, true, operations.ErrOrphanScan
+		}
+		if _, duplicate := values[name]; duplicate {
+			return orphanScanArguments{}, true, operations.ErrOrphanScan
+		}
+		values[name] = value
+	}
+	if len(values) != 7 || !confirmedScan || !confirmedEnqueue {
+		return orphanScanArguments{}, true, operations.ErrOrphanScan
+	}
+	environment := config.Environment(values["--environment"])
+	if environment != config.EnvironmentLocal && environment != config.EnvironmentTest {
+		return orphanScanArguments{}, true, operations.ErrOrphanScan
+	}
+	objectRoot := values["--object-root"]
+	if len(objectRoot) > 4_096 || !filepath.IsAbs(objectRoot) {
+		return orphanScanArguments{}, true, operations.ErrOrphanScan
+	}
+	accountID, err := identity.ParseAccountID(values["--account-id"])
+	if err != nil {
+		return orphanScanArguments{}, true, operations.ErrOrphanScan
+	}
+	vaultID, err := identity.ParseVaultID(values["--vault-id"])
+	if err != nil {
+		return orphanScanArguments{}, true, operations.ErrOrphanScan
+	}
+	scanStartedAt, err := strconv.ParseInt(values["--scan-started-at-millis"], 10, 64)
+	if err != nil {
+		return orphanScanArguments{}, true, operations.ErrOrphanScan
+	}
+	gracePeriod, err := strconv.ParseInt(values["--grace-period-millis"], 10, 64)
+	if err != nil {
+		return orphanScanArguments{}, true, operations.ErrOrphanScan
+	}
+	limit, err := strconv.Atoi(values["--limit"])
+	if err != nil {
+		return orphanScanArguments{}, true, operations.ErrOrphanScan
+	}
+	command := operations.OrphanScanCommand{
+		AccountID: accountID, VaultID: vaultID, ScanStartedAt: scanStartedAt,
+		GracePeriodMilli: gracePeriod, Limit: limit,
+	}
+	if operations.ValidateOrphanScanCommand(command) != nil {
+		return orphanScanArguments{}, true, operations.ErrOrphanScan
+	}
+	return orphanScanArguments{environment: environment, objectRoot: objectRoot, command: command}, true, nil
+}
+
+func runOrphanScan(
+	parent context.Context,
+	arguments orphanScanArguments,
+	stdout io.Writer,
+	stderr io.Writer,
+	lookup func(string) (string, bool),
+	scan scanOrphansFunction,
+) int {
+	databaseConfig, err := config.LoadDatabase(lookup)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "database configuration invalid")
+		return 1
+	}
+	if arguments.environment != databaseConfig.Environment {
+		_, _ = fmt.Fprintln(stderr, "orphan scan environment refused")
+		return 1
+	}
+	if err := postgresadapter.ValidateTestDatabaseURL(databaseConfig.URL); err != nil {
+		_, _ = fmt.Fprintln(stderr, "orphan scan target refused")
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	defer cancel()
+	result, err := scan(ctx, databaseConfig.URL, arguments.objectRoot, arguments.command)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "orphan scan failed")
+		return 1
+	}
+	if result.Kind == operations.OrphanScanRefused {
+		_, _ = fmt.Fprintln(stderr, "orphan scan scope refused")
+		return 1
+	}
+	if (result.Kind != operations.OrphanScanCompleted && result.Kind != operations.OrphanScanPending) ||
+		result.Enqueued < 0 || result.Enqueued > arguments.command.Limit ||
+		(result.Kind == operations.OrphanScanPending && result.Enqueued != arguments.command.Limit) {
+		_, _ = fmt.Fprintln(stderr, "orphan scan failed")
+		return 1
+	}
+	output := struct {
+		Command  string `json:"command"`
+		Outcome  string `json:"outcome"`
+		Enqueued int    `json:"enqueued"`
+		Limit    int    `json:"limit"`
+	}{
+		Command: "objects-orphan-scan", Outcome: string(result.Kind),
+		Enqueued: result.Enqueued, Limit: arguments.command.Limit,
+	}
+	if err := json.NewEncoder(stdout).Encode(output); err != nil {
+		_, _ = fmt.Fprintln(stderr, "orphan scan output failed")
+		return 1
+	}
+	return 0
+}
+
 func printUsage(output io.Writer) {
-	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read] | notesctl dek rotate --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --operation-id=<uuidv7> --requested-at-millis=<unix-ms> --generated-at-millis=<unix-ms> --completed-at-millis=<unix-ms> --confirm-kms-key-generation [--confirm-production-kms-mutation] | notesctl dek reencrypt --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --target-version=<version> --limit=1..100 --performed-at-millis=<unix-ms> --object-root=<absolute-secure-directory> --nonce-root=<absolute-secure-directory> --confirm-local-object-writes --confirm-kms-unwrapping")
+	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read] | notesctl dek rotate --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --operation-id=<uuidv7> --requested-at-millis=<unix-ms> --generated-at-millis=<unix-ms> --completed-at-millis=<unix-ms> --confirm-kms-key-generation [--confirm-production-kms-mutation] | notesctl dek reencrypt --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --target-version=<version> --limit=1..100 --performed-at-millis=<unix-ms> --object-root=<absolute-secure-directory> --nonce-root=<absolute-secure-directory> --confirm-local-object-writes --confirm-kms-unwrapping | notesctl objects orphan-scan --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --scan-started-at-millis=<unix-ms> --grace-period-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-scan --confirm-delete-enqueue")
 }
 
 func prepareE2EDatabase(ctx context.Context, databaseURL string, allowedSubject string) error {
@@ -1368,6 +1519,40 @@ func reencryptVaultDEK(
 	service, err := operations.NewDEKReencryptionService(loader, batches)
 	if err != nil {
 		return operations.DEKReencryptionResult{}, err
+	}
+	return service.Run(ctx, command)
+}
+
+func scanVaultOrphans(
+	ctx context.Context,
+	databaseURL string,
+	objectRoot string,
+	command operations.OrphanScanCommand,
+) (operations.OrphanScanResult, error) {
+	objects, err := objectstorageadapter.NewDirectory(objectRoot)
+	if err != nil {
+		return operations.OrphanScanResult{}, err
+	}
+	pool, err := postgresadapter.OpenPool(ctx, databaseURL, 2)
+	if err != nil {
+		return operations.OrphanScanResult{}, err
+	}
+	defer pool.Close()
+	loader, err := postgresadapter.NewOrphanScanScopeStore(pool)
+	if err != nil {
+		return operations.OrphanScanResult{}, err
+	}
+	repository, err := postgresadapter.NewEncryptedObjectStore(pool, command.VaultID)
+	if err != nil {
+		return operations.OrphanScanResult{}, err
+	}
+	collector, err := encryptedobject.NewOrphanCollector(repository, objects)
+	if err != nil {
+		return operations.OrphanScanResult{}, err
+	}
+	service, err := operations.NewOrphanScanService(loader, collector)
+	if err != nil {
+		return operations.OrphanScanResult{}, err
 	}
 	return service.Run(ctx, command)
 }
