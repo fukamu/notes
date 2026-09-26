@@ -26,7 +26,7 @@ describe('Go local fixture foundation boundary', () => {
     );
   });
 
-  it('does not expose the prepared foundation to business HTTP routes or provider adapters', async () => {
+  it('exposes only the complete local Sync v2 graph and no external provider adapter', async () => {
     const [main, handler] = await Promise.all([
       readFile('backend/cmd/notes/main.go', 'utf8'),
       readFile('backend/internal/httpapi/handler.go', 'utf8'),
@@ -35,12 +35,17 @@ describe('Go local fixture foundation boundary', () => {
     expect(main).not.toContain('internal/adapters/stripe');
     expect(main).not.toContain('internal/adapters/kms');
     expect(handler).not.toContain('runtimefoundation.LocalFixture');
-    expect(main).toContain('localFixture *runtimefoundation.LocalFixture');
+    expect(main).toContain('*runtimefoundation.LocalFixture');
+    expect(main).toContain('syncV2            *httpapi.SyncV2Runtime');
+    expect(main).toContain('if configuration.LocalFixture != nil {');
+    expect(handler).toContain('if options.SyncV2Runtime != nil {');
+    expect(handler).toContain('legacyHandler = closedAPI');
     const serverOptions = main.slice(
       main.indexOf('httpapi.ServerOptions{'),
       main.indexOf('}); err != nil', main.indexOf('httpapi.ServerOptions{')),
     );
     expect(serverOptions).not.toContain('LocalFixture:');
+    expect(serverOptions).toContain('SyncV2Runtime:');
   });
 
   it('keeps every destructive E2E reset behind the exact disposable database guard', async () => {

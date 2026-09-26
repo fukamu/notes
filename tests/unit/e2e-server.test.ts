@@ -64,6 +64,18 @@ async function createHarness(options: {
           NOTES_LOCAL_AUTH_ISSUER: 'https://issuer.test',
           NOTES_LOCAL_AUTH_AUDIENCE: 'notes-e2e',
           NOTES_LEGACY_OWNER_SUBJECT: 'fukamu-notes-e2e-user',
+          NOTES_LOCAL_FIXTURE_ACCOUNT_ID:
+            '01999c20-9e33-7000-8000-000000000001',
+          NOTES_LOCAL_FIXTURE_VAULT_ID: '01999c20-9e33-7000-8000-000000000002',
+          NOTES_LOCAL_FIXTURE_SESSION_ID:
+            '01999c20-9e33-7000-8000-000000000003',
+          NOTES_LOCAL_FIXTURE_SESSION_EPOCH: '1',
+          NOTES_LOCAL_FIXTURE_SESSION_TOKEN:
+            'QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE',
+          NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY:
+            'QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI',
+          NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY:
+            'Q0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0M',
           NOTES_TEST_DATABASE_URL: options.testDatabaseUrl ?? '',
         },
         stdio: ['ignore', 'ignore', 'pipe'],
@@ -95,7 +107,9 @@ describe('Go E2E server', () => {
     expect(result.goCalls).toContain('run ./cmd/notesctl prepare-e2e');
     expect(result.goCalls).toContain('run ./cmd/notes');
     expect(result.environment).toContain('NOTES_ENVIRONMENT=test');
-    expect(result.environment).toContain('NOTES_APPLICATION_PROFILE=disabled');
+    expect(result.environment).toContain(
+      'NOTES_APPLICATION_PROFILE=local-fixture',
+    );
     expect(result.environment).toContain(
       'NOTES_DATABASE_URL=postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable',
     );

@@ -42,9 +42,10 @@ then lists CacheStorage again. IndexedDB absence is checked with
 `indexedDB.databases()` so verification cannot recreate the deleted database.
 
 `createBrowserLogoutPurgeService` exposes the authenticated runtime fence and
-purge runner as one explicit composition. `LegacyNotesApp` does not construct
-this service, so local development remains authentication- and billing-free
-and does not delete data unless a caller explicitly invokes the logout flow.
+purge runner as one explicit composition. The live local-fixture bootstrap now
+constructs it only after session validation and supplies its fence to
+`SessionNotesApp`. It does not expose a logout control or invoke the purge
+runner; no data is deleted unless an explicit caller starts that flow.
 
 Browser E2E bundles this production composition into a test-only in-page
 harness; no test route or production fake is shipped. It exercises two tabs,

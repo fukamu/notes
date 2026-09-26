@@ -164,10 +164,11 @@ missing configuration stops the process before it listens.
 
 `/healthz` reports process health. With private mode disabled, `/readyz` and
 `/api/launch-status` fail closed. `/api` and API routes other than
-`/api/launch-status` and the conditionally configured `/api/sync` remain
-closed. Known disconnected routes return the legacy local/test fixture
-response only in non-production environments and a 503 in production; they
-never execute billing, deletion, privacy, terms, or Sync v2 business effects.
+`/api/launch-status`, the conditionally configured `/api/sync`, and the exact
+`local-fixture` routes described below remain closed. Known disconnected routes
+return the legacy local/test fixture response only in non-production
+environments and a 503 in production; they never execute billing, deletion,
+privacy, or terms effects.
 
 ## Local signed identity and launch gate
 
@@ -248,27 +249,44 @@ Account/Vault scope fails closed. The server opens one PostgreSQL pool, shares
 one session resolver, and requires schema, seed, exclusive scope, directory,
 and DEK checks to pass before listening and on readiness checks.
 
-This foundation does not mount session, Sync v2, Billing, deletion, crypto, or
-object-storage business routes, and it constructs or contacts no external or
-remote Stripe, KMS, identity, mail, object, or backup provider. Local directory
-adapters are constructed only for the guarded fixture root. The
-profile-disabled `prepare-e2e` path remains the existing subject-only
-compatibility path. In particular, the seeded active subscription may conflict
-with a later checkout fixture; Issue #510 must define that fixture's separate
-scope or explicit local-provider behavior rather than weakening the seed. This
-foundation alone is local/CI composition evidence, not production
-configuration, deployment, or cutover approval. V11 is complete separately for
-checked-in source retirement and the Go-only runtime artifact.
+Issue #509 established this foundation without mounting a business route.
+Issue #511 now uses it only under the exact `local-fixture` profile to mount
+`GET /api/session-context` and `POST /api/v2/sync`. It closes `/api/sync` in
+that profile. The same PostgreSQL pool supplies the scoped hash-only session,
+Billing/Entitlement, Sync v2 journal, encrypted-object metadata, quota, and DEK
+stores. The guarded fixture directories supply immutable objects, nonce
+reservations, and the fixture key; content is sealed with AES-256-GCM. A scope
+wrapper accepts only the prepared Account/Vault/session generation. Entitlement
+evaluation alone is pinned to the deterministic fixture timestamp; HTTP session
+expiry and mutation timestamps use the real clock.
 
-The real-PostgreSQL adapter integration test covers migration, exact closed
+The live notes layout first fetches the strict, private, no-store session
+context and constructs the Vault-scoped IndexedDB and Sync v2 runtime only after
+authentication. It has no legacy fallback and never returns the bearer token to
+browser code. An offline reload therefore remains closed until the session
+context can be validated again; already saved local content is opened only
+after reconnection. Playwright supplies the deterministic fixture token only as
+a host-only `Secure`, `HttpOnly`, `SameSite=Strict` cookie.
+
+No Stripe, GCP KMS, OIDC/mail, remote object, or backup provider is constructed
+or contacted. Billing is read only as the seeded local entitlement source; no
+checkout, charge, cancellation, login/session issuance, delete wire operation,
+or legacy-data migration is enabled. Default and production composition still
+pass no Sync v2 runtime to the HTTP handler, so both new routes stay closed.
+This is local/CI composition evidence, not production configuration,
+deployment, or cutover approval.
+
+The real-PostgreSQL foundation test covers migration, exact closed
 `launch_config` (`singleton = 1`, public access disabled, `updated_at = 0`),
-seed retry, readiness, session resolution, and key unwrap. It does not call the
-unexported `composeRuntime` entry point: that function cannot reach successful
-composition without a live PostgreSQL server. Configuration preflight and each
-constructed adapter are covered independently. Constructor wiring across the
-complete process remains a residual risk; a whole-process local-fixture check
-must run serially with live local PostgreSQL/HTTP verification before later
-business-route connection claims.
+seed retry, readiness, session resolution, and key unwrap. The Issue #511
+composition test additionally calls `composeRuntime`, sends authenticated HTTP
+through the mounted route, verifies filesystem ciphertext contains no
+plaintext, reconstructs the process graph, decrypts the persisted card, and
+checks direct application deletion replay plus the next Sync v2 tombstone.
+The existing Sync v2 integration suite remains the evidence for
+object-before-journal retry, cursor/device/owner isolation, conflicts, quota
+admission, dependency failures, and replay. These tests use only the allowlisted
+disposable PostgreSQL database and private temporary directories.
 
 Filesystem validation is path-based rather than descriptor-relative. This is
 accepted only for an owner-private local/test root on a trusted host; do not

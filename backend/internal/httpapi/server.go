@@ -15,6 +15,7 @@ type ServerOptions struct {
 	ShutdownTimeout            time.Duration
 	Logger                     *slog.Logger
 	PrivateRuntime             *PrivateRuntime
+	SyncV2Runtime              *SyncV2Runtime
 	EnableDisconnectedFixtures bool
 }
 
@@ -24,6 +25,7 @@ func Run(ctx context.Context, options ServerOptions) error {
 		BodyLimit:                  options.BodyLimit,
 		Logger:                     options.Logger,
 		PrivateRuntime:             options.PrivateRuntime,
+		SyncV2Runtime:              options.SyncV2Runtime,
 		EnableDisconnectedFixtures: options.EnableDisconnectedFixtures,
 	})
 	if err != nil {

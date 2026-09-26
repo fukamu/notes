@@ -17,7 +17,10 @@ import (
 	objectstorageadapter "github.com/fukamu/notes/backend/internal/adapters/objectstorage"
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
 	recoverykeyadapter "github.com/fukamu/notes/backend/internal/adapters/recoverykey"
+	"github.com/fukamu/notes/backend/internal/billing"
 	"github.com/fukamu/notes/backend/internal/config"
+	"github.com/fukamu/notes/backend/internal/cryptocontent"
+	"github.com/fukamu/notes/backend/internal/entitlement"
 	"github.com/fukamu/notes/backend/internal/httpapi"
 	"github.com/fukamu/notes/backend/internal/localfixture"
 	"github.com/fukamu/notes/backend/internal/runtimefoundation"
@@ -68,6 +71,7 @@ func run() int {
 		ShutdownTimeout:            configuration.ShutdownTimeout,
 		Logger:                     logger,
 		PrivateRuntime:             runtime.private,
+		SyncV2Runtime:              runtime.syncV2,
 		EnableDisconnectedFixtures: disconnectedFixturesEnabled(configuration.Environment),
 	}); err != nil {
 		logger.Error("server stopped", "error_code", "server_failure")
@@ -78,8 +82,10 @@ func run() int {
 }
 
 type runtimeComposition struct {
-	private      *httpapi.PrivateRuntime
-	localFixture *runtimefoundation.LocalFixture
+	private           *httpapi.PrivateRuntime
+	localFixture      *runtimefoundation.LocalFixture
+	syncV2            *httpapi.SyncV2Runtime
+	syncV2Application *syncv2.Application
 }
 
 func disconnectedFixturesEnabled(environment config.Environment) bool {
@@ -190,6 +196,14 @@ func composeRuntime(
 			closeRuntime()
 			return runtimeComposition{}, func() {}, errors.New("configure local fixture sessions")
 		}
+		scopedSessions, scopedSessionErr := runtimefoundation.NewScopedSessionResolver(
+			seed.Context,
+			sessionResolver,
+		)
+		if scopedSessionErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("scope local fixture sessions")
+		}
 		objects, objectErr := objectstorageadapter.NewDirectory(fixtureLayout.ObjectDirectory)
 		if objectErr != nil {
 			closeRuntime()
@@ -236,7 +250,7 @@ func composeRuntime(
 		}
 		foundation, foundationErr := runtimefoundation.NewLocalFixture(
 			runtimefoundation.LocalFixtureOptions{
-				Context: seed.Context, Sessions: sessionResolver, Objects: objects,
+				Context: seed.Context, Sessions: scopedSessions, Objects: objects,
 				NonceReservations: nonces, Keys: keys, Cursors: cursors,
 				DeletionCredentials: deletionCredentials,
 			},
@@ -246,6 +260,100 @@ func composeRuntime(
 			return runtimeComposition{}, func() {}, errors.New("configure local fixture foundation")
 		}
 		composition.localFixture = foundation
+		billingStore, billingStoreErr := postgresadapter.NewBillingStore(pool)
+		if billingStoreErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture billing")
+		}
+		entitlementStore, entitlementStoreErr := postgresadapter.NewEntitlementStore(pool)
+		if entitlementStoreErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture entitlement")
+		}
+		billingService, billingServiceErr := billing.NewService(entitlementStore, billingStore)
+		if billingServiceErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture billing")
+		}
+		entitlementService, entitlementServiceErr := entitlement.NewService(
+			billingService,
+			entitlementStore,
+			entitlementStore,
+			entitlement.FukamuOfflineLeasePolicy(),
+		)
+		if entitlementServiceErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture entitlement")
+		}
+		scopedEntitlement, scopedEntitlementErr := runtimefoundation.NewScopedEntitlement(
+			seed.Context,
+			localfixture.FixtureTimestamp,
+			entitlementService,
+		)
+		if scopedEntitlementErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("scope local fixture entitlement")
+		}
+		journalDirectory, journalErr := postgresadapter.NewSyncV2JournalDirectory(pool)
+		if journalErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture Sync v2 journal")
+		}
+		metadataDirectory, metadataErr := postgresadapter.NewSyncV2MetadataDirectory(pool)
+		if metadataErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture encrypted metadata")
+		}
+		quotaDirectory, quotaErr := postgresadapter.NewQuotaLedgerDirectory(pool)
+		if quotaErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture quota")
+		}
+		keyrings, keyringErr := postgresadapter.NewVaultDEKStore(pool)
+		if keyringErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture keyring")
+		}
+		encryption, encryptionErr := cryptocontent.NewService(
+			keys,
+			contentcryptoadapter.NewSecureRandomNonceGenerator(),
+			nonces,
+			contentcryptoadapter.AES256GCM{},
+		)
+		if encryptionErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture encryption")
+		}
+		contents, contentsErr := syncv2.NewEncryptedContentDirectory(
+			metadataDirectory,
+			objects,
+			objectstorageadapter.NewRandomObjectKeyGenerator(),
+			encryption,
+			keyrings,
+		)
+		if contentsErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture encrypted content")
+		}
+		application, applicationErr := syncv2.NewApplication(
+			journalDirectory,
+			contents,
+			cursors,
+			quotaDirectory,
+			60_000,
+		)
+		if applicationErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("configure local fixture Sync v2 application")
+		}
+		composition.syncV2 = &httpapi.SyncV2Runtime{
+			ExpectedOrigin: fixtureConfig.PublicOrigin.String(),
+			Clock:          func() int64 { return time.Now().UnixMilli() },
+			Sessions:       scopedSessions,
+			Entitlement:    scopedEntitlement,
+			Application:    application,
+		}
+		composition.syncV2Application = application
 		readiness = aggregate
 	}
 	composition.private = &httpapi.PrivateRuntime{

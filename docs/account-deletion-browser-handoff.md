@@ -64,9 +64,10 @@ idempotency key, while clock and fetch remain injected for deterministic tests.
 
 The browser composition reuses the existing `BrowserLogoutPurgeService`; it
 does not duplicate cache, Service Worker, graph worker, tab-lock, or Vault
-database deletion. `LegacyNotesApp` still does not construct this composition,
-so local development and the current test Sites environment remain free of
-authentication, billing, and deletion requirements unless explicitly composed.
+database deletion. The live local-fixture bootstrap constructs the service for
+runtime-fence entry only, but does not supply this account-deletion runner or
+expose deletion UI. The handoff and every deletion effect therefore remain
+unconnected unless explicitly composed.
 
 ## UI and access behavior
 

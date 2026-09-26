@@ -348,6 +348,7 @@ func createIntegrationSession(
 
 func serveSyncV2(handler http.Handler, token identity.SessionToken, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/sync", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Cookie", identity.SessionCookieName+"="+string(token))
 	request.Header.Set("Origin", "https://notes.example")
 	request.Header.Set("Sec-Fetch-Site", "same-origin")

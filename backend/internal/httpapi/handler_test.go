@@ -501,13 +501,27 @@ func TestDisconnectedAPIsPreserveLocalFixturesAndStayClosedInProduction(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	productionRequest := httptest.NewRequest(http.MethodPost, "/api/billing/checkout", nil)
-	productionRequest.Header.Set(accessadapter.LocalAssertionHeader, assertion)
-	productionResponse := httptest.NewRecorder()
-	production.ServeHTTP(productionResponse, productionRequest)
-	if productionResponse.Code != http.StatusServiceUnavailable ||
-		productionResponse.Body.String() != "{\"error\":\"unavailable\"}\n" {
-		t.Fatalf("production disconnected API = %d %s", productionResponse.Code, productionResponse.Body.String())
+	for _, endpoint := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/api/billing/checkout"},
+		{method: http.MethodPost, path: "/api/v2/sync"},
+		{method: http.MethodGet, path: "/api/session-context"},
+	} {
+		productionRequest := httptest.NewRequest(endpoint.method, endpoint.path, nil)
+		productionRequest.Header.Set(accessadapter.LocalAssertionHeader, assertion)
+		productionResponse := httptest.NewRecorder()
+		production.ServeHTTP(productionResponse, productionRequest)
+		if productionResponse.Code != http.StatusServiceUnavailable ||
+			productionResponse.Body.String() != "{\"error\":\"unavailable\"}\n" {
+			t.Fatalf(
+				"production disconnected %s = %d %s",
+				endpoint.path,
+				productionResponse.Code,
+				productionResponse.Body.String(),
+			)
+		}
 	}
 }
 

@@ -585,9 +585,9 @@ describe('application and presentation architecture', () => {
   });
 
   it('exposes only the documented deep application routes', async () => {
-    await expect(readFile('app/(notes)/layout.tsx', 'utf8')).resolves.toContain(
-      '<LegacyNotesApp />',
-    );
+    const layout = await readFile('app/(notes)/layout.tsx', 'utf8');
+    expect(layout).toContain('<AuthenticatedNotesBootstrap />');
+    expect(layout).not.toContain('LegacyNotesApp');
     for (const route of [
       'app/(notes)/page.tsx',
       'app/(notes)/history/page.tsx',
@@ -600,21 +600,23 @@ describe('application and presentation architecture', () => {
   });
 
   it('gates vault runtime construction on authenticated Go session context', async () => {
-    const [gate, app, boundary, legalHandler] = await Promise.all([
+    const [bootstrap, gate, boundary, sessionHandler] = await Promise.all([
+      readFile('components/authenticated-notes-bootstrap.tsx', 'utf8'),
       readFile('components/session-notes-app.tsx', 'utf8'),
-      readFile('components/notes-app.tsx', 'utf8'),
       readFile('backend/internal/identity/boundary.go', 'utf8'),
-      readFile('backend/internal/httpapi/legal.go', 'utf8'),
+      readFile('backend/internal/httpapi/session_context.go', 'utf8'),
     ]);
 
+    expect(bootstrap).toContain('loadSessionContext');
+    expect(bootstrap).toContain('createVaultNotesRuntimePorts');
+    expect(bootstrap).toContain('createBrowserLogoutPurgeService');
     expect(gate).toContain('planNotesRuntimeLaunch(access)');
     expect(gate).toContain("case 'do-not-start':");
     expect(gate).toContain('createRuntimePorts(context)');
     expect(gate).toContain('scopeMatchesVaultContext');
-    expect(app).toContain('function LegacyNotesApp');
     expect(boundary).toContain('func DeriveVaultContext(');
     expect(boundary).toContain('CookieHeaders');
-    expect(legalHandler).toContain('identity.DeriveVaultContext(');
+    expect(sessionHandler).toContain('identity.DeriveVaultContext(');
   });
 
   it('keeps the default presentation behind model/actions props', async () => {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"strconv"
 
@@ -27,9 +28,8 @@ var (
 	_ SyncV2Application = (*syncv2.Application)(nil)
 )
 
-// SyncV2Runtime is deliberately not part of HandlerOptions. Building this
-// reviewed composition must not publish /api/v2/sync; NewHandler continues to
-// install the closed 404/503 route until a separate public-enablement change.
+// SyncV2Runtime is mounted only by the exact local-fixture composition. A nil
+// runtime preserves the closed default/production route.
 type SyncV2Runtime struct {
 	ExpectedOrigin string
 	Clock          func() int64
@@ -38,9 +38,7 @@ type SyncV2Runtime struct {
 	Application    SyncV2Application
 }
 
-// NewSyncV2ContractHandler returns the disconnected handler used by contract
-// and integration tests. Callers must not mount it in the public mux without a
-// separately reviewed route-enablement change.
+// NewSyncV2ContractHandler exposes the same strict boundary for focused tests.
 func NewSyncV2ContractHandler(runtime *SyncV2Runtime, logger *slog.Logger) (http.Handler, error) {
 	if !syncV2RuntimeComplete(runtime) || logger == nil {
 		return nil, errors.New("complete Sync v2 runtime and logger are required")
@@ -60,6 +58,11 @@ func syncV2ContractHandler(runtime *SyncV2Runtime, logger *slog.Logger) http.Han
 		}
 		vaultContext, handled := authenticateSyncV2Request(response, request, runtime, now)
 		if handled {
+			return
+		}
+		mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+		if err != nil || mediaType != "application/json" {
+			writeSyncV2Error(response, request, http.StatusBadRequest, "invalid-request")
 			return
 		}
 		body, status := readSyncV2Body(response, request)

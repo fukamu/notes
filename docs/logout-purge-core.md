@@ -53,9 +53,10 @@ Issue #147 owns the typed BroadcastChannel/Web Locks protocol, peer
 acknowledgement, single-owner coordination, and authenticated runtime-fencing
 composition. Issue #148 adds the browser progress adapter, IndexedDB, Service
 Worker, graph worker, navigation, and logout E2E described in
-[Browser logout purge](browser-logout-purge.md). The current `LegacyNotesApp`
-remains the explicit local harness and does not require authentication or
-billing.
+[Browser logout purge](browser-logout-purge.md). Issue #511 connects only the
+authenticated fence entry to the local-fixture notes route; it adds no logout
+trigger, server revocation, or deletion effect. `LegacyNotesApp` remains
+compatibility/test code rather than a live route.
 
 ## Verification and rollback
 
