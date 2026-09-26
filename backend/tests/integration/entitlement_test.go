@@ -106,8 +106,9 @@ func TestEntitlementLeaseIssuanceAndLockAreAtomicPostgres(t *testing.T) {
 	}
 
 	type result struct {
-		kind string
-		err  error
+		projection *entitlement.ProjectionCommitKind
+		lease      *entitlement.LeaseCreateKind
+		err        error
 	}
 	results := make(chan result, 2)
 	var start sync.WaitGroup
@@ -115,31 +116,64 @@ func TestEntitlementLeaseIssuanceAndLockAreAtomicPostgres(t *testing.T) {
 	go func() {
 		start.Wait()
 		created, createErr := store.CreateOfflineLease(ctx, current.Version, leasePlan.Lease)
-		results <- result{kind: string(created.Kind), err: createErr}
+		results <- result{lease: &created.Kind, err: createErr}
 	}()
 	go func() {
 		start.Wait()
 		expected := current.Version
 		committed, commitErr := store.CommitProjection(ctx, &expected, lockPlan.Record, pointerForIntegration(5_001))
-		results <- result{kind: string(committed), err: commitErr}
+		results <- result{projection: &committed, err: commitErr}
 	}()
 	start.Done()
+	var projectionResult entitlement.ProjectionCommitKind
+	var leaseResult entitlement.LeaseCreateKind
 	for range 2 {
 		outcome := <-results
 		if outcome.err != nil {
-			t.Fatalf("concurrent outcome %q = %v", outcome.kind, outcome.err)
+			t.Fatalf("concurrent outcome = %#v, %v", outcome, outcome.err)
+		}
+		if outcome.projection != nil {
+			projectionResult = *outcome.projection
+		}
+		if outcome.lease != nil {
+			leaseResult = *outcome.lease
 		}
 	}
+	if projectionResult != entitlement.ProjectionApplied && projectionResult != entitlement.ProjectionConflict {
+		t.Fatalf("projection result = %q", projectionResult)
+	}
+	if leaseResult != entitlement.LeaseCreateIssued && leaseResult != entitlement.LeaseCreateProjectionConflict {
+		t.Fatalf("lease result = %q", leaseResult)
+	}
 	projection, err := store.FindProjection(ctx, vaultContext)
-	if err != nil || projection == nil || projection.State.Kind != entitlement.StateLocked {
+	if err != nil || projection == nil {
 		t.Fatalf("final projection = %#v, %v", projection, err)
 	}
 	lease, err := store.FindOfflineLease(ctx, vaultContext, leaseID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lease != nil && (lease.RevokedAt == nil || *lease.RevokedAt != 5_001) {
-		t.Fatalf("active lease survived locked projection = %#v", lease)
+	switch projectionResult {
+	case entitlement.ProjectionApplied:
+		if projection.State.Kind != entitlement.StateLocked {
+			t.Fatalf("applied lock projection = %#v", projection)
+		}
+		if lease != nil && (lease.RevokedAt == nil || *lease.RevokedAt != 5_001) {
+			t.Fatalf("active lease survived applied lock = %#v", lease)
+		}
+	case entitlement.ProjectionConflict:
+		if projection.State.Kind != entitlement.StateTrialActive {
+			t.Fatalf("conflicted lock changed projection = %#v", projection)
+		}
+		if lease != nil && lease.RevokedAt != nil {
+			t.Fatalf("conflicted lock revoked lease = %#v", lease)
+		}
+	}
+	if leaseResult == entitlement.LeaseCreateIssued && lease == nil {
+		t.Fatal("issued lease was not persisted")
+	}
+	if leaseResult == entitlement.LeaseCreateProjectionConflict && lease != nil {
+		t.Fatalf("conflicted lease was persisted = %#v", lease)
 	}
 }
 
