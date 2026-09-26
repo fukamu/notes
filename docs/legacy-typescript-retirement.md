@@ -9,8 +9,28 @@ artifact, D1 database, key, secret, Stripe object, or contract record.
 
 [`contracts/go-migration-closure.json`](../contracts/go-migration-closure.json)
 is the canonical F01-F28 and V01-V12 status record. The shared
-`npm run verify` gate runs `npm run verify:migration-closure`, which strictly
-decodes that file and confirms that all repository evidence paths exist.
+`npm run verify` gate runs both `npm run verify:migration-closure` and
+`npm run verify:legacy-retirement`. The former strictly decodes the feature
+closure and confirms that all repository evidence paths exist. The latter
+strictly decodes
+[`contracts/legacy-test-retirement.json`](../contracts/legacy-test-retirement.json)
+and accounts for every frozen legacy-dependent test path exactly once.
+
+The retirement ledger is self-contained so a shallow CI checkout does not need
+the historical Git object. Every entry records the frozen path and content
+digest, associated F01-F28 rows, and one of these reviewed outcomes:
+
+- `retained-frontend`: a named TypeScript test in the shared Vitest or
+  Playwright lane continues to protect browser/build behavior;
+- `go-replacement`: named Go `_test.go` files in the shared unit or tagged
+  PostgreSQL integration lane replace the old backend coverage;
+- `historical-only`: only a non-executable support artifact may use this state,
+  with a narrow reason and this recovery record. No executable legacy test may
+  be classified this way.
+
+The checked-in ledger contains 11 retained frontend records, 127 Go
+replacements, and zero historical-only records. Documentation, production
+source, and optional benchmark files are not accepted as executable evidence.
 
 The manifest deliberately distinguishes:
 
@@ -39,7 +59,7 @@ policy while retaining the Go evidence named under F26/V08.
 
 ## Frozen reference
 
-The retirement reference is integration revision
+The legacy source-tree reference is integration revision
 `e8936ab90768774371d84b4808c100d546649943`, derived from main baseline
 `f423da9932163980485ecc5bc2055b7c8c3b3d8b`. Its recorded source identities
 are:
@@ -51,12 +71,26 @@ are:
 | `db`      | `049835774238c8b1726f3e85dc992eb26a6cf144` |
 | `drizzle` | `25f61bc391b0d90c9e3c145f0ebe20caae693632` |
 
-The legacy-dependent test corpus contains 138 tracked files. The SHA-256 of
-the sorted `sha256sum`-shaped file digest list is
+The test corpus has its own later integration snapshot,
+`af743246f14f7e0b96accf1ed7e1a1201fc3aaaf`, because Issue #494 added
+`tests/contracts/migration-fixtures.test.ts` while recording the evidence.
+The earlier source revision and exact main reference each contain 137 selected
+files and must not be used to regenerate the 138-entry ledger.
+
+At the test corpus revision, tracked `tests/**` files are sorted by POSIX path
+and selected when their UTF-8 source contains a legacy server import, a
+Miniflare reference, or the Cloudflare Workers module reference. The resulting
+corpus contains 138 files: one benchmark, one contract test, 16 fixtures, 34
+integration tests, and 86 unit tests. The SHA-256 of the sorted
+`sha256sum`-shaped file digest list is
 `7c28cbe1db282adc1d5349f06ab37964f2b224d4ee3dbc9acad8664e0de50531`.
-The verifier fails if either the source trees or corpus drift without reviewed
-evidence. Retirement groups also require every legacy source file to have
-exactly one feature owner.
+The verifier fails on a missing, duplicate, reordered, changed, untracked, or
+unproved entry. While the reference is present, the working tree must exactly
+match all 138 frozen path/digest pairs. Once the closure phase becomes
+`retired`, replaced paths must be absent, retained paths and evidence must
+remain tracked and free of legacy imports, and the current selected corpus must
+be empty. Retirement groups separately require every legacy source file to
+have exactly one feature owner.
 
 For review or incident analysis, restore a read-only source snapshot without
 changing a branch:
@@ -65,6 +99,13 @@ changing a branch:
 git archive e8936ab90768774371d84b4808c100d546649943 \
   app/api server db drizzle > notes-typescript-reference.tar
 ```
+
+If a shallow checkout does not contain that object, fetch that exact revision
+into a disposable read-only clone before running `git archive`; do not move a
+branch or replace the checked-in ledger. The per-file test inventory and
+digests remain available in `contracts/legacy-test-retirement.json`, while the
+historical test bytes remain in integration revision
+`af743246f14f7e0b96accf1ed7e1a1201fc3aaaf`.
 
 That archive is source evidence only. It is not a deployable rollback unit and
 does not contain the old immutable production artifact, configuration, D1
@@ -139,7 +180,9 @@ Legacy backend removal is permitted only in reviewed T17 Issue/PR slices that:
 1. retain the TypeScript/React frontend, browser runtime, service worker, and
    public page output required by the Go-served artifact;
 2. change the closure manifest and tests in the same PR, with no unrecorded
-   feature, source, or legacy-dependent test silently discarded;
+   feature, source, or legacy-dependent test silently discarded; update a
+   ledger disposition only when its retained or Go evidence is executable in
+   the shared gate;
 3. retain Issue #496's F22 period-end/immediate separation and focused Go
    evidence when deleting the TypeScript reference behavior;
 4. remove request-time and operational TypeScript/JavaScript backend execution,
