@@ -28,7 +28,8 @@ for (const marker of [
   '/api/billing/checkout:',
   '/api/account/deletion:',
   'x-fukamu-state: disconnected',
-  'x-dependency: issue-403-pr-404',
+  'x-handler-contract: billing-cancellation-period-end',
+  'x-go-handler: backend/internal/httpapi/billing_cancellation.go',
 ]) {
   if (!spec.includes(marker))
     throw new Error(`OpenAPI marker missing: ${marker}`);

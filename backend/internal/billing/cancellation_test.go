@@ -8,28 +8,49 @@ import (
 	"github.com/fukamu/notes/backend/internal/identity"
 )
 
-func TestPlanSubscriptionCancellationUsesStoredMappingAndLocalCancellation(t *testing.T) {
+func TestCancellationPlansSeparatePeriodEndAndImmediateEffects(t *testing.T) {
 	record := cancellationRecord(t)
 	command := cancellationCommand(t)
-	plan := PlanSubscriptionCancellation(command, &record)
-	if plan.Kind != CancellationPlanRequestProvider || plan.Command.Provider != "stripe" ||
-		plan.Command.ProviderSubscriptionReference != "sub_notes" ||
-		plan.Command.IdempotencyKey != command.IdempotencyKey || plan.Command.RequestedAt != command.RequestedAt {
-		t.Fatalf("plan = %#v", plan)
+
+	periodEnd := PlanPeriodEndSubscriptionCancellation(command, &record)
+	if periodEnd.Kind != CancellationPlanRequestProvider || periodEnd.Command.Effect != ProviderCancellationPeriodEnd ||
+		periodEnd.Command.Provider != "stripe" || periodEnd.Command.ProviderSubscriptionReference != "sub_notes" ||
+		periodEnd.Command.IdempotencyKey != command.IdempotencyKey || periodEnd.Command.RequestedAt != command.RequestedAt {
+		t.Fatalf("period-end plan = %#v", periodEnd)
+	}
+	immediate := PlanImmediateSubscriptionCancellation(command, &record)
+	if immediate.Kind != CancellationPlanRequestProvider || immediate.Command.Effect != ProviderCancellationImmediate {
+		t.Fatalf("immediate plan = %#v", immediate)
+	}
+
+	scheduled := record
+	scheduled.CancelAt = timestamp(4_000)
+	scheduled.CancellationUpdatedAt = timestamp(1_050)
+	periodEnd = PlanPeriodEndSubscriptionCancellation(command, &scheduled)
+	if periodEnd.Kind != CancellationPlanComplete || periodEnd.Result.Kind != SubscriptionCancellationConfirmed ||
+		periodEnd.Result.Outcome != SubscriptionCancellationScheduled || periodEnd.Result.ConfirmedAt != 1_050 ||
+		periodEnd.Result.AccessEndsAt != 4_000 {
+		t.Fatalf("scheduled plan = %#v", periodEnd)
+	}
+	immediate = PlanImmediateSubscriptionCancellation(command, &scheduled)
+	if immediate.Kind != CancellationPlanRequestProvider || immediate.Command.Effect != ProviderCancellationImmediate {
+		t.Fatalf("scheduled immediate plan = %#v", immediate)
 	}
 
 	cancelled := record
-	cancelled.Lifecycle = Lifecycle{Kind: LifecycleCancelled, CancelledAt: 2_500}
-	plan = PlanSubscriptionCancellation(command, &cancelled)
-	if plan.Kind != CancellationPlanComplete || plan.Result.Kind != SubscriptionCancellationConfirmed ||
-		plan.Result.Outcome != SubscriptionAlreadyCancelled || plan.Result.ConfirmedAt != 2_500 {
-		t.Fatalf("cancelled plan = %#v", plan)
+	cancelled.Lifecycle = Lifecycle{Kind: LifecycleCancelled, CancelledAt: 1_000}
+	cancelled.CancellationUpdatedAt = timestamp(1_050)
+	periodEnd = PlanPeriodEndSubscriptionCancellation(command, &cancelled)
+	if periodEnd.Kind != CancellationPlanComplete || periodEnd.Result.Kind != SubscriptionCancellationConfirmed ||
+		periodEnd.Result.Outcome != SubscriptionAlreadyCancelled || periodEnd.Result.ConfirmedAt != 1_050 ||
+		periodEnd.Result.AccessEndsAt != 1_000 {
+		t.Fatalf("cancelled plan = %#v", periodEnd)
 	}
 }
 
-func TestPlanSubscriptionCancellationFailsClosed(t *testing.T) {
+func TestCancellationPlansFailClosed(t *testing.T) {
 	command := cancellationCommand(t)
-	if plan := PlanSubscriptionCancellation(command, nil); plan.Result.Reason != CancellationSubscriptionNotFound {
+	if plan := PlanPeriodEndSubscriptionCancellation(command, nil); plan.Result.Reason != CancellationSubscriptionNotFound {
 		t.Fatalf("missing = %#v", plan)
 	}
 	record := cancellationRecord(t)
@@ -38,68 +59,134 @@ func TestPlanSubscriptionCancellationFailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	record.AccountID = other
-	if plan := PlanSubscriptionCancellation(command, &record); plan.Result.Reason != CancellationOwnerMismatch {
+	if plan := PlanPeriodEndSubscriptionCancellation(command, &record); plan.Result.Reason != CancellationOwnerMismatch {
 		t.Fatalf("owner mismatch = %#v", plan)
 	}
 	record = checkoutRecord(t)
-	if plan := PlanSubscriptionCancellation(command, &record); plan.Result.Reason != CancellationProviderNotLinked {
+	if plan := PlanPeriodEndSubscriptionCancellation(command, &record); plan.Result.Reason != CancellationProviderNotLinked {
 		t.Fatalf("unlinked = %#v", plan)
 	}
 	command.RequestedAt = -1
-	if plan := PlanSubscriptionCancellation(command, &record); plan.Result.Reason != CancellationInvalidCommand {
+	if plan := PlanPeriodEndSubscriptionCancellation(command, &record); plan.Result.Reason != CancellationInvalidCommand {
 		t.Fatalf("invalid = %#v", plan)
+	}
+	command = cancellationCommand(t)
+	record = cancellationRecord(t)
+	record.Lifecycle = Lifecycle{Kind: LifecycleCancelled, CancelledAt: command.RequestedAt + 1}
+	if plan := PlanImmediateSubscriptionCancellation(command, &record); plan.Result.Reason != CancellationInvalidSubscriptionState {
+		t.Fatalf("future cancellation = %#v", plan)
 	}
 }
 
-func TestEvaluateProviderCancellationRejectsMismatchesAndClassifiesResults(t *testing.T) {
-	command := ProviderCancellationCommand{
-		Provider: "stripe", ProviderSubscriptionReference: "sub_notes",
-		IdempotencyKey: "01991f20-61d2-7000-8000-000000000801", RequestedAt: 1_100,
+func TestPeriodEndCancellationEvaluationAcceptsReplayAndRejectsCrossEffect(t *testing.T) {
+	command := providerCancellationCommand(ProviderCancellationPeriodEnd)
+	observation := providerCancellationObservation(command, ProviderCancellationScheduled, 1_000, 2_000)
+	result := EvaluatePeriodEndProviderCancellation(command, observation)
+	if result.Kind != SubscriptionCancellationConfirmed || result.Outcome != SubscriptionCancellationScheduled ||
+		result.ConfirmedAt != 1_000 || result.AccessEndsAt != 2_000 {
+		t.Fatalf("replayed schedule = %#v", result)
 	}
-	observation := ProviderCancellationObservation{
-		Kind: ProviderCancellationCancelled, Provider: command.Provider,
-		ProviderSubscriptionReference: command.ProviderSubscriptionReference,
-		IdempotencyKey:                command.IdempotencyKey, ObservedAt: 1_200,
+
+	observation.AccessEndsAt = command.RequestedAt - 1
+	if result = EvaluatePeriodEndProviderCancellation(command, observation); result.Reason != CancellationProviderResultMismatch {
+		t.Fatalf("expired schedule = %#v", result)
 	}
-	if result := EvaluateProviderCancellation(command, observation); result.Kind != SubscriptionCancellationConfirmed || result.Outcome != SubscriptionCancelled {
-		t.Fatalf("confirmed = %#v", result)
+	observation = providerCancellationObservation(command, ProviderCancellationCancelled, 1_200, 1_200)
+	if result = EvaluatePeriodEndProviderCancellation(command, observation); result.Reason != CancellationProviderResultMismatch {
+		t.Fatalf("cross effect = %#v", result)
 	}
-	observation.ObservedAt = 1_099
-	if result := EvaluateProviderCancellation(command, observation); result.Reason != CancellationProviderResultMismatch {
-		t.Fatalf("out of order = %#v", result)
+	observation.Kind = ProviderCancellationAlreadyCancelled
+	if result = EvaluatePeriodEndProviderCancellation(command, observation); result.Kind != SubscriptionCancellationConfirmed ||
+		result.Outcome != SubscriptionAlreadyCancelled {
+		t.Fatalf("already cancelled = %#v", result)
 	}
-	observation.ObservedAt = 1_200
-	observation.Kind = ProviderCancellationRetryableFailure
-	if result := EvaluateProviderCancellation(command, observation); result.Reason != CancellationProviderUnavailable {
+}
+
+func TestImmediateCancellationEvaluationAcceptsReplayAndRejectsScheduledResult(t *testing.T) {
+	command := providerCancellationCommand(ProviderCancellationImmediate)
+	observation := providerCancellationObservation(command, ProviderCancellationCancelled, 1_000, 1_000)
+	result := EvaluateImmediateProviderCancellation(command, observation)
+	if result.Kind != SubscriptionCancellationConfirmed || result.Outcome != SubscriptionCancelled ||
+		result.ConfirmedAt != 1_000 || result.AccessEndsAt != 1_000 {
+		t.Fatalf("replayed cancellation = %#v", result)
+	}
+
+	observation.AccessEndsAt = observation.ObservedAt + 1
+	if result = EvaluateImmediateProviderCancellation(command, observation); result.Reason != CancellationProviderResultMismatch {
+		t.Fatalf("future access end = %#v", result)
+	}
+	observation = providerCancellationObservation(command, ProviderCancellationScheduled, 1_200, 2_000)
+	if result = EvaluateImmediateProviderCancellation(command, observation); result.Reason != CancellationProviderResultMismatch {
+		t.Fatalf("cross effect = %#v", result)
+	}
+}
+
+func TestCancellationEvaluationRejectsIdentityMismatchAndClassifiesFailures(t *testing.T) {
+	command := providerCancellationCommand(ProviderCancellationPeriodEnd)
+	observation := providerCancellationObservation(command, ProviderCancellationScheduled, 1_200, 2_000)
+	observation.IdempotencyKey = "different"
+	if result := EvaluatePeriodEndProviderCancellation(command, observation); result.Reason != CancellationProviderResultMismatch {
+		t.Fatalf("identity mismatch = %#v", result)
+	}
+
+	observation = providerCancellationObservation(command, ProviderCancellationRetryableFailure, 1_200, 0)
+	if result := EvaluatePeriodEndProviderCancellation(command, observation); result.Reason != CancellationProviderUnavailable {
 		t.Fatalf("retryable = %#v", result)
 	}
 	observation.Kind = ProviderCancellationTerminalFailure
-	if result := EvaluateProviderCancellation(command, observation); result.Kind != SubscriptionCancellationTerminalFailure || result.Reason != CancellationProviderTerminal {
+	if result := EvaluatePeriodEndProviderCancellation(command, observation); result.Kind != SubscriptionCancellationTerminalFailure ||
+		result.Reason != CancellationProviderTerminal {
 		t.Fatalf("terminal = %#v", result)
+	}
+	observation.AccessEndsAt = 1
+	if ValidProviderCancellationObservation(observation) {
+		t.Fatalf("failure observation accepted access end: %#v", observation)
 	}
 }
 
-func TestCancellationServiceReplaysLostProviderResponseWithStableCommand(t *testing.T) {
-	repository := &cancellationRepository{record: cancellationRecord(t)}
-	provider := &cancellationProvider{loseFirstResponse: true, confirmed: make(map[CancellationIdempotencyKey]ProviderCancellationObservation)}
-	service, err := NewCancellationService(repository, provider)
-	if err != nil {
-		t.Fatal(err)
+func TestCancellationServiceReplaysLostProviderResponsesWithoutDuplicateEffects(t *testing.T) {
+	tests := []struct {
+		name        string
+		effect      ProviderCancellationEffect
+		invoke      func(*CancellationService, context.Context, SubscriptionCancellationCommand) (SubscriptionCancellationResult, error)
+		wantOutcome SubscriptionCancellationOutcome
+	}{
+		{
+			name: "period end", effect: ProviderCancellationPeriodEnd,
+			invoke:      (*CancellationService).ScheduleSubscriptionCancellation,
+			wantOutcome: SubscriptionCancellationScheduled,
+		},
+		{
+			name: "immediate", effect: ProviderCancellationImmediate,
+			invoke:      (*CancellationService).CancelSubscriptionImmediately,
+			wantOutcome: SubscriptionAlreadyCancelled,
+		},
 	}
-	command := cancellationCommand(t)
-	first, err := service.CancelSubscription(context.Background(), command)
-	if err != nil || first.Kind != SubscriptionCancellationRetryableFailure || first.Reason != CancellationProviderUnavailable {
-		t.Fatalf("first = %#v, %v", first, err)
-	}
-	second, err := service.CancelSubscription(context.Background(), command)
-	if err != nil || second.Kind != SubscriptionCancellationConfirmed || second.Outcome != SubscriptionAlreadyCancelled {
-		t.Fatalf("second = %#v, %v", second, err)
-	}
-	if provider.effects != 1 || len(provider.commands) != 2 || provider.commands[0] != provider.commands[1] {
-		t.Fatalf("provider = effects %d commands %#v", provider.effects, provider.commands)
-	}
-	if repository.record.Lifecycle.Kind != LifecycleTrialing {
-		t.Fatalf("billing projection was mutated: %#v", repository.record)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repository := &cancellationRepository{record: cancellationRecord(t)}
+			provider := &cancellationProvider{loseFirstResponse: true, confirmed: make(map[string]ProviderCancellationObservation)}
+			service, err := NewCancellationService(repository, provider)
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := cancellationCommand(t)
+			first, err := test.invoke(service, context.Background(), command)
+			if err != nil || first.Kind != SubscriptionCancellationRetryableFailure || first.Reason != CancellationProviderUnavailable {
+				t.Fatalf("first = %#v, %v", first, err)
+			}
+			second, err := test.invoke(service, context.Background(), command)
+			if err != nil || second.Kind != SubscriptionCancellationConfirmed || second.Outcome != test.wantOutcome {
+				t.Fatalf("second = %#v, %v", second, err)
+			}
+			if provider.effects != 1 || len(provider.commands) != 2 || provider.commands[0] != provider.commands[1] ||
+				provider.commands[0].Effect != test.effect {
+				t.Fatalf("provider = effects %d commands %#v", provider.effects, provider.commands)
+			}
+			if repository.record.Lifecycle.Kind != LifecycleTrialing {
+				t.Fatalf("billing projection was mutated: %#v", repository.record)
+			}
+		})
 	}
 }
 
@@ -109,7 +196,7 @@ func TestCancellationServiceRedactsProviderAndRepositoryFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.CancelSubscription(context.Background(), cancellationCommand(t))
+	result, err := service.ScheduleSubscriptionCancellation(context.Background(), cancellationCommand(t))
 	if err != nil || result.Reason != CancellationProviderUnavailable {
 		t.Fatalf("provider result = %#v, %v", result, err)
 	}
@@ -119,7 +206,7 @@ func TestCancellationServiceRedactsProviderAndRepositoryFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.CancelSubscription(context.Background(), cancellationCommand(t)); !errors.Is(err, repositoryError) {
+	if _, err := service.ScheduleSubscriptionCancellation(context.Background(), cancellationCommand(t)); !errors.Is(err, repositoryError) {
 		t.Fatalf("repository error = %v", err)
 	}
 }
@@ -139,7 +226,7 @@ func (repository *cancellationRepository) FindByOwner(context.Context, OwnerScop
 
 type cancellationProvider struct {
 	commands          []ProviderCancellationCommand
-	confirmed         map[CancellationIdempotencyKey]ProviderCancellationObservation
+	confirmed         map[string]ProviderCancellationObservation
 	loseFirstResponse bool
 	effects           int
 	err               error
@@ -153,22 +240,48 @@ func (provider *cancellationProvider) CancelSubscription(
 	if provider.err != nil {
 		return ProviderCancellationObservation{}, provider.err
 	}
-	if replay, ok := provider.confirmed[command.IdempotencyKey]; ok {
-		replay.Kind = ProviderCancellationAlreadyCancelled
+	key := string(command.Effect) + ":" + string(command.IdempotencyKey)
+	if replay, ok := provider.confirmed[key]; ok {
+		if replay.Kind == ProviderCancellationCancelled {
+			replay.Kind = ProviderCancellationAlreadyCancelled
+		}
 		return replay, nil
 	}
-	observation := ProviderCancellationObservation{
-		Kind: ProviderCancellationCancelled, Provider: command.Provider,
-		ProviderSubscriptionReference: command.ProviderSubscriptionReference,
-		IdempotencyKey:                command.IdempotencyKey, ObservedAt: command.RequestedAt,
+	kind := ProviderCancellationScheduled
+	accessEndsAt := command.RequestedAt + 1_000
+	if command.Effect == ProviderCancellationImmediate {
+		kind = ProviderCancellationCancelled
+		accessEndsAt = command.RequestedAt
 	}
-	provider.confirmed[command.IdempotencyKey] = observation
+	observation := providerCancellationObservation(command, kind, command.RequestedAt, accessEndsAt)
+	provider.confirmed[key] = observation
 	provider.effects++
 	if provider.loseFirstResponse {
 		provider.loseFirstResponse = false
 		return ProviderCancellationObservation{}, errors.New("lost response")
 	}
 	return observation, nil
+}
+
+func providerCancellationCommand(effect ProviderCancellationEffect) ProviderCancellationCommand {
+	return ProviderCancellationCommand{
+		Provider: "stripe", ProviderSubscriptionReference: "sub_notes",
+		IdempotencyKey: "01991f20-61d2-7000-8000-000000000801", RequestedAt: 1_100,
+		Effect: effect,
+	}
+}
+
+func providerCancellationObservation(
+	command ProviderCancellationCommand,
+	kind ProviderCancellationKind,
+	observedAt int64,
+	accessEndsAt int64,
+) ProviderCancellationObservation {
+	return ProviderCancellationObservation{
+		Kind: kind, Provider: command.Provider,
+		ProviderSubscriptionReference: command.ProviderSubscriptionReference,
+		IdempotencyKey:                command.IdempotencyKey, ObservedAt: observedAt, AccessEndsAt: accessEndsAt,
+	}
 }
 
 func cancellationRecord(t *testing.T) SubscriptionRecord {
@@ -183,4 +296,8 @@ func cancellationCommand(t *testing.T) SubscriptionCancellationCommand {
 		t.Fatal(err)
 	}
 	return SubscriptionCancellationCommand{Scope: ownerScope(t), IdempotencyKey: key, RequestedAt: 1_100}
+}
+
+func timestamp(value int64) *int64 {
+	return &value
 }

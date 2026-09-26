@@ -97,7 +97,7 @@ func TestProviderCancelsSubscriptionImmediatelyWithStableIdempotency(t *testing.
 		captured = request.PostForm
 		writeJSON(t, response, map[string]any{
 			"id": "sub_FukamuA", "object": "subscription", "status": "canceled",
-			"canceled_at": int64(2),
+			"canceled_at": int64(2), "ended_at": int64(2),
 		})
 	}))
 	defer server.Close()
@@ -106,13 +106,65 @@ func TestProviderCancelsSubscriptionImmediatelyWithStableIdempotency(t *testing.
 	observation, err := provider.CancelSubscription(context.Background(), command)
 	if err != nil || observation.Kind != billing.ProviderCancellationCancelled ||
 		observation.ProviderSubscriptionReference != command.ProviderSubscriptionReference ||
-		observation.IdempotencyKey != command.IdempotencyKey || observation.ObservedAt != 2_000 {
+		observation.IdempotencyKey != command.IdempotencyKey || observation.ObservedAt != 2_000 ||
+		observation.AccessEndsAt != 2_000 {
 		t.Fatalf("observation = %#v, err = %v", observation, err)
 	}
 	for _, field := range []string{"invoice_now", "prorate"} {
 		if value := captured.Get(field); value != "" && value != "false" {
 			t.Fatalf("cancellation form %s = %q", field, value)
 		}
+	}
+}
+
+func TestProviderSchedulesPeriodEndCancellationWithStableIdempotency(t *testing.T) {
+	var captured url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/v1/subscriptions/sub_FukamuA" {
+			http.NotFound(response, request)
+			return
+		}
+		assertStripeHeaders(t, request, "01991f20-61d2-7000-8000-000000009099")
+		if err := request.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		captured = request.PostForm
+		writeJSON(t, response, map[string]any{
+			"id": "sub_FukamuA", "object": "subscription", "status": "active",
+			"cancel_at_period_end": true, "canceled_at": int64(2), "cancel_at": int64(30),
+		})
+	}))
+	defer server.Close()
+	provider := testProvider(t, server)
+	command := testCancellationCommand()
+	command.Effect = billing.ProviderCancellationPeriodEnd
+	observation, err := provider.CancelSubscription(context.Background(), command)
+	if err != nil || observation.Kind != billing.ProviderCancellationScheduled ||
+		observation.ObservedAt != 2_000 || observation.AccessEndsAt != 30_000 {
+		t.Fatalf("observation = %#v, err = %v", observation, err)
+	}
+	assertForm(t, captured, "cancel_at_period_end", "true")
+}
+
+func TestProviderConfirmsAlreadyEndedPeriodEndSubscription(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/v1/subscriptions/sub_FukamuA" {
+			http.NotFound(response, request)
+			return
+		}
+		writeJSON(t, response, map[string]any{
+			"id": "sub_FukamuA", "object": "subscription", "status": "canceled",
+			"canceled_at": int64(2), "ended_at": int64(30),
+		})
+	}))
+	defer server.Close()
+	provider := testProvider(t, server)
+	command := testCancellationCommand()
+	command.Effect = billing.ProviderCancellationPeriodEnd
+	observation, err := provider.CancelSubscription(context.Background(), command)
+	if err != nil || observation.Kind != billing.ProviderCancellationAlreadyCancelled ||
+		observation.ObservedAt != 30_000 || observation.AccessEndsAt != 30_000 {
+		t.Fatalf("observation = %#v, err = %v", observation, err)
 	}
 }
 
@@ -279,6 +331,7 @@ func testCancellationCommand() billing.ProviderCancellationCommand {
 	return billing.ProviderCancellationCommand{
 		Provider: stripebilling.Provider, ProviderSubscriptionReference: "sub_FukamuA",
 		IdempotencyKey: "01991f20-61d2-7000-8000-000000009099", RequestedAt: 1_100,
+		Effect: billing.ProviderCancellationImmediate,
 	}
 }
 

@@ -213,11 +213,14 @@
     {
       "id": "F22",
       "state": "B",
-      "migration": "blocked-existing-work",
-      "verification": ["V07"],
-      "goEvidence": ["backend/internal/billing/cancellation.go"],
-      "dependencies": ["#403", "#404"],
-      "note": "Ordinary period-end cancellation remains owned by the existing Draft PR; current Go cancellation is only the immediate account-deletion effect."
+      "migration": "migrated",
+      "verification": ["V01", "V07"],
+      "goEvidence": [
+        "backend/internal/billing/cancellation.go",
+        "backend/internal/adapters/stripe/provider.go",
+        "backend/internal/httpapi/billing_cancellation.go"
+      ],
+      "note": "Issue #496 ports the exact Draft PR #404 period-end contract without modifying or publishing that draft; the Go handler and Stripe adapter remain disconnected from the public route."
     },
     {
       "id": "F23",
@@ -335,6 +338,9 @@
       "id": "V07",
       "status": "complete",
       "evidence": [
+        "backend/internal/billing/cancellation_test.go",
+        "backend/internal/adapters/stripe/provider_test.go",
+        "backend/internal/httpapi/billing_cancellation_test.go",
         "backend/tests/integration/billing_projection_test.go",
         "backend/tests/integration/contract_evidence_test.go"
       ]

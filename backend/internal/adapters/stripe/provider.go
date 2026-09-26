@@ -159,38 +159,77 @@ func (provider *Provider) CancelSubscription(
 		return billing.ProviderCancellationObservation{}, ErrInvalidProviderCommand
 	}
 	if _, err := billing.ParseCancellationIdempotencyKey(string(command.IdempotencyKey)); err != nil ||
-		command.RequestedAt < 0 || command.RequestedAt > 9_007_199_254_740_991 {
+		command.RequestedAt < 0 || command.RequestedAt > 9_007_199_254_740_991 ||
+		(command.Effect != billing.ProviderCancellationPeriodEnd && command.Effect != billing.ProviderCancellationImmediate) {
 		return billing.ProviderCancellationObservation{}, ErrInvalidProviderCommand
 	}
-	params := &stripe.SubscriptionCancelParams{
-		Params:     stripe.Params{IdempotencyKey: stripe.String(string(command.IdempotencyKey))},
-		InvoiceNow: stripe.Bool(false),
-		Prorate:    stripe.Bool(false),
+	var subscription *stripe.Subscription
+	var err error
+	switch command.Effect {
+	case billing.ProviderCancellationPeriodEnd:
+		subscription, err = provider.client.V1Subscriptions.Update(
+			ctx,
+			string(command.ProviderSubscriptionReference),
+			&stripe.SubscriptionUpdateParams{
+				Params:            stripe.Params{IdempotencyKey: stripe.String(string(command.IdempotencyKey))},
+				CancelAtPeriodEnd: stripe.Bool(true),
+			},
+		)
+	case billing.ProviderCancellationImmediate:
+		subscription, err = provider.client.V1Subscriptions.Cancel(
+			ctx,
+			string(command.ProviderSubscriptionReference),
+			&stripe.SubscriptionCancelParams{
+				Params:     stripe.Params{IdempotencyKey: stripe.String(string(command.IdempotencyKey))},
+				InvoiceNow: stripe.Bool(false),
+				Prorate:    stripe.Bool(false),
+			},
+		)
 	}
-	subscription, err := provider.client.V1Subscriptions.Cancel(
-		ctx,
-		string(command.ProviderSubscriptionReference),
-		params,
-	)
 	if err != nil {
 		if terminalStripeCancellationError(err) {
 			return providerCancellationObservation(
 				command,
 				billing.ProviderCancellationTerminalFailure,
 				command.RequestedAt,
+				0,
 			), nil
 		}
 		return billing.ProviderCancellationObservation{}, err
 	}
-	if subscription == nil || subscription.ID != string(command.ProviderSubscriptionReference) ||
-		subscription.Status != stripe.SubscriptionStatusCanceled || subscription.CanceledAt < 0 ||
-		subscription.CanceledAt > 9_007_199_254_740 {
+	if subscription == nil || subscription.ID != string(command.ProviderSubscriptionReference) {
+		return billing.ProviderCancellationObservation{}, nil
+	}
+	observedAt, observedOK := stripeSecondsToMilliseconds(subscription.CanceledAt)
+	if !observedOK || subscription.CanceledAt == 0 {
+		return billing.ProviderCancellationObservation{}, nil
+	}
+	if subscription.Status == stripe.SubscriptionStatusCanceled {
+		accessEndsAt, accessOK := stripeSecondsToMilliseconds(subscription.EndedAt)
+		if !accessOK || subscription.EndedAt == 0 {
+			return billing.ProviderCancellationObservation{}, nil
+		}
+		if accessEndsAt > observedAt {
+			observedAt = accessEndsAt
+		}
+		kind := billing.ProviderCancellationCancelled
+		if command.Effect == billing.ProviderCancellationPeriodEnd {
+			kind = billing.ProviderCancellationAlreadyCancelled
+		}
+		return providerCancellationObservation(command, kind, observedAt, accessEndsAt), nil
+	}
+	if command.Effect != billing.ProviderCancellationPeriodEnd || !subscription.CancelAtPeriodEnd || subscription.CancelAt == 0 {
+		return billing.ProviderCancellationObservation{}, nil
+	}
+	accessEndsAt, accessOK := stripeSecondsToMilliseconds(subscription.CancelAt)
+	if !accessOK {
 		return billing.ProviderCancellationObservation{}, nil
 	}
 	return providerCancellationObservation(
 		command,
-		billing.ProviderCancellationCancelled,
-		subscription.CanceledAt*1_000,
+		billing.ProviderCancellationScheduled,
+		observedAt,
+		accessEndsAt,
 	), nil
 }
 
@@ -198,12 +237,20 @@ func providerCancellationObservation(
 	command billing.ProviderCancellationCommand,
 	kind billing.ProviderCancellationKind,
 	observedAt int64,
+	accessEndsAt int64,
 ) billing.ProviderCancellationObservation {
 	return billing.ProviderCancellationObservation{
 		Kind: kind, Provider: command.Provider,
 		ProviderSubscriptionReference: command.ProviderSubscriptionReference,
-		IdempotencyKey:                command.IdempotencyKey, ObservedAt: observedAt,
+		IdempotencyKey:                command.IdempotencyKey, ObservedAt: observedAt, AccessEndsAt: accessEndsAt,
 	}
+}
+
+func stripeSecondsToMilliseconds(value int64) (int64, bool) {
+	if value < 0 || value > 9_007_199_254_740 {
+		return 0, false
+	}
+	return value * 1_000, true
 }
 
 func terminalStripeCancellationError(err error) bool {

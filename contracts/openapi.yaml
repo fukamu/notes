@@ -92,8 +92,14 @@ paths:
     post:
       operationId: billingCancellationRoute
       x-fukamu-state: disconnected
-      x-handler-contract: billing-cancellation-current-main
-      x-dependency: issue-403-pr-404
+      x-handler-contract: billing-cancellation-period-end
+      x-go-handler: backend/internal/httpapi/billing_cancellation.go
+      description: >-
+        The production route remains closed. The authenticated Go contract
+        schedules provider-confirmed period-end cancellation; account deletion
+        continues to use its distinct immediate-only port. The Draft PR #404
+        contract is implemented for migration compatibility but is not
+        published or treated as product approval by this route record.
       responses:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }

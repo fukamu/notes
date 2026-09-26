@@ -112,7 +112,7 @@ type billingCancellationStub struct {
 	err      error
 }
 
-func (stub *billingCancellationStub) CancelSubscription(
+func (stub *billingCancellationStub) CancelSubscriptionImmediately(
 	_ context.Context,
 	command billing.SubscriptionCancellationCommand,
 ) (billing.SubscriptionCancellationResult, error) {

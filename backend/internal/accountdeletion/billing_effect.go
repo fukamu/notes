@@ -7,13 +7,13 @@ import (
 )
 
 type BillingCancellationEffect struct {
-	cancellation billing.SubscriptionCancellationPort
+	cancellation billing.ImmediateSubscriptionCancellationPort
 }
 
 var _ ImmediateCancellationPort = (*BillingCancellationEffect)(nil)
 
 func NewBillingCancellationEffect(
-	cancellation billing.SubscriptionCancellationPort,
+	cancellation billing.ImmediateSubscriptionCancellationPort,
 ) (*BillingCancellationEffect, error) {
 	if cancellation == nil {
 		return nil, ErrInvalidServiceConfiguration
@@ -32,7 +32,7 @@ func (effect *BillingCancellationEffect) CancelSubscriptionImmediately(
 	if err != nil {
 		return terminalEffect("subscription-cancellation-terminal"), nil
 	}
-	result, err := effect.cancellation.CancelSubscription(ctx, billing.SubscriptionCancellationCommand{
+	result, err := effect.cancellation.CancelSubscriptionImmediately(ctx, billing.SubscriptionCancellationCommand{
 		Scope: billing.OwnerScope{
 			AccountID: input.Scope.AccountID,
 			VaultID:   input.Scope.VaultID,

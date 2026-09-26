@@ -53,10 +53,10 @@ describe('Go migration closure evidence', () => {
     expect(closure.verifications).toHaveLength(12);
     expect(
       closure.features.filter(({ migration }) => migration === 'migrated'),
-    ).toHaveLength(26);
+    ).toHaveLength(27);
     expect(closure.features.find(({ id }) => id === 'F22')).toMatchObject({
-      migration: 'blocked-existing-work',
-      dependencies: ['#403', '#404'],
+      migration: 'migrated',
+      dependencies: [],
     });
     expect(closure.features.find(({ id }) => id === 'F28')).toMatchObject({
       migration: 'intentionally-absent',
@@ -96,8 +96,9 @@ describe('Go migration closure evidence', () => {
     const missingDependency = clone(await manifestCandidate());
     const blocked = identified(
       list(Reflect.get(object(missingDependency), 'features')),
-      'F22',
+      'F01',
     );
+    Reflect.set(blocked, 'migration', 'blocked-existing-work');
     Reflect.set(blocked, 'dependencies', []);
     expect(() => decodeMigrationClosure(missingDependency)).toThrow(
       'blocked feature requires a dependency',

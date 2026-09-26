@@ -193,6 +193,11 @@ events, and webhook endpoint API version. Production use requires a separate
 review of credentials, cost, merchant/PCI evidence, replay/recovery steps, and
 the exact resource changes.
 
+Issue #496 later adds separate period-end and immediate cancellation methods to
+the same disconnected SDK adapter. Its local HTTP stubs and closed handler are
+documented in [`billing-cancellation.md`](billing-cancellation.md). No server
+composition, key configuration, provider request, or route enablement is added.
+
 Primary references rechecked for #438 on 2026-09-25 were the official
 [stripe-go v84.4.1 release](https://github.com/stripe/stripe-go/releases/tag/v84.4.1)
 and the current [Invoice object](https://docs.stripe.com/api/invoices/object)
