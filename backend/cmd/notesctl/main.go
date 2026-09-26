@@ -19,6 +19,8 @@ import (
 	kmsadapter "github.com/fukamu/notes/backend/internal/adapters/kms"
 	objectstorageadapter "github.com/fukamu/notes/backend/internal/adapters/objectstorage"
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
+	recoverybackupadapter "github.com/fukamu/notes/backend/internal/adapters/recoverybackup"
+	recoverykeyadapter "github.com/fukamu/notes/backend/internal/adapters/recoverykey"
 	stripeadapter "github.com/fukamu/notes/backend/internal/adapters/stripe"
 	"github.com/fukamu/notes/backend/internal/billing"
 	"github.com/fukamu/notes/backend/internal/config"
@@ -109,6 +111,12 @@ type drainDeleteOutboxFunction func(
 	string,
 	operations.DeleteOutboxCommand,
 ) (operations.DeleteOutboxResult, error)
+type runRecoveryDrillFunction func(
+	context.Context,
+	string,
+	string,
+	operations.RecoveryDrillCommand,
+) (operations.RecoveryDrillResult, error)
 
 func runWithDependencies(
 	parent context.Context,
@@ -127,9 +135,34 @@ func runWithDependencies(
 	scanOrphans scanOrphansFunction,
 	drainDeleteOutbox drainDeleteOutboxFunction,
 ) int {
+	return runWithRecoveryDependency(
+		parent, arguments, stdout, stderr, lookup, migrate, prepareE2E,
+		listQuotaCandidates, finalizeQuotaCommit, inspectDeletion, reconcileBilling,
+		rotateDEK, reencryptDEK, scanOrphans, drainDeleteOutbox, runVaultRecoveryDrill,
+	)
+}
+
+func runWithRecoveryDependency(
+	parent context.Context,
+	arguments []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	lookup func(string) (string, bool),
+	migrate migrateFunction,
+	prepareE2E prepareE2EFunction,
+	listQuotaCandidates listQuotaCandidatesFunction,
+	finalizeQuotaCommit finalizeQuotaCommitFunction,
+	inspectDeletion inspectAccountDeletionFunction,
+	reconcileBilling reconcileBillingFunction,
+	rotateDEK rotateDEKFunction,
+	reencryptDEK reencryptDEKFunction,
+	scanOrphans scanOrphansFunction,
+	drainDeleteOutbox drainDeleteOutboxFunction,
+	recoveryDrill runRecoveryDrillFunction,
+) int {
 	if parent == nil || listQuotaCandidates == nil || finalizeQuotaCommit == nil || inspectDeletion == nil ||
 		reconcileBilling == nil || rotateDEK == nil || reencryptDEK == nil || scanOrphans == nil ||
-		drainDeleteOutbox == nil {
+		drainDeleteOutbox == nil || recoveryDrill == nil {
 		_, _ = fmt.Fprintln(stderr, "operation dependencies invalid")
 		return 1
 	}
@@ -213,6 +246,14 @@ func runWithDependencies(
 			return 2
 		}
 		return runDeleteOutbox(parent, deleteOutbox, stdout, stderr, lookup, drainDeleteOutbox)
+	}
+	recovery, recoveryRequested, recoveryErr := parseRecoveryDrillArguments(arguments)
+	if recoveryRequested {
+		if recoveryErr != nil {
+			printUsage(stderr)
+			return 2
+		}
+		return runRecoveryDrill(parent, recovery, stdout, stderr, lookup, recoveryDrill)
 	}
 	prepareE2ERequested := len(arguments) == 3 && arguments[0] == "prepare-e2e" &&
 		arguments[1] == "--environment=test" && strings.HasPrefix(arguments[2], "--allowed-subject=")
@@ -1408,8 +1449,139 @@ func runDeleteOutbox(
 	return 0
 }
 
+type recoveryDrillArguments struct {
+	environment config.Environment
+	backupRoot  string
+	keyRoot     string
+	command     operations.RecoveryDrillCommand
+}
+
+func parseRecoveryDrillArguments(arguments []string) (recoveryDrillArguments, bool, error) {
+	if len(arguments) < 2 || arguments[0] != "recovery" || arguments[1] != "drill" {
+		return recoveryDrillArguments{}, false, nil
+	}
+	values := make(map[string]string, 6)
+	confirmedBackup := false
+	confirmedKeys := false
+	for _, argument := range arguments[2:] {
+		switch argument {
+		case "--confirm-local-backup-read":
+			if confirmedBackup {
+				return recoveryDrillArguments{}, true, operations.ErrRecoveryDrill
+			}
+			confirmedBackup = true
+			continue
+		case "--confirm-local-fixture-key-read":
+			if confirmedKeys {
+				return recoveryDrillArguments{}, true, operations.ErrRecoveryDrill
+			}
+			confirmedKeys = true
+			continue
+		}
+		name, value, found := strings.Cut(argument, "=")
+		if !found || value == "" || strings.ContainsAny(value, "\r\n\x00") ||
+			(name != "--environment" && name != "--account-id" && name != "--vault-id" &&
+				name != "--drilled-at-millis" && name != "--backup-root" && name != "--key-root") {
+			return recoveryDrillArguments{}, true, operations.ErrRecoveryDrill
+		}
+		if _, duplicate := values[name]; duplicate {
+			return recoveryDrillArguments{}, true, operations.ErrRecoveryDrill
+		}
+		values[name] = value
+	}
+	if len(values) != 6 || !confirmedBackup || !confirmedKeys {
+		return recoveryDrillArguments{}, true, operations.ErrRecoveryDrill
+	}
+	environment := config.Environment(values["--environment"])
+	if environment != config.EnvironmentLocal && environment != config.EnvironmentTest {
+		return recoveryDrillArguments{}, true, operations.ErrRecoveryDrill
+	}
+	backupRoot := values["--backup-root"]
+	keyRoot := values["--key-root"]
+	if len(backupRoot) > 4_096 || len(keyRoot) > 4_096 || !filepath.IsAbs(backupRoot) ||
+		!filepath.IsAbs(keyRoot) || filepath.Clean(backupRoot) == filepath.Clean(keyRoot) {
+		return recoveryDrillArguments{}, true, operations.ErrRecoveryDrill
+	}
+	accountID, err := identity.ParseAccountID(values["--account-id"])
+	if err != nil {
+		return recoveryDrillArguments{}, true, operations.ErrRecoveryDrill
+	}
+	vaultID, err := identity.ParseVaultID(values["--vault-id"])
+	if err != nil {
+		return recoveryDrillArguments{}, true, operations.ErrRecoveryDrill
+	}
+	drilledAt, err := strconv.ParseInt(values["--drilled-at-millis"], 10, 64)
+	if err != nil {
+		return recoveryDrillArguments{}, true, operations.ErrRecoveryDrill
+	}
+	command := operations.RecoveryDrillCommand{
+		AccountID: accountID, VaultID: vaultID, DrilledAt: drilledAt,
+	}
+	if operations.ValidateRecoveryDrillCommand(command) != nil {
+		return recoveryDrillArguments{}, true, operations.ErrRecoveryDrill
+	}
+	return recoveryDrillArguments{
+		environment: environment, backupRoot: backupRoot, keyRoot: keyRoot, command: command,
+	}, true, nil
+}
+
+func runRecoveryDrill(
+	parent context.Context,
+	arguments recoveryDrillArguments,
+	stdout io.Writer,
+	stderr io.Writer,
+	lookup func(string) (string, bool),
+	runDrill runRecoveryDrillFunction,
+) int {
+	configuredEnvironment, found := lookup("NOTES_ENVIRONMENT")
+	if !found || config.Environment(configuredEnvironment) != arguments.environment {
+		_, _ = fmt.Fprintln(stderr, "recovery drill environment refused")
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	defer cancel()
+	result, err := runDrill(ctx, arguments.backupRoot, arguments.keyRoot, arguments.command)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "recovery drill failed")
+		return 1
+	}
+	if !operations.ValidRecoveryDrillResult(result) {
+		_, _ = fmt.Fprintln(stderr, "recovery drill failed")
+		return 1
+	}
+	if result.Kind == operations.RecoveryDrillBlocked {
+		output := struct {
+			Command string `json:"command"`
+			Outcome string `json:"outcome"`
+			Reason  string `json:"reason"`
+		}{Command: "recovery-drill", Outcome: string(result.Kind), Reason: string(result.Reason)}
+		if err := json.NewEncoder(stdout).Encode(output); err != nil {
+			_, _ = fmt.Fprintln(stderr, "recovery drill output failed")
+			return 1
+		}
+		return 1
+	}
+	output := struct {
+		Command          string `json:"command"`
+		Outcome          string `json:"outcome"`
+		SourceVersion    int64  `json:"sourceVersion"`
+		TargetVersion    int64  `json:"targetVersion"`
+		ObjectCount      int64  `json:"objectCount"`
+		VerifiedVersions int    `json:"verifiedVersions"`
+	}{
+		Command: "recovery-drill", Outcome: string(result.Kind),
+		SourceVersion: int64(result.SourceVersion), TargetVersion: int64(result.TargetVersion),
+		ObjectCount: result.ObjectCount, VerifiedVersions: result.VerifiedVersions,
+	}
+	if err := json.NewEncoder(stdout).Encode(output); err != nil {
+		_, _ = fmt.Fprintln(stderr, "recovery drill output failed")
+		return 1
+	}
+	return 0
+}
+
 func printUsage(output io.Writer) {
-	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read] | notesctl dek rotate --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --operation-id=<uuidv7> --requested-at-millis=<unix-ms> --generated-at-millis=<unix-ms> --completed-at-millis=<unix-ms> --confirm-kms-key-generation [--confirm-production-kms-mutation] | notesctl dek reencrypt --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --target-version=<version> --limit=1..100 --performed-at-millis=<unix-ms> --object-root=<absolute-secure-directory> --nonce-root=<absolute-secure-directory> --confirm-local-object-writes --confirm-kms-unwrapping | notesctl objects orphan-scan --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --scan-started-at-millis=<unix-ms> --grace-period-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-scan --confirm-delete-enqueue | notesctl objects delete-outbox --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --attempted-at-millis=<unix-ms> --retry-delay-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-deletes --confirm-delete-outbox-mutation")
+	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read] | notesctl dek rotate --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --operation-id=<uuidv7> --requested-at-millis=<unix-ms> --generated-at-millis=<unix-ms> --completed-at-millis=<unix-ms> --confirm-kms-key-generation [--confirm-production-kms-mutation] | notesctl dek reencrypt --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --target-version=<version> --limit=1..100 --performed-at-millis=<unix-ms> --object-root=<absolute-secure-directory> --nonce-root=<absolute-secure-directory> --confirm-local-object-writes --confirm-kms-unwrapping | notesctl objects orphan-scan --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --scan-started-at-millis=<unix-ms> --grace-period-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-scan --confirm-delete-enqueue | notesctl objects delete-outbox --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --attempted-at-millis=<unix-ms> --retry-delay-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-deletes --confirm-delete-outbox-mutation | notesctl recovery drill --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --drilled-at-millis=<unix-ms> --backup-root=<absolute-private-directory> --key-root=<absolute-private-directory> --confirm-local-backup-read --confirm-local-fixture-key-read")
 }
 
 func prepareE2EDatabase(ctx context.Context, databaseURL string, allowedSubject string) error {
@@ -1744,6 +1916,51 @@ func drainVaultDeleteOutbox(
 	service, err := operations.NewDeleteOutboxService(command.Scope, loader, drainer)
 	if err != nil {
 		return operations.DeleteOutboxResult{}, err
+	}
+	return service.Run(ctx, command)
+}
+
+type disabledRecoveryNonceReservations struct{}
+
+func (disabledRecoveryNonceReservations) ReserveNonce(
+	context.Context,
+	identity.VaultID,
+	cryptocontent.DEKVersion,
+	string,
+) (bool, error) {
+	return false, operations.ErrRecoveryDrill
+}
+
+func runVaultRecoveryDrill(
+	ctx context.Context,
+	backupRoot string,
+	keyRoot string,
+	command operations.RecoveryDrillCommand,
+) (operations.RecoveryDrillResult, error) {
+	backup, err := recoverybackupadapter.NewDirectory(backupRoot)
+	if err != nil {
+		return operations.RecoveryDrillResult{}, err
+	}
+	keys, err := recoverykeyadapter.NewDirectory(keyRoot, command.VaultID)
+	if err != nil {
+		return operations.RecoveryDrillResult{}, err
+	}
+	encryption, err := cryptocontent.NewService(
+		keys,
+		contentcryptoadapter.NewSecureRandomNonceGenerator(),
+		disabledRecoveryNonceReservations{},
+		contentcryptoadapter.AES256GCM{},
+	)
+	if err != nil {
+		return operations.RecoveryDrillResult{}, err
+	}
+	drill, err := encryptedobject.NewRecoveryDrillService(backup, encryption)
+	if err != nil {
+		return operations.RecoveryDrillResult{}, err
+	}
+	service, err := operations.NewRecoveryDrillService(drill)
+	if err != nil {
+		return operations.RecoveryDrillResult{}, err
 	}
 	return service.Run(ctx, command)
 }

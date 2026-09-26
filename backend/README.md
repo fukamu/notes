@@ -65,9 +65,10 @@ strictly decodes the versioned backup manifest, authenticates every declared
 mixed-version object with exact Vault/object/revision AAD, clears recovered
 plaintext, and emits only a content-free receipt. The retirement evidence gate
 never returns a delete action: even complete evidence stops at a separately
-approved production-key-destruction requirement. Its only backup adapter is an
-isolated in-memory fake. No production backup provider, credential, route,
-scheduler, KMS disable/delete call, or recovery claim is configured.
+approved production-key-destruction requirement. T08c initially supplies an
+isolated in-memory fake; T13i later adds a local read-only fixture adapter. No
+production backup provider, credential, route, scheduler, KMS disable/delete
+call, or production recovery claim is configured.
 
 T09a Issue #436 adds the disconnected provider-neutral billing aggregate and
 PostgreSQL projection. T09b Issue #438 adds the pure Stripe Checkout/webhook/
@@ -106,6 +107,16 @@ investigation. The command accepts only a loopback disposable database and an
 existing private local directory and emits redacted counts. It adds no
 production object provider, credential, route, scheduler, deployment, or
 external resource operation.
+
+T13i Issue #490 composes only explicit `notesctl recovery drill` over two
+separate, existing private fixture directories. The read-only backup adapter
+loads one strict manifest plus its declared ciphertext files; the fixture-key
+adapter binds each local 32-byte DEK to the exact Vault, version, KEK reference,
+and wrapped value before the existing recovery core authenticates every object.
+The command is local/test-only and emits only versions and counts. It performs
+no write, restore, provider request, database operation, backup mutation, or
+key retirement/destruction. Local raw fixture keys remain sensitive test data
+and are not a production KMS design.
 
 T09c Issue #440 adds the disconnected Go Entitlement core, service, and
 PostgreSQL repository. Migration 00008 stores Account/Vault-scoped projections
