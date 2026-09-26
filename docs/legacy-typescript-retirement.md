@@ -29,6 +29,14 @@ distinct immediate account-deletion effect, so its legacy reference behavior
 may be retired in a reviewed T17 slice while the public route remains closed.
 See [`billing-cancellation.md`](billing-cancellation.md).
 
+Issue #502 ports the frozen `server/operations/core.ts` environment/action
+matrix and launch evidence decisions into an import-free typed Go policy. Its
+tests preserve the complete matrix, ordered blockers, canary and isolated
+restore requirements, production explicit-approval boundary, and fail-closed
+invalid states. No operation executor or production approval is added. Once
+#502 is merged and its checks pass, T17 may retire this TypeScript operations
+policy while retaining the Go evidence named under F26/V08.
+
 ## Frozen reference
 
 The retirement reference is integration revision
