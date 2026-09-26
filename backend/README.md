@@ -307,10 +307,11 @@ The command never pushes or deploys the disposable image.
 
 `npm run verify:migration-closure` strictly checks the complete F01-F28 and
 V01-V12 evidence inventory and the completed T17 retirement state.
-`npm run verify:legacy-retirement` checks all 138 frozen test paths, per-file
+`npm run verify:legacy-retirement` checks all 142 frozen test paths, per-file
 digests and dispositions, requires the 127 Go-replaced paths to be absent and
-the 11 frontend paths to remain legacy-free, validates executable replacement
-evidence, and rejects retired source/config/script/package reintroduction.
+the 11 frontend plus four tooling paths to remain legacy-free, validates
+executable replacement evidence, and rejects retired
+source/config/script/package reintroduction.
 See
 [`docs/legacy-typescript-retirement.md`](../docs/legacy-typescript-retirement.md).
 F22 has separate Go evidence for ordinary period-end cancellation and the

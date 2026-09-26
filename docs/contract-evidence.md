@@ -1,5 +1,10 @@
 # Contract offer snapshot and consent evidence
 
+The TypeScript/D1 and Sites sections below are historical compatibility
+evidence. T17 removed that server source and tooling. The executable contract
+service, closed Go HTTP boundary, PostgreSQL adapter, and schema now live under
+`backend/internal/legal`, `backend/internal/httpapi`, and `backend/migrations`.
+
 Issue #223 introduces the provider-neutral record used to prove which approved
 commercial terms a customer affirmatively accepted. It does not add a checkout
 route, Stripe call, dialog, or Notes-screen element. The dedicated checkout and
@@ -35,32 +40,28 @@ application service receives `VaultContext`, evidence identifier, and clock
 value from trusted outer adapters. It rejects missing consent, a stale hash,
 malformed values, owner mismatch, and identifier conflicts.
 
-The TypeScript D1 repository keys every lookup and write by Account and Vault. Repeating
-the same scoped submission with identical terms is a replay; reusing an
-identifier for different terms is a conflict. The repository exposes only
-append and scoped reads. Explicit production migrations reject UPDATE with an
-immutable trigger and are never run as request-time DDL. Stored JSON and
-metadata are decoded and cross-checked before entering the domain.
+The current Go PostgreSQL repository keys every lookup and write by Account and
+Vault. Repeating the same scoped submission with identical terms is a replay;
+reusing an identifier for different terms is a conflict. It exposes only
+append and scoped reads, and the embedded PostgreSQL migration rejects UPDATE
+with an immutable trigger. Stored JSON and metadata are decoded and
+cross-checked before entering the domain; request handlers never run DDL.
 
-ChatGPT Sites applies the checked-in `drizzle` migration set with a runner that
-cannot preserve multi-statement trigger bodies. Its contract-evidence migration
-therefore creates only the table and scoped index. Architecture tests reject
-direct UPDATE or DELETE statements against the evidence table anywhere in the
-application, while the repository remains INSERT/SELECT-only. This keeps normal
-Sites application paths append-only, but it does not prevent a D1 administrator
-from issuing a direct mutation in that test environment. Production retains the
-database trigger as defense in depth.
+Historically, ChatGPT Sites applied a Drizzle/D1 migration that could not
+preserve the multi-statement trigger body. That behavior is compatibility
+evidence only: T17 removed its runner, schema, and repository, and no current
+Sites application path exists in this source tree.
 
-The in-memory repository and Web Crypto hasher are explicit adapters for tests
-and local composition. They do not enable billing or grant access, and no
-production provider fallback is introduced.
+The Go in-memory repository and hash adapter are explicit local/test adapters.
+They do not enable billing or grant access, and no production provider fallback
+is introduced.
 
 ## Deletion, retention, and rollback
 
-Contract evidence is live Account/Vault data. The TypeScript D1 foreign key uses
-`ON DELETE CASCADE`, so its existing account-deletion saga removes it with the
-Personal Vault as required by that runtime's product deletion contract. The Go
-PostgreSQL migration intentionally does not copy that implicit cascade: its
+Contract evidence is live Account/Vault data. The historical TypeScript/D1
+foreign key used `ON DELETE CASCADE`, so its account-deletion saga removed it
+with the Personal Vault. The Go PostgreSQL migration intentionally does not copy
+that implicit cascade: its
 foreign key blocks owner deletion until T12 executes a reviewed explicit
 deletion/retention workflow. This is a safety hold, not a decision to retain the
 evidence indefinitely. While the account is live, both application repositories
@@ -81,13 +82,12 @@ separate explicit approval.
 
 ## Verification boundary
 
-Focused unit and Miniflare tests cover authoritative derivation, stable hashing,
-consent and stale-offer rejection, replay and race behavior, cross-Vault
-isolation, immutable rows, malformed-row fail-closed behavior, migration order,
-and the TypeScript account-deletion cascade. Go Issue #444 adds the shared
-canonical fixture, pure/application checkout tests, and disposable-PostgreSQL
-coverage for exact ownership, immutable rows, malformed data, concurrent replay,
-and the explicit deletion hold. The repository-wide required gates remain:
+The retired Miniflare tests are preserved only in the frozen ledger/revision.
+Current Go unit and disposable-PostgreSQL tests cover authoritative derivation,
+stable hashing, consent and stale-offer rejection, exact ownership, replay and
+race behavior, cross-Vault isolation, immutable rows, malformed-row fail-closed
+behavior, migration order, and the explicit deletion hold. The repository-wide
+required gates remain:
 
 ```bash
 git diff --check

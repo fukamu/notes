@@ -104,7 +104,7 @@ in-progress deletion can be resumed by the later implementation or runbook.
 
 ## Local development
 
-Nothing invokes either repository from the current local/Sites runtime. Existing
+Nothing invoked either repository from the historical local/Sites runtime. Existing
 local-first notes, offline sync, logout purge, and v1/v2 compatibility remain
 unchanged. Tests use Miniflare D1 and pure fixtures only; they perform no real
 deletion, billing, email, Cloudflare, or KMS operation.

@@ -115,7 +115,7 @@ const requirements = [
   },
   {
     id: 'SEC-DATA-08',
-    evidence: ['backend/internal/syncv2/core_test.go'],
+    evidence: ['backend/tests/integration/sync_v2_application_test.go'],
   },
   {
     id: 'SEC-DATA-09',

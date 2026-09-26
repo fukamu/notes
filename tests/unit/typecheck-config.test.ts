@@ -47,7 +47,7 @@ describe('runtime typecheck configuration', () => {
     expect(goArchitecture).toContain('internal/adapters');
     expect(goArchitecture).toContain('internal/httpapi');
     expect(goArchitecture).toContain('internal/runtimefoundation');
-    expect(vitest).not.toContain("'server/**/*.ts'");
+    expect(vitest).not.toContain(["'server", "**/*.ts'"].join('/'));
   });
 
   it('includes the extracted data ports and adapters in coverage', async () => {

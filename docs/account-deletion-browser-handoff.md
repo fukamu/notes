@@ -1,5 +1,10 @@
 # Account deletion browser handoff core
 
+The browser handoff remains TypeScript. References below to the former
+TypeScript server, Sites environment, or D1 persistence are historical
+compatibility context; the server saga and HTTP contracts are now Go with
+PostgreSQL persistence and remain fail closed until explicitly composed.
+
 Issue #175 defines the pure browser handoff state machine and runner between the
 server boundary from #174 and the existing crash-resumable logout purge from
 #148. Issue #183 supplies browser persistence, HTTP, entropy, and clock adapters.

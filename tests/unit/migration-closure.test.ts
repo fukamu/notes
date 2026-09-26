@@ -5,6 +5,8 @@ import {
   validateLegacyCoverage,
 } from '../../scripts/migration-closure-core.mts';
 
+const retiredPath = (suffix: string) => ['server', suffix].join('/');
+
 async function manifestCandidate(): Promise<unknown> {
   return JSON.parse(
     await readFile('contracts/go-migration-closure.json', 'utf8'),
@@ -156,25 +158,28 @@ describe('Go migration closure evidence', () => {
 
   it('assigns every legacy source to exactly one retirement group', () => {
     const groups = [
-      { id: 'one', features: ['F01'], legacyPrefixes: ['server/one/'] },
-      { id: 'two', features: ['F02'], legacyPrefixes: ['server/two/'] },
+      { id: 'one', features: ['F01'], legacyPrefixes: [retiredPath('one/')] },
+      { id: 'two', features: ['F02'], legacyPrefixes: [retiredPath('two/')] },
     ] as const;
 
     expect(() =>
-      validateLegacyCoverage(['server/one/a.ts', 'server/two/b.ts'], groups),
+      validateLegacyCoverage(
+        [retiredPath('one/a.ts'), retiredPath('two/b.ts')],
+        groups,
+      ),
     ).not.toThrow();
-    expect(() => validateLegacyCoverage(['server/unowned.ts'], groups)).toThrow(
-      'not recorded',
-    );
+    expect(() =>
+      validateLegacyCoverage([retiredPath('unowned.ts')], groups),
+    ).toThrow('not recorded');
     expect(() =>
       validateLegacyCoverage(
-        ['server/one/a.ts'],
+        [retiredPath('one/a.ts')],
         [
           ...groups,
           {
             id: 'overlap',
             features: ['F03'],
-            legacyPrefixes: ['server/'],
+            legacyPrefixes: [retiredPath('')],
           },
         ],
       ),

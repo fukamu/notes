@@ -1,5 +1,10 @@
 # Vault-scoped server repository and tenant routing
 
+> Historical migration-source note: `D1VaultContentDirectory` and the D1
+> routing details below no longer form an executable repository path. The Go
+> Sync v2 content/journal boundaries and PostgreSQL adapters are current; T17
+> removed the TypeScript/D1 source and Sites tooling.
+
 Issue #115 adds the provider-neutral tenant-routing boundary for the future
 authenticated sync service. It is not connected to the legacy `/api/sync`
 route and does not store card plaintext or ciphertext.

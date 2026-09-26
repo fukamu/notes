@@ -1,5 +1,10 @@
 # Vault DEK rotation lifecycle
 
+The D1 lifecycle details below are the frozen TypeScript compatibility oracle.
+The executable lifecycle and operations runner are now Go, with state in the
+PostgreSQL migrations/adapters under `backend`; T17 removed the old
+TypeScript/D1 implementation.
+
 Issue #188 adds the first, independently reversible stage of parent #124: a
 provider-neutral lifecycle for generating the next Vault DEK and promoting it
 as the logical write version. Existing ciphertext re-encryption is owned by

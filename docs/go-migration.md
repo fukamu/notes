@@ -106,36 +106,36 @@ State `A` means connected now, `B` means implemented/tested but disconnected,
 and `C` means absent or only a fake/provider gap. A disconnected handler is not
 the same contract as its closed route.
 
-| ID  | State | Capability                                  | Go evidence                     | Verification    | Status                                                                             |
-| --- | ----- | ------------------------------------------- | ------------------------------- | --------------- | ---------------------------------------------------------------------------------- |
-| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10         | integrated by #420 / PR #421                                                       |
-| F02 | B     | launch gate / private owner                 | T04                             | V02,V03         | signed gate #416; owner/origin enforced #418                                       |
-| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10     | Go/Postgres #418; Go-served UI #420                                                |
-| F04 | B     | session / CSRF                              | T06                             | V02,V03,V04     | Go core/Postgres integrated by #422                                                |
-| F05 | B     | Google OIDC                                 | T06                             | V03             | Go core/provider adapter #424; disconnected                                        |
-| F06 | B     | email OTP                                   | T06                             | V03             | Go core/HMAC/CAS #426; disconnected                                                |
-| F07 | B     | identity / vault context                    | T06                             | V03,V04         | session #422; persistent directories #426                                          |
-| F08 | B     | signup admission                            | T06,T10                         | V03,V07         | provisioning #426; Go terms adapter #442                                           |
-| F09 | B     | vault content                               | T11                             | V04,V05         | encrypted hydration composed by #454                                               |
-| F10 | B     | sync v2                                     | T11                             | V01,V04,V05     | Go application/closed HTTP #454                                                    |
-| F11 | B     | envelope encryption                         | T07                             | V06             | Go AES-GCM/fixture implemented by #428                                             |
-| F12 | B     | KMS / DEK                                   | T07                             | V06,V09         | Go local boundary #428; external proof open                                        |
-| F13 | B     | key rotation                                | T08,T13                         | V04,V06,V08     | state machine/Postgres #432; explicit runner #480                                  |
-| F14 | B     | immutable encrypted object                  | T08,T13                         | V04,V06,V08     | core/Postgres #430; orphan/delete runners #486/#488                                |
-| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08         | reencryption #432/#482; fixture recovery #434/#490                                 |
-| F16 | B     | quota                                       | T11                             | V04,V05         | Go ledger #450; sync composition #454                                              |
-| F17 | B     | billing projection                          | T09                             | V04,V07         | Go core/Postgres #436; deletion cancellation effect #460                           |
-| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09         | Go core/SDK #438; provider evidence time #476; remains closed                      |
-| F19 | B     | entitlement / offline lease                 | T09                             | V05,V07         | Go core/Postgres #440; disconnected                                                |
-| F20 | B     | legal checkout evidence                     | T10                             | V01,V07         | core/store #444; closed Go HTTP #446                                               |
-| F21 | B     | terms consent                               | T10                             | V01,V07         | core/store #442; closed Go HTTP #446                                               |
-| F22 | B     | normal cancellation                         | T09                             | V01,V07         | period-end/immediate split, Stripe stub, closed HTTP #496                          |
-| F23 | B     | account deletion                            | T12                             | V03,V04,V07,V08 | saga #458; effects #460/#462/#464; finalizer #466; handoff #468                    |
-| F24 | B     | privacy request journal                     | T12                             | V01,V03,V08     | Go journal/closed HTTP #456; deletion handoff #468                                 |
-| F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11         | core #414; legacy singleton seed #418                                              |
-| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | quota #470/#472; deletion #474; billing #478; DEK #480/#482; recovery #490         |
-| F27 | A/B   | frontend wire contracts                     | T01,T05,T14,T17                 | V01,V10,V11     | static runtime #420; artifact #492; server retired #498; 11 browser tests retained |
-| F28 | C     | scheduler / realtime services               | none unless separately approved | V08             | intentionally not added                                                            |
+| ID  | State | Capability                                  | Go evidence                     | Verification    | Status                                                                                           |
+| --- | ----- | ------------------------------------------- | ------------------------------- | --------------- | ------------------------------------------------------------------------------------------------ |
+| F01 | A     | page delivery / SSR-RSC removal             | T05                             | V01,V10         | integrated by #420 / PR #421                                                                     |
+| F02 | B     | launch gate / private owner                 | T04                             | V02,V03         | signed gate #416; owner/origin enforced #418                                                     |
+| F03 | A     | legacy sync                                 | T04                             | V01,V04,V10     | Go/Postgres #418; Go-served UI #420                                                              |
+| F04 | B     | session / CSRF                              | T06                             | V02,V03,V04     | Go core/Postgres integrated by #422                                                              |
+| F05 | B     | Google OIDC                                 | T06                             | V03             | Go core/provider adapter #424; disconnected                                                      |
+| F06 | B     | email OTP                                   | T06                             | V03             | Go core/HMAC/CAS #426; disconnected                                                              |
+| F07 | B     | identity / vault context                    | T06                             | V03,V04         | session #422; persistent directories #426                                                        |
+| F08 | B     | signup admission                            | T06,T10                         | V03,V07         | provisioning #426; Go terms adapter #442                                                         |
+| F09 | B     | vault content                               | T11                             | V04,V05         | encrypted hydration composed by #454                                                             |
+| F10 | B     | sync v2                                     | T11                             | V01,V04,V05     | Go application/closed HTTP #454                                                                  |
+| F11 | B     | envelope encryption                         | T07                             | V06             | Go AES-GCM/fixture implemented by #428                                                           |
+| F12 | B     | KMS / DEK                                   | T07                             | V06,V09         | Go local boundary #428; external proof open                                                      |
+| F13 | B     | key rotation                                | T08,T13                         | V04,V06,V08     | state machine/Postgres #432; explicit runner #480                                                |
+| F14 | B     | immutable encrypted object                  | T08,T13                         | V04,V06,V08     | core/Postgres #430; orphan/delete runners #486/#488                                              |
+| F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08         | reencryption #432/#482; fixture recovery #434/#490                                               |
+| F16 | B     | quota                                       | T11                             | V04,V05         | Go ledger #450; sync composition #454                                                            |
+| F17 | B     | billing projection                          | T09                             | V04,V07         | Go core/Postgres #436; deletion cancellation effect #460                                         |
+| F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09         | Go core/SDK #438; provider evidence time #476; remains closed                                    |
+| F19 | B     | entitlement / offline lease                 | T09                             | V05,V07         | Go core/Postgres #440; disconnected                                                              |
+| F20 | B     | legal checkout evidence                     | T10                             | V01,V07         | core/store #444; closed Go HTTP #446                                                             |
+| F21 | B     | terms consent                               | T10                             | V01,V07         | core/store #442; closed Go HTTP #446                                                             |
+| F22 | B     | normal cancellation                         | T09                             | V01,V07         | period-end/immediate split, Stripe stub, closed HTTP #496                                        |
+| F23 | B     | account deletion                            | T12                             | V03,V04,V07,V08 | saga #458; effects #460/#462/#464; finalizer #466; handoff #468                                  |
+| F24 | B     | privacy request journal                     | T12                             | V01,V03,V08     | Go journal/closed HTTP #456; deletion handoff #468                                               |
+| F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11         | core #414; legacy singleton seed #418                                                            |
+| F26 | B/C   | operations / telemetry; vendor absent       | T13                             | V08,V09         | quota #470/#472; deletion #474; billing #478; DEK #480/#482; recovery #490                       |
+| F27 | A/B   | frontend wire contracts                     | T01,T05,T14,T17                 | V01,V10,V11     | static runtime #420; artifact #492; server retired #498; 11 browser and 4 tooling tests retained |
+| F28 | C     | scheduler / realtime services               | none unless separately approved | V08             | intentionally not added                                                                          |
 
 ## Verification matrix
 
@@ -1830,11 +1830,11 @@ absent rather than silently becoming a scheduler or realtime service.
 `npm run verify:migration-closure` and
 `npm run verify:legacy-retirement` are part of the shared gate. The frozen
 manifest binds the historical `app/api`, `server`, `db`, and `drizzle` trees
-to exact revisions and binds each of the 138 legacy-dependent test files to its
+to exact revisions and binds each of the 142 legacy-dependent test files to its
 path, digest, feature rows, disposition, and executable evidence. T17 changed
 the phase to `retired`: 127 Go-replaced paths must be absent, 11 retained
-frontend paths must be free of legacy imports, and all named Go evidence must
-remain executable. A residual guard rejects retired roots, config files,
+frontend and four retained tooling paths must be free of legacy references,
+and all named Go evidence must remain executable. A residual guard rejects retired roots, config files,
 scripts, package dependencies, and lockfile entries.
 
 The T14b typed migration benchmark accepted only a root loopback HTTP URL,
@@ -1849,13 +1849,15 @@ identities, T17 preconditions, and recovery limits are in
 ## T17 legacy TypeScript backend retirement
 
 Issue #498 removes the checked-in request-time TypeScript/JavaScript backend
-after the frozen F01-F28 and 138-test ledger established replacement evidence.
+after the frozen F01-F28 and 142-test ledger established replacement evidence.
 The removed surface is `app/api`, `server`, `db`, `drizzle`, the Sites
 repository hosting descriptor, API/Drizzle/Vitest server-load configs, and the
 associated lint/typecheck/schema-generation scripts and dependencies. Exactly
 127 ledger entries classified as `go-replacement` are removed. Exactly 11
 `retained-frontend` paths remain and test browser wire decoding or disclosure
-behavior; mixed tests point to executable Go parity evidence.
+behavior; four `retained-tooling` paths continue to enforce architecture,
+typecheck, closure, and release contracts. Mixed tests point to executable Go
+parity evidence.
 
 The React frontend, Service Worker, SSR/prerender build tooling, and their
 TypeScript tests remain. SSR here is build-time static generation only. The

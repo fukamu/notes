@@ -1,9 +1,30 @@
 import { createHash } from 'node:crypto';
+import path from 'node:path';
 
-export const legacyRetirementSchemaVersion = 1;
-export const legacyTestSelectionVersion = 1;
-export const legacyTestMatcher =
-  /@\/(?:server|db|app\/api)|Miniflare|cloudflare:workers/u;
+export const legacyRetirementSchemaVersion = 2;
+export const legacyTestSelectionVersion = 2;
+
+const retiredSourceRoots = ['app/api', 'db', 'drizzle', 'server'] as const;
+const retiredConfigPaths = new Set([
+  '.openai/hosting.json',
+  'drizzle.config.ts',
+  'tsconfig.api.json',
+  'vitest.server-load.config.ts',
+]);
+const retiredPackageNames = new Set([
+  '@cloudflare/workers-types',
+  'drizzle-kit',
+  'drizzle-orm',
+  'miniflare',
+]);
+const quotedLiteralPattern = /(['"`])([^'"`\r\n]+)\1/gu;
+const moduleSpecifierPattern =
+  /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)['"]([^'"]+)['"]/gu;
+const legacyHostReferencePattern = /\bMiniflare\b|cloudflare:workers/u;
+const legacyRootInventoryPattern =
+  /\bconst\s+[A-Za-z0-9_$]*(?:roots|directories)[A-Za-z0-9_$]*\s*=\s*\[[\s\S]{0,800}?['"](?:db|drizzle|server)['"]/iu;
+const serverOnlyTypeScriptContractPattern =
+  /\bexport\s+(?:declare\s+)?(?:const|function|interface|type|class)\s+[A-Za-z0-9_$]*(?:Oidc|Pkce|EmailOtp)[A-Za-z0-9_$]*\b/u;
 
 const digestPattern = /^[a-f0-9]{64}$/u;
 const revisionPattern = /^[a-f0-9]{40}$/u;
@@ -36,6 +57,12 @@ type RetainedFrontendDisposition = Readonly<{
   evidence: readonly string[];
 }>;
 
+type RetainedToolingDisposition = Readonly<{
+  kind: 'retained-tooling';
+  currentPath: string;
+  evidence: readonly string[];
+}>;
+
 type GoReplacementDisposition = Readonly<{
   kind: 'go-replacement';
   evidence: readonly string[];
@@ -50,6 +77,7 @@ type HistoricalOnlyDisposition = Readonly<{
 
 export type LegacyTestDisposition =
   | RetainedFrontendDisposition
+  | RetainedToolingDisposition
   | GoReplacementDisposition
   | HistoricalOnlyDisposition;
 
@@ -144,8 +172,31 @@ export function selectLegacyTestCorpus(
     ordered.map(({ path }) => repositoryPath(path, 'tracked test path')),
     'tracked test path',
   );
+  const selectedPaths = new Set(
+    ordered
+      .filter(({ path: filePath, content }) =>
+        hasDirectLegacyTestReference(filePath, content),
+      )
+      .map(({ path: filePath }) => filePath),
+  );
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const file of ordered) {
+      if (selectedPaths.has(file.path)) continue;
+      if (
+        moduleSpecifiers(file.content).some((specifier) =>
+          resolvesToSelectedTest(file.path, specifier, selectedPaths),
+        )
+      ) {
+        selectedPaths.add(file.path);
+        changed = true;
+      }
+    }
+  }
+
   return ordered
-    .filter(({ content }) => legacyTestMatcher.test(content))
+    .filter(({ path: filePath }) => selectedPaths.has(filePath))
     .map(({ path, content }) => ({
       path,
       sha256: createHash('sha256').update(content).digest('hex'),
@@ -241,21 +292,24 @@ export function validateRetiredTree(
   }
   for (const entry of ledger.entries) {
     switch (entry.disposition.kind) {
-      case 'retained-frontend': {
+      case 'retained-frontend':
+      case 'retained-tooling': {
         if (!trackedPaths.has(entry.disposition.currentPath)) {
           throw new TypeError(
-            `retained frontend path is missing: ${entry.disposition.currentPath}`,
+            `retained test path is missing: ${entry.disposition.currentPath}`,
           );
         }
         const source = currentSources.get(entry.disposition.currentPath);
         if (source === undefined) {
           throw new TypeError(
-            `retained frontend source is unreadable: ${entry.disposition.currentPath}`,
+            `retained test source is unreadable: ${entry.disposition.currentPath}`,
           );
         }
-        if (legacyTestMatcher.test(source)) {
+        if (
+          hasDirectLegacyTestReference(entry.disposition.currentPath, source)
+        ) {
           throw new TypeError(
-            `retained frontend path still depends on legacy server code: ${entry.disposition.currentPath}`,
+            `retained test path still depends on legacy server code: ${entry.disposition.currentPath}`,
           );
         }
         for (const evidencePath of entry.disposition.evidence) {
@@ -264,10 +318,10 @@ export function validateRetiredTree(
             evidenceSource !== undefined &&
             (vitestEvidencePattern.test(evidencePath) ||
               playwrightEvidencePattern.test(evidencePath)) &&
-            legacyTestMatcher.test(evidenceSource)
+            hasDirectLegacyTestReference(evidencePath, evidenceSource)
           ) {
             throw new TypeError(
-              `retained frontend evidence still depends on legacy server code: ${evidencePath}`,
+              `retained test evidence still depends on legacy server code: ${evidencePath}`,
             );
           }
         }
@@ -290,22 +344,35 @@ export function validateRetiredTree(
 export function validateRetiredRepository(
   trackedPaths: ReadonlySet<string>,
   packageCandidate: unknown,
+  trackedTypeScriptSources: readonly TrackedTextFile[] = [],
 ): void {
-  const forbiddenRoots = ['app/api', 'db', 'drizzle', 'server'] as const;
-  const forbiddenFiles = new Set([
-    '.openai/hosting.json',
-    'drizzle.config.ts',
-    'tsconfig.api.json',
-    'vitest.server-load.config.ts',
-  ]);
   for (const path of trackedPaths) {
     if (
-      forbiddenFiles.has(path) ||
-      forbiddenRoots.some(
+      retiredConfigPaths.has(path) ||
+      retiredSourceRoots.some(
         (root) => path === root || path.startsWith(`${root}/`),
       )
     ) {
       throw new TypeError(`retired server artifact is tracked: ${path}`);
+    }
+  }
+
+  for (const { path: sourcePath, content } of trackedTypeScriptSources) {
+    if (!trackedPaths.has(sourcePath)) {
+      throw new TypeError(
+        `retired contract source is not tracked: ${sourcePath}`,
+      );
+    }
+    if (
+      /^lib\/domain\/[^/]*(?:email[-_]?otp|oidc|pkce)[^/]*\.[cm]?[jt]sx?$/iu.test(
+        sourcePath,
+      ) ||
+      (sourcePath.startsWith('lib/domain/') &&
+        serverOnlyTypeScriptContractPattern.test(content))
+    ) {
+      throw new TypeError(
+        `server-only TypeScript contract is tracked: ${sourcePath}`,
+      );
     }
   }
 
@@ -340,12 +407,6 @@ export function validateRetiredRepository(
     }
   }
 
-  const forbiddenPackages = new Set([
-    '@cloudflare/workers-types',
-    'drizzle-kit',
-    'drizzle-orm',
-    'miniflare',
-  ]);
   for (const field of [
     'dependencies',
     'devDependencies',
@@ -356,13 +417,7 @@ export function validateRetiredRepository(
     const candidate = packageJson[field];
     if (candidate === undefined) continue;
     const dependencies = record(candidate, `package ${field}`);
-    for (const name of forbiddenPackages) {
-      if (Object.hasOwn(dependencies, name)) {
-        throw new TypeError(
-          `retired server dependency is configured in ${field}: ${name}`,
-        );
-      }
-    }
+    validateRetiredDependencyDeclarations(dependencies, `package ${field}`);
   }
 }
 
@@ -372,26 +427,181 @@ export function validateRetiredPackageLock(lockCandidate: unknown): void {
   const forbiddenPackagePath =
     /(?:^|\/)node_modules\/(?:@cloudflare\/workers-types|drizzle-kit|drizzle-orm|miniflare)$/u;
   for (const path of Object.keys(packages)) {
-    if (forbiddenPackagePath.test(path)) {
+    const packageEntry = record(packages[path], `package lock entry ${path}`);
+    const realName = packageEntry.name;
+    const resolved = packageEntry.resolved;
+    if (
+      forbiddenPackagePath.test(path) ||
+      (typeof realName === 'string' && retiredPackageNames.has(realName)) ||
+      (typeof resolved === 'string' && retiredResolvedPackage(resolved))
+    ) {
       throw new TypeError(`retired server dependency is locked: ${path}`);
     }
   }
   const root = record(packages[''], 'package lock root');
-  for (const field of ['dependencies', 'devDependencies']) {
+  for (const field of [
+    'dependencies',
+    'devDependencies',
+    'optionalDependencies',
+    'peerDependencies',
+  ]) {
     const candidate = root[field];
     if (candidate === undefined) continue;
     const dependencies = record(candidate, `package lock root ${field}`);
-    for (const name of [
-      '@cloudflare/workers-types',
-      'drizzle-kit',
-      'drizzle-orm',
-      'miniflare',
-    ]) {
-      if (Object.hasOwn(dependencies, name)) {
+    for (const [name, specification] of Object.entries(dependencies)) {
+      if (
+        retiredPackageNames.has(name) ||
+        (typeof specification === 'string' &&
+          retiredNpmAliasTarget(specification) !== undefined)
+      ) {
         throw new TypeError(`retired server dependency is locked: ${name}`);
       }
     }
   }
+}
+
+function hasDirectLegacyTestReference(
+  filePath: string,
+  content: string,
+): boolean {
+  if (
+    legacyHostReferencePattern.test(content) ||
+    legacyRootInventoryPattern.test(content)
+  ) {
+    return true;
+  }
+  for (const specifier of moduleSpecifiers(content)) {
+    if (isRetiredModuleSpecifier(filePath, specifier)) return true;
+  }
+  for (const literal of quotedLiterals(content)) {
+    if (isRetiredLiteral(filePath, literal)) return true;
+  }
+  return false;
+}
+
+function quotedLiterals(content: string): readonly string[] {
+  return [...content.matchAll(quotedLiteralPattern)].flatMap((match) =>
+    match[2] === undefined ? [] : [match[2]],
+  );
+}
+
+function moduleSpecifiers(content: string): readonly string[] {
+  return [...content.matchAll(moduleSpecifierPattern)].flatMap((match) =>
+    match[1] === undefined ? [] : [match[1]],
+  );
+}
+
+function isRetiredLiteral(filePath: string, literal: string): boolean {
+  if (retiredConfigPaths.has(literal)) return true;
+  const aliasTarget = literal.startsWith('@/') ? literal.slice(2) : undefined;
+  if (aliasTarget !== undefined && isRetiredRepositoryTarget(aliasTarget)) {
+    return true;
+  }
+  if (literal.startsWith('.')) {
+    const resolved = path.posix.normalize(
+      path.posix.join(path.posix.dirname(filePath), literal),
+    );
+    if (isRetiredRepositoryTarget(resolved)) return true;
+  }
+  return isRetiredRepositoryTarget(literal);
+}
+
+function isRetiredModuleSpecifier(
+  filePath: string,
+  specifier: string,
+): boolean {
+  const aliasTarget = specifier.startsWith('@/')
+    ? specifier.slice(2)
+    : undefined;
+  if (
+    aliasTarget !== undefined &&
+    isRetiredRepositoryTarget(aliasTarget, true)
+  ) {
+    return true;
+  }
+  if (!specifier.startsWith('.')) return false;
+  return isRetiredRepositoryTarget(
+    path.posix.normalize(
+      path.posix.join(path.posix.dirname(filePath), specifier),
+    ),
+    true,
+  );
+}
+
+function isRetiredRepositoryTarget(
+  candidate: string,
+  includeRoot = false,
+): boolean {
+  const normalized = candidate.replace(/^\.\//u, '').replace(/\\/gu, '/');
+  return (
+    retiredConfigPaths.has(normalized) ||
+    retiredSourceRoots.some(
+      (root) =>
+        ((includeRoot || root === 'app/api') && normalized === root) ||
+        normalized.startsWith(`${root}/`),
+    )
+  );
+}
+
+function resolvesToSelectedTest(
+  importer: string,
+  specifier: string,
+  selectedPaths: ReadonlySet<string>,
+): boolean {
+  if (!specifier.startsWith('.')) return false;
+  const base = path.posix.normalize(
+    path.posix.join(path.posix.dirname(importer), specifier),
+  );
+  const extensionless = base.replace(/\.[cm]?js$/u, '');
+  return [
+    base,
+    extensionless,
+    `${extensionless}.ts`,
+    `${extensionless}.tsx`,
+    `${extensionless}.mts`,
+    `${extensionless}.cts`,
+    `${extensionless}/index.ts`,
+    `${extensionless}/index.tsx`,
+  ].some((candidate) => selectedPaths.has(candidate));
+}
+
+function retiredNpmAliasTarget(specification: string): string | undefined {
+  const match = /^npm:(@[^/@]+\/[^@]+|[^@/]+)(?:@|$)/u.exec(specification);
+  const target = match?.[1];
+  return target !== undefined && retiredPackageNames.has(target)
+    ? target
+    : undefined;
+}
+
+function validateRetiredDependencyDeclarations(
+  declarations: Record<string, unknown>,
+  label: string,
+): void {
+  for (const [name, specification] of Object.entries(declarations)) {
+    if (
+      retiredPackageNames.has(name) ||
+      (typeof specification === 'string' &&
+        retiredNpmAliasTarget(specification) !== undefined)
+    ) {
+      throw new TypeError(
+        `retired server dependency is configured in ${label}: ${name}`,
+      );
+    }
+    if (isRecord(specification)) {
+      validateRetiredDependencyDeclarations(specification, `${label}.${name}`);
+    }
+  }
+}
+
+function retiredResolvedPackage(resolved: string): boolean {
+  const normalized = resolved.toLowerCase();
+  return [...retiredPackageNames].some((name) => {
+    const encoded = encodeURIComponent(name).toLowerCase();
+    return (
+      normalized.includes(`/${name}/-/`) ||
+      normalized.includes(`/${encoded}/-/`)
+    );
+  });
 }
 
 export function validateExecutableEvidence(
@@ -441,7 +651,10 @@ export function evidencePaths(
     if (entry.disposition.kind !== 'historical-only') {
       for (const path of entry.disposition.evidence) result.add(path);
     }
-    if (entry.disposition.kind === 'retained-frontend') {
+    if (
+      entry.disposition.kind === 'retained-frontend' ||
+      entry.disposition.kind === 'retained-tooling'
+    ) {
       result.add(entry.disposition.currentPath);
     }
   }
@@ -486,16 +699,14 @@ function decodeDisposition(
     32,
   );
   switch (kind) {
-    case 'retained-frontend': {
-      const value = exactRecord(candidate, 'retained frontend disposition', [
+    case 'retained-frontend':
+    case 'retained-tooling': {
+      const value = exactRecord(candidate, 'retained test disposition', [
         'kind',
         'currentPath',
         'evidence',
       ]);
-      const evidence = evidenceList(
-        value.evidence,
-        'retained frontend evidence',
-      );
+      const evidence = evidenceList(value.evidence, 'retained test evidence');
       if (
         !evidence.some(
           (path) =>
@@ -504,14 +715,14 @@ function decodeDisposition(
         )
       ) {
         throw new TypeError(
-          'retained frontend disposition requires frontend test evidence',
+          'retained test disposition requires TypeScript test evidence',
         );
       }
       return {
         kind,
         currentPath: repositoryPath(
           value.currentPath,
-          'retained frontend current path',
+          'retained test current path',
         ),
         evidence,
       };

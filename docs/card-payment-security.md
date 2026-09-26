@@ -28,10 +28,11 @@ FUKAMU checkout review
   -> entitlement state
 ```
 
-The source/build gate checks the relevant billing and Stripe contracts for
-cardholder-data field names. This is evidence of the intended source boundary,
-not a substitute for browser/network inspection of the final production
-configuration or for Stripe/acquirer PCI guidance.
+The source/build gate checks the browser transport, the actual Go HTTP Checkout
+handler, and the billing and Stripe contracts for cardholder-data field names.
+This is evidence of the intended source boundary, not a substitute for
+browser/network inspection of the final production configuration or for
+Stripe/acquirer PCI guidance.
 
 ## EMV 3-D Secure and recurring charges
 

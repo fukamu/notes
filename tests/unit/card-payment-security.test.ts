@@ -52,6 +52,7 @@ describe('card payment security contract', () => {
       'lib/application/billing-ui.ts',
       'lib/client/http-billing-ui.ts',
       'components/billing-checkout-boundary.tsx',
+      'backend/internal/httpapi/legal.go',
       'backend/internal/stripebilling/core.go',
       'backend/internal/adapters/stripe/provider.go',
     ];
@@ -64,11 +65,13 @@ describe('card payment security contract', () => {
     }
     expect(violations).toEqual([]);
 
-    const [browserTransport, goProvider, goProviderTest] = await Promise.all([
-      readFile('lib/client/http-billing-ui.ts', 'utf8'),
-      readFile('backend/internal/adapters/stripe/provider.go', 'utf8'),
-      readFile('backend/internal/adapters/stripe/provider_test.go', 'utf8'),
-    ]);
+    const [browserTransport, goCheckoutHandler, goProvider, goProviderTest] =
+      await Promise.all([
+        readFile('lib/client/http-billing-ui.ts', 'utf8'),
+        readFile('backend/internal/httpapi/legal.go', 'utf8'),
+        readFile('backend/internal/adapters/stripe/provider.go', 'utf8'),
+        readFile('backend/internal/adapters/stripe/provider_test.go', 'utf8'),
+      ]);
     expect(browserTransport).toContain(
       "decideBrowserExternalDestination('stripe-checkout'",
     );
@@ -76,6 +79,8 @@ describe('card payment security contract', () => {
       'PaymentMethodCollection: stripe.String("always")',
     );
     expect(goProvider).toContain('RequestThreeDSecure: stripe.String("any")');
+    expect(goCheckoutHandler).toContain('contractCheckoutHandler');
+    expect(goCheckoutHandler).toContain('ContractCheckoutApplication');
     expect(goProviderTest).toContain(
       'func TestProviderUsesPinnedSDKCheckoutContract',
     );

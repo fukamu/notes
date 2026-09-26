@@ -1,10 +1,12 @@
 # Email OTP boundary
 
-Issue #112 defines the TypeScript abuse-resistant, provider-neutral Email OTP
-boundary. Migration Issue #426 implements the Go replacement and persistent
-identity/signup control plane. It does not select a mail provider, send real
-email, add an authentication route, persist production challenges or abuse
-counters, or enable authentication in the local Notes composition.
+Issue #112 defined the historical TypeScript abuse-resistant, provider-neutral
+Email OTP boundary. Migration Issue #426 implemented the Go replacement and
+persistent identity/signup control plane; T17 removed the TypeScript server
+contract and its leftover domain-only types. The Go boundary does not select a
+mail provider, send real email, add an authentication route, persist production
+challenges or abuse counters, or enable authentication in the local Notes
+composition.
 
 ## Security status and standards limitation
 
@@ -86,11 +88,12 @@ a later composition concern.
 
 ## Local development, migration, and rollback
 
-The current route still mounts `LegacyNotesApp`. Local notes, offline editing,
-E2E, and `npm run dev` do not require a mail account, billing configuration, or
-an OTP credential. Tests use race-safe in-memory challenge, abuse-limit, and
-delivery adapters; fake delivery captures messages in memory and sends nothing
-externally. The shared fixture executes through both TypeScript and Go.
+The Go static handler mounts the unchanged React notes UI. Local notes, offline
+editing, E2E, and `npm run dev` do not require a mail account, billing
+configuration, or an OTP credential. Go tests use race-safe in-memory challenge,
+abuse-limit, and delivery adapters; fake delivery captures messages in memory
+and sends nothing externally. The shared fixture is executed by Go identity
+tests; no TypeScript OTP server contract remains.
 
 Issue #426 adds migration 00003 only to disposable local/test PostgreSQL. Its
 Go identity directory and signup finalizer are implemented but disconnected.

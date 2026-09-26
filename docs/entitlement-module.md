@@ -1,9 +1,10 @@
 # Entitlement module boundary
 
-T09c Issue #440 ports this boundary to the disconnected Go package
-`backend/internal/entitlement` and PostgreSQL migration 00008. The TypeScript
-module remains the pre-migration reference until T11 connects the Go notes,
-quota, and Sync v2 paths; no route or production schema is changed by T09c.
+T09c Issue #440 ported this boundary to the Go package
+`backend/internal/entitlement` and PostgreSQL migration 00008. T17 subsequently
+removed the TypeScript/D1 module; its design details below are historical
+migration-source context. Runtime connection of the Go notes, quota, and Sync
+v2 paths is tracked separately and does not make Sites/D1 current again.
 
 Issue #119 introduces the provider-neutral authorization boundary between
 Billing facts and feature code. Billing remains the owner of subscription and
@@ -45,9 +46,9 @@ active. #125 remains responsible for defining byte/count algorithms and
 enforcing each limit at the application boundary.
 
 The count and byte algorithms are now fixed in
-[Personal Vault quota policy](quota-policy.md). D1 reservation and Sync v2
-enforcement remain separate dependent Issues; this pure policy does not make a
-client counter authoritative.
+[Personal Vault quota policy](quota-policy.md). Current durable reservation and
+Sync v2 enforcement use the Go/PostgreSQL boundaries; this pure policy does not
+make a client counter authoritative.
 
 ## Offline lease policy
 
@@ -84,11 +85,12 @@ older checks cannot overwrite a newer projection. Lease creation checks the
 exact projection and Billing versions so a concurrent locked projection cannot
 issue a lease.
 
-The D1 and PostgreSQL adapters decode all rows at the boundary. The fake
-repository is injected only by explicit test/local composition and has the
-same CAS, scope, replay, and revocation behavior. No adapter selects itself
-from environment variables. Production composition must explicitly supply the
-repository, ownership and Billing ports, and an offline lease policy.
+The current PostgreSQL adapter decodes all rows at the boundary. The removed D1
+adapter is historical compatibility evidence. The Go fake repository is
+injected only by explicit test/local composition and has the same CAS, scope,
+replay, and revocation behavior. No adapter selects itself from environment
+variables. Production composition must explicitly supply the repository,
+ownership and Billing ports, and an offline lease policy.
 
 In PostgreSQL, a projection is foreign-keyed to both the Account/Vault owner
 and an existing Billing subscription. Reads also verify that the Billing

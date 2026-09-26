@@ -1,5 +1,10 @@
 # Private encrypted object storage
 
+The D1 write-ordering sections below are historical compatibility evidence.
+The executable encrypted-object boundary and PostgreSQL metadata/outbox adapter
+are under `backend/internal`; T17 removed the TypeScript/D1 source and Sites
+tooling. No production object-storage provider is connected by that retirement.
+
 The Go repository and isolated memory-storage adapter were introduced by
 Issue #430. Issue #464 adds the disconnected account-deletion consumer for the
 PostgreSQL delete outbox. It verifies the exact owner, deletion operation, and

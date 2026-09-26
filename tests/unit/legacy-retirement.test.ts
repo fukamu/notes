@@ -14,8 +14,10 @@ import {
 } from '../../scripts/legacy-retirement-core.mts';
 import { decodeMigrationClosure } from '../../scripts/migration-closure-core.mts';
 
-const legacyImport = ['@/', 'server/example'].join('');
+const legacyImport = ['@/', ['ser', 'ver/example'].join('')].join('');
 const legacyHostName = ['Mini', 'flare'].join('');
+const legacyPath = (root: string, suffix: string) => [root, suffix].join('/');
+const legacyConfig = (stem: string, suffix: string) => [stem, suffix].join('.');
 const legacySourceRevision = 'a'.repeat(40);
 const corpusRevision = 'b'.repeat(40);
 const goEvidence = 'backend/internal/example/example_test.go';
@@ -46,8 +48,8 @@ function smallLedgerCandidate(
     },
   };
   return {
-    schemaVersion: 1,
-    selectionVersion: 1,
+    schemaVersion: 2,
+    selectionVersion: 2,
     legacySourceRevision,
     testCorpusRevision: corpusRevision,
     files: 1,
@@ -102,15 +104,20 @@ describe('legacy TypeScript test retirement ledger', () => {
     expect(ledger).toMatchObject({
       legacySourceRevision: 'e8936ab90768774371d84b4808c100d546649943',
       testCorpusRevision: 'af743246f14f7e0b96accf1ed7e1a1201fc3aaaf',
-      files: 138,
+      files: 142,
       sha256:
-        '7c28cbe1db282adc1d5349f06ab37964f2b224d4ee3dbc9acad8664e0de50531',
+        '878036f18d5bbfc107ad8f7873f5c9c942145b61d20f9c508a138ed797c1fc1e',
     });
     expect(
       ledger.entries.filter(
         ({ disposition }) => disposition.kind === 'retained-frontend',
       ),
     ).toHaveLength(11);
+    expect(
+      ledger.entries.filter(
+        ({ disposition }) => disposition.kind === 'retained-tooling',
+      ),
+    ).toHaveLength(4);
     expect(
       ledger.entries.filter(
         ({ disposition }) => disposition.kind === 'go-replacement',
@@ -197,6 +204,35 @@ describe('legacy TypeScript test retirement ledger', () => {
     }
   });
 
+  it('classifies every literal-dependent tooling test and binds server checks to Go evidence', async () => {
+    const ledger = decodeLegacyTestRetirementLedger(await ledgerCandidate());
+    const entries = new Map(
+      ledger.entries.map((entry) => [entry.legacyPath, entry]),
+    );
+    for (const path of [
+      'tests/unit/architecture.test.ts',
+      'tests/unit/migration-closure.test.ts',
+      'tests/unit/release-artifact.test.ts',
+      'tests/unit/typecheck-config.test.ts',
+    ]) {
+      expect(entries.get(path)?.disposition.kind).toBe('retained-tooling');
+    }
+    const architecture = entries.get('tests/unit/architecture.test.ts');
+    const typecheck = entries.get('tests/unit/typecheck-config.test.ts');
+    if (
+      architecture?.disposition.kind !== 'retained-tooling' ||
+      typecheck?.disposition.kind !== 'retained-tooling'
+    ) {
+      throw new TypeError('server tooling evidence is not retained');
+    }
+    expect(architecture.disposition.evidence).toContain(
+      'backend/internal/architecture/dependency_test.go',
+    );
+    expect(typecheck.disposition.evidence).toContain(
+      'backend/internal/architecture/dependency_test.go',
+    );
+  });
+
   it('rejects missing, duplicate, unsorted, unsafe, and unknown entry data', async () => {
     const missing = clone(await ledgerCandidate());
     list(Reflect.get(object(missing), 'entries')).pop();
@@ -207,7 +243,7 @@ describe('legacy TypeScript test retirement ledger', () => {
     const duplicate = clone(await ledgerCandidate());
     const duplicateEntries = list(Reflect.get(object(duplicate), 'entries'));
     duplicateEntries.push(clone(duplicateEntries[0]));
-    Reflect.set(object(duplicate), 'files', 139);
+    Reflect.set(object(duplicate), 'files', 143);
     expect(() => decodeLegacyTestRetirementLedger(duplicate)).toThrow(
       'legacy test path must be unique',
     );
@@ -282,6 +318,37 @@ describe('legacy TypeScript test retirement ledger', () => {
     expect(() => validateReferenceCorpus(ledger, drifted)).toThrow(
       'content drifted',
     );
+  });
+
+  it('selects literal roots, relative imports, and their transitive test consumers', () => {
+    const architecture = `const ${['ro', 'ots'].join('')} = ['app', '${[
+      'ser',
+      'ver',
+    ].join('')}'];`;
+    const relativeImport = `import '../../${legacyPath('server', 'core/session')}';`;
+    const selected = selectLegacyTestCorpus([
+      { path: 'tests/unit/architecture.test.ts', content: architecture },
+      { path: 'tests/unit/relative.test.ts', content: relativeImport },
+      {
+        path: 'tests/unit/consumer.test.ts',
+        content: "import './relative.test';",
+      },
+      {
+        path: 'tests/unit/frontend.test.ts',
+        content: "const choice = 'server';",
+      },
+      {
+        path: 'tests/unit/root-import.test.ts',
+        content: `import '${['@', legacyPath('', 'server')].join('')}';`,
+      },
+    ]);
+
+    expect(selected.map(({ path }) => path)).toEqual([
+      'tests/unit/architecture.test.ts',
+      'tests/unit/consumer.test.ts',
+      'tests/unit/relative.test.ts',
+      'tests/unit/root-import.test.ts',
+    ]);
   });
 
   it('sorts the selected corpus by deterministic code-unit path order', () => {
@@ -371,7 +438,7 @@ describe('legacy TypeScript test retirement ledger', () => {
     const retained = decodeLegacyTestRetirementLedger(retainedCandidate);
     expect(() =>
       validateRetiredTree(retained, [], new Set(), new Map()),
-    ).toThrow('retained frontend path is missing');
+    ).toThrow('retained test path is missing');
     expect(() =>
       validateRetiredTree(
         retained,
@@ -404,14 +471,14 @@ describe('legacy TypeScript test retirement ledger', () => {
     ).not.toThrow();
 
     for (const path of [
-      'app/api/sync/route.ts',
-      'db/schema.ts',
-      'drizzle/0000.sql',
-      'server/core/session.ts',
-      '.openai/hosting.json',
-      'drizzle.config.ts',
-      'tsconfig.api.json',
-      'vitest.server-load.config.ts',
+      legacyPath('app', 'api/sync/route.ts'),
+      legacyPath('db', 'schema.ts'),
+      legacyPath('drizzle', '0000.sql'),
+      legacyPath('server', 'core/session.ts'),
+      legacyPath('.openai', 'hosting.json'),
+      legacyConfig('drizzle', 'config.ts'),
+      legacyConfig('tsconfig', 'api.json'),
+      legacyConfig('vitest', 'server-load.config.ts'),
     ]) {
       expect(() =>
         validateRetiredRepository(new Set([path]), cleanPackage),
@@ -438,17 +505,36 @@ describe('legacy TypeScript test retirement ledger', () => {
         }),
       ).toThrow('retired server dependency');
     }
+    for (const alias of [
+      `npm:${['mini', 'flare'].join('')}@4.0.0`,
+      `npm:${['@cloudflare', 'workers-types'].join('/')}@4.0.0`,
+    ]) {
+      expect(() =>
+        validateRetiredRepository(new Set(), {
+          ...cleanPackage,
+          dependencies: { ...cleanPackage.dependencies, replacement: alias },
+        }),
+      ).toThrow('retired server dependency');
+    }
+    expect(() =>
+      validateRetiredRepository(new Set(), {
+        ...cleanPackage,
+        overrides: {
+          react: { replacement: `npm:${['drizzle', 'orm'].join('-')}@1` },
+        },
+      }),
+    ).toThrow('retired server dependency');
     for (const command of [
-      'oxlint app/api',
-      'oxlint db server',
-      'tsc db/schema.ts',
-      'node drizzle/migrate.mjs',
-      'oxlint server/**/*.ts',
-      'node ./server/index.ts',
-      'tsc ./db/schema.ts',
-      'node ./app/api/sync.ts',
-      'tsc -p tsconfig.api.json',
-      'node .openai/hosting.json',
+      `oxlint ${legacyPath('app', 'api')}`,
+      `oxlint ${['db', 'server'].join(' ')}`,
+      `tsc ${legacyPath('db', 'schema.ts')}`,
+      `node ${legacyPath('drizzle', 'migrate.mjs')}`,
+      `oxlint ${legacyPath('server', '**/*.ts')}`,
+      `node ./${legacyPath('server', 'index.ts')}`,
+      `tsc ./${legacyPath('db', 'schema.ts')}`,
+      `node ./${legacyPath('app', 'api/sync.ts')}`,
+      `tsc -p ${legacyConfig('tsconfig', 'api.json')}`,
+      `node ${legacyPath('.openai', 'hosting.json')}`,
     ]) {
       expect(() =>
         validateRetiredRepository(new Set(), {
@@ -482,6 +568,69 @@ describe('legacy TypeScript test retirement ledger', () => {
         }),
       ).toThrow('retired server dependency is locked');
     }
+    expect(() =>
+      validateRetiredPackageLock({
+        packages: {
+          ...cleanLock.packages,
+          'node_modules/replacement': {
+            name: ['mini', 'flare'].join(''),
+            version: '4.0.0',
+          },
+        },
+      }),
+    ).toThrow('retired server dependency is locked');
+    expect(() =>
+      validateRetiredPackageLock({
+        packages: {
+          ...cleanLock.packages,
+          '': {
+            ...cleanLock.packages[''],
+            optionalDependencies: {
+              replacement: `npm:${['drizzle', 'orm'].join('-')}@1`,
+            },
+          },
+        },
+      }),
+    ).toThrow('retired server dependency is locked');
+    expect(() =>
+      validateRetiredPackageLock({
+        packages: {
+          ...cleanLock.packages,
+          'node_modules/replacement': {
+            version: '1.0.0',
+            resolved: `https://registry.npmjs.org/${encodeURIComponent(
+              ['@cloudflare', 'workers-types'].join('/'),
+            ).toLowerCase()}/-/workers-types-1.0.0.tgz`,
+          },
+        },
+      }),
+    ).toThrow('retired server dependency is locked');
+  });
+
+  it('rejects renamed server-only TypeScript identity contracts without blocking browser contracts', () => {
+    const browserContract = {
+      path: 'lib/application/external-transmission.ts',
+      content: "const destination = 'google-oidc';",
+    };
+    expect(() =>
+      validateRetiredRepository(
+        new Set([browserContract.path]),
+        { scripts: {} },
+        [browserContract],
+      ),
+    ).not.toThrow();
+
+    const renamedServerContract = {
+      path: 'lib/domain/provider-login.ts',
+      content: `export type ${['Oidc', 'Nonce'].join('')} = string;`,
+    };
+    expect(() =>
+      validateRetiredRepository(
+        new Set([renamedServerContract.path]),
+        { scripts: {} },
+        [renamedServerContract],
+      ),
+    ).toThrow('server-only TypeScript contract');
   });
 
   it('does not allow executable coverage to be classified as historical-only', () => {

@@ -38,6 +38,7 @@ const sources = await Promise.all(
     'lib/application/billing-ui.ts',
     'lib/client/http-billing-ui.ts',
     'components/billing-checkout-boundary.tsx',
+    'backend/internal/httpapi/legal.go',
     'backend/internal/stripebilling/core.go',
     'backend/internal/adapters/stripe/provider.go',
   ].map(async (path) => ({ path, source: await readFile(path, 'utf8') })),
@@ -53,9 +54,10 @@ if (violations.length > 0) {
   );
 }
 
-const [stripeCore, stripeProvider] = await Promise.all([
+const [stripeCore, stripeProvider, checkoutHandler] = await Promise.all([
   readFile('backend/internal/stripebilling/core.go', 'utf8'),
   readFile('backend/internal/adapters/stripe/provider.go', 'utf8'),
+  readFile('backend/internal/httpapi/legal.go', 'utf8'),
 ]);
 if (!stripeProvider.includes('RequestThreeDSecure: stripe.String("any")')) {
   throw new Error(
@@ -65,6 +67,11 @@ if (!stripeProvider.includes('RequestThreeDSecure: stripe.String("any")')) {
 if (!stripeCore.includes('parsed.Hostname() == "checkout.stripe.com"')) {
   throw new Error(
     'Stripe Checkout response is not restricted to the hosted origin',
+  );
+}
+if (!checkoutHandler.includes('contractCheckoutHandler')) {
+  throw new Error(
+    'Go HTTP Checkout boundary is absent from the card-data gate',
   );
 }
 

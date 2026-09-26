@@ -30,7 +30,7 @@ credentials, provider operations, or deployment.
 | SEC-DATA-05 | Fail closed on key wrap/unwrap with no plaintext fallback.                   | `backend/internal/cryptocontent/service_test.go`, `backend/tests/integration/encrypted_object_test.go`                                              |
 | SEC-DATA-06 | Preserve immutable object intent and retry deletion safely.                  | `backend/internal/encryptedobject/delete_outbox_drainer_test.go`, `backend/tests/integration/encrypted_object_test.go`                              |
 | SEC-DATA-07 | Keep journal, quota, and content transitions atomic or explicitly retryable. | `backend/tests/integration/sync_v2_application_test.go`, `backend/tests/integration/quota_ledger_test.go`                                           |
-| SEC-DATA-08 | Avoid encryption and object effects for no-change sync.                      | `backend/internal/syncv2/core_test.go`                                                                                                              |
+| SEC-DATA-08 | Avoid encryption and object effects for no-change sync.                      | `backend/tests/integration/sync_v2_application_test.go`                                                                                             |
 | SEC-DATA-09 | Return generic no-store sync errors without secret-bearing logs.             | `backend/internal/httpapi/sync_v2_test.go`                                                                                                          |
 
 PostgreSQL integration evidence uses only the dedicated local/CI test database.

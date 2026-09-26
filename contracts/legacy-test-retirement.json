@@ -1,10 +1,10 @@
 {
-  "schemaVersion": 1,
-  "selectionVersion": 1,
+  "schemaVersion": 2,
+  "selectionVersion": 2,
   "legacySourceRevision": "e8936ab90768774371d84b4808c100d546649943",
   "testCorpusRevision": "af743246f14f7e0b96accf1ed7e1a1201fc3aaaf",
-  "files": 138,
-  "sha256": "7c28cbe1db282adc1d5349f06ab37964f2b224d4ee3dbc9acad8664e0de50531",
+  "files": 142,
+  "sha256": "878036f18d5bbfc107ad8f7873f5c9c942145b61d20f9c508a138ed797c1fc1e",
   "entries": [
     {
       "legacyPath": "tests/benchmarks/server-load.benchmark.test.ts",
@@ -816,6 +816,19 @@
       }
     },
     {
+      "legacyPath": "tests/unit/architecture.test.ts",
+      "legacySha256": "8230daed3736f1595fd5bfefeca6f35adca50031c159f6c8d9fac0871c4c3a77",
+      "featureIds": ["F27"],
+      "disposition": {
+        "kind": "retained-tooling",
+        "currentPath": "tests/unit/architecture.test.ts",
+        "evidence": [
+          "backend/internal/architecture/dependency_test.go",
+          "tests/unit/architecture.test.ts"
+        ]
+      }
+    },
+    {
       "legacyPath": "tests/unit/billing-cancellation-core.test.ts",
       "legacySha256": "049ad981b790a235aa578efa6ab228be396ad87991c09b9c0d54a0c7e9191387",
       "featureIds": ["F17", "F22"],
@@ -1268,6 +1281,16 @@
       }
     },
     {
+      "legacyPath": "tests/unit/migration-closure.test.ts",
+      "legacySha256": "09e7f53b8f91fd279fb874f56fa794cb0ed5947cbd254cd0ad91f8a184946066",
+      "featureIds": ["F27"],
+      "disposition": {
+        "kind": "retained-tooling",
+        "currentPath": "tests/unit/migration-closure.test.ts",
+        "evidence": ["tests/unit/migration-closure.test.ts"]
+      }
+    },
+    {
       "legacyPath": "tests/unit/migration-core.test.ts",
       "legacySha256": "efdbe50594b004c677e91acde78713ef3a3ade71a0440eef60f30f64013e3779",
       "featureIds": ["F25"],
@@ -1306,12 +1329,12 @@
     {
       "legacyPath": "tests/unit/operations-launch-gate.test.ts",
       "legacySha256": "c12eaec75abf2fce135e6e41a9780578873e9780c00fc33d23dd31fd75dfa3d3",
-      "featureIds": ["F02"],
+      "featureIds": ["F26"],
       "disposition": {
         "kind": "go-replacement",
         "evidence": [
-          "backend/internal/launchgate/gate_test.go",
-          "backend/tests/integration/postgres_foundation_test.go"
+          "backend/internal/operations/launch_policy_architecture_test.go",
+          "backend/internal/operations/launch_policy_test.go"
         ]
       }
     },
@@ -1444,6 +1467,16 @@
           "backend/internal/quota/ledger_test.go",
           "backend/tests/integration/quota_ledger_test.go"
         ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/release-artifact.test.ts",
+      "legacySha256": "e78172b102071ddc25a3fd81abb026c0ca633e0159410ec0f9b2175dcced0e3a",
+      "featureIds": ["F27"],
+      "disposition": {
+        "kind": "retained-tooling",
+        "currentPath": "tests/unit/release-artifact.test.ts",
+        "evidence": ["tests/unit/release-artifact.test.ts"]
       }
     },
     {
@@ -1633,7 +1666,14 @@
       "featureIds": ["F26"],
       "disposition": {
         "kind": "go-replacement",
-        "evidence": ["backend/internal/telemetry/logger_test.go"]
+        "evidence": [
+          "backend/internal/telemetry/alert_test.go",
+          "backend/internal/telemetry/codec_test.go",
+          "backend/internal/telemetry/delivery_test.go",
+          "backend/internal/telemetry/logger_test.go",
+          "backend/internal/telemetry/metrics_test.go",
+          "backend/internal/telemetry/policy_test.go"
+        ]
       }
     },
     {
@@ -1724,6 +1764,19 @@
           "backend/internal/legal/terms_core_test.go",
           "backend/internal/legal/terms_service_test.go",
           "backend/tests/integration/terms_consent_test.go"
+        ]
+      }
+    },
+    {
+      "legacyPath": "tests/unit/typecheck-config.test.ts",
+      "legacySha256": "d864be35c77643424533a6de5365a33e2a34eee418034ae18bb24d4d2871adb9",
+      "featureIds": ["F27"],
+      "disposition": {
+        "kind": "retained-tooling",
+        "currentPath": "tests/unit/typecheck-config.test.ts",
+        "evidence": [
+          "backend/internal/architecture/dependency_test.go",
+          "tests/unit/typecheck-config.test.ts"
         ]
       }
     },
