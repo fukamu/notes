@@ -51,9 +51,12 @@ stable idempotency key. Tests use only loopback HTTP stubs with fake keys.
 `NewBillingCancellationContractHandler` authenticates the session and
 same-origin request before reading JSON, derives owner scope solely from that
 session, rejects unknown owner fields, and maps confirmed, retryable, terminal,
-and malformed application results to closed responses. It is deliberately not
-part of `HandlerOptions`; `NewHandler` continues to return the existing closed
-404/503 response for `/api/billing/cancel`.
+and malformed application results to closed responses. Issue #510 carries a
+`BillingCancellationRuntime` through `HandlerOptions` only for the guarded
+local-fixture profile. That adapter validates exact seeded Billing/Entitlement
+facts and returns a stable scheduled observation without a Stripe call or any
+write. Default and production composition keep the route at its closed 404/503
+response.
 
 ## Verification and rollback
 

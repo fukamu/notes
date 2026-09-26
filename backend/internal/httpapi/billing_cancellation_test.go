@@ -110,6 +110,52 @@ func TestBillingCancellationContractAuthenticatesBeforeReadingOrUsingOwnerInput(
 	}
 }
 
+func TestMainHandlerMountsCancellationAndAuthenticatesBeforeGlobalBodyLimit(t *testing.T) {
+	application := &billingCancellationApplicationStub{result: billing.SubscriptionCancellationResult{
+		Kind: billing.SubscriptionCancellationConfirmed, Outcome: billing.SubscriptionCancellationScheduled,
+		ConfirmedAt: 1_500, AccessEndsAt: 9_000,
+	}}
+	staticDirectory := t.TempDir()
+	writeStaticFixture(t, staticDirectory)
+	handler, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory: staticDirectory, BodyLimit: 8,
+		Logger: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		BillingCancellationRuntime: &httpapi.BillingCancellationRuntime{
+			ExpectedOrigin: billingCancellationOrigin, Clock: func() int64 { return 1_500 },
+			Sessions: &billingCancellationSessionStub{session: &identity.Session{
+				Kind: identity.SessionActive, SessionID: billingCancellationSessionID,
+				AccountID: billingCancellationAccountID, VaultID: billingCancellationVaultID,
+				SessionEpoch: 1, IssuedAt: 1_000, ExpiresAt: 2_000,
+			}},
+			Cancellation: application,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unread := &trackingReadCloser{}
+	anonymous := httptest.NewRequest(http.MethodPost, "/api/billing/cancel", nil)
+	anonymous.Body = unread
+	anonymous.ContentLength = 10_000
+	anonymous.Header.Set("Origin", billingCancellationOrigin)
+	anonymous.Header.Set("Sec-Fetch-Site", "same-origin")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, anonymous)
+	if response.Code != http.StatusUnauthorized || unread.reads != 0 || application.calls != 0 {
+		t.Fatalf("anonymous = %d reads=%d calls=%d body=%s", response.Code, unread.reads, application.calls, response.Body.String())
+	}
+
+	authenticated := billingCancellationRequest(
+		http.MethodPost,
+		`{"idempotencyKey":"`+billingCancellationKey+`"}`,
+	)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticated)
+	if response.Code != http.StatusOK || application.calls != 1 {
+		t.Fatalf("authenticated = %d calls=%d body=%s", response.Code, application.calls, response.Body.String())
+	}
+}
+
 func TestBillingCancellationContractMapsClosedFailureResponses(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -123,6 +169,9 @@ func TestBillingCancellationContractMapsClosedFailureResponses(t *testing.T) {
 		{name: "provider unavailable", result: billing.SubscriptionCancellationResult{Kind: billing.SubscriptionCancellationRetryableFailure, Reason: billing.CancellationProviderUnavailable}, status: http.StatusServiceUnavailable, code: "unavailable"},
 		{name: "application error", err: errors.New("database secret detail"), status: http.StatusServiceUnavailable, code: "unavailable"},
 		{name: "cross effect response", result: billing.SubscriptionCancellationResult{Kind: billing.SubscriptionCancellationConfirmed, Outcome: billing.SubscriptionCancelled, ConfirmedAt: 1_500, AccessEndsAt: 1_500}, status: http.StatusServiceUnavailable, code: "unavailable"},
+		{name: "scheduled before observation", result: billing.SubscriptionCancellationResult{Kind: billing.SubscriptionCancellationConfirmed, Outcome: billing.SubscriptionCancellationScheduled, ConfirmedAt: 1_500, AccessEndsAt: 1_499}, status: http.StatusServiceUnavailable, code: "unavailable"},
+		{name: "scheduled before request", result: billing.SubscriptionCancellationResult{Kind: billing.SubscriptionCancellationConfirmed, Outcome: billing.SubscriptionCancellationScheduled, ConfirmedAt: 1_400, AccessEndsAt: 1_450}, status: http.StatusServiceUnavailable, code: "unavailable"},
+		{name: "already cancelled with future access", result: billing.SubscriptionCancellationResult{Kind: billing.SubscriptionCancellationConfirmed, Outcome: billing.SubscriptionAlreadyCancelled, ConfirmedAt: 1_400, AccessEndsAt: 1_401}, status: http.StatusServiceUnavailable, code: "unavailable"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

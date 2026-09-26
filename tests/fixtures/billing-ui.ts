@@ -9,6 +9,7 @@ import {
   parseContractSubmissionId,
   type ContractOfferSnapshot,
 } from '@/lib/contracts/contract-checkout';
+import { parseTermsConsentSubmissionId } from '@/lib/contracts/terms-consent';
 
 export const billingUiContractIds = {
   evidenceA: parseContractEvidenceId('01991f20-61d2-7000-8000-000000002301'),
@@ -17,6 +18,12 @@ export const billingUiContractIds = {
   ),
   submissionB: parseContractSubmissionId(
     '01991f20-61d2-7000-8000-000000002402',
+  ),
+  termsSubmissionA: parseTermsConsentSubmissionId(
+    '01991f20-61d2-7000-8000-000000002501',
+  ),
+  termsSubmissionB: parseTermsConsentSubmissionId(
+    '01991f20-61d2-7000-8000-000000002502',
   ),
   offerHashA: parseContractOfferHash(`sha256:${'a'.repeat(64)}`),
 } as const;
@@ -66,5 +73,6 @@ export function billingCheckoutReviewFixture(): BillingCheckoutReview {
       effectiveDate: '2026-09-15',
     },
     submissionId: billingUiContractIds.submissionA,
+    termsSubmissionId: billingUiContractIds.termsSubmissionA,
   };
 }

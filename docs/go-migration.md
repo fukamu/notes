@@ -86,9 +86,12 @@ delete existing resources.
 - Integration closure continuation Issue #509 starts from exact integration
   tip `11c892069fb9719db0a08e9883f7e9b7fff8d200`. It adds only the fail-closed
   local/CI fixture composition and seed foundation described below. Business
-  routes and external providers remain disconnected, the feature matrix states
-  remain unchanged. T17 Issue #498 subsequently retired the legacy server and
-  completed V11; V09 remains approval-pending.
+  routes and external providers initially remained disconnected. Issue #510
+  starts from exact integration tip
+  `5351ac46b0e960320c4d4fdd2347361e10bb6d80` and connects only local-fixture
+  terms, URL-free checkout, and no-effect period-end cancellation. T17 Issue
+  #498 subsequently retired the legacy server and completed V11; V09 remains
+  approval-pending.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -103,8 +106,9 @@ decision.
 ## Feature migration matrix
 
 State `A` means connected now, `B` means implemented/tested but disconnected,
-and `C` means absent or only a fake/provider gap. A disconnected handler is not
-the same contract as its closed route.
+and `C` means absent or only a fake/provider gap. `A/B` records a guarded local
+connection whose production composition remains disconnected. A disconnected
+handler is not the same contract as its closed route.
 
 | ID  | State | Capability                                  | Go evidence                     | Verification    | Status                                                                                    |
 | --- | ----- | ------------------------------------------- | ------------------------------- | --------------- | ----------------------------------------------------------------------------------------- |
@@ -127,9 +131,9 @@ the same contract as its closed route.
 | F17 | A/B   | billing projection                          | T09                             | V04,V07         | seeded local entitlement source connected by #511; provider effects remain closed         |
 | F18 | B/C   | Stripe core; production route absent        | T09                             | V07,V09         | Go core/SDK #438; provider evidence time #476; remains closed                             |
 | F19 | A/B   | entitlement / offline lease                 | T09                             | V05,V07         | real local seeded evaluation connected by #511; production remains closed                 |
-| F20 | B     | legal checkout evidence                     | T10                             | V01,V07         | core/store #444; closed Go HTTP #446                                                      |
-| F21 | B     | terms consent                               | T10                             | V01,V07         | core/store #442; closed Go HTTP #446                                                      |
-| F22 | B     | normal cancellation                         | T09                             | V01,V07         | period-end/immediate split, Stripe stub, closed HTTP #496                                 |
+| F20 | A/B   | legal checkout evidence                     | T10                             | V01,V07         | local URL-free/no-charge runtime #510; production closed                                  |
+| F21 | A/B   | terms consent                               | T10                             | V01,V07         | local fixture/PostgreSQL runtime #510; production closed                                  |
+| F22 | A/B   | normal cancellation                         | T09                             | V01,V07         | local no-effect scheduled provider #510; production closed                                |
 | F23 | B     | account deletion                            | T12                             | V03,V04,V07,V08 | saga #458; effects #460/#462/#464; finalizer #466; handoff #468                           |
 | F24 | B     | privacy request journal                     | T12                             | V01,V03,V08     | Go journal/closed HTTP #456; deletion handoff #468                                        |
 | F25 | A/B   | migrations                                  | T03 and feature PRs             | V04,V11         | core #414; legacy singleton seed #418                                                     |
@@ -141,13 +145,13 @@ the same contract as its closed route.
 
 | ID  | Required evidence                                       | Current evidence                                                                                                                                                             |
 | --- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454/#511; strict local session context #511; legal #442/#444/#446; privacy #456                                                                              |
+| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454/#511; strict local session context #511; legal #442/#444/#446/#510; privacy #456                                                                         |
 | V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                                                                                 |
 | V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; exact local scope and HTTP-before-body #511; OIDC #424; OTP/owner #426; legal #446; privacy #456; deletion #458; privacy/deletion owner binding #468      |
 | V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450/#472; sync #452/#454; real local composition/restart #511; privacy/deletion slices |
 | V05 | sync/quota paging, retry, conflict, limits              | quota #450/#472; journal #452; authenticated encrypted composition #454; live local HTTP/UI connection #511                                                                  |
 | V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434; filesystem ciphertext/restart proof #511                                                                                |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438/#476; lease #440; legal #442/#444/#446; scoped reconciliation #478                                                                              |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438/#476; lease #440; legal #442/#444/#446/#510; scoped reconciliation #478                                                                         |
 | V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432/#482; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468; billing #478; rotation runner #480   |
 | V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                                    |
 | V10 | browser UI/offline/SW/deep links                        | #420 baseline; authenticated Vault-scoped Sync v2 Playwright coverage #511                                                                                                   |
@@ -1924,17 +1928,30 @@ unwrap capability. Diagnostics report only fixed failure classes. The raw
 session token is never stored in PostgreSQL; fixture HMAC and DEK material are
 neither logged nor included in CLI errors.
 
-At the #509 checkpoint no prepared dependency was passed into
-`httpapi.HandlerOptions`; all business routes remained closed. Issue #511 is
-the separately reviewed local-only connection described below. No Stripe, GCP
-KMS, identity/mail, remote object, or backup provider is constructed or
-contacted. The existing profile-disabled subject-only E2E preparation remains
-compatible. Neither slice deploys or authorizes production configuration.
+Issue #509 passed no prepared business dependency into `HandlerOptions`; its
+session, Sync v2, Billing, cancellation, privacy/deletion, encrypted-object,
+and recovery routes therefore remained closed. Issue #510 passes
+`LegalRuntime` and `BillingCancellationRuntime`; Issue #511 passes
+`SyncV2Runtime` and exposes the authenticated session-context bootstrap for the
+same guarded profile. All four share the exact scoped session resolver, one
+PostgreSQL pool, and a real HTTP clock. The local commerce provider requires the
+exact active subscription and Entitlement seed, performs no write, and returns
+URL-free checkout confirmation plus a stable period-end cancellation schedule.
+The Sync v2 graph uses the same Billing/Entitlement records with PostgreSQL
+journal/metadata/quota stores and guarded AES-GCM filesystem adapters. No
+Stripe, GCP KMS, identity/mail, remote object, or backup provider is constructed
+or contacted. The profile-disabled and production paths remain closed. #510
+changes F20-F22 to A/B; #511 changes F04, F07, F09-F12, F14, F16-F17, F19, and
+F27 to guarded A/B. Neither slice deploys or authorizes production
+configuration; T17 separately completes only the source/runtime-artifact claim.
 
-The #509 real-PostgreSQL adapter integration test exercises the migrated
-schema, seed/readiness store, session lookup, and key unwrap, including mutated
-launch-state rejection. Issue #511 adds direct `composeRuntime` coverage with
-the same allowlisted disposable PostgreSQL boundary.
+The real-PostgreSQL adapter integration tests exercise the migrated schema,
+seed/readiness store, session lookup, key unwrap, and local legal/commerce
+service graph, including mutated-state rejection. Issue #511 adds direct
+`composeRuntime` HTTP, ciphertext-at-rest, restart/decrypt, and tombstone
+coverage with the same allowlisted disposable PostgreSQL boundary.
+Whole-process fixture verification remains serial and loopback-only;
+production composition is still verified closed.
 
 The filesystem checks are path-based rather than descriptor-relative. This is
 an explicit local/test residual risk bounded by the owner-private root and
@@ -2012,7 +2029,32 @@ only when temporal invariants still hold, and reject cross-effect results.
 The pinned Stripe adapter uses `cancel_at_period_end=true` for the ordinary
 effect and retains no-invoice/no-proration deletion for the immediate effect.
 Loopback HTTP stubs verify both calls; no Stripe object is touched. The
-authenticated Go handler derives owner scope from the session, but stays
-outside `HandlerOptions`, so `/api/billing/cancel` remains closed. Full scope,
-tests, non-approval limits, and rollback are in
-[`billing-cancellation.md`](billing-cancellation.md).
+authenticated Go handler derives owner scope from the session, but stayed
+outside `HandlerOptions` in the #496 slice. #510 later connects it only to the
+no-effect local-fixture provider; `/api/billing/cancel` remains closed for the
+default and production composition. Full scope, tests, non-approval limits,
+and rollback are in [`billing-cancellation.md`](billing-cancellation.md) and
+[`local-commerce-runtime.md`](local-commerce-runtime.md).
+
+## Local legal and commerce composition slice
+
+Issue #510 connects the already migrated terms, contract evidence, and
+ordinary cancellation paths only when `ApplicationProfileLocalFixture` passes
+the #509 preflight. One shared session resolver and PostgreSQL pool back terms,
+evidence, Billing, and Entitlement reads/writes. Typed local sources match the
+browser fixture by canonical hash. Separate UUIDv7 factories keep the terms
+act and checkout act independent.
+
+The in-process commerce provider has no network or write capability. It first
+verifies the exact seeded Billing and Entitlement records. Checkout then
+returns `local-confirmed` without a URL, provider reference, charge, or Billing
+mutation. Ordinary cancellation returns a deterministic period-end schedule
+without mutating that seeded projection. Provider/dependency mismatch fails
+closed. The Stripe adapter and webhook boundary are not constructed or mounted.
+
+The browser calls Go first on `/account/terms`, `/checkout`, and
+`/account/billing`; only an exact strictly decoded not-found response activates
+the legacy local display fallback. Production/default stay closed, and the
+fixture text/980-yen price are test data rather than legal or pricing approval.
+See [`local-commerce-runtime.md`](local-commerce-runtime.md) for the route,
+failure, rollback, and verification contract.

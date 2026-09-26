@@ -25,9 +25,13 @@ for (const marker of [
   'f423da9932163980485ecc5bc2055b7c8c3b3d8b',
   '/api/sync:',
   '/api/v2/sync:',
+  '/api/session-context:',
   '/api/billing/checkout:',
   '/api/account/deletion:',
   'x-fukamu-state: disconnected',
+  'x-fukamu-state: connected-local-fixture-production-closed',
+  'x-handler-contract: sync-v2',
+  'x-handler-contract: authenticated-session-context',
   'x-handler-contract: billing-cancellation-period-end',
   'x-go-handler: backend/internal/httpapi/billing_cancellation.go',
 ]) {

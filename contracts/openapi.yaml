@@ -54,54 +54,128 @@ paths:
   /api/v2/sync:
     post:
       operationId: syncV2Route
-      x-fukamu-state: disconnected
+      x-fukamu-state: connected-local-fixture-production-closed
       x-handler-contract: sync-v2
       x-go-handler: backend/internal/httpapi/sync_v2.go
       description: >-
-        The current route remains closed (404 in legacy-test, otherwise 503).
-        The 200/400/401/402/403/409/413 Go handler contract is tested
-        separately with PostgreSQL, quota, and encrypted-object adapters and
-        is deliberately absent from the public HandlerOptions composition.
+        The exact local-fixture profile authenticates a scoped hash-only
+        session before reading the bounded body, then uses PostgreSQL journal,
+        quota, encrypted metadata, and guarded AES-GCM filesystem adapters.
+        The legacy route is closed in that profile. Production/default remain
+        closed because they supply no SyncV2Runtime.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncV2Request' }
       responses:
+        '200':
+          description: Authenticated encrypted Sync v2 result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncV2Response' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '402': { $ref: '#/components/responses/OnlineAccessLocked' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/SyncV2RequestTooLarge' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/session-context:
+    get:
+      operationId: sessionContextRoute
+      x-fukamu-state: connected-local-fixture-production-closed
+      x-handler-contract: authenticated-session-context
+      x-go-handler: backend/internal/httpapi/session_context.go
+      description: >-
+        Returns only the authenticated local-fixture Account/Vault/session
+        context required to construct browser-local storage. It never returns
+        the bearer token and is closed in production/default composition.
+      responses:
+        '200':
+          description: Authenticated Vault-scoped browser bootstrap context.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionContext' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
   /api/billing/checkout:
     get:
       operationId: billingCheckoutOfferRoute
-      x-fukamu-state: disconnected
+      x-fukamu-state: connected-local-fixture-production-closed
       x-handler-contract: billing-checkout-offer
       x-go-handler: backend/internal/httpapi/legal.go
       description: >-
-        The production route remains closed. The authenticated Go handler is
-        tested separately and requires a complete explicitly composed LegalRuntime.
+        The guarded local-fixture profile serves the typed no-charge offer.
+        The production/default route remains closed because it supplies no LegalRuntime.
       responses:
+        '200':
+          description: Current local fixture offer and canonical hash.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContractOfferResponse' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
     post:
       operationId: billingCheckoutRoute
-      x-fukamu-state: disconnected
+      x-fukamu-state: connected-local-fixture-production-closed
       x-handler-contract: billing-checkout-submit
       x-go-handler: backend/internal/httpapi/legal.go
       description: >-
-        The production route remains closed. The Go contract keeps commercial
-        idempotency separate from owner-scoped current terms evidence.
+        The local fixture records immutable evidence and returns URL-free
+        confirmation without charging or provider I/O. Production remains closed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContractCheckoutRequest' }
       responses:
+        '200':
+          description: Provider redirect or URL-free local confirmation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContractCheckoutResponse' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/RequestTooLarge' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
         '503': { $ref: '#/components/responses/Unavailable' }
   /api/billing/cancel:
     post:
       operationId: billingCancellationRoute
-      x-fukamu-state: disconnected
+      x-fukamu-state: connected-local-fixture-production-closed
       x-handler-contract: billing-cancellation-period-end
       x-go-handler: backend/internal/httpapi/billing_cancellation.go
       description: >-
-        The production route remains closed. The authenticated Go contract
-        schedules provider-confirmed period-end cancellation; account deletion
-        continues to use its distinct immediate-only port. The Draft PR #404
-        contract is implemented for migration compatibility but is not
-        published or treated as product approval by this route record.
+        The guarded local fixture returns a deterministic no-write period-end
+        schedule. Production remains closed and Stripe is not constructed.
+        Account deletion continues to use its distinct immediate-only port.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BillingCancellationRequest' }
       responses:
+        '200':
+          description: Scheduled or already-cancelled confirmation.
+          content:
+            application/json:
+              schema:
+                { $ref: '#/components/schemas/BillingCancellationResponse' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/RequestTooLarge' }
         '503': { $ref: '#/components/responses/Unavailable' }
   /api/account/deletion:
     post:
@@ -156,25 +230,48 @@ paths:
   /api/account/terms-consent:
     get:
       operationId: termsConsentStatusRoute
-      x-fukamu-state: disconnected
+      x-fukamu-state: connected-local-fixture-production-closed
       x-handler-contract: terms-consent-status
       x-go-handler: backend/internal/httpapi/legal.go
       description: >-
-        The production route remains closed. The authenticated Go handler is
-        tested separately and requires a complete explicitly composed LegalRuntime.
+        The guarded local fixture returns owner-scoped PostgreSQL consent
+        status. Production/default remains closed without a LegalRuntime.
       responses:
+        '200':
+          description: Current owner-scoped terms consent status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TermsConsentResponse' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
     post:
       operationId: termsConsentSubmitRoute
-      x-fukamu-state: disconnected
+      x-fukamu-state: connected-local-fixture-production-closed
       x-handler-contract: terms-consent-submit
       x-go-handler: backend/internal/httpapi/legal.go
       description: >-
-        The production route remains closed. The Go handler strictly decodes a
-        bounded command after session and same-origin checks.
+        The local fixture strictly decodes a bounded command after session and
+        same-origin checks, then records/replays immutable evidence. Production is closed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TermsConsentRequest' }
       responses:
+        '200':
+          description: Recorded or replayed owner-scoped consent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TermsConsentResponse' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/RequestTooLarge' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
         '503': { $ref: '#/components/responses/Unavailable' }
 components:
   responses:
@@ -201,6 +298,47 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: unavailable }
+    AuthenticationRequired:
+      description: An authenticated local fixture session is required.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: authentication-required }
+    Forbidden:
+      description: Owner or same-origin verification failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: forbidden }
+    OnlineAccessLocked:
+      description: The seeded entitlement does not permit online synchronization.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: online-access-locked }
+    InvalidRequest:
+      description: Strict request decoding or an application precondition failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: invalid-request }
+    Conflict:
+      description: Stale disclosure, identifier conflict, or unavailable cancellation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RequestTooLarge:
+      description: More than 2,048 request bytes.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: request-too-large }
+    SyncV2RequestTooLarge:
+      description: More than the configured limit or 4,000,000 request bytes.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: request-too-large }
     InvalidSyncRequest:
       description: Legacy request JSON or invariants are invalid.
       content:
@@ -243,6 +381,207 @@ components:
       type: integer
       minimum: 0
       maximum: 9007199254740991
+    Sha256Digest:
+      type: string
+      pattern: '^sha256:[a-f0-9]{64}$'
+    AffirmedConsent:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [affirmed] }
+    ContractOffer:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          schemaVersion,
+          offerVersion,
+          disclosureVersion,
+          serviceName,
+          quantity,
+          planName,
+          priceYen,
+          billingPeriod,
+          taxIncluded,
+          trialDays,
+          trialPriceYen,
+          firstChargeDay,
+          renewalChargeYen,
+          annualEstimateYen,
+          automaticRenewal,
+          paymentMethod,
+          serviceStart,
+          servicePeriod,
+          cancellationPolicy,
+          refundPolicy,
+          additionalFees,
+          onlineLockPolicy,
+          cancellationSeparateFromAccountDeletion,
+        ]
+      properties:
+        schemaVersion: { type: integer, enum: [1] }
+        offerVersion:
+          { type: string, pattern: '^legal-commerce-v1:\d{4}-\d{2}-\d{2}$' }
+        disclosureVersion: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        serviceName: { type: string, enum: [FUKAMU Notes] }
+        quantity: { type: string, enum: [one-personal-vault] }
+        planName: { type: string, minLength: 1, maxLength: 200 }
+        priceYen: { type: integer, minimum: 1, maximum: 10000000 }
+        billingPeriod: { type: string, enum: [monthly, annual] }
+        taxIncluded: { type: boolean, enum: [true] }
+        trialDays: { type: integer, enum: [14] }
+        trialPriceYen: { type: integer, enum: [0] }
+        firstChargeDay: { type: integer, enum: [15] }
+        renewalChargeYen: { type: integer, minimum: 1, maximum: 10000000 }
+        annualEstimateYen: { type: integer, minimum: 1, maximum: 120000000 }
+        automaticRenewal: { type: boolean, enum: [true] }
+        paymentMethod: { type: string, enum: [credit-card] }
+        serviceStart:
+          {
+            type: string,
+            enum: [after-registration-and-payment-method-confirmation],
+          }
+        servicePeriod: { type: string, enum: [indefinite-until-cancelled] }
+        cancellationPolicy: { type: string, minLength: 1, maxLength: 1000 }
+        refundPolicy: { type: string, minLength: 1, maxLength: 1000 }
+        additionalFees: { type: string, minLength: 1, maxLength: 500 }
+        onlineLockPolicy:
+          {
+            type: string,
+            enum: [immediate-on-payment-failure-or-action-required],
+          }
+        cancellationSeparateFromAccountDeletion: { type: boolean, enum: [true] }
+    ContractOfferResponse:
+      type: object
+      additionalProperties: false
+      required: [offer, offerHash]
+      properties:
+        offer: { $ref: '#/components/schemas/ContractOffer' }
+        offerHash: { $ref: '#/components/schemas/Sha256Digest' }
+    ContractCheckoutRequest:
+      type: object
+      additionalProperties: false
+      required: [submissionId, presentedOfferHash, consent]
+      properties:
+        submissionId: { $ref: '#/components/schemas/UuidV7' }
+        presentedOfferHash: { $ref: '#/components/schemas/Sha256Digest' }
+        consent: { $ref: '#/components/schemas/AffirmedConsent' }
+    ContractCheckoutResponse:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required:
+            [
+              kind,
+              evidenceOutcome,
+              evidenceId,
+              offerHash,
+              offerVersion,
+              checkoutUrl,
+            ]
+          properties:
+            kind: { type: string, enum: [redirect] }
+            evidenceOutcome: { type: string, enum: [recorded, replayed] }
+            evidenceId: { $ref: '#/components/schemas/UuidV7' }
+            offerHash: { $ref: '#/components/schemas/Sha256Digest' }
+            offerVersion:
+              { type: string, pattern: '^legal-commerce-v1:\d{4}-\d{2}-\d{2}$' }
+            checkoutUrl: { type: string, format: uri, maxLength: 2048 }
+        - type: object
+          additionalProperties: false
+          required: [kind, evidenceOutcome, evidenceId, offerHash, offerVersion]
+          properties:
+            kind: { type: string, enum: [local-confirmed] }
+            evidenceOutcome: { type: string, enum: [recorded, replayed] }
+            evidenceId: { $ref: '#/components/schemas/UuidV7' }
+            offerHash: { $ref: '#/components/schemas/Sha256Digest' }
+            offerVersion:
+              { type: string, pattern: '^legal-commerce-v1:\d{4}-\d{2}-\d{2}$' }
+    BillingCancellationRequest:
+      type: object
+      additionalProperties: false
+      required: [idempotencyKey]
+      properties:
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[A-Za-z0-9][A-Za-z0-9:_-]{0,254}$'
+    BillingCancellationResponse:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [status, outcome, confirmedAt, accessEndsAt]
+          properties:
+            status: { type: string, enum: [cancellation-scheduled] }
+            outcome: { type: string, enum: [scheduled] }
+            confirmedAt:
+              allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+              description: Provider observation time for the schedule.
+            accessEndsAt:
+              allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+              description: Must be at or after both confirmedAt and the server request time.
+        - type: object
+          additionalProperties: false
+          required: [status, outcome, confirmedAt, accessEndsAt]
+          properties:
+            status: { type: string, enum: [cancelled] }
+            outcome: { type: string, enum: [already-cancelled] }
+            confirmedAt:
+              allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+              description: Provider observation time for the completed cancellation.
+            accessEndsAt:
+              allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+              description: Must be at or before confirmedAt.
+    TermsReference:
+      type: object
+      additionalProperties: false
+      required: [termsVersion, termsHash, effectiveDate]
+      properties:
+        termsVersion: { type: string, pattern: '^terms-v1:\d{4}-\d{2}-\d{2}$' }
+        termsHash: { $ref: '#/components/schemas/Sha256Digest' }
+        effectiveDate: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+    AcceptedTermsReference:
+      type: object
+      additionalProperties: false
+      required: [consentId, termsVersion, termsHash, acceptedAt]
+      properties:
+        consentId: { $ref: '#/components/schemas/UuidV7' }
+        termsVersion: { type: string, pattern: '^terms-v1:\d{4}-\d{2}-\d{2}$' }
+        termsHash: { $ref: '#/components/schemas/Sha256Digest' }
+        acceptedAt: { $ref: '#/components/schemas/SafeInteger' }
+    TermsConsentStatus:
+      type: object
+      additionalProperties: false
+      required: [kind, acceptanceRequired, current]
+      properties:
+        kind:
+          {
+            type: string,
+            enum: [current, accepted, reconsent-required, notice-only],
+          }
+        acceptanceRequired: { type: boolean }
+        current: { $ref: '#/components/schemas/TermsReference' }
+        accepted: { $ref: '#/components/schemas/AcceptedTermsReference' }
+    TermsConsentResponse:
+      type: object
+      additionalProperties: false
+      required: [outcome, status]
+      properties:
+        outcome: { type: string, enum: [status, recorded, replayed] }
+        status: { $ref: '#/components/schemas/TermsConsentStatus' }
+    TermsConsentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        [submissionId, presentedTermsVersion, presentedTermsHash, consent]
+      properties:
+        submissionId: { $ref: '#/components/schemas/UuidV7' }
+        presentedTermsVersion:
+          { type: string, pattern: '^terms-v1:\d{4}-\d{2}-\d{2}$' }
+        presentedTermsHash: { $ref: '#/components/schemas/Sha256Digest' }
+        consent: { $ref: '#/components/schemas/AffirmedConsent' }
     BodySegment:
       oneOf:
         - type: object
@@ -299,6 +638,34 @@ components:
           type: array
           maxItems: 500
           items: { $ref: '#/components/schemas/Mutation' }
+    SyncV2Cursor:
+      type: string
+      minLength: 24
+      maxLength: 2048
+      pattern: '^[A-Za-z0-9._~-]+$'
+    SyncV2Request:
+      type: object
+      additionalProperties: false
+      required: [version, deviceId, cursor, mutations]
+      properties:
+        version: { type: string, enum: [sync/v2] }
+        deviceId: { $ref: '#/components/schemas/UuidV7' }
+        cursor:
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/SyncV2Cursor' }]
+        mutations:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/Mutation' }
+    SessionContext:
+      type: object
+      additionalProperties: false
+      required: [accountId, vaultId, sessionId, sessionEpoch]
+      properties:
+        accountId: { $ref: '#/components/schemas/UuidV7' }
+        vaultId: { $ref: '#/components/schemas/UuidV7' }
+        sessionId: { $ref: '#/components/schemas/UuidV7' }
+        sessionEpoch: { type: integer, minimum: 1, maximum: 9007199254740991 }
     ServerCard:
       type: object
       additionalProperties: false
@@ -343,6 +710,72 @@ components:
           type: array
           items: { $ref: '#/components/schemas/BodySegment' }
         createdAt: { $ref: '#/components/schemas/SafeInteger' }
+    SyncV2Change:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [kind, sequence, card]
+          properties:
+            kind: { type: string, enum: [card-upsert] }
+            sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            card: { $ref: '#/components/schemas/ServerCard' }
+        - type: object
+          additionalProperties: false
+          required: [kind, sequence, conflict]
+          properties:
+            kind: { type: string, enum: [conflict-upsert] }
+            sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            conflict: { $ref: '#/components/schemas/Conflict' }
+        - type: object
+          additionalProperties: false
+          required: [kind, sequence, cardId, revision, deletedAt]
+          properties:
+            kind: { type: string, enum: [card-tombstone] }
+            sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            cardId: { $ref: '#/components/schemas/UuidV7' }
+            revision: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            deletedAt: { $ref: '#/components/schemas/SafeInteger' }
+        - type: object
+          additionalProperties: false
+          required: [kind, sequence, conflictId, cardId, deletedAt]
+          properties:
+            kind: { type: string, enum: [conflict-tombstone] }
+            sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            conflictId: { $ref: '#/components/schemas/UuidV7' }
+            cardId: { $ref: '#/components/schemas/UuidV7' }
+            deletedAt: { $ref: '#/components/schemas/SafeInteger' }
+    SyncV2MutationReceipt:
+      type: object
+      additionalProperties: false
+      required: [mutationId, cardId, appliedRevision]
+      properties:
+        mutationId: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        appliedRevision:
+          { type: integer, minimum: 1, maximum: 9007199254740991 }
+    SyncV2Page:
+      type: object
+      additionalProperties: false
+      required: [kind, nextCursor]
+      properties:
+        kind: { type: string, enum: [more, complete] }
+        nextCursor: { $ref: '#/components/schemas/SyncV2Cursor' }
+    SyncV2Response:
+      type: object
+      additionalProperties: false
+      required: [version, highWatermark, changes, receipts, page]
+      properties:
+        version: { type: string, enum: [sync/v2] }
+        highWatermark: { $ref: '#/components/schemas/SafeInteger' }
+        changes:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/SyncV2Change' }
+        receipts:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/SyncV2MutationReceipt' }
+        page: { $ref: '#/components/schemas/SyncV2Page' }
     SyncResponse:
       type: object
       additionalProperties: false

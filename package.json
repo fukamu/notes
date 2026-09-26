@@ -39,7 +39,7 @@
     "benchmark:migration": "node --experimental-strip-types scripts/benchmark-migration.mts",
     "contracts:check": "node scripts/check-contracts.mjs && vitest run tests/contracts",
     "go:format:check": "node --experimental-strip-types scripts/check-go-format.mts",
-    "go:test:integration": "NOTES_TEST_DATABASE_URL=${NOTES_TEST_DATABASE_URL:-postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable} go -C backend test -tags=integration ./tests/integration/...",
+    "go:test:integration": "NOTES_TEST_DATABASE_URL=${NOTES_TEST_DATABASE_URL:-postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable} go -C backend test -p=1 -tags=integration ./tests/integration/... ./cmd/notes",
     "go:check": "npm run go:format:check && go -C backend vet ./... && go -C backend test ./... && npm run go:test:integration && go -C backend test -race ./... && go -C backend build ./cmd/...",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build",
     "check:environment": "node --experimental-strip-types scripts/verify-environment.mts",

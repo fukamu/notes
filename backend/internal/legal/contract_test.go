@@ -178,6 +178,49 @@ func TestContractCheckoutRecordsEvidenceBeforeProviderAndReplaysLostResponse(t *
 	}
 }
 
+func TestContractCheckoutAcceptsOnlyURLFreeLocalConfirmation(t *testing.T) {
+	fixture := readContractFixture(t)
+	repository := &memoryContractRepository{}
+	evidence, _ := NewContractEvidenceService(
+		repository, fixtureContractHasher{hash: mustContractHash(t, fixture.Expected.CanonicalSHA256)},
+	)
+	application, _ := NewContractCheckoutApplication(
+		evidence, fixtureContractSource{disclosure: fixture.Disclosure}, acceptedContractTerms{},
+		fixedContractResultProvider{result: stripebilling.HostedCheckoutResult{Kind: stripebilling.HostedCheckoutLocalConfirmed}},
+	)
+	command := ContractConfirmationCommand{
+		SubmissionID:       mustContractSubmissionID(t, fixture.SubmissionID),
+		PresentedOfferHash: mustContractHash(t, fixture.Expected.CanonicalSHA256),
+		Consent:            ContractConsentAffirmed,
+	}
+	result := application.Confirm(
+		context.Background(), fixture.vaultContext(t), command,
+		mustContractEvidenceID(t, fixture.EvidenceID), fixture.ConfirmedAt,
+	)
+	if result.Kind != ContractCheckoutLocalConfirmed || result.Outcome != ContractEvidenceRecorded ||
+		result.CheckoutURL != "" || repository.count() != 1 {
+		t.Fatalf("local confirmation = %#v records=%d", result, repository.count())
+	}
+
+	invalidRepository := &memoryContractRepository{}
+	invalidEvidence, _ := NewContractEvidenceService(
+		invalidRepository, fixtureContractHasher{hash: mustContractHash(t, fixture.Expected.CanonicalSHA256)},
+	)
+	invalid, _ := NewContractCheckoutApplication(
+		invalidEvidence, fixtureContractSource{disclosure: fixture.Disclosure}, acceptedContractTerms{},
+		fixedContractResultProvider{result: stripebilling.HostedCheckoutResult{
+			Kind: stripebilling.HostedCheckoutLocalConfirmed, CheckoutURL: "https://checkout.stripe.com/unexpected",
+		}},
+	)
+	result = invalid.Confirm(
+		context.Background(), fixture.vaultContext(t), command,
+		mustContractEvidenceID(t, fixture.EvidenceID), fixture.ConfirmedAt,
+	)
+	if result.Kind != ContractCheckoutRejected || result.Reason != ContractMalformedProvider || invalidRepository.count() != 1 {
+		t.Fatalf("invalid local confirmation = %#v records=%d", result, invalidRepository.count())
+	}
+}
+
 func TestContractCheckoutStopsBeforeEvidenceAndProviderWithoutCurrentTerms(t *testing.T) {
 	fixture := readContractFixture(t)
 	repository := &memoryContractRepository{}
@@ -360,6 +403,18 @@ type recordingContractProvider struct {
 
 type fixedContractProvider struct {
 	reason stripebilling.RejectionReason
+}
+
+type fixedContractResultProvider struct {
+	result stripebilling.HostedCheckoutResult
+}
+
+func (provider fixedContractResultProvider) BeginHostedCheckout(
+	context.Context,
+	identity.VaultContext,
+	stripebilling.HostedCheckoutCommand,
+) stripebilling.HostedCheckoutResult {
+	return provider.result
 }
 
 func (provider fixedContractProvider) BeginHostedCheckout(

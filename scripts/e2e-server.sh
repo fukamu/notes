@@ -25,11 +25,13 @@ fi
 : "${NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY:?E2E fixture cursor key is required}"
 : "${NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY:?E2E fixture deletion key is required}"
 
-fixture_root="$(mktemp -d /tmp/fukamu-notes-e2e-fixture.XXXXXX)"
+# This root and every supplied fixture value are disposable test data. The
+# profile preflight rejects them outside test/local loopback operation.
+fixture_root="$(mktemp -d "${TMPDIR:-/tmp}/fukamu-notes-e2e.XXXXXX")"
 chmod 700 "$fixture_root"
 server_pid=''
 cleanup() {
-  if [[ -n "$server_pid" ]]; then
+  if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
     kill "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
   fi
@@ -56,6 +58,11 @@ go -C backend run ./cmd/notesctl prepare-e2e \
   "--allowed-subject=$NOTES_LEGACY_OWNER_SUBJECT"
 
 go -C backend run ./cmd/notes &
-server_pid=$!
-wait "$server_pid"
+server_pid="$!"
+if wait "$server_pid"; then
+  server_status=0
+else
+  server_status="$?"
+fi
 server_pid=''
+exit "$server_status"

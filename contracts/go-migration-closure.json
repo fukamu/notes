@@ -35,10 +35,15 @@
     },
     {
       "id": "F04",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V02", "V03", "V04"],
-      "goEvidence": ["backend/internal/identity/session.go"]
+      "goEvidence": [
+        "backend/internal/identity/session.go",
+        "backend/internal/runtimefoundation/foundation.go",
+        "backend/internal/httpapi/session_context.go"
+      ],
+      "note": "Issue #511 connects the scoped hash-only local-fixture session; production issuance and routes remain closed."
     },
     {
       "id": "F05",
@@ -62,13 +67,15 @@
     },
     {
       "id": "F07",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V03", "V04"],
       "goEvidence": [
         "backend/internal/identity/session.go",
-        "backend/internal/adapters/postgres/session.go"
-      ]
+        "backend/internal/adapters/postgres/session.go",
+        "backend/internal/httpapi/session_context.go"
+      ],
+      "note": "Issue #511 exposes only the authenticated local-fixture Vault context and never returns the bearer token."
     },
     {
       "id": "F08",
@@ -82,43 +89,50 @@
     },
     {
       "id": "F09",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V04", "V05"],
       "goEvidence": [
         "backend/internal/syncv2/content.go",
-        "backend/internal/adapters/postgres/sync_v2_content.go"
-      ]
+        "backend/internal/adapters/postgres/sync_v2_content.go",
+        "backend/cmd/notes/main.go"
+      ],
+      "note": "Issue #511 connects encrypted hydration only in the exact local-fixture graph; production remains closed."
     },
     {
       "id": "F10",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V01", "V04", "V05"],
       "goEvidence": [
         "backend/internal/syncv2/application.go",
         "backend/internal/httpapi/sync_v2.go"
-      ]
+      ],
+      "note": "Issue #511 mounts Sync v2 only for the exact local-fixture profile and closes legacy sync there."
     },
     {
       "id": "F11",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V06"],
       "goEvidence": [
         "backend/internal/cryptocontent/service.go",
-        "backend/internal/adapters/contentcrypto/aes_gcm.go"
-      ]
+        "backend/internal/adapters/contentcrypto/aes_gcm.go",
+        "backend/cmd/notes/main.go"
+      ],
+      "note": "Issue #511 connects AES-256-GCM content sealing in the guarded local fixture; production remains closed."
     },
     {
       "id": "F12",
-      "state": "B",
+      "state": "A/B/C",
       "migration": "migrated",
       "verification": ["V06", "V09"],
       "goEvidence": [
         "backend/internal/adapters/kms/gcp.go",
-        "backend/internal/adapters/kms/rest.go"
-      ]
+        "backend/internal/adapters/kms/rest.go",
+        "backend/internal/adapters/recoverykey/directory.go"
+      ],
+      "note": "Issue #511 connects only the local fixture key directory; production KMS and external proof remain approval-pending."
     },
     {
       "id": "F13",
@@ -132,13 +146,15 @@
     },
     {
       "id": "F14",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V04", "V06", "V08"],
       "goEvidence": [
         "backend/internal/encryptedobject/core.go",
-        "backend/internal/adapters/postgres/encrypted_object.go"
-      ]
+        "backend/internal/adapters/postgres/encrypted_object.go",
+        "backend/internal/adapters/objectstorage/directory.go"
+      ],
+      "note": "Issue #511 connects immutable encrypted objects only under the owner-private local fixture root."
     },
     {
       "id": "F15",
@@ -152,23 +168,27 @@
     },
     {
       "id": "F16",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V04", "V05"],
       "goEvidence": [
         "backend/internal/quota/ledger.go",
-        "backend/internal/adapters/postgres/quota.go"
-      ]
+        "backend/internal/adapters/postgres/quota.go",
+        "backend/internal/httpapi/sync_v2.go"
+      ],
+      "note": "Issue #511 enforces the PostgreSQL quota ledger through local Sync v2; production remains closed."
     },
     {
       "id": "F17",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V04", "V07"],
       "goEvidence": [
         "backend/internal/billing/core.go",
-        "backend/internal/adapters/postgres/billing.go"
-      ]
+        "backend/internal/adapters/postgres/billing.go",
+        "backend/cmd/notes/main.go"
+      ],
+      "note": "Issues #510 and #511 reuse the exact seeded local Billing projection without enabling provider effects."
     },
     {
       "id": "F18",
@@ -182,45 +202,52 @@
     },
     {
       "id": "F19",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V05", "V07"],
       "goEvidence": [
         "backend/internal/entitlement/core.go",
-        "backend/internal/adapters/postgres/entitlement.go"
-      ]
+        "backend/internal/adapters/postgres/entitlement.go",
+        "backend/internal/runtimefoundation/foundation.go"
+      ],
+      "note": "Issue #511 connects seeded local entitlement evaluation; production and external provider decisions remain closed."
     },
     {
       "id": "F20",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V01", "V07"],
       "goEvidence": [
         "backend/internal/legal/contract_service.go",
-        "backend/internal/httpapi/legal.go"
-      ]
+        "backend/internal/httpapi/legal.go",
+        "backend/internal/adapters/localcommerce/provider.go"
+      ],
+      "note": "Issue #510 connects URL-free no-charge checkout only in the guarded local-fixture profile; production remains closed."
     },
     {
       "id": "F21",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V01", "V07"],
       "goEvidence": [
         "backend/internal/legal/terms_service.go",
-        "backend/internal/httpapi/legal.go"
-      ]
+        "backend/internal/httpapi/legal.go",
+        "backend/internal/adapters/localcommerce/source.go"
+      ],
+      "note": "Issue #510 connects typed test terms and PostgreSQL evidence only in the guarded local-fixture profile; production remains closed."
     },
     {
       "id": "F22",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V01", "V07"],
       "goEvidence": [
         "backend/internal/billing/cancellation.go",
         "backend/internal/adapters/stripe/provider.go",
+        "backend/internal/adapters/localcommerce/provider.go",
         "backend/internal/httpapi/billing_cancellation.go"
       ],
-      "note": "Issue #496 ports the exact Draft PR #404 period-end contract without modifying or publishing that draft; the Go handler and Stripe adapter remain disconnected from the public route."
+      "note": "Issue #496 ports the Draft PR #404 effect contract; Issue #510 connects only a deterministic no-write local-fixture provider. Stripe and production remain disconnected."
     },
     {
       "id": "F23",
@@ -304,7 +331,9 @@
       "evidence": [
         "contracts/openapi.yaml",
         "tests/contracts/migration-fixtures.test.ts",
-        "backend/internal/httpapi/handler_test.go"
+        "backend/internal/httpapi/handler_test.go",
+        "backend/internal/httpapi/session_context_test.go",
+        "backend/internal/httpapi/sync_v2_test.go"
       ]
     },
     {
@@ -321,7 +350,8 @@
       "evidence": [
         "backend/internal/identity/session_test.go",
         "backend/internal/identity/oidc_test.go",
-        "backend/internal/identity/email_otp_test.go"
+        "backend/internal/identity/email_otp_test.go",
+        "backend/internal/runtimefoundation/foundation_test.go"
       ]
     },
     {
@@ -330,7 +360,8 @@
       "evidence": [
         "backend/tests/integration/postgres_foundation_test.go",
         "backend/tests/integration/legacy_sync_test.go",
-        "backend/tests/integration/local_fixture_foundation_test.go"
+        "backend/tests/integration/local_fixture_foundation_test.go",
+        "backend/cmd/notes/main_integration_test.go"
       ]
     },
     {
@@ -338,7 +369,8 @@
       "status": "complete",
       "evidence": [
         "backend/tests/integration/quota_ledger_test.go",
-        "backend/tests/integration/sync_v2_application_test.go"
+        "backend/tests/integration/sync_v2_application_test.go",
+        "backend/cmd/notes/main_integration_test.go"
       ]
     },
     {
@@ -346,7 +378,8 @@
       "status": "complete",
       "evidence": [
         "backend/internal/cryptocontent/model_test.go",
-        "backend/internal/encryptedobject/recovery_service_test.go"
+        "backend/internal/encryptedobject/recovery_service_test.go",
+        "backend/cmd/notes/main_integration_test.go"
       ]
     },
     {
@@ -354,10 +387,15 @@
       "status": "complete",
       "evidence": [
         "backend/internal/billing/cancellation_test.go",
+        "backend/internal/adapters/localcommerce/provider_test.go",
+        "backend/internal/adapters/localcommerce/source_test.go",
         "backend/internal/adapters/stripe/provider_test.go",
         "backend/internal/httpapi/billing_cancellation_test.go",
         "backend/tests/integration/billing_projection_test.go",
-        "backend/tests/integration/contract_evidence_test.go"
+        "backend/tests/integration/contract_evidence_test.go",
+        "backend/tests/integration/local_commerce_runtime_test.go",
+        "tests/e2e/billing-ui.spec.ts",
+        "tests/unit/e2e-server.test.ts"
       ]
     },
     {
@@ -396,7 +434,8 @@
       "status": "complete",
       "evidence": [
         "tests/e2e/notes.spec.ts",
-        "tests/unit/service-worker.test.ts"
+        "tests/unit/service-worker.test.ts",
+        "backend/cmd/notes/main_integration_test.go"
       ]
     },
     {

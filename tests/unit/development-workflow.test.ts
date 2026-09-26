@@ -89,6 +89,9 @@ describe('issue-based delivery contract', () => {
     expect(packageSource).toContain('"go:check"');
     expect(packageSource).toContain('go -C backend test -race ./...');
     expect(packageSource).toContain('go:test:integration');
+    expect(packageSource).toContain(
+      'go -C backend test -p=1 -tags=integration ./tests/integration/... ./cmd/notes',
+    );
     expect(goModule).toContain('go 1.27.1');
     expect(dockerfile).toMatch(
       /golang:1\.27\.1-alpine@sha256:[a-f0-9]{64} AS go-build/,

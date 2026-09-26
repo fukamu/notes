@@ -16,6 +16,8 @@ type ServerOptions struct {
 	Logger                     *slog.Logger
 	PrivateRuntime             *PrivateRuntime
 	SyncV2Runtime              *SyncV2Runtime
+	LegalRuntime               *LegalRuntime
+	BillingCancellationRuntime *BillingCancellationRuntime
 	EnableDisconnectedFixtures bool
 }
 
@@ -26,6 +28,8 @@ func Run(ctx context.Context, options ServerOptions) error {
 		Logger:                     options.Logger,
 		PrivateRuntime:             options.PrivateRuntime,
 		SyncV2Runtime:              options.SyncV2Runtime,
+		LegalRuntime:               options.LegalRuntime,
+		BillingCancellationRuntime: options.BillingCancellationRuntime,
 		EnableDisconnectedFixtures: options.EnableDisconnectedFixtures,
 	})
 	if err != nil {

@@ -26,7 +26,7 @@ describe('Go local fixture foundation boundary', () => {
     );
   });
 
-  it('exposes only the complete local Sync v2 graph and no external provider adapter', async () => {
+  it('exposes only complete local Sync v2 and commerce graphs without leaking the foundation or external providers', async () => {
     const [main, handler] = await Promise.all([
       readFile('backend/cmd/notes/main.go', 'utf8'),
       readFile('backend/internal/httpapi/handler.go', 'utf8'),
@@ -35,17 +35,20 @@ describe('Go local fixture foundation boundary', () => {
     expect(main).not.toContain('internal/adapters/stripe');
     expect(main).not.toContain('internal/adapters/kms');
     expect(handler).not.toContain('runtimefoundation.LocalFixture');
-    expect(main).toContain('*runtimefoundation.LocalFixture');
-    expect(main).toContain('syncV2            *httpapi.SyncV2Runtime');
+    expect(main).toMatch(/localFixture\s+\*runtimefoundation\.LocalFixture/);
+    expect(main).toMatch(/syncV2\s+\*httpapi\.SyncV2Runtime/);
     expect(main).toContain('if configuration.LocalFixture != nil {');
     expect(handler).toContain('if options.SyncV2Runtime != nil {');
     expect(handler).toContain('legacyHandler = closedAPI');
+    expect(main).toContain('internal/adapters/localcommerce');
     const serverOptions = main.slice(
       main.indexOf('httpapi.ServerOptions{'),
       main.indexOf('}); err != nil', main.indexOf('httpapi.ServerOptions{')),
     );
     expect(serverOptions).not.toContain('LocalFixture:');
     expect(serverOptions).toContain('SyncV2Runtime:');
+    expect(serverOptions).toContain('LegalRuntime:');
+    expect(serverOptions).toContain('BillingCancellationRuntime:');
   });
 
   it('keeps every destructive E2E reset behind the exact disposable database guard', async () => {

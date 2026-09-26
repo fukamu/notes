@@ -250,15 +250,19 @@ one session resolver, and requires schema, seed, exclusive scope, directory,
 and DEK checks to pass before listening and on readiness checks.
 
 Issue #509 established this foundation without mounting a business route.
-Issue #511 now uses it only under the exact `local-fixture` profile to mount
-`GET /api/session-context` and `POST /api/v2/sync`. It closes `/api/sync` in
-that profile. The same PostgreSQL pool supplies the scoped hash-only session,
-Billing/Entitlement, Sync v2 journal, encrypted-object metadata, quota, and DEK
-stores. The guarded fixture directories supply immutable objects, nonce
-reservations, and the fixture key; content is sealed with AES-256-GCM. A scope
-wrapper accepts only the prepared Account/Vault/session generation. Entitlement
-evaluation alone is pinned to the deterministic fixture timestamp; HTTP session
-expiry and mutation timestamps use the real clock.
+Issue #510 uses it for local-fixture terms consent, URL-free no-charge checkout
+confirmation, and no-effect period-end cancellation. Issue #511 uses the same
+pool, scoped hash-only session resolver, and real HTTP clock to mount
+`GET /api/session-context` and `POST /api/v2/sync`, closing `/api/sync` in that
+profile. PostgreSQL supplies Billing/Entitlement, Sync v2 journal,
+encrypted-object metadata, quota, and DEK stores. Guarded fixture directories
+supply immutable objects, nonce reservations, and the fixture key; content is
+sealed with AES-256-GCM. Entitlement evaluation alone is pinned to the
+deterministic fixture timestamp. No external or remote Stripe, KMS, identity,
+mail, object, or backup provider is constructed or contacted. See
+[`docs/local-commerce-runtime.md`](../docs/local-commerce-runtime.md). This is
+local/CI evidence, not production configuration, legal/price approval,
+deployment, charging, or cutover approval.
 
 The live notes layout first fetches the strict, private, no-store session
 context and constructs the Vault-scoped IndexedDB and Sync v2 runtime only after
@@ -269,12 +273,13 @@ after reconnection. Playwright supplies the deterministic fixture token only as
 a host-only `Secure`, `HttpOnly`, `SameSite=Strict` cookie.
 
 No Stripe, GCP KMS, OIDC/mail, remote object, or backup provider is constructed
-or contacted. Billing is read only as the seeded local entitlement source; no
-checkout, charge, cancellation, login/session issuance, delete wire operation,
-or legacy-data migration is enabled. Default and production composition still
-pass no Sync v2 runtime to the HTTP handler, so both new routes stay closed.
-This is local/CI composition evidence, not production configuration,
-deployment, or cutover approval.
+or contacted. Billing is read only as the seeded local entitlement and commerce
+source; checkout never charges and cancellation never contacts a provider. No
+login/session issuance, delete wire operation, or legacy-data migration is
+enabled. Default and production composition pass none of the local-fixture
+Sync v2, session-context, legal, or cancellation runtimes to the HTTP handler,
+so those routes stay closed. This is local/CI composition evidence, not
+production configuration, deployment, or cutover approval.
 
 The real-PostgreSQL foundation test covers migration, exact closed
 `launch_config` (`singleton = 1`, public access disabled, `updated_at = 0`),
@@ -283,6 +288,10 @@ composition test additionally calls `composeRuntime`, sends authenticated HTTP
 through the mounted route, verifies filesystem ciphertext contains no
 plaintext, reconstructs the process graph, decrypts the persisted card, and
 checks direct application deletion replay plus the next Sync v2 tombstone.
+The Issue #510 PostgreSQL and whole-process tests exercise terms acceptance,
+URL-free checkout, period-end cancellation, cross-owner refusal without writes,
+and zero external HTTP(S) requests. Serial Playwright coverage requires real
+200 responses from both the commerce and Sync v2 local-fixture routes.
 The existing Sync v2 integration suite remains the evidence for
 object-before-journal retry, cursor/device/owner isolation, conflicts, quota
 admission, dependency failures, and replay. These tests use only the allowlisted
@@ -333,9 +342,9 @@ source/config/script/package reintroduction.
 See
 [`docs/legacy-typescript-retirement.md`](../docs/legacy-typescript-retirement.md).
 F22 has separate Go evidence for ordinary period-end cancellation and the
-immediate account-deletion effect. The ordinary handler remains disconnected;
-Draft PR #404, public activation, and production provider use remain
-unapproved.
+immediate account-deletion effect. The ordinary handler is connected only to
+the no-effect local-fixture provider; Draft PR #404, public/production
+activation, and production provider use remain unapproved.
 
 The frozen crypto fixture is decoded by the Go AES-GCM tests; browser wire
 fixtures remain TypeScript-only. Focused Go checks are:

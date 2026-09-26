@@ -1,0 +1,262 @@
+package localcommerce
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"errors"
+	"testing"
+
+	"github.com/fukamu/notes/backend/internal/access"
+	"github.com/fukamu/notes/backend/internal/billing"
+	"github.com/fukamu/notes/backend/internal/cryptocontent"
+	"github.com/fukamu/notes/backend/internal/entitlement"
+	"github.com/fukamu/notes/backend/internal/identity"
+	fixture "github.com/fukamu/notes/backend/internal/localfixture"
+	"github.com/fukamu/notes/backend/internal/stripebilling"
+)
+
+func TestNoNetworkProviderConfirmsOnlyExactSeededFacts(t *testing.T) {
+	t.Parallel()
+	seed := providerSeed(t)
+	subscriptions := &subscriptionStub{record: seed.Subscription}
+	entitlements := &entitlementStub{record: seed.Entitlement}
+	provider, err := NewProvider(seed, subscriptions, entitlements)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := providerCheckoutCommand()
+	result := provider.BeginHostedCheckout(context.Background(), seed.Context, command)
+	if result.Kind != stripebilling.HostedCheckoutLocalConfirmed || result.CheckoutURL != "" ||
+		result.ProviderCheckoutReference != "" || subscriptions.reads != 1 || entitlements.reads != 1 {
+		t.Fatalf("checkout = %#v reads=%d/%d", result, subscriptions.reads, entitlements.reads)
+	}
+
+	wrongOffer := command
+	wrongOffer.Contract.OfferHash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	result = provider.BeginHostedCheckout(context.Background(), seed.Context, wrongOffer)
+	if result.Kind != stripebilling.HostedCheckoutRejected ||
+		result.Reason != stripebilling.ReasonProviderMappingMismatch ||
+		subscriptions.reads != 1 || entitlements.reads != 1 {
+		t.Fatalf("wrong offer checkout = %#v reads=%d/%d", result, subscriptions.reads, entitlements.reads)
+	}
+
+	subscriptions.record.ProviderSubscriptionReference = "fixture-subscription-mismatch"
+	result = provider.BeginHostedCheckout(context.Background(), seed.Context, command)
+	if result.Kind != stripebilling.HostedCheckoutRejected || result.Reason != stripebilling.ReasonProviderMappingMismatch {
+		t.Fatalf("mismatched projection checkout = %#v", result)
+	}
+}
+
+func TestNoNetworkProviderScopesSeedChecksToAccountAndVault(t *testing.T) {
+	t.Parallel()
+	seed := providerSeed(t)
+	subscriptions := &subscriptionStub{record: seed.Subscription}
+	entitlements := &entitlementStub{record: seed.Entitlement}
+	provider, err := NewProvider(seed, subscriptions, entitlements)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sameOwner := seed.Context
+	sameOwner.SessionID, err = identity.ParseSessionID("01999c20-9e33-7000-8000-000000000004")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameOwner.SessionEpoch, err = identity.ParseSessionEpoch(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := provider.BeginHostedCheckout(context.Background(), sameOwner, providerCheckoutCommand())
+	if result.Kind != stripebilling.HostedCheckoutLocalConfirmed || subscriptions.reads != 1 ||
+		entitlements.reads != 1 || len(subscriptions.scopes) != 1 || len(entitlements.contexts) != 1 ||
+		subscriptions.scopes[0].AccountID != sameOwner.AccountID ||
+		subscriptions.scopes[0].VaultID != sameOwner.VaultID || entitlements.contexts[0] != sameOwner {
+		t.Fatalf("same-owner checkout = %#v scopes=%#v contexts=%#v", result, subscriptions.scopes, entitlements.contexts)
+	}
+
+	crossAccount := sameOwner
+	crossAccount.AccountID, err = identity.ParseAccountID("01999c20-9e33-7000-8000-000000000099")
+	if err != nil {
+		t.Fatal(err)
+	}
+	crossVault := sameOwner
+	crossVault.VaultID, err = identity.ParseVaultID("01999c20-9e33-7000-8000-000000000099")
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidSession := sameOwner
+	invalidSession.SessionID = ""
+	for name, vaultContext := range map[string]identity.VaultContext{
+		"cross account":   crossAccount,
+		"cross vault":     crossVault,
+		"invalid session": invalidSession,
+	} {
+		t.Run(name, func(t *testing.T) {
+			result := provider.BeginHostedCheckout(context.Background(), vaultContext, providerCheckoutCommand())
+			if result.Kind != stripebilling.HostedCheckoutRejected ||
+				result.Reason != stripebilling.ReasonProviderMappingMismatch ||
+				subscriptions.reads != 1 || entitlements.reads != 1 {
+				t.Fatalf("checkout = %#v reads=%d/%d", result, subscriptions.reads, entitlements.reads)
+			}
+		})
+	}
+}
+
+func TestNoNetworkProviderSchedulesStablePeriodEndCancellation(t *testing.T) {
+	t.Parallel()
+	seed := providerSeed(t)
+	subscriptions := &subscriptionStub{record: seed.Subscription}
+	entitlements := &entitlementStub{record: seed.Entitlement}
+	provider, err := NewProvider(
+		seed,
+		subscriptions,
+		entitlements,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, _ := billing.ParseCancellationIdempotencyKey("cancel_fixture_stable")
+	command := billing.ProviderCancellationCommand{
+		Provider:                      seed.Subscription.Provider,
+		ProviderSubscriptionReference: seed.Subscription.ProviderSubscriptionReference,
+		IdempotencyKey:                key, RequestedAt: 1_000, Effect: billing.ProviderCancellationPeriodEnd,
+	}
+	first, err := provider.CancelSubscription(context.Background(), command)
+	if err != nil || first.Kind != billing.ProviderCancellationScheduled ||
+		first.ObservedAt != identity.MaximumSafeInteger || first.AccessEndsAt != identity.MaximumSafeInteger {
+		t.Fatalf("first cancellation = %#v, %v", first, err)
+	}
+	command.RequestedAt = 2_000
+	second, err := provider.CancelSubscription(context.Background(), command)
+	if err != nil || second != first {
+		t.Fatalf("stable cancellation = %#v, %v; want %#v", second, err, first)
+	}
+	command.Effect = billing.ProviderCancellationImmediate
+	rejected, err := provider.CancelSubscription(context.Background(), command)
+	if err != nil || rejected.Kind != billing.ProviderCancellationTerminalFailure ||
+		subscriptions.reads != 2 || entitlements.reads != 2 {
+		t.Fatalf("immediate cancellation = %#v, %v reads=%d/%d", rejected, err, subscriptions.reads, entitlements.reads)
+	}
+
+	command.Effect = billing.ProviderCancellationPeriodEnd
+	command.ProviderSubscriptionReference = "fixture-subscription-other"
+	rejected, err = provider.CancelSubscription(context.Background(), command)
+	if err != nil || rejected.Kind != billing.ProviderCancellationTerminalFailure ||
+		rejected.AccessEndsAt != 0 {
+		t.Fatalf("mapping mismatch = %#v, %v", rejected, err)
+	}
+}
+
+func TestNoNetworkProviderFailsClosedOnDependenciesAndConfiguration(t *testing.T) {
+	t.Parallel()
+	seed := providerSeed(t)
+	if _, err := NewProvider(fixture.Seed{}, &subscriptionStub{}, &entitlementStub{}); !errors.Is(err, ErrInvalidProviderConfiguration) {
+		t.Fatalf("invalid seed error = %v", err)
+	}
+	provider, err := NewProvider(
+		seed,
+		&subscriptionStub{record: seed.Subscription, err: errors.New("database detail")},
+		&entitlementStub{record: seed.Entitlement},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := provider.BeginHostedCheckout(context.Background(), seed.Context, providerCheckoutCommand())
+	if result.Kind != stripebilling.HostedCheckoutRejected || result.Reason != stripebilling.ReasonProviderUnavailable {
+		t.Fatalf("dependency failure = %#v", result)
+	}
+	key, _ := billing.ParseCancellationIdempotencyKey("cancel_fixture_dependency")
+	observation, err := provider.CancelSubscription(context.Background(), billing.ProviderCancellationCommand{
+		Provider: seed.Subscription.Provider, ProviderSubscriptionReference: seed.Subscription.ProviderSubscriptionReference,
+		IdempotencyKey: key, RequestedAt: 1_000, Effect: billing.ProviderCancellationPeriodEnd,
+	})
+	if !errors.Is(err, errSeededFactsUnavailable) || observation != (billing.ProviderCancellationObservation{}) {
+		t.Fatalf("cancellation dependency failure = %#v, %v", observation, err)
+	}
+
+	provider, err = NewProvider(
+		seed,
+		&subscriptionStub{record: seed.Subscription},
+		&entitlementStub{record: seed.Entitlement, err: errors.New("database detail")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result = provider.BeginHostedCheckout(context.Background(), seed.Context, providerCheckoutCommand())
+	if result.Kind != stripebilling.HostedCheckoutRejected || result.Reason != stripebilling.ReasonProviderUnavailable {
+		t.Fatalf("entitlement dependency failure = %#v", result)
+	}
+}
+
+type subscriptionStub struct {
+	record billing.SubscriptionRecord
+	err    error
+	reads  int
+	scopes []billing.OwnerScope
+}
+
+func (stub *subscriptionStub) FindByOwner(_ context.Context, scope billing.OwnerScope) (*billing.SubscriptionRecord, error) {
+	stub.reads++
+	stub.scopes = append(stub.scopes, scope)
+	if stub.err != nil {
+		return nil, stub.err
+	}
+	copy := stub.record
+	return &copy, nil
+}
+
+type entitlementStub struct {
+	record   entitlement.ProjectionRecord
+	err      error
+	reads    int
+	contexts []identity.VaultContext
+}
+
+func (stub *entitlementStub) FindProjection(_ context.Context, vaultContext identity.VaultContext) (*entitlement.ProjectionRecord, error) {
+	stub.reads++
+	stub.contexts = append(stub.contexts, vaultContext)
+	if stub.err != nil {
+		return nil, stub.err
+	}
+	copy := stub.record
+	return &copy, nil
+}
+
+func providerCheckoutCommand() stripebilling.HostedCheckoutCommand {
+	return stripebilling.HostedCheckoutCommand{
+		SubscriptionID:   "01999c20-9e33-7000-8000-000000000701",
+		CheckoutIntentID: "01999c20-9e33-7000-8000-000000000702",
+		CreatedAt:        2_000,
+		Contract: stripebilling.HostedCheckoutContract{
+			EvidenceID: "01999c20-9e33-7000-8000-000000000701",
+			OfferHash:  localOfferHash,
+			Offer: stripebilling.ContractOffer{
+				OfferVersion: "legal-commerce-v1:2026-09-15", DisclosureVersion: "2026-09-15",
+				BillingPeriod: stripebilling.BillingMonthly, RenewalChargeYen: 980,
+			},
+		},
+	}
+}
+
+func providerSeed(t *testing.T) fixture.Seed {
+	t.Helper()
+	allowed, _ := access.ParseSubject("fixture-owner")
+	accountID, _ := identity.ParseAccountID("01999c20-9e33-7000-8000-000000000001")
+	vaultID, _ := identity.ParseVaultID("01999c20-9e33-7000-8000-000000000002")
+	sessionID, _ := identity.ParseSessionID("01999c20-9e33-7000-8000-000000000003")
+	epoch, _ := identity.ParseSessionEpoch(1)
+	token, _ := identity.ParseSessionToken(base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x41}, 32)))
+	seed, err := fixture.NewSeed(
+		allowed, accountID, vaultID, sessionID, epoch, token,
+		cryptocontent.VaultDEKMetadata{
+			VaultID: vaultID, DEKVersion: 1, KEKReference: "local-fixture://key/1",
+			WrappedDEK:     base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x52}, 32)),
+			CreatedAtMilli: fixture.FixtureTimestamp,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return seed
+}

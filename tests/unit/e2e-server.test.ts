@@ -40,7 +40,7 @@ async function createHarness(options: {
   );
   await writeFile(
     path.join(bin, 'go'),
-    `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "${goLog}"\nif [[ "$*" == *'run ./cmd/notesctl prepare-e2e'* ]]; then\n  printf 'NOTES_ENVIRONMENT=%s\\nNOTES_APPLICATION_PROFILE=%s\\nNOTES_DATABASE_URL=%s\\nNOTES_STATIC_DIR=%s\\nNOTES_PRIVATE_AUTH_MODE=%s\\n' "$NOTES_ENVIRONMENT" "$NOTES_APPLICATION_PROFILE" "$NOTES_DATABASE_URL" "$NOTES_STATIC_DIR" "$NOTES_PRIVATE_AUTH_MODE" > "${environmentLog}"\nfi\nif [[ "$*" == *'run ./cmd/notes' && '${options.failStart ? '1' : '0'}' == '1' ]]; then\n  exit 1\nfi\n`,
+    `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "$*" >> "${goLog}"\nif [[ "$*" == *'run ./cmd/notesctl prepare-e2e'* ]]; then\n  fixture_ready=false\n  if [[ -d "$NOTES_LOCAL_FIXTURE_ROOT" && "$(stat -c '%a' "$NOTES_LOCAL_FIXTURE_ROOT")" == '700' ]]; then fixture_ready=true; fi\n  printf 'NOTES_ENVIRONMENT=%s\\nNOTES_APPLICATION_PROFILE=%s\\nNOTES_DATABASE_URL=%s\\nNOTES_STATIC_DIR=%s\\nNOTES_PRIVATE_AUTH_MODE=%s\\nNOTES_LOCAL_FIXTURE_ROOT_READY=%s\\nNOTES_LOCAL_FIXTURE_SESSION_TOKEN=%s\\n' "$NOTES_ENVIRONMENT" "$NOTES_APPLICATION_PROFILE" "$NOTES_DATABASE_URL" "$NOTES_STATIC_DIR" "$NOTES_PRIVATE_AUTH_MODE" "$fixture_ready" "$NOTES_LOCAL_FIXTURE_SESSION_TOKEN" > "${environmentLog}"\nfi\nif [[ "$*" == *'run ./cmd/notes' && '${options.failStart ? '1' : '0'}' == '1' ]]; then\n  exit 1\nfi\n`,
   );
   await chmod(path.join(bin, 'npm'), 0o755);
   await chmod(path.join(bin, 'go'), 0o755);
@@ -96,6 +96,34 @@ async function createHarness(options: {
 }
 
 describe('Go E2E server', () => {
+  it('keeps the seeded browser session tied to the local fixture profile', async () => {
+    const [server, identity, playwright] = await Promise.all([
+      readFile('scripts/e2e-server.sh', 'utf8'),
+      readFile('tests/e2e/identity-fixture.ts', 'utf8'),
+      readFile('playwright.config.ts', 'utf8'),
+    ]);
+    expect(server).toContain(
+      '${NOTES_LOCAL_FIXTURE_SESSION_TOKEN:?E2E fixture session token is required}',
+    );
+    expect(server).not.toContain(
+      'export NOTES_LOCAL_FIXTURE_SESSION_TOKEN=QUFB',
+    );
+    expect(identity).toContain(
+      'export const e2eSessionToken = e2eFixtureSessionToken',
+    );
+    expect(identity).toContain(
+      "e2eSessionCookieName = '__Host-fukamu_session'",
+    );
+    expect(identity).toContain('httpOnly: true');
+    expect(identity).toContain('secure: true');
+    expect(playwright).toContain('storageState: e2eSessionStorageState()');
+    expect(playwright).toContain(
+      'NOTES_LOCAL_FIXTURE_SESSION_TOKEN: e2eFixtureSessionToken',
+    );
+    expect(server).toContain('NOTES_APPLICATION_PROFILE=local-fixture');
+    expect(server).not.toContain('NOTES_APPLICATION_PROFILE=disabled');
+  });
+
   it('builds for standalone E2E and prepares an isolated allowlisted database', async () => {
     const result = await createHarness({
       prebuilt: false,
@@ -118,6 +146,10 @@ describe('Go E2E server', () => {
     );
     expect(result.environment).toContain(
       'NOTES_PRIVATE_AUTH_MODE=local-signed',
+    );
+    expect(result.environment).toContain('NOTES_LOCAL_FIXTURE_ROOT_READY=true');
+    expect(result.environment).toContain(
+      'NOTES_LOCAL_FIXTURE_SESSION_TOKEN=QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE',
     );
   });
 

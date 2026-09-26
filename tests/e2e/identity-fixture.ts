@@ -22,13 +22,15 @@ export const e2eFixtureCursorHmacKey = Buffer.alloc(32, 0x42).toString(
 export const e2eFixtureDeletionHmacKey = Buffer.alloc(32, 0x43).toString(
   'base64url',
 );
+export const e2eSessionCookieName = '__Host-fukamu_session';
+export const e2eSessionToken = e2eFixtureSessionToken;
 
 export function e2eSessionStorageState() {
   return {
     cookies: [
       {
-        name: '__Host-fukamu_session',
-        value: e2eFixtureSessionToken,
+        name: e2eSessionCookieName,
+        value: e2eSessionToken,
         domain: 'localhost',
         path: '/',
         expires: -1,
