@@ -188,6 +188,11 @@ test('dedicated checkout keeps legal detail out of Notes and requires affirmativ
       return;
     }
     checkoutRequests += 1;
+    const command = requestRecord(route.request().postData());
+    const presentedOfferHash = command.presentedOfferHash;
+    if (typeof presentedOfferHash !== 'string') {
+      throw new Error('missing presented offer hash');
+    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -195,7 +200,7 @@ test('dedicated checkout keeps legal detail out of Notes and requires affirmativ
         kind: 'redirect',
         evidenceOutcome: 'recorded',
         evidenceId,
-        offerHash: initialOfferHash,
+        offerHash: presentedOfferHash,
         offerVersion: 'legal-commerce-v1:2026-09-15',
         checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_fukamu',
       }),
@@ -387,8 +392,12 @@ test('checkout retry reuses the same submission identifier', async ({
     }
     const command = requestRecord(route.request().postData());
     const submissionId = command.submissionId;
+    const presentedOfferHash = command.presentedOfferHash;
     if (typeof submissionId !== 'string') {
       throw new Error('missing submission ID');
+    }
+    if (typeof presentedOfferHash !== 'string') {
+      throw new Error('missing presented offer hash');
     }
     submissions.push(submissionId);
     if (submissions.length === 1) {
@@ -406,7 +415,7 @@ test('checkout retry reuses the same submission identifier', async ({
         kind: 'redirect',
         evidenceOutcome: 'replayed',
         evidenceId,
-        offerHash: initialOfferHash,
+        offerHash: presentedOfferHash,
         offerVersion: 'legal-commerce-v1:2026-09-15',
         checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_retry',
       }),
