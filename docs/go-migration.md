@@ -1715,6 +1715,65 @@ the fixture or any durable application state. A successful local receipt does
 not prove production restorability and never bypasses the existing terminal
 `explicit-production-key-destruction-approval-required` gate.
 
+## T13j provider-neutral launch operations policy
+
+Issue #502 ports the remaining deterministic environment, approval, canary,
+rollback, and isolated-restore policy from the frozen TypeScript retirement
+revision into `backend/internal/operations/launch_policy.go`. The Go policy
+preserves the complete local/test/staging/production action matrix. Fixture
+drills remain local/test-only; restore drills remain staging-only; destructive
+and provider-configuration actions remain outside the workflow; and every
+otherwise-ready production canary, rollback, or data restore still ends at
+`explicit-production-operation-approval-required`.
+
+The launch-gate evaluator preserves ordered blocker reasons, the special
+reviewed canary-abort path, observed-canary requirement for promotion, verified
+backup requirements, and isolated restore evidence. Every enum, schema version,
+rollback-window variant, and timestamp is validated before evaluation; unknown
+or malformed typed values fail closed. Timestamps are caller-supplied facts, so
+the policy reads no clock or environment and mutates no caller-owned value.
+
+An AST-based Go architecture test fixes the pure file at zero imports and keeps
+the operations package independent of concrete database, HTTP, provider,
+randomness, clock, and `internal/adapters` packages. Exhaustive Go tests cover
+the 44 environment/action combinations, every launch action, production
+approval separation, recovery and canary failures, blocker ordering, and every
+invalid evidence field. The closure manifest names this policy and its tests as
+F26/V08 evidence before T17 removes the frozen TypeScript source.
+
+This slice adds no command, HTTP route, provider adapter, credential,
+production approval, deployment, canary traffic, restore, data mutation, or
+external resource. A future boundary must strictly decode external evidence
+before constructing the typed Go value. Rollback is an application-code revert;
+there is no state or provider effect to reverse.
+
+## T13k provider-neutral telemetry policy
+
+Issue #503 ports the frozen `server/telemetry` decision layer into typed Go
+before T17 retires the TypeScript server. The pure policy fixes the schema-1
+operation, outcome, failure, duration, and work-count vocabularies; enforces
+success/failure-category coherence; reduces raw finite measurements to stable
+bounded buckets; and derives exactly three low-cardinality metric samples. The
+event value is opaque, and metric samples have fixed label structs rather than
+a free-form label map, so content, secrets, owner IDs, object IDs, and provider
+details cannot be added as dimensions at a call site.
+
+The strict JSON boundary accepts only the six exact event fields in a bounded
+payload. Missing, duplicate, unknown, trailing, invalid UTF-8/surrogate, unsafe
+integer, arbitrary vocabulary, and incoherent values all return one fixed error
+without reflecting rejected content. Exhaustive tests cover every bounded
+operation/outcome/failure combination, bucket edges, high-cardinality and
+sensitive corpus values, metric serialization, and alert-routing precedence.
+
+Alert planning produces only fixed security, service, and billing route
+candidates with `decision-required` thresholds. The synchronous sink port
+normalizes buffer refusal, malformed plans, invalid adapter results, and panics
+without affecting the caller; the no-op and test fake perform no network I/O.
+Clock reads, request logging, provider export, notification delivery, sampling,
+retention, dashboard and SLO choices remain outside the pure policy. This slice
+adds no route, schema, provider, credential, deployment, external resource, or
+production decision. Rollback reverts the Go policy and evidence only.
+
 ## T14a Node-free Go release artifact gate
 
 Issue #492 adds `npm run verify:release` to the shared Quality gate. It builds
@@ -1761,14 +1820,18 @@ immediate Go effects, a pinned Stripe transport, and a closed HTTP contract.
 The draft itself remains untouched and unapproved. F28 remains intentionally
 absent rather than silently becoming a scheduler or realtime service.
 
-`npm run verify:migration-closure` is part of the shared gate. While the
-reference implementation remains checked in, it binds `app/api`, `server`,
+`npm run verify:migration-closure` and
+`npm run verify:legacy-retirement` are part of the shared gate. While the
+reference implementation remains checked in, they bind `app/api`, `server`,
 `db`, and `drizzle` to the exact T14a integration revision and Git tree IDs,
-assigns every file to one retirement group, and fixes the complete legacy test
-corpus by count and digest. Any unrecorded feature ID, evidence path, source
-file, test drift, revision drift, overlap, or unsafe path fails verification.
-T17 must change the phase and retained evidence deliberately in the same
-reviewed removal, rather than merely deleting directories until checks pass.
+assign every source file to one retirement group, and bind each of the 138
+legacy-dependent test files to its own path, digest, feature rows, disposition,
+and executable evidence. The legacy source snapshot and later test-corpus
+snapshot have separate recorded revisions. Any unrecorded feature ID, evidence
+path, source file, test drift, revision drift, overlap, or unsafe path fails
+verification. T17 must change the phase and retained evidence deliberately in
+the same reviewed removal, rather than merely deleting directories until
+checks pass.
 
 The typed migration benchmark accepts only a root loopback HTTP URL, requires a
 unique disposable-store label, uses the same checked-in legacy sync fixture,

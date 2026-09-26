@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "baseline": {
     "mainRevision": "f423da9932163980485ecc5bc2055b7c8c3b3d8b",
     "legacyRetirementRevision": "e8936ab90768774371d84b4808c100d546649943",
@@ -259,6 +259,12 @@
       "verification": ["V08", "V09"],
       "goEvidence": [
         "backend/internal/operations/quota_reconciliation.go",
+        "backend/internal/operations/launch_policy.go",
+        "backend/internal/telemetry/policy.go",
+        "backend/internal/telemetry/codec.go",
+        "backend/internal/telemetry/metrics.go",
+        "backend/internal/telemetry/alert.go",
+        "backend/internal/telemetry/delivery.go",
         "backend/internal/telemetry/logger.go",
         "backend/cmd/notesctl/main.go"
       ]
@@ -350,7 +356,9 @@
       "status": "complete",
       "evidence": [
         "backend/tests/integration/account_deletion_test.go",
-        "backend/internal/operations/dek_rotation_test.go"
+        "backend/internal/operations/dek_rotation_test.go",
+        "backend/internal/operations/launch_policy_test.go",
+        "backend/internal/operations/launch_policy_architecture_test.go"
       ]
     },
     {
@@ -404,6 +412,7 @@
       }
     ],
     "legacyTestCorpus": {
+      "revision": "af743246f14f7e0b96accf1ed7e1a1201fc3aaaf",
       "files": 138,
       "sha256": "7c28cbe1db282adc1d5349f06ab37964f2b224d4ee3dbc9acad8664e0de50531"
     },
