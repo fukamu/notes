@@ -1594,3 +1594,36 @@ and local nonce markers. Resume from the durable checkpoint after restoring a
 matching artifact. Production KMS identity/resource/IAM/network/cost and object
 provider/region/retention/cost/shared-service decisions remain separate
 approvals.
+
+## T13g scoped orphan-object scan runner
+
+Issue #486 adds `notesctl objects orphan-scan` around a new bounded collector
+that depends only on the encrypted-object metadata and storage ports. The
+operations layer requires an exact Account/Vault, stable scan-start timestamp,
+grace period, and 1..100 limit, and verifies ownership before directory
+inventory or enqueue effects. Unknown or cross-owner scope therefore returns
+without listing private objects.
+
+The PostgreSQL protected-key inventory is deliberately global because object
+keys are globally unique. It now unions committed metadata, active write
+intents, and existing delete-outbox rows across every Vault. Candidate ordering
+is deterministic, the collector enqueues no more than the requested limit, and
+the enqueue statement rechecks committed metadata and intents. Repeating an
+uncertain invocation cannot duplicate an outbox row and advances another
+bounded batch only when eligible objects remain. The grace cutoff is inclusive
+and fresh objects are not candidates.
+
+The concrete command is restricted to local/test, the loopback disposable
+PostgreSQL database, and an explicit existing private absolute directory. It
+has no production syntax. Output includes only outcome, enqueued count, and
+limit; it omits scope IDs, paths, object keys, database values, file contents,
+and dependency errors. Tests cover cross-owner refusal before inventory,
+committed/intent/outbox protection across Vaults, grace boundaries, storage
+failure, bounded resume/replay, malformed results, cancellation, and redaction.
+
+This runner only writes delete-outbox metadata. It does not drain that outbox
+or delete object bytes. No schema, route, scheduler, real object provider,
+credential, production database operation, external resource, paid request,
+or deployment is added. Rollback stops new scans while preserving every
+outbox row and object for the later reviewed delete runner; rows and files must
+not be removed manually.

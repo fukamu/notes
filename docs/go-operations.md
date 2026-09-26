@@ -281,14 +281,58 @@ command. A real object provider, persistent production nonce store, runtime
 identity, exact KMS resource, IAM/network, region/retention, monitoring, cost,
 and shared-service impact remain unapproved.
 
+## Orphan-object scan
+
+The T13g command identifies old immutable files that have no committed
+metadata, active write intent, or existing delete-outbox row in any Vault, then
+enqueues only a bounded batch for one exact Account/Vault. It is available only
+for `local` and `test`; there is no production-form syntax and it does not
+delete object bytes.
+
+Create or select the exact existing private directory used by the disposable
+drill. It must be absolute, resolve without symlinks, and be inaccessible to
+group and other users (normally mode `0700`).
+
+```bash
+NOTES_ENVIRONMENT=test \
+NOTES_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend run ./cmd/notesctl objects orphan-scan \
+  --environment=test \
+  --account-id=01991f20-61d2-7000-8000-000000000101 \
+  --vault-id=01991f20-61d2-7000-8000-000000000201 \
+  --scan-started-at-millis=1725000000000 \
+  --grace-period-millis=86400000 \
+  --limit=100 \
+  --object-root=/absolute/private/object-directory \
+  --confirm-local-object-scan \
+  --confirm-delete-enqueue
+```
+
+The exact owner check completes before the directory inventory or any enqueue.
+The cutoff is inclusive: only objects created at or before
+`scan-started-at-millis - grace-period-millis` are eligible. A batch enqueues
+at most `limit` rows. `pending` means another pass may remain; repeat with the
+same scan start, grace, limit, scope, and directory. Existing outbox rows are
+globally protected, so an uncertain retry cannot duplicate them and resumes in
+stable object-key order. A concurrent commit or intent wins because each
+enqueue rechecks both tables in PostgreSQL.
+
+Successful output contains only command kind, `completed` or `pending`, the
+enqueued count, and the declared limit. Account/Vault IDs, directory path,
+object keys, database configuration, file contents, and dependency errors are
+not printed. The two confirmation flags are accidental-run guards, not
+authorization for a shared directory or database. Tests use temporary files,
+an in-memory adapter, and the disposable loopback database only. A real object
+provider, production inventory or enqueue, provider credentials, region,
+retention, monitoring, cost, and scheduler remain unapproved.
+
 ## Remaining operations boundaries
 
 - checking application/provider evidence for a reservation;
 - deriving release evidence or automatically releasing a reservation;
 - pagination beyond the explicit bounded first page;
 - recurring scheduling or cron registration;
-- orphan scan, delete outbox, account-deletion advancement, or recovery drill
-  runners;
+- delete outbox, account-deletion advancement, or recovery drill runners;
 - production KMS identity/resource composition and recurring scheduling.
 
 Those effects require separate typed commands, tests, and review. Age alone is
@@ -297,7 +341,7 @@ never evidence that a quota reservation is safe to release.
 ## Rollback
 
 Stop invoking the commands and roll back the application artifact to the prior
-integration commit. T13a through T13f add no schema. T13a and T13c write no
+integration commit. T13a through T13g add no schema. T13a and T13c write no
 data. A T13b commit is an intentional quota-ledger transition backed by an
 existing Sync receipt and must not be reversed by deleting rows or
 synthesizing a release. A T13d applied/ignored provider snapshot and its
@@ -313,4 +357,7 @@ old write pointer by hand. A T13f rollback stops new batches and preserves the
 durable job/checkpoint, current metadata, every source and replacement object,
 nonce reservations, and delete-outbox rows. Resume from the stored checkpoint;
 do not reset it, delete a newly written orphan by hand, remove an old object,
-or retire either DEK version to reverse application code.
+or retire either DEK version to reverse application code. A T13g rollback
+stops new scans but preserves every enqueued outbox row and object. Resume or
+drain those rows only through reviewed operations; never remove rows or object
+files by hand to reverse the application artifact.

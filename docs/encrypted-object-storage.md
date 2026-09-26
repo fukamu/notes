@@ -49,3 +49,14 @@ grace period, avoiding races with an active write. Delete workers process due
 outbox entries idempotently and reschedule failures with caller-supplied retry
 timing. Deleting production objects, account-deletion ordering, and a real R2
 adapter remain separate work requiring their own approval and later Issues.
+
+Issue #486 adds the local/test-only `notesctl objects orphan-scan` runner. It
+verifies the exact Account/Vault owner before listing storage, accepts an
+explicit scan timestamp, grace period, and 1..100 enqueue limit, and reports
+`pending` when another bounded pass may remain. The global protected-key query
+now includes committed metadata, active intents, and existing delete-outbox
+rows across every Vault. The enqueue statement rechecks committed metadata and
+active intents, so a concurrent write cannot turn a protected key into a
+delete candidate. Repeating the same invocation is safe: existing outbox rows
+are not duplicated and subsequent batches progress in stable object-key order.
+The runner only enqueues metadata; it never deletes object bytes.

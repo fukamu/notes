@@ -88,6 +88,15 @@ scheduler, stored credential, automatic provider request, or fake fallback.
 Its verification uses injected fakes, local HTTP stubs, and the disposable
 database only.
 
+T13g Issue #486 composes only explicit `notesctl objects orphan-scan`. It
+checks exact Account/Vault ownership before inventory, globally protects every
+committed, active-intent, and already-queued object key, and enqueues at most an
+explicit 1..100 batch in deterministic order. The command is restricted to a
+loopback disposable database and an existing private local directory, emits
+only redacted counts, and never deletes object bytes. It adds no production
+object provider, credential, route, scheduler, deployment, or external
+resource operation.
+
 T09c Issue #440 adds the disconnected Go Entitlement core, service, and
 PostgreSQL repository. Migration 00008 stores Account/Vault-scoped projections
 and Session/SessionEpoch-bound offline leases. Projection CAS and active-lease
@@ -218,6 +227,8 @@ NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:554
 go -C backend test -tags=integration ./tests/integration -run TestScopedDEKRotationRunnerPersistsResumeAndOwnerIsolation -count=3
 NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
 go -C backend test -tags=integration ./tests/integration -run TestScopedDEKReencryptionRunnerPersistsFailureResumeReplayAndOwnerIsolation -count=3
+NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend test -tags=integration ./tests/integration -run TestScopedOrphanScanRunnerProtectsGlobalInventoryAndResumesBoundedBatches -count=3
 go -C backend test -race ./internal/entitlement/... ./internal/adapters/postgres/...
 NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
 go -C backend test -tags=integration ./tests/integration -run 'TestBilling(ProjectionAtomicityAndReplay|ReconciliationRunnerScopesAndReplaysBeforeProvider)Postgres' -count=3

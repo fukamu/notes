@@ -299,7 +299,9 @@ func (store *EncryptedObjectStore) ListProtectedObjectKeys(
 		ctx,
 		`SELECT object_key FROM vault_encrypted_objects
 		 UNION
-		 SELECT object_key FROM vault_encrypted_write_intents`,
+		 SELECT object_key FROM vault_encrypted_write_intents
+		 UNION
+		 SELECT object_key FROM vault_object_delete_outbox`,
 	)
 	if err != nil {
 		return nil, errors.New("list protected encrypted object keys")
