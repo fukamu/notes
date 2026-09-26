@@ -192,35 +192,40 @@
     },
     {
       "id": "F20",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V01", "V07"],
       "goEvidence": [
         "backend/internal/legal/contract_service.go",
-        "backend/internal/httpapi/legal.go"
-      ]
+        "backend/internal/httpapi/legal.go",
+        "backend/internal/adapters/localcommerce/provider.go"
+      ],
+      "note": "Issue #510 connects URL-free no-charge checkout only in the guarded local-fixture profile; production remains closed."
     },
     {
       "id": "F21",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V01", "V07"],
       "goEvidence": [
         "backend/internal/legal/terms_service.go",
-        "backend/internal/httpapi/legal.go"
-      ]
+        "backend/internal/httpapi/legal.go",
+        "backend/internal/adapters/localcommerce/source.go"
+      ],
+      "note": "Issue #510 connects typed test terms and PostgreSQL evidence only in the guarded local-fixture profile; production remains closed."
     },
     {
       "id": "F22",
-      "state": "B",
+      "state": "A/B",
       "migration": "migrated",
       "verification": ["V01", "V07"],
       "goEvidence": [
         "backend/internal/billing/cancellation.go",
         "backend/internal/adapters/stripe/provider.go",
+        "backend/internal/adapters/localcommerce/provider.go",
         "backend/internal/httpapi/billing_cancellation.go"
       ],
-      "note": "Issue #496 ports the exact Draft PR #404 period-end contract without modifying or publishing that draft; the Go handler and Stripe adapter remain disconnected from the public route."
+      "note": "Issue #496 ports the Draft PR #404 effect contract; Issue #510 connects only a deterministic no-write local-fixture provider. Stripe and production remain disconnected."
     },
     {
       "id": "F23",
@@ -354,10 +359,15 @@
       "status": "complete",
       "evidence": [
         "backend/internal/billing/cancellation_test.go",
+        "backend/internal/adapters/localcommerce/provider_test.go",
+        "backend/internal/adapters/localcommerce/source_test.go",
         "backend/internal/adapters/stripe/provider_test.go",
         "backend/internal/httpapi/billing_cancellation_test.go",
         "backend/tests/integration/billing_projection_test.go",
-        "backend/tests/integration/contract_evidence_test.go"
+        "backend/tests/integration/contract_evidence_test.go",
+        "backend/tests/integration/local_commerce_runtime_test.go",
+        "tests/e2e/billing-ui.spec.ts",
+        "tests/unit/e2e-server.test.ts"
       ]
     },
     {

@@ -16,8 +16,8 @@ type PeriodEndCancellationApplication interface {
 
 var _ PeriodEndCancellationApplication = (*billing.CancellationService)(nil)
 
-// BillingCancellationRuntime is deliberately separate from HandlerOptions.
-// Constructing this reviewed handler does not publish /api/billing/cancel.
+// BillingCancellationRuntime is supplied only by the explicit local-fixture
+// composition. A nil runtime keeps the route closed.
 type BillingCancellationRuntime struct {
 	ExpectedOrigin string
 	Clock          func() int64
@@ -25,9 +25,8 @@ type BillingCancellationRuntime struct {
 	Cancellation   PeriodEndCancellationApplication
 }
 
-// NewBillingCancellationContractHandler returns the disconnected ordinary
-// cancellation handler. NewHandler keeps the public route closed until a
-// separate product, provider, and production enablement review.
+// NewBillingCancellationContractHandler retains a focused constructor for
+// contract tests and future reviewed compositions.
 func NewBillingCancellationContractHandler(
 	runtime *BillingCancellationRuntime,
 	logger *slog.Logger,
@@ -36,6 +35,20 @@ func NewBillingCancellationContractHandler(
 		return nil, errors.New("complete billing cancellation runtime and logger are required")
 	}
 	return http.HandlerFunc(billingCancellationHandler(runtime, logger)), nil
+}
+
+func billingCancellationRoute(options HandlerOptions) http.HandlerFunc {
+	if options.BillingCancellationRuntime == nil {
+		return disconnectedPublicAPI(options.EnableDisconnectedFixtures, http.MethodPost)
+	}
+	if !billingCancellationRuntimeComplete(options.BillingCancellationRuntime) {
+		return func(response http.ResponseWriter, request *http.Request) {
+			if allowMethods(response, request, http.MethodPost) {
+				writeBillingCancellationError(response, request, http.StatusServiceUnavailable, "unavailable")
+			}
+		}
+	}
+	return billingCancellationHandler(options.BillingCancellationRuntime, options.Logger)
 }
 
 type billingCancellationBody struct {
@@ -85,7 +98,7 @@ func billingCancellationHandler(runtime *BillingCancellationRuntime, logger *slo
 			writeBillingCancellationError(response, request, http.StatusServiceUnavailable, "unavailable")
 			return
 		}
-		writeBillingCancellationResult(response, request, result, logger)
+		writeBillingCancellationResult(response, request, result, now, logger)
 	}
 }
 
@@ -139,14 +152,12 @@ func writeBillingCancellationResult(
 	response http.ResponseWriter,
 	request *http.Request,
 	result billing.SubscriptionCancellationResult,
+	requestedAt int64,
 	logger *slog.Logger,
 ) {
 	switch result.Kind {
 	case billing.SubscriptionCancellationConfirmed:
-		if (result.Outcome != billing.SubscriptionCancellationScheduled &&
-			result.Outcome != billing.SubscriptionAlreadyCancelled) ||
-			result.ConfirmedAt < 0 || result.ConfirmedAt > identity.MaximumSafeInteger ||
-			result.AccessEndsAt < 0 || result.AccessEndsAt > identity.MaximumSafeInteger {
+		if !validBillingCancellationConfirmation(result, requestedAt) {
 			logger.Error("billing cancellation failed", "error_code", "invalid_application_response")
 			writeBillingCancellationError(response, request, http.StatusServiceUnavailable, "unavailable")
 			return
@@ -176,6 +187,22 @@ func writeBillingCancellationResult(
 	default:
 		logger.Error("billing cancellation failed", "error_code", "invalid_application_response")
 		writeBillingCancellationError(response, request, http.StatusServiceUnavailable, "unavailable")
+	}
+}
+
+func validBillingCancellationConfirmation(result billing.SubscriptionCancellationResult, requestedAt int64) bool {
+	if requestedAt < 0 || requestedAt > identity.MaximumSafeInteger ||
+		result.ConfirmedAt < 0 || result.ConfirmedAt > identity.MaximumSafeInteger ||
+		result.AccessEndsAt < 0 || result.AccessEndsAt > identity.MaximumSafeInteger {
+		return false
+	}
+	switch result.Outcome {
+	case billing.SubscriptionCancellationScheduled:
+		return result.AccessEndsAt >= result.ConfirmedAt && result.AccessEndsAt >= requestedAt
+	case billing.SubscriptionAlreadyCancelled:
+		return result.AccessEndsAt <= result.ConfirmedAt
+	default:
+		return false
 	}
 }
 

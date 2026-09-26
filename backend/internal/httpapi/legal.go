@@ -45,8 +45,8 @@ var (
 
 // LegalRuntime is deliberately separate from PrivateRuntime. Supplying the
 // launch-gate runtime must not accidentally publish signup, terms, or billing.
-// The command composition leaves this nil until identity, legal text, pricing,
-// and provider configuration have been reviewed together.
+// Only the explicit local-fixture composition supplies this runtime today;
+// default and production composition leave it nil.
 type LegalRuntime struct {
 	ExpectedOrigin        string
 	Clock                 func() int64
@@ -457,11 +457,15 @@ type contractCheckoutResponse struct {
 	EvidenceID      legal.ContractEvidenceID         `json:"evidenceId"`
 	OfferHash       legal.ContractOfferHash          `json:"offerHash"`
 	OfferVersion    string                           `json:"offerVersion"`
-	CheckoutURL     string                           `json:"checkoutUrl"`
+	CheckoutURL     string                           `json:"checkoutUrl,omitempty"`
 }
 
 func writeContractCheckoutResult(response http.ResponseWriter, request *http.Request, result legal.ContractCheckoutResult) {
-	if result.Kind == legal.ContractCheckoutRedirect {
+	if result.Kind == legal.ContractCheckoutRedirect || result.Kind == legal.ContractCheckoutLocalConfirmed {
+		if result.Kind == legal.ContractCheckoutLocalConfirmed && result.CheckoutURL != "" {
+			writeLegalError(response, request, http.StatusServiceUnavailable, "unavailable")
+			return
+		}
 		writeJSON(response, request, http.StatusOK, contractCheckoutResponse{
 			Kind: result.Kind, EvidenceOutcome: result.Outcome,
 			EvidenceID: result.Evidence.EvidenceID, OfferHash: result.Evidence.OfferHash,

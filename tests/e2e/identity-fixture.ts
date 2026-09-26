@@ -9,6 +9,8 @@ export const localAssertionHeader = 'X-Fukamu-Local-Identity-Assertion';
 export const e2eIssuer = 'https://issuer.test';
 export const e2eAudience = 'notes-e2e';
 export const e2eOwnerSubject = 'fukamu-notes-e2e-user';
+export const e2eSessionCookieName = '__Host-fukamu_session';
+export const e2eSessionToken = 'QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE';
 
 const privateKeyEnvironment = 'FUKAMU_E2E_LOCAL_AUTH_PRIVATE_KEY';
 

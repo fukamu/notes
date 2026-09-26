@@ -1120,7 +1120,13 @@ describe('terms consent presentation architecture', () => {
     expect(client).toContain('termsConsentSubmissionIdDecoder.decode');
     expect(client).toContain("credentials: 'same-origin'");
     expect(client).not.toMatch(/accountId|vaultId/);
-    expect(checkout).toContain('submissionId: review.submissionId');
+    expect(checkout).toContain(
+      'submissionId: createBillingCheckoutSubmissionId()',
+    );
+    expect(checkout).toContain(
+      'termsSubmissionId: createTermsConsentSubmissionId()',
+    );
+    expect(checkout).toContain('submissionId: review.termsSubmissionId');
     expect(checkout).toContain("subject: 'subscription'");
     expect(checkout).toContain("subject: 'terms'");
     expect(account).toContain('createLocalTermsConsentUiTransport');
@@ -1164,6 +1170,69 @@ describe('terms consent presentation architecture', () => {
     for (const source of [termsContract, checkoutContract]) {
       expect(source).not.toMatch(/@\/server\/|\.\.\/\.\.\/server\//);
     }
+  });
+});
+
+describe('local Go commerce runtime architecture', () => {
+  it('keeps commerce fixture-only, no-network, remote-first, and production-closed', async () => {
+    const [
+      main,
+      server,
+      handler,
+      provider,
+      checkoutBoundary,
+      accountBoundary,
+      termsClient,
+      billingClient,
+      fixtureContract,
+    ] = await Promise.all([
+      readFile('backend/cmd/notes/main.go', 'utf8'),
+      readFile('backend/internal/httpapi/server.go', 'utf8'),
+      readFile('backend/internal/httpapi/handler.go', 'utf8'),
+      readFile('backend/internal/adapters/localcommerce/provider.go', 'utf8'),
+      readFile('components/billing-checkout-boundary.tsx', 'utf8'),
+      readFile('components/billing-account-boundary.tsx', 'utf8'),
+      readFile('lib/client/terms-consent-ui.ts', 'utf8'),
+      readFile('lib/client/http-billing-ui.ts', 'utf8'),
+      readFile('contracts/fixtures/legal/local-commerce-runtime.json', 'utf8'),
+    ]);
+
+    const localCompositionStart = main.indexOf(
+      'if configuration.LocalFixture != nil',
+    );
+    const localCompositionEnd = main.indexOf(
+      'composition.private = &httpapi.PrivateRuntime',
+      localCompositionStart,
+    );
+    const localComposition = main.slice(
+      localCompositionStart,
+      localCompositionEnd,
+    );
+    expect(localCompositionStart).toBeGreaterThan(-1);
+    expect(localCompositionEnd).toBeGreaterThan(localCompositionStart);
+    expect(localComposition).toContain('localcommerceadapter.NewProvider');
+    expect(localComposition).toContain('composition.legal =');
+    expect(localComposition).toContain('composition.billingCancellation =');
+    expect(main).toContain(
+      'configuration.Environment == config.EnvironmentProduction',
+    );
+    expect(main).not.toMatch(/adapters\/stripe|stripeadapter\.New/);
+    expect(provider).not.toMatch(
+      /net\/http|http\.Client|stripe-go|adapters\/stripe|\.Exec\(|\.Append\(/,
+    );
+    expect(server).toContain('LegalRuntime:');
+    expect(server).toContain('BillingCancellationRuntime:');
+    expect(handler).toContain('billingCancellationRoute(options)');
+    expect(termsClient).toContain(
+      "result.kind === 'not-found' ? fallback.loadStatus() : result",
+    );
+    expect(checkoutBoundary).toContain("remote.kind === 'not-found'");
+    expect(accountBoundary).toContain("case 'not-found':");
+    expect(billingClient).toContain("literalDecoder('local-confirmed')");
+    expect(billingClient).toContain("literalDecoder('cancellation-scheduled')");
+    expect(fixtureContract).toContain(
+      'local-test-data-not-production-approval',
+    );
   });
 });
 

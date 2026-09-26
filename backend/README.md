@@ -248,16 +248,17 @@ Account/Vault scope fails closed. The server opens one PostgreSQL pool, shares
 one session resolver, and requires schema, seed, exclusive scope, directory,
 and DEK checks to pass before listening and on readiness checks.
 
-This foundation does not mount session, Sync v2, Billing, deletion, crypto, or
-object-storage business routes, and it constructs or contacts no external or
-remote Stripe, KMS, identity, mail, object, or backup provider. Local directory
-adapters are constructed only for the guarded fixture root. The
-profile-disabled `prepare-e2e` path remains the existing subject-only
-compatibility path. In particular, the seeded active subscription may conflict
-with a later checkout fixture; Issue #510 must define that fixture's separate
-scope or explicit local-provider behavior rather than weakening the seed. This
-foundation alone is local/CI composition evidence, not production
-configuration, deployment, or cutover approval. V11 is complete separately for
+This foundation does not mount Sync v2, deletion, crypto, or object-storage
+business routes, and it constructs or contacts no external or remote Stripe,
+KMS, identity, mail, object, or backup provider. Issue #510 adds only the
+local-fixture legal/commerce routes: terms consent, URL-free no-charge checkout
+confirmation, and no-effect period-end cancellation. Their provider reads and
+validates the exact seeded active Billing and Entitlement rows without changing
+them. Local directory adapters remain guarded by the fixture root, and the
+profile-disabled path remains closed. See
+[`docs/local-commerce-runtime.md`](../docs/local-commerce-runtime.md). This is
+local/CI evidence, not production configuration, legal/price approval,
+deployment, charging, or cutover approval. V11 is complete separately for
 checked-in source retirement and the Go-only runtime artifact.
 
 The real-PostgreSQL adapter integration test covers migration, exact closed
@@ -265,10 +266,12 @@ The real-PostgreSQL adapter integration test covers migration, exact closed
 seed retry, readiness, session resolution, and key unwrap. It does not call the
 unexported `composeRuntime` entry point: that function cannot reach successful
 composition without a live PostgreSQL server. Configuration preflight and each
-constructed adapter are covered independently. Constructor wiring across the
-complete process remains a residual risk; a whole-process local-fixture check
-must run serially with live local PostgreSQL/HTTP verification before later
-business-route connection claims.
+constructed adapter are covered independently. The serial Playwright server
+now selects `local-fixture`, creates an owner-private disposable fixture root,
+installs only the seeded hash-only session cookie, and requires real 200
+responses from terms acceptance, URL-free checkout, and period-end
+cancellation. This whole-process check uses the same disposable PostgreSQL
+guard and loopback port; it never selects a production provider or deployment.
 
 Filesystem validation is path-based rather than descriptor-relative. This is
 accepted only for an owner-private local/test root on a trusted host; do not
@@ -315,9 +318,9 @@ source/config/script/package reintroduction.
 See
 [`docs/legacy-typescript-retirement.md`](../docs/legacy-typescript-retirement.md).
 F22 has separate Go evidence for ordinary period-end cancellation and the
-immediate account-deletion effect. The ordinary handler remains disconnected;
-Draft PR #404, public activation, and production provider use remain
-unapproved.
+immediate account-deletion effect. The ordinary handler is connected only to
+the no-effect local-fixture provider; Draft PR #404, public/production
+activation, and production provider use remain unapproved.
 
 The frozen crypto fixture is decoded by the Go AES-GCM tests; browser wire
 fixtures remain TypeScript-only. Focused Go checks are:

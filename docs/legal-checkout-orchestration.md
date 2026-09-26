@@ -36,10 +36,13 @@ terminal results remain distinct while provider references stay server-side.
 
 The Go route returns the disabled-profile compatibility 404 and otherwise
 fails closed until an explicit runtime supplies the session store, PostgreSQL
-evidence/Billing repositories, approved legal offer, provider transport,
-clock, and identifiers. It never selects a production fake fallback. Removing
-the historical Sites/D1 source does not activate Checkout or impose a billing
-requirement on local Notes editing.
+evidence/Billing repositories, legal offer, provider transport, clock, and
+identifiers. Issue #510 supplies those ports only in the guarded local-fixture
+profile. Its deterministic provider validates the exact seeded rows and
+returns a URL-free `local-confirmed` result without a network request, charge,
+provider reference, or Billing mutation. Production never selects this fake.
+Removing the historical Sites/D1 source does not activate production Checkout
+or impose a billing requirement on local Notes editing.
 
 ## Evidence and retry ordering
 
@@ -95,9 +98,10 @@ the checkout/provider idempotency key, and the two legal acts remain separate.
 Issue #446 also ports the authenticated GET/POST wire contracts to Go. The
 handler factories require a complete, separately supplied `LegalRuntime`, use
 Cookie session ownership, same-origin CSRF, strict 2-KiB JSON, server-generated
-IDs and clocks, and fixed no-store errors. The production command supplies no
-legal runtime, so the existing 404/503 route closure remains and no provider is
-called.
+IDs and clocks, and fixed no-store errors. Issue #510 carries the runtime
+through `ServerOptions` only for `local-fixture`; the production command still
+supplies no legal runtime, so the existing 404/503 closure remains there and no
+provider is called.
 
 ## Rollback and verification
 

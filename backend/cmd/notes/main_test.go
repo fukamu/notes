@@ -1,13 +1,30 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"net/url"
 	"path/filepath"
 	"testing"
 
 	"github.com/fukamu/notes/backend/internal/config"
+	"github.com/fukamu/notes/backend/internal/legal"
 	"github.com/fukamu/notes/backend/internal/localfixture"
 )
+
+type identifierSourceStub struct {
+	values []string
+	err    error
+}
+
+func (source *identifierSourceStub) CreateChallengeID(context.Context) (string, error) {
+	if source.err != nil || len(source.values) == 0 {
+		return "", source.err
+	}
+	value := source.values[0]
+	source.values = source.values[1:]
+	return value, nil
+}
 
 func TestValidateRuntimeConfigurationKeepsDefaultProfileClosed(t *testing.T) {
 	t.Parallel()
@@ -40,6 +57,34 @@ func TestDisconnectedFixturesStaySeparateFromApplicationProfiles(t *testing.T) {
 				t.Fatalf("disconnectedFixturesEnabled(%q) = %t, want %t", test.environment, actual, test.enabled)
 			}
 		})
+	}
+}
+
+func TestLegalIdentifierGeneratorsProduceSeparateFailClosedValues(t *testing.T) {
+	t.Parallel()
+	source := &identifierSourceStub{values: []string{
+		"01999c20-9e33-7000-8000-000000000801",
+		"01999c20-9e33-7000-8000-000000000802",
+	}}
+	newTermsConsentID := legalIdentifierGenerator(source)
+	newContractEvidenceID := legalIdentifierGenerator(source)
+	termsID := newTermsConsentID()
+	evidenceID := newContractEvidenceID()
+	if termsID == evidenceID {
+		t.Fatalf("terms and checkout identifiers were reused: %q", termsID)
+	}
+	if _, err := legal.ParseTermsConsentID(termsID); err != nil {
+		t.Fatalf("terms identifier = %q: %v", termsID, err)
+	}
+	if _, err := legal.ParseContractEvidenceID(evidenceID); err != nil {
+		t.Fatalf("checkout identifier = %q: %v", evidenceID, err)
+	}
+	failing := legalIdentifierGenerator(&identifierSourceStub{err: errors.New("entropy unavailable")})
+	if actual := failing(); actual != "" {
+		t.Fatalf("failed identifier = %q", actual)
+	}
+	if actual := legalIdentifierGenerator(nil)(); actual != "" {
+		t.Fatalf("nil identifier source = %q", actual)
 	}
 }
 

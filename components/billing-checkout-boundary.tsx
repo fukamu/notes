@@ -20,6 +20,8 @@ import {
 } from '@/lib/client/http-billing-ui';
 import {
   createLocalTermsConsentUiTransport,
+  createRemoteFirstTermsConsentUiTransport,
+  createTermsConsentSubmissionId,
   createTermsConsentUiHttpTransport,
   type TermsConsentStatusLoadResult,
   type TermsConsentUiTransport,
@@ -40,13 +42,15 @@ export function BillingCheckoutBoundary({
   readonly source: BillingCheckoutSource;
 }) {
   const transport = useMemo(() => createBillingUiHttpTransport(), []);
-  const termsTransport = useMemo(
-    () =>
-      source.kind === 'local-fixture'
-        ? createLocalTermsConsentUiTransport(source.terms)
-        : createTermsConsentUiHttpTransport(),
-    [source],
-  );
+  const termsTransport = useMemo(() => {
+    const remote = createTermsConsentUiHttpTransport();
+    return source.kind === 'local-fixture'
+      ? createRemoteFirstTermsConsentUiTransport(
+          createLocalTermsConsentUiTransport(source.terms),
+          remote,
+        )
+      : remote;
+  }, [source]);
   const [state, dispatch] = useReducer(
     billingCheckoutUiReducer,
     initialBillingCheckoutUiState,
@@ -65,7 +69,6 @@ export function BillingCheckoutBoundary({
         source,
         transport.loadOffer,
         termsTransport,
-        refresh,
       );
       if (generation !== loadGeneration.current) return;
       if (result.kind === 'available') {
@@ -76,6 +79,7 @@ export function BillingCheckoutBoundary({
             offerHash: result.offerHash,
             terms: result.terms.current,
             submissionId: createBillingCheckoutSubmissionId(),
+            termsSubmissionId: createTermsConsentSubmissionId(),
           },
           notice: refresh ? changed : null,
         });
@@ -105,7 +109,7 @@ export function BillingCheckoutBoundary({
     dispatch({ type: 'submit-requested' });
     const termsResult = await termsTransport.accept({
       current: review.terms,
-      submissionId: review.submissionId,
+      submissionId: review.termsSubmissionId,
     });
     if (termsResult.kind !== 'accepted') {
       pending.current = false;
@@ -138,6 +142,9 @@ export function BillingCheckoutBoundary({
           checkoutUrl: result.checkoutUrl,
           evidenceOutcome: result.evidenceOutcome,
         });
+        return;
+      case 'local-confirmed':
+        dispatch({ type: 'local-confirmed' });
         return;
       case 'not-found':
         if (source.kind === 'local-fixture') {
@@ -533,15 +540,7 @@ function BillingNavigation() {
 async function resolveOffer(
   source: BillingCheckoutSource,
   loadRemote: () => Promise<BillingOfferLoadResult>,
-  refresh: boolean,
 ): Promise<BillingOfferLoadResult> {
-  if (source.kind === 'local-fixture' && !refresh) {
-    return {
-      kind: 'available',
-      offer: source.offer,
-      offerHash: source.offerHash,
-    };
-  }
   const remote = await loadRemote();
   return source.kind === 'local-fixture' && remote.kind === 'not-found'
     ? {
@@ -569,10 +568,9 @@ async function resolveCheckout(
   source: BillingCheckoutSource,
   loadRemoteOffer: () => Promise<BillingOfferLoadResult>,
   termsTransport: TermsConsentUiTransport,
-  refresh: boolean,
 ): Promise<BillingCheckoutLoadResult> {
   const [offer, terms] = await Promise.all([
-    resolveOffer(source, loadRemoteOffer, refresh),
+    resolveOffer(source, loadRemoteOffer),
     termsTransport.loadStatus(),
   ]);
   if (offer.kind === 'available' && terms.kind === 'available') {

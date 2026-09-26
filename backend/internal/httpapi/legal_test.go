@@ -183,6 +183,25 @@ func TestLegalCheckoutHandlersPreserveHTTPContract(t *testing.T) {
 	}
 }
 
+func TestLegalCheckoutHandlerReturnsStrictURLFreeLocalConfirmation(t *testing.T) {
+	checkout := legalCheckoutApplication()
+	checkout.confirmResult.Kind = legal.ContractCheckoutLocalConfirmed
+	checkout.confirmResult.CheckoutURL = ""
+	handler, _ := legalHandler(t, legalRuntime(legalTermsApplication(), checkout))
+	body := `{"submissionId":"` + legalTestCheckoutID + `","presentedOfferHash":"` + legalTestContractHash + `","consent":{"kind":"affirmed"}}`
+	response := serveLegal(handler, legalRequest(http.MethodPost, "/api/billing/checkout", body))
+	want := `{"kind":"local-confirmed","evidenceOutcome":"recorded","evidenceId":"` + legalTestEvidenceID + `","offerHash":"` + legalTestContractHash + `","offerVersion":"legal-commerce-v1:2026-09-15"}` + "\n"
+	if response.Code != http.StatusOK || response.Body.String() != want || strings.Contains(response.Body.String(), "checkoutUrl") {
+		t.Fatalf("local checkout response = %d %s", response.Code, response.Body.String())
+	}
+
+	checkout.confirmResult.CheckoutURL = "https://checkout.stripe.com/unexpected"
+	response = serveLegal(handler, legalRequest(http.MethodPost, "/api/billing/checkout", body))
+	if response.Code != http.StatusServiceUnavailable || response.Body.String() != "{\"error\":\"unavailable\"}\n" {
+		t.Fatalf("invalid local checkout response = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestLegalCheckoutHandlerMatchesSharedWireFixture(t *testing.T) {
 	content, err := os.ReadFile("../../../contracts/fixtures/billing/checkout.json")
 	if err != nil {
