@@ -1,18 +1,22 @@
 package config
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/fukamu/notes/backend/internal/access"
+	"github.com/fukamu/notes/backend/internal/identity"
+	"github.com/fukamu/notes/backend/internal/localfixture"
 )
 
 const (
@@ -29,14 +33,23 @@ const (
 )
 
 type Config struct {
-	Environment     Environment
-	HTTPAddress     string
-	StaticDirectory string
-	BodyLimit       int64
-	ShutdownTimeout time.Duration
-	LogLevel        slog.Level
-	PrivateRuntime  *PrivateRuntimeConfig
+	Environment        Environment
+	HTTPAddress        string
+	StaticDirectory    string
+	BodyLimit          int64
+	ShutdownTimeout    time.Duration
+	LogLevel           slog.Level
+	ApplicationProfile ApplicationProfile
+	PrivateRuntime     *PrivateRuntimeConfig
+	LocalFixture       *LocalFixtureConfig
 }
+
+type ApplicationProfile string
+
+const (
+	ApplicationProfileDisabled     ApplicationProfile = "disabled"
+	ApplicationProfileLocalFixture ApplicationProfile = "local-fixture"
+)
 
 type PrivateRuntimeConfig struct {
 	DatabaseURL        string
@@ -46,6 +59,23 @@ type PrivateRuntimeConfig struct {
 	Audience           string
 	PublicKey          ed25519.PublicKey
 	LegacyOwner        access.Subject
+}
+
+type LocalFixtureConfig struct {
+	DatabaseURL     string
+	PublicOrigin    *url.URL
+	AllowedSubject  access.Subject
+	AccountID       identity.AccountID
+	VaultID         identity.VaultID
+	SessionID       identity.SessionID
+	SessionEpoch    identity.SessionEpoch
+	SessionToken    identity.SessionToken
+	PrivateRoot     string
+	ObjectDirectory string
+	NonceDirectory  string
+	KeyDirectory    string
+	CursorHMACKey   [32]byte
+	DeletionHMACKey [32]byte
 }
 
 type DatabaseConfig struct {
@@ -71,6 +101,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		"NOTES_BODY_LIMIT_BYTES",
 		"NOTES_SHUTDOWN_TIMEOUT",
 		"NOTES_LOG_LEVEL",
+		"NOTES_APPLICATION_PROFILE",
 		"NOTES_PRIVATE_AUTH_MODE",
 		"NOTES_DATABASE_URL",
 		"NOTES_DATABASE_MAX_CONNECTIONS",
@@ -82,6 +113,24 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	} {
 		if value, ok := lookup(key); ok {
 			values[key] = value
+		}
+	}
+	if values["NOTES_APPLICATION_PROFILE"] == string(ApplicationProfileLocalFixture) &&
+		(values["NOTES_ENVIRONMENT"] == string(EnvironmentLocal) ||
+			values["NOTES_ENVIRONMENT"] == string(EnvironmentTest)) {
+		for _, key := range []string{
+			"NOTES_LOCAL_FIXTURE_ROOT",
+			"NOTES_LOCAL_FIXTURE_ACCOUNT_ID",
+			"NOTES_LOCAL_FIXTURE_VAULT_ID",
+			"NOTES_LOCAL_FIXTURE_SESSION_ID",
+			"NOTES_LOCAL_FIXTURE_SESSION_EPOCH",
+			"NOTES_LOCAL_FIXTURE_SESSION_TOKEN",
+			"NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY",
+			"NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY",
+		} {
+			if value, ok := lookup(key); ok {
+				values[key] = value
+			}
 		}
 	}
 	return Parse(values)
@@ -122,6 +171,10 @@ func Parse(values map[string]string) (Config, error) {
 		return Config{}, err
 	}
 	environment, err := parseEnvironment(environmentValue)
+	if err != nil {
+		return Config{}, err
+	}
+	applicationProfile, err := parseApplicationProfile(values, environment)
 	if err != nil {
 		return Config{}, err
 	}
@@ -169,16 +222,224 @@ func Parse(values map[string]string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	localFixture, err := parseLocalFixture(
+		values,
+		environment,
+		applicationProfile,
+		address,
+		filepath.Clean(staticDirectory),
+		privateRuntime,
+	)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
-		Environment:     environment,
-		HTTPAddress:     address,
-		StaticDirectory: filepath.Clean(staticDirectory),
-		BodyLimit:       bodyLimit,
-		ShutdownTimeout: shutdownTimeout,
-		LogLevel:        logLevel,
-		PrivateRuntime:  privateRuntime,
+		Environment:        environment,
+		HTTPAddress:        address,
+		StaticDirectory:    filepath.Clean(staticDirectory),
+		BodyLimit:          bodyLimit,
+		ShutdownTimeout:    shutdownTimeout,
+		LogLevel:           logLevel,
+		ApplicationProfile: applicationProfile,
+		PrivateRuntime:     privateRuntime,
+		LocalFixture:       localFixture,
 	}, nil
+}
+
+func parseApplicationProfile(
+	values map[string]string,
+	environment Environment,
+) (ApplicationProfile, error) {
+	value := values["NOTES_APPLICATION_PROFILE"]
+	if value == "" || value == string(ApplicationProfileDisabled) {
+		return ApplicationProfileDisabled, nil
+	}
+	if value != string(ApplicationProfileLocalFixture) {
+		return "", invalid("NOTES_APPLICATION_PROFILE", "must be disabled or local-fixture")
+	}
+	if environment == EnvironmentProduction {
+		return "", invalid("NOTES_APPLICATION_PROFILE", "local-fixture is unavailable in production")
+	}
+	return ApplicationProfileLocalFixture, nil
+}
+
+func parseLocalFixture(
+	values map[string]string,
+	environment Environment,
+	profile ApplicationProfile,
+	address string,
+	staticDirectory string,
+	privateRuntime *PrivateRuntimeConfig,
+) (*LocalFixtureConfig, error) {
+	if profile == ApplicationProfileDisabled {
+		return nil, nil
+	}
+	if environment != EnvironmentLocal && environment != EnvironmentTest {
+		return nil, invalid("NOTES_APPLICATION_PROFILE", "local-fixture requires local or test")
+	}
+	if privateRuntime == nil {
+		return nil, invalid("NOTES_PRIVATE_AUTH_MODE", "local-fixture requires local-signed")
+	}
+	if err := localfixture.ValidateDatabaseURL(privateRuntime.DatabaseURL); err != nil {
+		return nil, invalid("NOTES_DATABASE_URL", "local-fixture requires the exact disposable test database")
+	}
+	if err := validateLocalFixtureEndpoint(address, privateRuntime.PublicOrigin); err != nil {
+		return nil, err
+	}
+	rootValue, err := required(values, "NOTES_LOCAL_FIXTURE_ROOT")
+	if err != nil {
+		return nil, err
+	}
+	root, err := validatePrivateRoot(rootValue)
+	if err != nil {
+		return nil, err
+	}
+	staticResolved, err := filepath.EvalSymlinks(staticDirectory)
+	if err != nil || staticResolved != staticDirectory {
+		return nil, invalid("NOTES_STATIC_DIR", "local-fixture requires an existing non-symlink directory")
+	}
+	if pathsOverlap(root, staticResolved) {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_ROOT", "must be separate from the static directory")
+	}
+	accountValue, err := required(values, "NOTES_LOCAL_FIXTURE_ACCOUNT_ID")
+	if err != nil {
+		return nil, err
+	}
+	accountID, err := identity.ParseAccountID(accountValue)
+	if err != nil || accountValue != strings.ToLower(accountValue) {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_ACCOUNT_ID", "must be a UUIDv7 account identifier")
+	}
+	vaultValue, err := required(values, "NOTES_LOCAL_FIXTURE_VAULT_ID")
+	if err != nil {
+		return nil, err
+	}
+	vaultID, err := identity.ParseVaultID(vaultValue)
+	if err != nil || vaultValue != strings.ToLower(vaultValue) {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_VAULT_ID", "must be a UUIDv7 vault identifier")
+	}
+	sessionValue, err := required(values, "NOTES_LOCAL_FIXTURE_SESSION_ID")
+	if err != nil {
+		return nil, err
+	}
+	sessionID, err := identity.ParseSessionID(sessionValue)
+	if err != nil || sessionValue != strings.ToLower(sessionValue) {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_SESSION_ID", "must be a UUIDv7 session identifier")
+	}
+	epochValue, err := required(values, "NOTES_LOCAL_FIXTURE_SESSION_EPOCH")
+	if err != nil {
+		return nil, err
+	}
+	rawEpoch, err := strconv.ParseInt(epochValue, 10, 64)
+	if err != nil {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_SESSION_EPOCH", "must be a valid session epoch")
+	}
+	sessionEpoch, err := identity.ParseSessionEpoch(rawEpoch)
+	if err != nil {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_SESSION_EPOCH", "must be a valid session epoch")
+	}
+	tokenValue, err := required(values, "NOTES_LOCAL_FIXTURE_SESSION_TOKEN")
+	if err != nil {
+		return nil, err
+	}
+	sessionToken, err := identity.ParseSessionToken(tokenValue)
+	if err != nil {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_SESSION_TOKEN", "must be a canonical session token")
+	}
+	cursorKey, err := parseFixtureSecret(values, "NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY")
+	if err != nil {
+		return nil, err
+	}
+	deletionKey, err := parseFixtureSecret(values, "NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY")
+	if err != nil {
+		return nil, err
+	}
+	if bytes.Equal(cursorKey[:], deletionKey[:]) {
+		return nil, invalid(
+			"NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY",
+			"must be distinct from the cursor HMAC key",
+		)
+	}
+	fixtureOrigin := *privateRuntime.PublicOrigin
+	return &LocalFixtureConfig{
+		DatabaseURL:     privateRuntime.DatabaseURL,
+		PublicOrigin:    &fixtureOrigin,
+		AllowedSubject:  privateRuntime.LegacyOwner,
+		AccountID:       accountID,
+		VaultID:         vaultID,
+		SessionID:       sessionID,
+		SessionEpoch:    sessionEpoch,
+		SessionToken:    sessionToken,
+		PrivateRoot:     root,
+		ObjectDirectory: filepath.Join(root, localfixture.ObjectDirectoryName),
+		NonceDirectory:  filepath.Join(root, localfixture.NonceDirectoryName),
+		KeyDirectory:    filepath.Join(root, localfixture.KeyDirectoryName),
+		CursorHMACKey:   cursorKey,
+		DeletionHMACKey: deletionKey,
+	}, nil
+}
+
+func parseFixtureSecret(values map[string]string, key string) ([32]byte, error) {
+	value, err := required(values, key)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil || len(decoded) != 32 || base64.RawURLEncoding.EncodeToString(decoded) != value {
+		clear(decoded)
+		return [32]byte{}, invalid(key, "must be a canonical 32-byte base64url secret")
+	}
+	var result [32]byte
+	copy(result[:], decoded)
+	clear(decoded)
+	return result, nil
+}
+
+func validateLocalFixtureEndpoint(address string, publicOrigin *url.URL) error {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil || !isLoopbackHost(host) {
+		return invalid("NOTES_HTTP_ADDR", "local-fixture requires an explicit loopback address")
+	}
+	if publicOrigin == nil || publicOrigin.Scheme != "http" ||
+		!isLoopbackHost(publicOrigin.Hostname()) || publicOrigin.Port() != port {
+		return invalid("NOTES_PUBLIC_ORIGIN", "local-fixture requires the same loopback port as NOTES_HTTP_ADDR")
+	}
+	return nil
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	parsed := net.ParseIP(host)
+	return parsed != nil && parsed.IsLoopback()
+}
+
+func validatePrivateRoot(value string) (string, error) {
+	if value == "" || strings.ContainsRune(value, '\x00') || !filepath.IsAbs(value) {
+		return "", invalid("NOTES_LOCAL_FIXTURE_ROOT", "must be an absolute private directory")
+	}
+	clean := filepath.Clean(value)
+	resolved, err := filepath.EvalSymlinks(clean)
+	if err != nil || resolved != clean {
+		return "", invalid("NOTES_LOCAL_FIXTURE_ROOT", "must be an existing non-symlink directory")
+	}
+	info, err := os.Lstat(clean)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
+		return "", invalid("NOTES_LOCAL_FIXTURE_ROOT", "must allow access only to its owner")
+	}
+	return clean, nil
+}
+
+func pathsOverlap(left string, right string) bool {
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	return left == right || pathContains(left, right) || pathContains(right, left)
+}
+
+func pathContains(parent string, child string) bool {
+	relative, err := filepath.Rel(parent, child)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func parsePrivateRuntime(

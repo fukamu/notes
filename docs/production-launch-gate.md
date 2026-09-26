@@ -54,9 +54,14 @@ network request makes a fresh server-side decision.
 Go migration `backend/migrations/00001_core.sql` creates PostgreSQL
 `launch_config` and `launch_allowed_users` with a default-closed singleton.
 The migration is applied only by `notesctl migrate`; request handlers never run
-DDL. T05 browser tests use `notesctl prepare-e2e`, which refuses any URL that is
-not loopback and the exact `fukamu_notes_go_test` database, recreates only its
-test schema, migrates, and seeds one explicit test subject.
+DDL. T05 browser tests use profile-disabled `notesctl prepare-e2e`, which
+refuses any URL that is not loopback and the exact `fukamu_notes_go_test`
+database, recreates only its test schema, migrates, and seeds one explicit test
+subject. Issue #509's separately explicit `local-fixture` profile adds
+Account/Vault/session/Billing/Entitlement/DEK and private-directory seed
+prerequisites for local/CI composition only. Production rejects that profile,
+its values are not production identity or launch evidence, and no business
+route or provider is enabled by it.
 
 The older TypeScript/D1 migration and adapters remain as compatibility
 reference and test inputs until the reviewed T17 removal. T14b fixes their

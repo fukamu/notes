@@ -3,6 +3,10 @@ package recoverykey
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,6 +49,115 @@ func NewDirectory(root string, vaultID identity.VaultID) (*Directory, error) {
 		return nil, err
 	}
 	return &Directory{root: clean, vaultID: vaultID}, nil
+}
+
+func PrepareFixtureKey(
+	root string,
+	vaultID identity.VaultID,
+) (cryptocontent.VaultDEKMetadata, error) {
+	clean, err := validatePrivateDirectory(root)
+	if err != nil {
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	if _, err := identity.ParseVaultID(string(vaultID)); err != nil {
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	path := filepath.Join(clean, "dek-1.json")
+	if _, err := os.Lstat(path); err == nil {
+		return LoadFixtureMetadata(clean, vaultID)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		clear(raw)
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	defer clear(raw)
+	metadata := fixtureMetadata(vaultID, raw)
+	wire := keyFile{
+		Format: FixtureKeyFormat, VaultID: string(vaultID), DEKVersion: 1,
+		KEKReference: metadata.KEKReference, WrappedDEK: metadata.WrappedDEK,
+		RawDEK: base64.RawURLEncoding.EncodeToString(raw),
+	}
+	encoded, err := json.Marshal(wire)
+	if err != nil {
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	defer clear(encoded)
+	temporary, err := os.CreateTemp(clean, ".fixture-key-")
+	if err != nil {
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	temporaryPath := temporary.Name()
+	defer func() { _ = os.Remove(temporaryPath) }()
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	written, writeErr := temporary.Write(encoded)
+	if writeErr != nil || written != len(encoded) || temporary.Sync() != nil || temporary.Close() != nil {
+		_ = temporary.Close()
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	if err := os.Link(temporaryPath, path); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return LoadFixtureMetadata(clean, vaultID)
+		}
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	if syncPrivateDirectory(clean) != nil {
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	return LoadFixtureMetadata(clean, vaultID)
+}
+
+func LoadFixtureMetadata(
+	root string,
+	vaultID identity.VaultID,
+) (cryptocontent.VaultDEKMetadata, error) {
+	clean, err := validatePrivateDirectory(root)
+	if err != nil {
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	if _, err := identity.ParseVaultID(string(vaultID)); err != nil {
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	encoded, err := readPrivateFile(filepath.Join(clean, "dek-1.json"))
+	if err != nil {
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	defer clear(encoded)
+	wire, err := decodeKeyFile(encoded)
+	if err != nil || wire.Format != FixtureKeyFormat || wire.VaultID != string(vaultID) || wire.DEKVersion != 1 {
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	raw, err := cryptocontent.DecodeCanonicalBase64URL(wire.RawDEK, 43, 43)
+	if err != nil || len(raw) != 32 {
+		clear(raw)
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	defer clear(raw)
+	expected := fixtureMetadata(vaultID, raw)
+	if subtle.ConstantTimeCompare([]byte(wire.KEKReference), []byte(expected.KEKReference)) != 1 ||
+		subtle.ConstantTimeCompare([]byte(wire.WrappedDEK), []byte(expected.WrappedDEK)) != 1 {
+		return cryptocontent.VaultDEKMetadata{}, ErrDirectoryOperation
+	}
+	return expected, nil
+}
+
+func fixtureMetadata(vaultID identity.VaultID, raw []byte) cryptocontent.VaultDEKMetadata {
+	digest := sha256.New()
+	_, _ = digest.Write([]byte("fukamu-local-fixture-wrapped-dek/v1\x00"))
+	_, _ = digest.Write([]byte(vaultID))
+	_, _ = digest.Write([]byte{0})
+	_, _ = digest.Write(raw)
+	wrapped := base64.RawURLEncoding.EncodeToString(digest.Sum(nil))
+	return cryptocontent.VaultDEKMetadata{
+		VaultID: vaultID, DEKVersion: 1,
+		KEKReference: "local-fixture://" + string(vaultID) + "/dek/1",
+		WrappedDEK:   wrapped, CreatedAtMilli: 1,
+	}
 }
 
 func (*Directory) GenerateDataKey(
@@ -176,4 +289,16 @@ func readPrivateFile(path string) ([]byte, error) {
 		return nil, ErrDirectoryOperation
 	}
 	return value, nil
+}
+
+func syncPrivateDirectory(path string) error {
+	directory, err := os.Open(path)
+	if err != nil {
+		return ErrDirectoryOperation
+	}
+	defer directory.Close()
+	if err := directory.Sync(); err != nil {
+		return ErrDirectoryOperation
+	}
+	return nil
 }

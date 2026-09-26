@@ -3,13 +3,18 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/fukamu/notes/backend/internal/access"
 	"github.com/fukamu/notes/backend/internal/accountdeletion"
+	"github.com/fukamu/notes/backend/internal/config"
 	"github.com/fukamu/notes/backend/internal/encryptedobject"
 	"github.com/fukamu/notes/backend/internal/operations"
 	"github.com/fukamu/notes/backend/internal/quota"
@@ -156,6 +161,78 @@ func TestRunPreparesOnlyTheAllowlistedE2EDatabase(t *testing.T) {
 		dekReencryptionMustNotRun(t),
 		orphanScanMustNotRun(t),
 		deleteOutboxMustNotRun(t),
+	)
+	if code != 0 || !called || stdout.String() != "e2e database prepared\n" || stderr.Len() != 0 {
+		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunSelectsTypedLocalFixturePreparationOnlyForExplicitProfile(t *testing.T) {
+	publicKey, _, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateRoot := t.TempDir()
+	if err := os.Chmod(privateRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{
+		"NOTES_ENVIRONMENT":                     "test",
+		"NOTES_HTTP_ADDR":                       "127.0.0.1:8080",
+		"NOTES_STATIC_DIR":                      t.TempDir(),
+		"NOTES_APPLICATION_PROFILE":             "local-fixture",
+		"NOTES_PRIVATE_AUTH_MODE":               "local-signed",
+		"NOTES_DATABASE_URL":                    "postgres://notes:sensitive-password@127.0.0.1:5432/fukamu_notes_go_test",
+		"NOTES_PUBLIC_ORIGIN":                   "http://localhost:8080",
+		"NOTES_LOCAL_AUTH_ISSUER":               "https://issuer.test/local",
+		"NOTES_LOCAL_AUTH_AUDIENCE":             "notes-local",
+		"NOTES_LOCAL_AUTH_PUBLIC_KEY":           base64.RawURLEncoding.EncodeToString(publicKey),
+		"NOTES_LEGACY_OWNER_SUBJECT":            "fixture-owner",
+		"NOTES_LOCAL_FIXTURE_ROOT":              privateRoot,
+		"NOTES_LOCAL_FIXTURE_ACCOUNT_ID":        "01999c20-9e33-7000-8000-000000000001",
+		"NOTES_LOCAL_FIXTURE_VAULT_ID":          "01999c20-9e33-7000-8000-000000000002",
+		"NOTES_LOCAL_FIXTURE_SESSION_ID":        "01999c20-9e33-7000-8000-000000000003",
+		"NOTES_LOCAL_FIXTURE_SESSION_EPOCH":     "1",
+		"NOTES_LOCAL_FIXTURE_SESSION_TOKEN":     base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x41}, 32)),
+		"NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY":   base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32)),
+		"NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY": base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x43}, 32)),
+	}
+	called := false
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithDependencies(
+		context.Background(),
+		[]string{"prepare-e2e", "--environment=test", "--allowed-subject=fixture-owner"},
+		&stdout,
+		&stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string, string) error { t.Fatal("legacy preparation must not run"); return nil },
+		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
+			t.Fatal("quota audit must not run")
+			return operations.QuotaAuditResult{}, nil
+		},
+		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			t.Fatal("quota commit must not run")
+			return operations.QuotaCommitResult{}, nil
+		},
+		func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			t.Fatal("account deletion audit must not run")
+			return operations.AccountDeletionAuditResult{}, nil
+		},
+		billingReconciliationMustNotRun(t),
+		dekRotationMustNotRun(t),
+		dekReencryptionMustNotRun(t),
+		orphanScanMustNotRun(t),
+		deleteOutboxMustNotRun(t),
+		func(_ context.Context, fixture config.LocalFixtureConfig, subject access.Subject) error {
+			called = true
+			if fixture.DatabaseURL != values["NOTES_DATABASE_URL"] || fixture.PrivateRoot != privateRoot ||
+				subject != "fixture-owner" {
+				t.Fatal("local fixture preparation did not receive the decoded aggregate")
+			}
+			return nil
+		},
 	)
 	if code != 0 || !called || stdout.String() != "e2e database prepared\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())

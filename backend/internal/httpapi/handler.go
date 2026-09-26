@@ -20,12 +20,12 @@ import (
 )
 
 type HandlerOptions struct {
-	StaticDirectory     string
-	BodyLimit           int64
-	Logger              *slog.Logger
-	PrivateRuntime      *PrivateRuntime
-	LegalRuntime        *LegalRuntime
-	EnableLocalFixtures bool
+	StaticDirectory            string
+	BodyLimit                  int64
+	Logger                     *slog.Logger
+	PrivateRuntime             *PrivateRuntime
+	LegalRuntime               *LegalRuntime
+	EnableDisconnectedFixtures bool
 }
 
 type AssertionVerifier interface {
@@ -89,7 +89,7 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 	)
 	mux.HandleFunc(
 		"/api/v2/sync",
-		exact("/api/v2/sync", disconnectedProtectedAPI(options.PrivateRuntime, options.EnableLocalFixtures, http.MethodPost)),
+		exact("/api/v2/sync", disconnectedProtectedAPI(options.PrivateRuntime, options.EnableDisconnectedFixtures, http.MethodPost)),
 	)
 	mux.HandleFunc(
 		"/api/billing/checkout",
@@ -106,7 +106,7 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 		"/api/account/privacy-requests/status",
 		"/api/billing/cancel",
 	} {
-		mux.HandleFunc(path, exact(path, disconnectedPublicAPI(options.EnableLocalFixtures, http.MethodGet, http.MethodPost)))
+		mux.HandleFunc(path, exact(path, disconnectedPublicAPI(options.EnableDisconnectedFixtures, http.MethodGet, http.MethodPost)))
 	}
 	mux.HandleFunc("/api", closedAPI)
 	mux.HandleFunc("/api/", closedAPI)
