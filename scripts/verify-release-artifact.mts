@@ -1,6 +1,11 @@
-import { spawnSync } from 'node:child_process';
+import {
+  spawn,
+  spawnSync,
+  type ChildProcessWithoutNullStreams,
+} from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readFile,
@@ -8,11 +13,13 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   RELEASE_ARTIFACT_SCHEMA_VERSION,
   RELEASE_ARTIFACT_VERIFIER_VERSION,
+  EXPECTED_PRODUCTION_DISABLED_ROUTES,
   createSpdxDocument,
   decodeImageInspection,
   decodeNpmProductionDependencies,
@@ -28,52 +35,15 @@ import {
 } from './release-artifact-core.mts';
 
 const maximumCommandOutputBytes = 128 * 1024 * 1024;
-const routeChecks = [
-  { method: 'GET', path: '/healthz', status: 200, body: '"status":"ok"' },
-  { method: 'GET', path: '/readyz', status: 503, body: '"status":"not_ready"' },
-  { method: 'GET', path: '/', status: 200, body: '<div id="root">' },
-  { method: 'GET', path: '/pricing', status: 200, body: '<!doctype html>' },
-  {
-    method: 'GET',
-    path: '/cards/release-verification/history',
-    status: 200,
-    body: '<div id="root">',
-  },
-  {
-    method: 'GET',
-    path: '/not-a-release-route',
-    status: 404,
-    body: '"not_found"',
-  },
-  {
-    method: 'GET',
-    path: '/api/not-a-release-route',
-    status: 404,
-    body: '"not_found"',
-  },
-  {
-    method: 'POST',
-    path: '/api/v2/sync',
-    status: 503,
-    body: '"launch-gate-unavailable"',
-  },
-  {
-    method: 'POST',
-    path: '/api/account/deletion',
-    status: 503,
-    body: '"unavailable"',
-  },
-] as const;
-
 const sourceRevision = resolveSourceRevision();
 const token = randomUUID().replaceAll('-', '');
 const imageReference = `fukamu-notes-release-verify:${sourceRevision.slice(0, 12)}-${token}`;
-const containerName = `fukamu-notes-release-verify-${token}`;
 const temporaryDirectory = await mkdtemp(
   path.join(tmpdir(), 'fukamu-notes-release-verify-'),
 );
 let imageBuilt = false;
-let containerCreated = false;
+let builtImageID: string | undefined;
+const cleanupContainers = new Set<string>();
 let verificationFailure: unknown;
 
 try {
@@ -81,46 +51,67 @@ try {
 } catch (error: unknown) {
   verificationFailure = error;
 } finally {
+  let cleanupFailure: unknown;
+  for (const name of cleanupContainers) {
+    try {
+      runText('docker', ['container', 'rm', '--force', name]);
+    } catch (error: unknown) {
+      cleanupFailure ??= error;
+    }
+  }
+  // The unique tag is used only as a cleanup fallback if Docker completed
+  // the build but failed to produce a validated iidfile.
+  if (imageBuilt) {
+    try {
+      runText('docker', ['image', 'rm', builtImageID ?? imageReference]);
+    } catch (error: unknown) {
+      cleanupFailure ??= error;
+    }
+  }
   try {
-    if (containerCreated)
-      runText('docker', ['container', 'rm', '--force', containerName]);
-    if (imageBuilt) runText('docker', ['image', 'rm', imageReference]);
     await rm(temporaryDirectory, { recursive: true, force: true });
   } catch (error: unknown) {
-    if (verificationFailure === undefined) verificationFailure = error;
+    cleanupFailure ??= error;
   }
+  verificationFailure ??= cleanupFailure;
 }
 
 if (verificationFailure !== undefined) throw verificationFailure;
 
 async function verifyReleaseArtifact(): Promise<void> {
   console.log(`Building disposable release image for ${sourceRevision}`);
+  const imageIDFile = path.join(temporaryDirectory, 'image.id');
   runVisible('docker', [
     'build',
     '--file',
     'deploy/Dockerfile',
     '--build-arg',
     `NOTES_SOURCE_REVISION=${sourceRevision}`,
+    '--iidfile',
+    imageIDFile,
     '--tag',
     imageReference,
     '.',
   ]);
   imageBuilt = true;
 
+  const imageID = (await readFile(imageIDFile, 'utf8')).trim();
+  if (!/^sha256:[a-f0-9]{64}$/u.test(imageID)) {
+    throw new Error('docker build did not produce an immutable image ID');
+  }
+  builtImageID = imageID;
+
   const inspectionCandidate: unknown = JSON.parse(
-    runText('docker', ['image', 'inspect', imageReference]),
+    runText('docker', ['image', 'inspect', imageID]),
   );
   const inspection = decodeImageInspection(inspectionCandidate);
   validateImageInspection(inspection, sourceRevision);
+  if (inspection.imageID !== imageID) {
+    throw new Error('release inspection did not retain the built image ID');
+  }
 
   const imageArchive = path.join(temporaryDirectory, 'image.tar');
-  runText('docker', [
-    'image',
-    'save',
-    '--output',
-    imageArchive,
-    imageReference,
-  ]);
+  runText('docker', ['image', 'save', '--output', imageArchive, imageID]);
   const savedManifestCandidate: unknown = JSON.parse(
     runText('tar', ['-xOf', imageArchive, 'manifest.json']),
   );
@@ -148,16 +139,22 @@ async function verifyReleaseArtifact(): Promise<void> {
   }
   validateRuntimePaths(runtimePaths);
 
-  runText('docker', [
+  const extractionContainer = `fukamu-notes-release-verify-${token}-extract`;
+  const extractionContainerID = runText('docker', [
     'container',
     'create',
     '--name',
-    containerName,
-    '--publish',
-    '127.0.0.1::8080',
-    imageReference,
-  ]);
-  containerCreated = true;
+    extractionContainer,
+    '--network',
+    'none',
+    imageID,
+  ]).trim();
+  cleanupContainers.add(extractionContainer);
+  if (!/^[a-f0-9]{64}$/u.test(extractionContainerID)) {
+    throw new Error('docker did not return an exact extraction container ID');
+  }
+  cleanupContainers.delete(extractionContainer);
+  cleanupContainers.add(extractionContainerID);
 
   const extractedDirectory = path.join(temporaryDirectory, 'extracted');
   await mkdir(extractedDirectory);
@@ -166,15 +163,18 @@ async function verifyReleaseArtifact(): Promise<void> {
   runText('docker', [
     'container',
     'cp',
-    `${containerName}:/notes`,
+    `${extractionContainerID}:/notes`,
     notesBinary,
   ]);
   runText('docker', [
     'container',
     'cp',
-    `${containerName}:/app/static`,
+    `${extractionContainerID}:/app/static`,
     frontendDirectory,
   ]);
+  runText('docker', ['container', 'rm', extractionContainerID]);
+  cleanupContainers.delete(extractionContainerID);
+  await chmod(notesBinary, 0o700);
 
   const binary = await fileEvidence(notesBinary);
   const frontend = await treeEvidence(frontendDirectory);
@@ -189,36 +189,12 @@ async function verifyReleaseArtifact(): Promise<void> {
     await readFile('backend/migrations/migrations.go', 'utf8'),
   );
 
-  runText('docker', ['container', 'start', containerName]);
-  const port = await waitForContainerPort(containerName);
-  await waitForHealth(port);
-  const verifiedRoutes = await verifyRoutes(port);
-
-  runText('docker', [
-    'container',
-    'stop',
-    '--signal',
-    'SIGTERM',
-    '--time',
-    '15',
-    containerName,
-  ]);
-  const exitCode = runText('docker', [
-    'container',
-    'inspect',
-    '--format',
-    '{{.State.ExitCode}}',
-    containerName,
-  ]).trim();
-  const logs = runCombinedText('docker', ['container', 'logs', containerName]);
-  if (
-    exitCode !== '0' ||
-    !logs.includes('server stopped') ||
-    !logs.includes('shutdown')
-  ) {
-    throw new Error(
-      'release container did not complete a graceful SIGTERM shutdown',
-    );
+  const { verifiedRoutes, lifecycle: loopbackSmoke } =
+    await runExtractedBinaryLoopbackSmoke(notesBinary, frontendDirectory);
+  const networkNoneLifecycles: ReleaseManifest['networkNoneLifecycles'][number][] =
+    [];
+  for (let cycle = 1; cycle <= 2; cycle += 1) {
+    networkNoneLifecycles.push(await runNetworkNoneLifecycle(imageID, cycle));
   }
 
   const manifest: ReleaseManifest = {
@@ -233,6 +209,12 @@ async function verifyReleaseArtifact(): Promise<void> {
     notesBinary: binary,
     frontend,
     verifiedRoutes,
+    loopbackSmoke,
+    networkNoneLifecycles,
+    productionTransition: {
+      status: 'not-performed',
+      reason: 'explicit-production-approval-required',
+    },
   };
   validateReleaseManifest(manifest);
   const sbom = createSpdxDocument(
@@ -369,42 +351,38 @@ async function regularFiles(root: string): Promise<readonly string[]> {
   return files.sort();
 }
 
-async function waitForContainerPort(name: string): Promise<number> {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    const output = runText('docker', [
-      'container',
-      'port',
-      name,
-      '8080/tcp',
-    ]).trim();
-    const match = /^127\.0\.0\.1:(\d{1,5})$/u.exec(output);
-    const port = match?.[1] === undefined ? 0 : Number(match[1]);
-    if (Number.isSafeInteger(port) && port >= 1 && port <= 65_535) return port;
-    await delay(100);
-  }
-  throw new Error('release container did not publish its loopback port');
-}
-
-async function waitForHealth(port: number): Promise<void> {
+async function waitForHealth(
+  port: number,
+  process: ChildProcessWithoutNullStreams,
+): Promise<void> {
   for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (process.exitCode !== null || process.signalCode !== null) {
+      throw new Error('release loopback process exited before health');
+    }
     try {
       const response = await fetch(`http://127.0.0.1:${port}/healthz`, {
         signal: AbortSignal.timeout(1_000),
       });
-      if (response.status === 200) return;
+      const body = await response.text();
+      if (response.status === 200 && body === '{"status":"ok"}\n') return;
     } catch {
-      // A fresh container may not have bound its port yet.
+      // A fresh process may not have bound its loopback port yet.
     }
     await delay(100);
   }
-  throw new Error('release container did not become healthy');
+  throw new Error('release loopback process did not become healthy');
 }
 
 async function verifyRoutes(
   port: number,
+  frontendDirectory: string,
 ): Promise<ReleaseManifest['verifiedRoutes']> {
-  const evidence: { method: string; path: string; status: number }[] = [];
-  for (const check of routeChecks) {
+  const notesHTML = await readFile(path.join(frontendDirectory, 'index.html'));
+  const pricingHTML = await readFile(
+    path.join(frontendDirectory, 'pricing', 'index.html'),
+  );
+  const evidence: ReleaseManifest['verifiedRoutes'][number][] = [];
+  for (const check of EXPECTED_PRODUCTION_DISABLED_ROUTES) {
     const request: RequestInit = {
       method: check.method,
       redirect: 'manual',
@@ -414,23 +392,375 @@ async function verifyRoutes(
       request.body = '{}';
       request.headers = { 'Content-Type': 'application/json' };
     }
+    const requestTarget =
+      check.path === '/api/not-a-release-route'
+        ? `${check.path}?token=release-route-query-canary`
+        : check.path;
     const response = await fetch(
-      `http://127.0.0.1:${port}${check.path}`,
+      `http://127.0.0.1:${port}${requestTarget}`,
       request,
     );
-    const body = await response.text();
-    if (response.status !== check.status || !body.includes(check.body)) {
+    const body = Buffer.from(await response.arrayBuffer());
+    const expectedBody = releaseRouteBody(
+      check.bodyKind,
+      notesHTML,
+      pricingHTML,
+    );
+    if (
+      response.status !== check.status ||
+      !body.equals(expectedBody) ||
+      response.headers.get('content-type') !== check.contentType ||
+      response.headers.get('cache-control') !== check.cacheControl ||
+      (response.headers.get('vary') ?? '') !== check.vary
+    ) {
       throw new Error(
         `release route ${check.method} ${check.path} returned an unexpected response`,
       );
+    }
+    if (check.contentType === 'application/json; charset=utf-8') {
+      if (response.headers.get('x-content-type-options') !== 'nosniff') {
+        throw new Error(
+          `release route ${check.method} ${check.path} omitted JSON security headers`,
+        );
+      }
+    } else {
+      validateReleaseHTMLHeaders(response, check.path);
     }
     evidence.push({
       method: check.method,
       path: check.path,
       status: response.status,
+      bodyKind: check.bodyKind,
+      bodySha256: createHash('sha256').update(body).digest('hex'),
+      contentType: check.contentType,
+      cacheControl: check.cacheControl,
+      vary: check.vary,
     });
   }
   return evidence;
+}
+
+function releaseRouteBody(
+  kind: (typeof EXPECTED_PRODUCTION_DISABLED_ROUTES)[number]['bodyKind'],
+  notesHTML: Buffer,
+  pricingHTML: Buffer,
+): Buffer {
+  switch (kind) {
+    case 'health-ok':
+      return Buffer.from('{"status":"ok"}\n');
+    case 'not-ready':
+      return Buffer.from('{"status":"not_ready"}\n');
+    case 'notes-html':
+      return notesHTML;
+    case 'pricing-html':
+      return pricingHTML;
+    case 'not-found-code':
+      return Buffer.from('{"code":"not_found"}\n');
+    case 'launch-unavailable':
+      return Buffer.from('{"error":"launch-gate-unavailable"}\n');
+    case 'unavailable':
+      return Buffer.from('{"error":"unavailable"}\n');
+  }
+}
+
+function validateReleaseHTMLHeaders(
+  response: Response,
+  requestPath: string,
+): void {
+  const expected = new Map<string, string>([
+    [
+      'content-security-policy',
+      "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self' data:; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:",
+    ],
+    ['permissions-policy', 'camera=(), geolocation=(), microphone=()'],
+    ['referrer-policy', 'no-referrer'],
+    ['x-content-type-options', 'nosniff'],
+    ['cross-origin-opener-policy', 'same-origin'],
+    ['x-frame-options', 'DENY'],
+  ]);
+  for (const [name, value] of expected) {
+    if (response.headers.get(name) !== value) {
+      throw new Error(
+        `release static route ${requestPath} omitted security headers`,
+      );
+    }
+  }
+}
+
+async function runExtractedBinaryLoopbackSmoke(
+  notesBinary: string,
+  frontendDirectory: string,
+): Promise<
+  Readonly<{
+    verifiedRoutes: ReleaseManifest['verifiedRoutes'];
+    lifecycle: ReleaseManifest['loopbackSmoke'];
+  }>
+> {
+  const port = await reserveLoopbackPort();
+  const logs = createBoundedLogCollector();
+  const child = spawn(notesBinary, [], {
+    env: releaseProcessEnvironment(port, frontendDirectory),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  child.stdin.end();
+  child.stdout.on('data', logs.append);
+  child.stderr.on('data', logs.append);
+  const exited = childExit(child);
+  let verifiedRoutes: ReleaseManifest['verifiedRoutes'];
+  try {
+    await waitForHealth(port, child);
+    verifiedRoutes = await verifyRoutes(port, frontendDirectory);
+  } catch (error: unknown) {
+    child.kill('SIGKILL');
+    await exited;
+    throw error;
+  }
+  if (!child.kill('SIGTERM')) {
+    child.kill('SIGKILL');
+    await exited;
+    throw new Error('release loopback process rejected SIGTERM');
+  }
+  const result = await waitForChildExit(child, exited);
+  const text = logs.value();
+  assertReleaseLifecycleLogs(text, [
+    notesBinary,
+    frontendDirectory,
+    temporaryDirectory,
+    'release-route-query-canary',
+  ]);
+  if (result.code !== 0 || result.signal !== null) {
+    throw new Error(
+      'release loopback process did not exit cleanly after SIGTERM',
+    );
+  }
+  return {
+    verifiedRoutes,
+    lifecycle: {
+      runtime: 'extracted-image-binary',
+      bindAddress: '127.0.0.1',
+      exitCode: result.code,
+      signal: 'SIGTERM',
+      gracefulShutdown: true,
+      logsSha256: createHash('sha256').update(text).digest('hex'),
+    },
+  };
+}
+
+async function runNetworkNoneLifecycle(
+  imageID: string,
+  cycle: number,
+): Promise<ReleaseManifest['networkNoneLifecycles'][number]> {
+  const name = `fukamu-notes-release-verify-${token}-none-${String(cycle)}`;
+  const containerID = runText('docker', [
+    'container',
+    'create',
+    '--name',
+    name,
+    '--network',
+    'none',
+    imageID,
+  ]).trim();
+  cleanupContainers.add(name);
+  if (!/^[a-f0-9]{64}$/u.test(containerID)) {
+    throw new Error('docker did not return an exact container ID');
+  }
+  cleanupContainers.delete(name);
+  cleanupContainers.add(containerID);
+  const networkMode = runText('docker', [
+    'container',
+    'inspect',
+    '--format',
+    '{{.HostConfig.NetworkMode}}',
+    containerID,
+  ]).trim();
+  const boundImageID = runText('docker', [
+    'container',
+    'inspect',
+    '--format',
+    '{{.Image}}',
+    containerID,
+  ]).trim();
+  const portBindings = runText('docker', [
+    'container',
+    'inspect',
+    '--format',
+    '{{json .HostConfig.PortBindings}}',
+    containerID,
+  ]).trim();
+  if (
+    networkMode !== 'none' ||
+    boundImageID !== imageID ||
+    (portBindings !== 'null' && portBindings !== '{}')
+  ) {
+    throw new Error('release network-none container isolation is invalid');
+  }
+  runText('docker', ['container', 'start', containerID]);
+  await waitForContainerStartup(containerID);
+  runText('docker', [
+    'container',
+    'stop',
+    '--signal',
+    'SIGTERM',
+    '--time',
+    '15',
+    containerID,
+  ]);
+  const exitCode = runText('docker', [
+    'container',
+    'inspect',
+    '--format',
+    '{{.State.ExitCode}}',
+    containerID,
+  ]).trim();
+  const text = runCombinedText('docker', ['container', 'logs', containerID]);
+  assertReleaseLifecycleLogs(text, [imageReference, temporaryDirectory]);
+  if (exitCode !== '0') {
+    throw new Error('release network-none container did not exit cleanly');
+  }
+  return {
+    containerID,
+    imageID,
+    networkMode: 'none',
+    exitCode: 0,
+    signal: 'SIGTERM',
+    gracefulShutdown: true,
+    logsSha256: createHash('sha256').update(text).digest('hex'),
+  };
+}
+
+async function waitForContainerStartup(name: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const logs = runCombinedText('docker', ['container', 'logs', name]);
+    if (logs.includes('"msg":"server starting"')) return;
+    const running = runText('docker', [
+      'container',
+      'inspect',
+      '--format',
+      '{{.State.Running}}',
+      name,
+    ]).trim();
+    if (running !== 'true') {
+      throw new Error('release network-none container exited before startup');
+    }
+    await delay(100);
+  }
+  throw new Error('release network-none container did not start');
+}
+
+function releaseProcessEnvironment(
+  port: number,
+  frontendDirectory: string,
+): NodeJS.ProcessEnv {
+  return {
+    NOTES_ENVIRONMENT: 'production',
+    NOTES_HTTP_ADDR: `127.0.0.1:${String(port)}`,
+    NOTES_STATIC_DIR: frontendDirectory,
+    NOTES_BODY_LIMIT_BYTES: '4000000',
+    NOTES_SHUTDOWN_TIMEOUT: '10s',
+    NOTES_LOG_LEVEL: 'info',
+  };
+}
+
+async function reserveLoopbackPort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  if (address === null || typeof address === 'string') {
+    server.close();
+    throw new Error('failed to reserve a loopback port');
+  }
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error === undefined) resolve();
+      else reject(error);
+    });
+  });
+  return address.port;
+}
+
+function createBoundedLogCollector(): Readonly<{
+  append: (chunk: Buffer | string) => void;
+  value: () => string;
+}> {
+  let content = '';
+  let exceeded = false;
+  const append = (chunk: Buffer | string): void => {
+    if (exceeded) return;
+    content += chunk.toString();
+    if (Buffer.byteLength(content) > maximumCommandOutputBytes) {
+      exceeded = true;
+      content = '';
+    }
+  };
+  return {
+    append,
+    value: () => {
+      if (exceeded) {
+        throw new Error('release process log output exceeded the safety limit');
+      }
+      return content;
+    },
+  };
+}
+
+function childExit(
+  child: ChildProcessWithoutNullStreams,
+): Promise<Readonly<{ code: number | null; signal: NodeJS.Signals | null }>> {
+  return new Promise((resolve, reject) => {
+    child.once('error', reject);
+    // `close` follows process exit only after stdout/stderr have drained.
+    child.once('close', (code, signal) => resolve({ code, signal }));
+  });
+}
+
+async function waitForChildExit(
+  child: ChildProcessWithoutNullStreams,
+  exited: Promise<
+    Readonly<{ code: number | null; signal: NodeJS.Signals | null }>
+  >,
+): Promise<Readonly<{ code: number | null; signal: NodeJS.Signals | null }>> {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      exited,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () =>
+            reject(
+              new Error('release loopback process did not drain after SIGTERM'),
+            ),
+          15_000,
+        );
+      }),
+    ]);
+  } catch (error: unknown) {
+    child.kill('SIGKILL');
+    await exited;
+    throw error;
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
+function assertReleaseLifecycleLogs(
+  logs: string,
+  forbidden: readonly string[],
+): void {
+  if (
+    !logs.includes('"msg":"server starting"') ||
+    !logs.includes('"msg":"server stopped"') ||
+    !logs.includes('"reason":"shutdown"')
+  ) {
+    throw new Error('release lifecycle logs are incomplete');
+  }
+  for (const value of forbidden) {
+    if (value.length > 0 && logs.includes(value)) {
+      throw new Error('release lifecycle logs contain forbidden context');
+    }
+  }
 }
 
 function delay(milliseconds: number): Promise<void> {

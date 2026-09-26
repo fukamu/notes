@@ -95,13 +95,16 @@ subject.
 The eventual release unit binds one frontend artifact hash, Go image digest,
 database migration version, public configuration, secret versions, and identity
 mapping. Cutover changes routing only after that unit passes the approved smoke
-plan. `npm run verify:release` provides the provider-independent image,
-filesystem, non-root, closed-route, and graceful-shutdown evidence described in
+plan. `npm run verify:release` provides the provider-independent immutable-image,
+filesystem, non-root, exact closed-route, loopback, and two-cycle network-none
+graceful-shutdown evidence described in
 [`go-release-artifact.md`](go-release-artifact.md); it neither pushes the image
 nor authorizes staging or production. There is no long-lived dual write. T17's
 repository-retirement evidence and recovery limits are recorded in
 [`legacy-typescript-retirement.md`](legacy-typescript-retirement.md); passing
-that gate is not cutover permission.
+that gate is not cutover permission. The four executable local/CI profiles and
+their exact feature states are recorded in
+[`go-runtime-closure.md`](go-runtime-closure.md).
 
 No production resource or route changed in this integration work, so there is
 no production rollback action to execute. A future Go release may roll back
@@ -110,5 +113,18 @@ PostgreSQL schema and ciphertext/security state. If an approved first cutover
 plan retains the pre-cutover Sites/D1 service as a time-bounded emergency
 route, that exact immutable artifact, database, configuration, and identity
 entry must be restored together; it cannot be rebuilt from the retired source.
-Never point that historical backend at PostgreSQL, point Go at D1, dual-write,
-or infer permission to remove either datastore.
+It must be retained and revalidated immediately before the separately approved
+cutover, and is a candidate only before any incompatible Go/PostgreSQL durable
+write.
+
+After an incompatible Go/PostgreSQL write, Sites/D1 is no longer a rollback
+target. Stop writes and select a compatible immutable Go image or reviewed
+forward recovery while preserving both datastores, encrypted objects,
+key/nonce material, journals, consent/billing/deletion evidence, sessions, and
+entitlements. Never point the historical backend at PostgreSQL, point Go at
+D1, dual-write, replay external effects, synthesize evidence, restore revoked
+sessions, reverse-copy/backfill/replay PostgreSQL/Go writes into D1, resurrect
+deleted data, or delete either datastore/evidence as rollback. Issue #514
+performs none of these production actions; deployment,
+database migration, traffic cutover, and external resources remain explicitly
+`not-performed` and approval remains pending.

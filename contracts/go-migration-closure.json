@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "baseline": {
     "mainRevision": "f423da9932163980485ecc5bc2055b7c8c3b3d8b",
     "legacyRetirementRevision": "e8936ab90768774371d84b4808c100d546649943",
@@ -471,13 +471,295 @@
     },
     {
       "id": "V12",
-      "status": "complete",
+      "status": "in-progress",
       "evidence": [
         "scripts/benchmark-migration.mts",
         "docs/legacy-typescript-retirement.md"
-      ]
+      ],
+      "note": "The existing typed loopback runner records only a single-fixture reference/Go observation. The required 100/1,000/10,000-card, batch-500, two-device/full-sync, cold/warm/query/memory, and Sync v2 load baseline has not been executed; a follow-up Issue and PR must add that evidence."
     }
   ],
+  "profiles": [
+    {
+      "id": "local-private-legacy",
+      "features": [
+        { "id": "F01", "state": "connected", "evidence": ["E01"] },
+        { "id": "F02", "state": "connected", "evidence": ["E01"] },
+        { "id": "F03", "state": "connected", "evidence": ["E01"] },
+        { "id": "F04", "state": "closed", "evidence": ["E01"] },
+        { "id": "F05", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F06", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F07", "state": "closed", "evidence": ["E01"] },
+        { "id": "F08", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F09", "state": "closed", "evidence": ["E01"] },
+        { "id": "F10", "state": "closed", "evidence": ["E01"] },
+        { "id": "F11", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F12", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F13", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F14", "state": "closed", "evidence": ["E01"] },
+        { "id": "F15", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F16", "state": "closed", "evidence": ["E01"] },
+        { "id": "F17", "state": "closed", "evidence": ["E01"] },
+        { "id": "F18", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F19", "state": "closed", "evidence": ["E01"] },
+        { "id": "F20", "state": "closed", "evidence": ["E01"] },
+        { "id": "F21", "state": "closed", "evidence": ["E01"] },
+        { "id": "F22", "state": "closed", "evidence": ["E01"] },
+        { "id": "F23", "state": "closed", "evidence": ["E01"] },
+        { "id": "F24", "state": "closed", "evidence": ["E01"] },
+        { "id": "F25", "state": "connected", "evidence": ["E01"] },
+        {
+          "id": "F26",
+          "state": "partially-connected",
+          "evidence": ["E01"],
+          "note": "Structured process lifecycle telemetry and guarded profile preparation are executable; provider delivery, scheduling, and production operations automation are not connected."
+        },
+        {
+          "id": "F27",
+          "state": "partially-connected",
+          "evidence": ["E01"],
+          "note": "Static and legacy wire contracts are live; fixture-only business wires are closed."
+        },
+        {
+          "id": "F28",
+          "state": "intentionally-absent",
+          "evidence": ["E01"],
+          "note": "No scheduler or realtime runtime exists."
+        }
+      ],
+      "note": "The private loopback composition keeps the historical signed legacy Sync surface. Fixture-only business routes are deliberately closed, and this profile is serialized because it does not own the local-fixture runtime lease."
+    },
+    {
+      "id": "local-fixture-undecided",
+      "features": [
+        { "id": "F01", "state": "connected", "evidence": ["E02"] },
+        { "id": "F02", "state": "connected", "evidence": ["E02"] },
+        { "id": "F03", "state": "closed", "evidence": ["E02"] },
+        { "id": "F04", "state": "connected", "evidence": ["E02"] },
+        { "id": "F05", "state": "not-connected", "evidence": ["E02"] },
+        { "id": "F06", "state": "not-connected", "evidence": ["E02"] },
+        { "id": "F07", "state": "connected", "evidence": ["E02"] },
+        { "id": "F08", "state": "not-connected", "evidence": ["E02"] },
+        { "id": "F09", "state": "connected", "evidence": ["E02"] },
+        { "id": "F10", "state": "connected", "evidence": ["E02"] },
+        { "id": "F11", "state": "connected", "evidence": ["E02"] },
+        { "id": "F12", "state": "connected", "evidence": ["E02"] },
+        { "id": "F13", "state": "not-connected", "evidence": ["E02"] },
+        { "id": "F14", "state": "connected", "evidence": ["E02"] },
+        { "id": "F15", "state": "not-connected", "evidence": ["E02"] },
+        { "id": "F16", "state": "connected", "evidence": ["E02"] },
+        {
+          "id": "F17",
+          "state": "partially-connected",
+          "evidence": ["E02"],
+          "note": "The seeded projection is live without an external billing provider."
+        },
+        { "id": "F18", "state": "not-connected", "evidence": ["E02"] },
+        { "id": "F19", "state": "connected", "evidence": ["E02"] },
+        { "id": "F20", "state": "connected", "evidence": ["E02"] },
+        { "id": "F21", "state": "connected", "evidence": ["E02"] },
+        { "id": "F22", "state": "connected", "evidence": ["E02"] },
+        { "id": "F23", "state": "closed", "evidence": ["E02"] },
+        {
+          "id": "F24",
+          "state": "partially-connected",
+          "evidence": ["E02"],
+          "note": "Submit and Status are live; verification and fulfillment remain unavailable."
+        },
+        { "id": "F25", "state": "connected", "evidence": ["E02"] },
+        {
+          "id": "F26",
+          "state": "partially-connected",
+          "evidence": ["E02"],
+          "note": "Structured process lifecycle telemetry and guarded fixture preparation/migration commands are executable; provider delivery and scheduling are not connected."
+        },
+        { "id": "F27", "state": "connected", "evidence": ["E02"] },
+        {
+          "id": "F28",
+          "state": "intentionally-absent",
+          "evidence": ["E02"],
+          "note": "No scheduler or realtime runtime exists."
+        }
+      ],
+      "note": "The exact disposable fixture connects scoped Sync v2, session, legal, URL-free commerce, cancellation, and privacy Submit/Status. Account deletion remains unavailable under the safe undecided policy."
+    },
+    {
+      "id": "local-fixture-delete-live-evidence",
+      "features": [
+        { "id": "F01", "state": "connected", "evidence": ["E03"] },
+        { "id": "F02", "state": "connected", "evidence": ["E03"] },
+        { "id": "F03", "state": "closed", "evidence": ["E03"] },
+        { "id": "F04", "state": "connected", "evidence": ["E03"] },
+        { "id": "F05", "state": "not-connected", "evidence": ["E03"] },
+        { "id": "F06", "state": "not-connected", "evidence": ["E03"] },
+        { "id": "F07", "state": "connected", "evidence": ["E03"] },
+        { "id": "F08", "state": "not-connected", "evidence": ["E03"] },
+        { "id": "F09", "state": "connected", "evidence": ["E03"] },
+        { "id": "F10", "state": "connected", "evidence": ["E03"] },
+        { "id": "F11", "state": "connected", "evidence": ["E03"] },
+        { "id": "F12", "state": "connected", "evidence": ["E03"] },
+        { "id": "F13", "state": "not-connected", "evidence": ["E03"] },
+        { "id": "F14", "state": "connected", "evidence": ["E03"] },
+        { "id": "F15", "state": "not-connected", "evidence": ["E03"] },
+        { "id": "F16", "state": "connected", "evidence": ["E03"] },
+        {
+          "id": "F17",
+          "state": "partially-connected",
+          "evidence": ["E03"],
+          "note": "The seeded projection is live without an external billing provider."
+        },
+        { "id": "F18", "state": "not-connected", "evidence": ["E03"] },
+        { "id": "F19", "state": "connected", "evidence": ["E03"] },
+        { "id": "F20", "state": "connected", "evidence": ["E03"] },
+        { "id": "F21", "state": "connected", "evidence": ["E03"] },
+        { "id": "F22", "state": "connected", "evidence": ["E03"] },
+        {
+          "id": "F23",
+          "state": "connected",
+          "evidence": ["E03", "E04"],
+          "note": "Only the exact disposable delete-live-evidence policy admits this saga."
+        },
+        {
+          "id": "F24",
+          "state": "partially-connected",
+          "evidence": ["E03"],
+          "note": "Submit and Status are live; controlled deletion handoff is test-only and no processor is mounted."
+        },
+        { "id": "F25", "state": "connected", "evidence": ["E03"] },
+        {
+          "id": "F26",
+          "state": "partially-connected",
+          "evidence": ["E03"],
+          "note": "Structured process lifecycle telemetry and guarded fixture preparation/migration commands are executable; provider delivery and scheduling are not connected."
+        },
+        { "id": "F27", "state": "connected", "evidence": ["E03"] },
+        {
+          "id": "F28",
+          "state": "intentionally-absent",
+          "evidence": ["E03"],
+          "note": "No scheduler or realtime runtime exists."
+        }
+      ],
+      "note": "This profile is only the exact fresh disposable local fixture with explicit delete-live-evidence opt-in. It is not a production legal-evidence policy or deployment approval."
+    },
+    {
+      "id": "production-disabled",
+      "features": [
+        { "id": "F01", "state": "connected", "evidence": ["E05"] },
+        { "id": "F02", "state": "closed", "evidence": ["E05"] },
+        { "id": "F03", "state": "closed", "evidence": ["E05"] },
+        { "id": "F04", "state": "closed", "evidence": ["E05"] },
+        { "id": "F05", "state": "not-connected", "evidence": ["E05"] },
+        { "id": "F06", "state": "not-connected", "evidence": ["E05"] },
+        { "id": "F07", "state": "closed", "evidence": ["E05"] },
+        { "id": "F08", "state": "not-connected", "evidence": ["E05"] },
+        { "id": "F09", "state": "closed", "evidence": ["E05"] },
+        { "id": "F10", "state": "closed", "evidence": ["E05"] },
+        { "id": "F11", "state": "not-connected", "evidence": ["E05"] },
+        {
+          "id": "F12",
+          "state": "approval-pending",
+          "evidence": ["E05"],
+          "note": "No production key provider or credential is selected."
+        },
+        { "id": "F13", "state": "not-connected", "evidence": ["E05"] },
+        { "id": "F14", "state": "closed", "evidence": ["E05"] },
+        { "id": "F15", "state": "not-connected", "evidence": ["E05"] },
+        { "id": "F16", "state": "closed", "evidence": ["E05"] },
+        { "id": "F17", "state": "closed", "evidence": ["E05"] },
+        {
+          "id": "F18",
+          "state": "approval-pending",
+          "evidence": ["E05"],
+          "note": "No production Stripe provider, secret, webhook, or paid action is configured."
+        },
+        { "id": "F19", "state": "closed", "evidence": ["E05"] },
+        { "id": "F20", "state": "closed", "evidence": ["E05"] },
+        { "id": "F21", "state": "closed", "evidence": ["E05"] },
+        { "id": "F22", "state": "closed", "evidence": ["E05"] },
+        { "id": "F23", "state": "closed", "evidence": ["E05"] },
+        { "id": "F24", "state": "closed", "evidence": ["E05"] },
+        { "id": "F25", "state": "not-connected", "evidence": ["E05"] },
+        {
+          "id": "F26",
+          "state": "partially-connected",
+          "evidence": ["E05"],
+          "note": "Structured process lifecycle telemetry is executable; operational runners, provider delivery, scheduling, and production operations automation are not connected."
+        },
+        {
+          "id": "F27",
+          "state": "partially-connected",
+          "evidence": ["E05"],
+          "note": "Static frontend delivery is live while every business wire remains closed."
+        },
+        {
+          "id": "F28",
+          "state": "intentionally-absent",
+          "evidence": ["E05"],
+          "note": "No scheduler or realtime runtime exists."
+        }
+      ],
+      "note": "The production-shaped artifact serves static content and health only. Identity, persistence, providers, business APIs, deployment, data migration, and traffic cutover remain unavailable or approval-pending."
+    }
+  ],
+  "executableEvidence": [
+    {
+      "id": "E01",
+      "profile": "local-private-legacy",
+      "kind": "go-test",
+      "path": "backend/cmd/notes/runtime_closure_integration_test.go",
+      "name": "TestWholeRuntimeLocalPrivateLegacy",
+      "gate": "go:test:integration",
+      "selector": "./cmd/notes"
+    },
+    {
+      "id": "E02",
+      "profile": "local-fixture-undecided",
+      "kind": "go-test",
+      "path": "backend/cmd/notes/runtime_closure_integration_test.go",
+      "name": "TestWholeRuntimeLocalFixtureUndecided",
+      "gate": "go:test:integration",
+      "selector": "./cmd/notes"
+    },
+    {
+      "id": "E03",
+      "profile": "local-fixture-delete-live-evidence",
+      "kind": "go-test",
+      "path": "backend/cmd/notes/runtime_closure_integration_test.go",
+      "name": "TestWholeRuntimeLocalFixtureDeleteLiveEvidence",
+      "gate": "go:test:integration",
+      "selector": "./cmd/notes"
+    },
+    {
+      "id": "E04",
+      "profile": "local-fixture-delete-live-evidence",
+      "kind": "playwright-test",
+      "path": "tests/e2e-live-deletion/account-deletion-live.spec.ts",
+      "name": "live disposable account deletion survives an actual Go restart",
+      "gate": "test:e2e:deletion-live",
+      "selector": "playwright.deletion-live.config.ts"
+    },
+    {
+      "id": "E05",
+      "profile": "production-disabled",
+      "kind": "verification-script",
+      "path": "scripts/verify-release-artifact.mts",
+      "name": "verify:release",
+      "gate": "verify:release",
+      "selector": "scripts/verify-release-artifact.mts"
+    }
+  ],
+  "gate": {
+    "rootScript": "verify"
+  },
+  "productionTransition": {
+    "deployment": "not-performed",
+    "databaseMigration": "not-performed",
+    "trafficCutover": "not-performed",
+    "externalResources": "not-performed",
+    "approval": "pending",
+    "note": "Issue #514 records local and CI evidence only. No production hosting, database, provider, key, deployment, migration, traffic, or paid operation was performed."
+  },
   "retirement": {
     "phase": "retired",
     "sourceRevision": "e8936ab90768774371d84b4808c100d546649943",
