@@ -1715,6 +1715,33 @@ the fixture or any durable application state. A successful local receipt does
 not prove production restorability and never bypasses the existing terminal
 `explicit-production-key-destruction-approval-required` gate.
 
+## T13j provider-neutral telemetry policy
+
+Issue #503 ports the frozen `server/telemetry` decision layer into typed Go
+before T17 retires the TypeScript server. The pure policy fixes the schema-1
+operation, outcome, failure, duration, and work-count vocabularies; enforces
+success/failure-category coherence; reduces raw finite measurements to stable
+bounded buckets; and derives exactly three low-cardinality metric samples. The
+event value is opaque, and metric samples have fixed label structs rather than
+a free-form label map, so content, secrets, owner IDs, object IDs, and provider
+details cannot be added as dimensions at a call site.
+
+The strict JSON boundary accepts only the six exact event fields in a bounded
+payload. Missing, duplicate, unknown, trailing, invalid UTF-8/surrogate, unsafe
+integer, arbitrary vocabulary, and incoherent values all return one fixed error
+without reflecting rejected content. Exhaustive tests cover every bounded
+operation/outcome/failure combination, bucket edges, high-cardinality and
+sensitive corpus values, metric serialization, and alert-routing precedence.
+
+Alert planning produces only fixed security, service, and billing route
+candidates with `decision-required` thresholds. The synchronous sink port
+normalizes buffer refusal, malformed plans, invalid adapter results, and panics
+without affecting the caller; the no-op and test fake perform no network I/O.
+Clock reads, request logging, provider export, notification delivery, sampling,
+retention, dashboard and SLO choices remain outside the pure policy. This slice
+adds no route, schema, provider, credential, deployment, external resource, or
+production decision. Rollback reverts the Go policy and evidence only.
+
 ## T14a Node-free Go release artifact gate
 
 Issue #492 adds `npm run verify:release` to the shared Quality gate. It builds
