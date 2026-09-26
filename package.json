@@ -37,7 +37,7 @@
     "benchmark:client:presentation": "vitest run tests/benchmarks/client-demand-driven-presentation.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
     "benchmark:client:link-index": "vitest run tests/benchmarks/client-link-candidate-index.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
     "benchmark:client:history-index": "vitest run tests/benchmarks/client-history-preview-index.benchmark.test.ts --config vitest.client-benchmark.config.ts --disableConsoleIntercept",
-    "benchmark:server-load": "vitest run --config vitest.server-load.config.ts --disableConsoleIntercept",
+    "benchmark:server-load": "NOTES_TEST_DATABASE_URL=${NOTES_TEST_DATABASE_URL:-postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable} FUKAMU_SERVER_LOAD_MODE=local-go-postgres go -C backend test -tags=integration ./tests/integration -run '^TestSyncV2GoServerLoadEvidence$' -count=1 -v",
     "benchmark:migration": "node --experimental-strip-types scripts/benchmark-migration.mts",
     "contracts:check": "node scripts/check-contracts.mjs && vitest run tests/contracts",
     "go:format:check": "node --experimental-strip-types scripts/check-go-format.mts",
