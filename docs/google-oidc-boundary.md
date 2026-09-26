@@ -13,6 +13,14 @@ an injected entropy port, derives an S256 challenge, and atomically inserts a
 ten-minute pending transaction. Only the challenge enters the authorization
 request; the verifier remains in the server-side transaction.
 
+Before browser navigation, the product-specific serializer requires the exact
+query-free base destination
+`https://accounts.google.com/o/oauth2/v2/auth`. It rejects userinfo,
+fragments, pre-existing queries, alternate paths, lookalike hosts, HTTP, and
+otherwise valid non-Google HTTPS providers before adding the controlled OAuth
+fields. Endpoint parsing and the provider adapter remain provider-neutral so
+local TLS adapter tests do not weaken this Google navigation policy.
+
 The callback decoder accepts exactly one authorization code or provider error.
 The transaction store must atomically return and consume the state, so provider
 denial, malformed claims, token-exchange failure, and successful login all make

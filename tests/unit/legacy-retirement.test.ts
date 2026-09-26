@@ -172,6 +172,7 @@ describe('legacy TypeScript test retirement ledger', () => {
           'backend/internal/httpapi/handler_test.go',
           'backend/internal/identity/boundary_test.go',
           'backend/internal/identity/oidc_boundary_test.go',
+          'backend/internal/identity/oidc_destination_test.go',
           'tests/unit/external-transmission.test.ts',
         ],
       ],
