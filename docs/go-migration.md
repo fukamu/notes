@@ -68,11 +68,12 @@ delete existing resources.
   `0efe3917336f5b344a20c8c9a77962d546f7beb7`. T13d was integrated by #478 / PR
   #479 from exact integration tip `4f5c6a75c98d69058eaf755e6d6335ea7c5c77a8`.
   T13e was integrated by #480 / PR #481 from exact integration tip
-  `0201c3918c9571acad0c8d7a3d453b87dfce8844`. T13f Issue #482 starts from
-  exact integration tip `378901da19d5bb587f2d4d87e90d5d05cf0a0fbd` and composes
-  only the bounded owner-scoped re-encryption runner plus local drill adapters.
+  `0201c3918c9571acad0c8d7a3d453b87dfce8844`. T13f and T13g were integrated by
+  #482 / PR #483 and #486 / PR #487. T13h Issue #488 starts from exact
+  integration tip `3b31c29868fc775aac08a1e6bda332f013786e0d` and adds only the
+  bounded owner-scoped delete-outbox runner over disposable local/test storage.
   No real KMS/object-provider request or provider resource change is part of
-  either slice.
+  these slices.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -105,7 +106,7 @@ the same contract as its closed route.
 | F11 | B     | envelope encryption                         | T07                             | V06             | Go AES-GCM/fixture implemented by #428                          |
 | F12 | B     | KMS / DEK                                   | T07                             | V06,V09         | Go local boundary #428; external proof open                     |
 | F13 | B     | key rotation                                | T08,T13                         | V04,V06,V08     | state machine/Postgres #432; explicit runner #480               |
-| F14 | B     | immutable encrypted object                  | T08                             | V04,V06,V08     | Go core/Postgres #430; disconnected                             |
+| F14 | B     | immutable encrypted object                  | T08,T13                         | V04,V06,V08     | core/Postgres #430; orphan/delete runners #486/#488             |
 | F15 | B/C   | recovery / reencryption; real backup absent | T08,T13                         | V06,V08         | reencryption #432/#482; fixture recovery #434                   |
 | F16 | B     | quota                                       | T11                             | V04,V05         | Go ledger #450; sync composition #454                           |
 | F17 | B     | billing projection                          | T09                             | V04,V07         | Go core/Postgres #436; deletion cancellation effect #460        |
@@ -1627,3 +1628,45 @@ credential, production database operation, external resource, paid request,
 or deployment is added. Rollback stops new scans while preserving every
 outbox row and object for the later reviewed delete runner; rows and files must
 not be removed manually.
+
+## T13h scoped encrypted-object delete-outbox runner
+
+Issue #488 adds the local/test-only `notesctl objects delete-outbox` command for
+the general encrypted-object outbox. This is intentionally distinct from the
+T12e account-deletion purge: the latter still requires a running deletion saga
+and a durable prior-step receipt, while T13h handles obsolete object keys from
+abandoned writes, losing metadata CAS operations, re-encryption replacement,
+and reviewed orphan collection.
+
+The operations command fixes one exact Account/Vault, attempted-at timestamp,
+retry delay, and 1..100 limit. The application service rejects a scope that
+does not match its composition and verifies current ownership before any
+outbox selection or storage delete. The PostgreSQL adapter re-verifies that
+ownership on every repository operation, orders due rows deterministically,
+and excludes keys referenced by committed metadata or an active write intent.
+Protected or future rows remain counted, so the result is `pending` rather
+than silently discarding evidence.
+
+The core drainer accepts both storage `deleted` and `not-found` as idempotent
+success. Storage failures produce an exact attempt-count CAS and deterministic
+`attempted_at + retry_delay` schedule. Confirmation and reschedule distinguish
+an applied mutation, an already-removed replay, and a row changed by another
+worker. A CAS loser does not overwrite or erase the winning row. Cancellation,
+unknown storage/mutation results, duplicate/future repository entries, and
+attempt/timestamp overflow fail closed with durable outbox state left for a
+later invocation.
+
+Unit, CLI, and disposable-PostgreSQL tests cover exact-owner refusal before
+effects, bounded ordering, missing-object replay, retry timing, future and
+protected rows, malformed dependencies, cancellation, explicit CAS conflict,
+and two workers released onto the same row. CLI output contains only the
+outcome and bounded completed/retried/replayed/contended counts. No identifier,
+path, object key, database value, file contents, or dependency error is logged.
+
+The concrete adapter accepts only an existing absolute symlink-free private
+directory and a loopback disposable database in `local` or `test`. No schema,
+route, scheduler, real object provider, credential, production database
+operation, external resource, paid request, or deployment is added. Rolling
+back stops further batches but cannot restore intentionally deleted disposable
+bytes; preserve remaining rows and replay uncertain operations rather than
+editing outbox state or recreating immutable keys by hand.

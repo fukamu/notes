@@ -67,6 +67,7 @@ func TestRunMigratesOnlyTheExplicitAllowlistedEnvironment(t *testing.T) {
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
 		orphanScanMustNotRun(t),
+		deleteOutboxMustNotRun(t),
 	)
 	if code != 0 || !called || stdout.String() != "migration complete\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
@@ -105,6 +106,7 @@ func TestRunRefusesMigrationEnvironmentMismatchWithoutDisclosingURL(t *testing.T
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
 		orphanScanMustNotRun(t),
+		deleteOutboxMustNotRun(t),
 	)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "refused") {
 		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
@@ -153,6 +155,7 @@ func TestRunPreparesOnlyTheAllowlistedE2EDatabase(t *testing.T) {
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
 		orphanScanMustNotRun(t),
+		deleteOutboxMustNotRun(t),
 	)
 	if code != 0 || !called || stdout.String() != "e2e database prepared\n" || stderr.Len() != 0 {
 		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
@@ -412,6 +415,7 @@ func runQuotaAuditForTest(
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
 		orphanScanMustNotRun(t),
+		deleteOutboxMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -613,6 +617,7 @@ func runQuotaCommitForTest(
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
 		orphanScanMustNotRun(t),
+		deleteOutboxMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -832,6 +837,7 @@ func runAccountDeletionAuditForTest(
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
 		orphanScanMustNotRun(t),
+		deleteOutboxMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -1100,6 +1106,7 @@ func runBillingReconciliationForTest(
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
 		orphanScanMustNotRun(t),
+		deleteOutboxMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -1372,6 +1379,7 @@ func runDEKRotationForTest(
 		rotate,
 		dekReencryptionMustNotRun(t),
 		orphanScanMustNotRun(t),
+		deleteOutboxMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -1597,6 +1605,7 @@ func runDEKReencryptionForTest(
 		dekRotationMustNotRun(t),
 		reencrypt,
 		orphanScanMustNotRun(t),
+		deleteOutboxMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -1892,6 +1901,7 @@ func runOrphanScanForTest(
 		dekRotationMustNotRun(t),
 		dekReencryptionMustNotRun(t),
 		scan,
+		deleteOutboxMustNotRun(t),
 	)
 	return code, stdout.String(), stderr.String()
 }
@@ -1921,6 +1931,261 @@ func orphanScanMustNotRun(t *testing.T) scanOrphansFunction {
 	) (operations.OrphanScanResult, error) {
 		t.Fatal("orphan scan must not run")
 		return operations.OrphanScanResult{}, nil
+	}
+}
+
+func TestRunDeleteOutboxUsesBoundedScopeAndRedactedOutput(t *testing.T) {
+	root := t.TempDir()
+	arguments := deleteOutboxCLIArguments("test", root)
+	values := map[string]string{
+		"NOTES_ENVIRONMENT":  "test",
+		"NOTES_DATABASE_URL": "postgres://notes:PRIVATE_DATABASE@127.0.0.1:55432/fukamu_notes_go_test",
+	}
+	called := false
+	code, stdout, stderr := runDeleteOutboxForTest(
+		t,
+		context.Background(),
+		arguments,
+		values,
+		func(
+			_ context.Context,
+			databaseURL string,
+			objectRoot string,
+			command operations.DeleteOutboxCommand,
+		) (operations.DeleteOutboxResult, error) {
+			called = true
+			if !strings.Contains(databaseURL, "PRIVATE_DATABASE") || objectRoot != root ||
+				command.AttemptedAt != 2_000 || command.RetryDelayMilli != 500 || command.Limit != 4 {
+				t.Fatalf("inputs database=%q root=%q command=%#v", databaseURL, objectRoot, command)
+			}
+			return operations.DeleteOutboxResult{
+				Kind:      operations.DeleteOutboxPending,
+				Completed: 1, Retried: 1, Replayed: 1, Contended: 1,
+			}, nil
+		},
+	)
+	if code != 0 || !called || stderr != "" {
+		t.Fatalf("code=%d called=%t stdout=%q stderr=%q", code, called, stdout, stderr)
+	}
+	var output map[string]any
+	if err := json.Unmarshal([]byte(stdout), &output); err != nil {
+		t.Fatal(err)
+	}
+	if output["command"] != "objects-delete-outbox" || output["outcome"] != "pending" ||
+		output["completed"] != float64(1) || output["retried"] != float64(1) ||
+		output["replayed"] != float64(1) || output["contended"] != float64(1) ||
+		output["limit"] != float64(4) || len(output) != 7 {
+		t.Fatalf("output = %#v", output)
+	}
+	for _, private := range []string{
+		"PRIVATE_DATABASE", root,
+		"01991f20-61d2-7000-8000-000000000101",
+		"01991f20-61d2-7000-8000-000000000201",
+	} {
+		if strings.Contains(stdout+stderr, private) {
+			t.Fatalf("output disclosed private value %q", private)
+		}
+	}
+}
+
+func TestParseDeleteOutboxRejectsInvalidAndProductionCommands(t *testing.T) {
+	valid := deleteOutboxCLIArguments("test", t.TempDir())
+	tests := [][]string{
+		removeCLIArgument(valid, "--confirm-local-object-deletes"),
+		removeCLIArgument(valid, "--confirm-delete-outbox-mutation"),
+		replaceCLIArgument(valid, "--environment=", "--environment=production"),
+		replaceCLIArgument(valid, "--limit=", "--limit=0"),
+		replaceCLIArgument(valid, "--attempted-at-millis=", "--attempted-at-millis=0"),
+		replaceCLIArgument(valid, "--retry-delay-millis=", "--retry-delay-millis=-1"),
+		replaceCLIArgument(valid, "--object-root=", "--object-root=relative"),
+		append(append([]string(nil), valid...), "--unknown=value"),
+	}
+	for index, arguments := range tests {
+		if _, requested, err := parseDeleteOutboxArguments(arguments); !requested || err == nil {
+			t.Fatalf("case %d parsed: requested=%t err=%v", index, requested, err)
+		}
+	}
+	if _, requested, err := parseDeleteOutboxArguments([]string{"objects", "orphan-scan"}); requested || err != nil {
+		t.Fatalf("unrelated command requested=%t err=%v", requested, err)
+	}
+}
+
+func TestRunDeleteOutboxRefusesUnsafeTargetsAndRedactsFailures(t *testing.T) {
+	arguments := deleteOutboxCLIArguments("test", t.TempDir())
+	tests := []struct {
+		name   string
+		ctx    context.Context
+		values map[string]string
+		drain  drainDeleteOutboxFunction
+		want   string
+	}{
+		{
+			name: "environment mismatch",
+			values: map[string]string{
+				"NOTES_ENVIRONMENT":  "local",
+				"NOTES_DATABASE_URL": "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+			},
+			drain: deleteOutboxMustNotRun(t), want: "delete outbox environment refused\n",
+		},
+		{
+			name: "remote database",
+			values: map[string]string{
+				"NOTES_ENVIRONMENT":  "test",
+				"NOTES_DATABASE_URL": "postgres://notes:secret@database.example/notes",
+			},
+			drain: deleteOutboxMustNotRun(t), want: "delete outbox target refused\n",
+		},
+		{
+			name: "scope refused",
+			values: map[string]string{
+				"NOTES_ENVIRONMENT":  "test",
+				"NOTES_DATABASE_URL": "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+			},
+			drain: func(context.Context, string, string, operations.DeleteOutboxCommand) (operations.DeleteOutboxResult, error) {
+				return operations.DeleteOutboxResult{Kind: operations.DeleteOutboxRefused}, nil
+			},
+			want: "delete outbox scope refused\n",
+		},
+		{
+			name: "dependency failure",
+			values: map[string]string{
+				"NOTES_ENVIRONMENT":  "test",
+				"NOTES_DATABASE_URL": "postgres://notes:PRIVATE_DATABASE@127.0.0.1:55432/fukamu_notes_go_test",
+			},
+			drain: func(context.Context, string, string, operations.DeleteOutboxCommand) (operations.DeleteOutboxResult, error) {
+				return operations.DeleteOutboxResult{}, errors.New("PRIVATE OBJECT FAILURE")
+			},
+			want: "delete outbox drain failed\n",
+		},
+		{
+			name: "malformed result",
+			values: map[string]string{
+				"NOTES_ENVIRONMENT":  "test",
+				"NOTES_DATABASE_URL": "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+			},
+			drain: func(context.Context, string, string, operations.DeleteOutboxCommand) (operations.DeleteOutboxResult, error) {
+				return operations.DeleteOutboxResult{Kind: operations.DeleteOutboxCompleted, Completed: 5}, nil
+			},
+			want: "delete outbox drain failed\n",
+		},
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	tests = append(tests, struct {
+		name   string
+		ctx    context.Context
+		values map[string]string
+		drain  drainDeleteOutboxFunction
+		want   string
+	}{
+		name: "cancelled", ctx: cancelled,
+		values: map[string]string{
+			"NOTES_ENVIRONMENT":  "test",
+			"NOTES_DATABASE_URL": "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+		},
+		drain: func(ctx context.Context, _ string, _ string, _ operations.DeleteOutboxCommand) (operations.DeleteOutboxResult, error) {
+			return operations.DeleteOutboxResult{}, ctx.Err()
+		},
+		want: "delete outbox drain failed\n",
+	})
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := testCase.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			code, stdout, stderr := runDeleteOutboxForTest(
+				t, ctx, arguments, testCase.values, testCase.drain,
+			)
+			if code != 1 || stdout != "" || stderr != testCase.want ||
+				strings.Contains(stderr, "PRIVATE") || strings.Contains(stderr, "secret") {
+				t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+		})
+	}
+
+	parsed, requested, err := parseDeleteOutboxArguments(arguments)
+	if err != nil || !requested {
+		t.Fatalf("parse = %#v, %t, %v", parsed, requested, err)
+	}
+	values := map[string]string{
+		"NOTES_ENVIRONMENT":  "test",
+		"NOTES_DATABASE_URL": "postgres://notes:secret@127.0.0.1:55432/fukamu_notes_go_test",
+	}
+	var stderr bytes.Buffer
+	code := runDeleteOutbox(
+		context.Background(), parsed, rejectingWriter{}, &stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string, string, operations.DeleteOutboxCommand) (operations.DeleteOutboxResult, error) {
+			return operations.DeleteOutboxResult{Kind: operations.DeleteOutboxCompleted}, nil
+		},
+	)
+	if code != 1 || stderr.String() != "delete outbox output failed\n" {
+		t.Fatalf("code=%d stderr=%q", code, stderr.String())
+	}
+}
+
+func runDeleteOutboxForTest(
+	t *testing.T,
+	ctx context.Context,
+	arguments []string,
+	values map[string]string,
+	drain drainDeleteOutboxFunction,
+) (int, string, string) {
+	t.Helper()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithDependencies(
+		ctx, arguments, &stdout, &stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
+		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
+			t.Fatal("quota audit must not run")
+			return operations.QuotaAuditResult{}, nil
+		},
+		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			t.Fatal("quota commit must not run")
+			return operations.QuotaCommitResult{}, nil
+		},
+		func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			t.Fatal("account deletion audit must not run")
+			return operations.AccountDeletionAuditResult{}, nil
+		},
+		billingReconciliationMustNotRun(t),
+		dekRotationMustNotRun(t),
+		dekReencryptionMustNotRun(t),
+		orphanScanMustNotRun(t),
+		drain,
+	)
+	return code, stdout.String(), stderr.String()
+}
+
+func deleteOutboxCLIArguments(environment, objectRoot string) []string {
+	return []string{
+		"objects", "delete-outbox",
+		"--environment=" + environment,
+		"--account-id=01991f20-61d2-7000-8000-000000000101",
+		"--vault-id=01991f20-61d2-7000-8000-000000000201",
+		"--attempted-at-millis=2000",
+		"--retry-delay-millis=500",
+		"--limit=4",
+		"--object-root=" + objectRoot,
+		"--confirm-local-object-deletes",
+		"--confirm-delete-outbox-mutation",
+	}
+}
+
+func deleteOutboxMustNotRun(t *testing.T) drainDeleteOutboxFunction {
+	t.Helper()
+	return func(
+		context.Context,
+		string,
+		string,
+		operations.DeleteOutboxCommand,
+	) (operations.DeleteOutboxResult, error) {
+		t.Fatal("delete outbox drain must not run")
+		return operations.DeleteOutboxResult{}, nil
 	}
 }
 
