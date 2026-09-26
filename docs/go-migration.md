@@ -1715,7 +1715,39 @@ the fixture or any durable application state. A successful local receipt does
 not prove production restorability and never bypasses the existing terminal
 `explicit-production-key-destruction-approval-required` gate.
 
-## T13j provider-neutral telemetry policy
+## T13j provider-neutral launch operations policy
+
+Issue #502 ports the remaining deterministic environment, approval, canary,
+rollback, and isolated-restore policy from the frozen TypeScript retirement
+revision into `backend/internal/operations/launch_policy.go`. The Go policy
+preserves the complete local/test/staging/production action matrix. Fixture
+drills remain local/test-only; restore drills remain staging-only; destructive
+and provider-configuration actions remain outside the workflow; and every
+otherwise-ready production canary, rollback, or data restore still ends at
+`explicit-production-operation-approval-required`.
+
+The launch-gate evaluator preserves ordered blocker reasons, the special
+reviewed canary-abort path, observed-canary requirement for promotion, verified
+backup requirements, and isolated restore evidence. Every enum, schema version,
+rollback-window variant, and timestamp is validated before evaluation; unknown
+or malformed typed values fail closed. Timestamps are caller-supplied facts, so
+the policy reads no clock or environment and mutates no caller-owned value.
+
+An AST-based Go architecture test fixes the pure file at zero imports and keeps
+the operations package independent of concrete database, HTTP, provider,
+randomness, clock, and `internal/adapters` packages. Exhaustive Go tests cover
+the 44 environment/action combinations, every launch action, production
+approval separation, recovery and canary failures, blocker ordering, and every
+invalid evidence field. The closure manifest names this policy and its tests as
+F26/V08 evidence before T17 removes the frozen TypeScript source.
+
+This slice adds no command, HTTP route, provider adapter, credential,
+production approval, deployment, canary traffic, restore, data mutation, or
+external resource. A future boundary must strictly decode external evidence
+before constructing the typed Go value. Rollback is an application-code revert;
+there is no state or provider effect to reverse.
+
+## T13k provider-neutral telemetry policy
 
 Issue #503 ports the frozen `server/telemetry` decision layer into typed Go
 before T17 retires the TypeScript server. The pure policy fixes the schema-1
