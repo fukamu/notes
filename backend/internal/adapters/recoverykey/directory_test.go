@@ -1,6 +1,7 @@
 package recoverykey_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,90 @@ import (
 	"github.com/fukamu/notes/backend/internal/cryptocontent"
 	"github.com/fukamu/notes/backend/internal/identity"
 )
+
+func TestPrepareFixtureKeyIsPrivateIdempotentAndBoundToVault(t *testing.T) {
+	t.Parallel()
+	root := privateKeyDirectory(t)
+	vaultID, err := identity.ParseVaultID("01991f20-61d2-7000-8000-000000001201")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := recoverykey.PrepareFixtureKey(root, vaultID)
+	if err != nil {
+		t.Fatalf("PrepareFixtureKey() error = %v", err)
+	}
+	path := filepath.Join(root, "dek-1.json")
+	firstFile, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := recoverykey.PrepareFixtureKey(root, vaultID)
+	if err != nil {
+		t.Fatalf("PrepareFixtureKey() second error = %v", err)
+	}
+	secondFile, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second || !bytes.Equal(firstFile, secondFile) {
+		t.Fatal("fixture key preparation changed existing key material")
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("fixture key mode = %v, error = %v", info, err)
+	}
+	loaded, err := recoverykey.LoadFixtureMetadata(root, vaultID)
+	if err != nil || loaded != first || cryptocontent.ValidateVaultDEKMetadata(loaded) != nil {
+		t.Fatalf("LoadFixtureMetadata() = %#v, %v", loaded, err)
+	}
+	directory, err := recoverykey.NewDirectory(root, vaultID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := directory.UnwrapDataKey(context.Background(), loaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key.Destroy()
+	otherVault, _ := identity.ParseVaultID("01991f20-61d2-7000-8000-000000001202")
+	if _, err := recoverykey.LoadFixtureMetadata(root, otherVault); !errors.Is(err, recoverykey.ErrDirectoryOperation) {
+		t.Fatalf("wrong-vault load error = %v", err)
+	}
+}
+
+func TestLoadFixtureMetadataRejectsTamperingWithoutDisclosingKeyMaterial(t *testing.T) {
+	t.Parallel()
+	root := privateKeyDirectory(t)
+	vaultID, _ := identity.ParseVaultID("01991f20-61d2-7000-8000-000000001201")
+	if _, err := recoverykey.PrepareFixtureKey(root, vaultID); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "dek-1.json")
+	encoded, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := wire["rawDek"].(string)
+	wire["wrappedDek"] = cryptocontent.EncodeBase64URL([]byte("tampered-wrapped-value"))
+	tampered, err := json.Marshal(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, tampered, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = recoverykey.LoadFixtureMetadata(root, vaultID)
+	if !errors.Is(err, recoverykey.ErrDirectoryOperation) {
+		t.Fatalf("LoadFixtureMetadata() error = %v", err)
+	}
+	if raw != "" && bytes.Contains([]byte(err.Error()), []byte(raw)) {
+		t.Fatal("fixture key error disclosed raw key material")
+	}
+}
 
 func TestDirectoryUnwrapsOnlyExactlyBoundFixtureKey(t *testing.T) {
 	root := privateKeyDirectory(t)

@@ -4,8 +4,9 @@ This directory contains the replacement server tracked by parent Issue #409.
 The T05 implementation serves the statically built TypeScript/React frontend,
 process health, database readiness, the private launch-status path, and the
 legacy sync path from one Go process. It has no request-time Node, Workers,
-RSC, or SSR dependency. Disconnected APIs remain closed; local/test mode keeps
-their explicit 404 fixture contract without connecting provider operations.
+RSC, or SSR dependency. Disconnected APIs remain closed; the explicit
+`local-fixture` application profile keeps their 404 fixture contract without
+connecting provider operations.
 
 Go 1.27.1 is pinned in `go.mod`, CI, and the container build stage. PostgreSQL
 access uses pinned pgx and goose versions; no ORM is used.
@@ -207,6 +208,50 @@ an ephemeral private key owned by the test runner. `notesctl prepare-e2e` is
 test-only: it requires the `test` environment plus the loopback/exact-database
 allowlist, resets only that disposable schema, applies migrations, and inserts
 one opaque allowlisted fixture subject.
+
+### Fail-closed local fixture foundation
+
+Issue #509 adds an application profile with exactly two states:
+`disabled` (the default when unset) and `local-fixture`. Merely setting fixture
+values does not enable it. Production rejects `local-fixture` before reading
+its private-directory or secret values. The enabled profile additionally
+requires the complete `local-signed` private runtime, an explicit loopback bind
+and loopback HTTP origin on the same port, and the exact disposable
+`fukamu_notes_go_test` PostgreSQL URL.
+
+The profile is one strictly decoded `LocalFixtureConfig` assembled from the
+existing private-runtime database/origin plus these values:
+
+- `NOTES_LOCAL_FIXTURE_ROOT`, an existing absolute, symlink-free, owner-only
+  directory separate from the static tree;
+- canonical lowercase UUIDv7 account, Vault, and session IDs in
+  `NOTES_LOCAL_FIXTURE_ACCOUNT_ID`, `NOTES_LOCAL_FIXTURE_VAULT_ID`, and
+  `NOTES_LOCAL_FIXTURE_SESSION_ID`;
+- `NOTES_LOCAL_FIXTURE_SESSION_EPOCH` and a canonical 32-byte unpadded
+  base64url `NOTES_LOCAL_FIXTURE_SESSION_TOKEN`;
+- distinct canonical 32-byte unpadded base64url secrets in
+  `NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY` and
+  `NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY`.
+
+With this explicit profile, the same `notesctl prepare-e2e` command prepares
+only three fixed owner-only child directories (`objects`, `nonces`, `keys`),
+creates or reuses one private fixture DEK file, resets only the already
+allowlisted disposable schema, migrates it, and transactionally seeds the
+launch subject, Account/Vault, hash-only active session, local paid Billing and
+Entitlement projections, and wrapped DEK metadata. A retry reuses the exact key
+and rows; a mismatched row, key, unexpected root entry, or foreign
+Account/Vault scope fails closed. The server opens one PostgreSQL pool, shares
+one session resolver, and requires schema, seed, exclusive scope, directory,
+and DEK checks to pass before listening and on readiness checks.
+
+This foundation does not mount session, Sync v2, Billing, deletion, crypto, or
+object-storage business routes, and it constructs no Stripe, KMS, identity,
+mail, or storage provider. The profile-disabled `prepare-e2e` path remains the
+existing subject-only compatibility path. In particular, the seeded active
+subscription may conflict with a later checkout fixture; Issue #510 must define
+that fixture's separate scope or explicit local-provider behavior rather than
+weakening the seed. This is local/CI composition evidence, not V11 completion,
+production configuration, deployment, or cutover approval.
 
 ## Local PostgreSQL migration
 

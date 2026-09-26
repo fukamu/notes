@@ -321,7 +321,8 @@
       "status": "complete",
       "evidence": [
         "backend/tests/integration/postgres_foundation_test.go",
-        "backend/tests/integration/legacy_sync_test.go"
+        "backend/tests/integration/legacy_sync_test.go",
+        "backend/tests/integration/local_fixture_foundation_test.go"
       ]
     },
     {

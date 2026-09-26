@@ -83,6 +83,11 @@ delete existing resources.
   feature/verification closure and TypeScript retirement evidence. No real
   KMS/object/backup provider request, provider resource change, registry push,
   or deployment is part of these slices.
+- Integration closure continuation Issue #509 starts from exact integration
+  tip `11c892069fb9719db0a08e9883f7e9b7fff8d200`. It adds only the fail-closed
+  local/CI fixture composition and seed foundation described below. Business
+  routes and external providers remain disconnected, the feature matrix states
+  remain unchanged, and V11 remains incomplete pending reviewed T17 removal.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -1837,6 +1842,51 @@ diagnostic evidence from one local host, not a capacity target, production SLO,
 or permission to provision hosting. Exact procedure, observations, source
 identities, T17 preconditions, and recovery limits are in
 [`legacy-typescript-retirement.md`](legacy-typescript-retirement.md).
+
+## Local fixture composition foundation
+
+Issue #509 introduces an explicit `disabled | local-fixture` application
+profile. Missing configuration means `disabled`; fixture environment values do
+not activate anything. `local-fixture` is rejected in production and is decoded
+only for local/test after the profile and environment permit it. The aggregate
+reuses the already decoded private-runtime database URL and public origin and
+requires `local-signed` authentication, a loopback bind, loopback HTTP origin
+on the same port, the exact disposable PostgreSQL database, canonical fixture
+identities/token, two distinct 32-byte HMAC keys, and one owner-only
+symlink-free private root outside the static tree.
+
+The guarded preparation path creates only the fixed `objects`, `nonces`, and
+`keys` children, generates or reuses one private Vault-bound DEK file, resets
+only the allowlisted schema, migrates it, and transactionally seeds the launch
+subject, Account/Vault, hash-only session, active local-provider Billing
+projection, paid Entitlement projection, and wrapped DEK metadata. Repeated
+preparation is exact and idempotent. Conflicting values, unexpected root
+entries, or any foreign Account/Vault scope in ownership, identity, session,
+Billing, Entitlement, or key tables fail closed. Additional same-scope sessions
+and DEK versions and later card/journal records are not mistaken for a foreign
+fixture.
+
+The server composes this prepared state from one PostgreSQL pool and one shared
+session resolver. Before listening, and subsequently through aggregate
+readiness, it verifies schema version, exact seed/scope, private layout, fixture
+key integrity, and unwrap capability. Diagnostics report only fixed failure
+classes. The raw session token is never stored in PostgreSQL; fixture HMAC and
+DEK material are neither logged nor included in CLI errors.
+
+No prepared dependency is passed into `httpapi.HandlerOptions`, so session,
+Sync v2, Billing, cancellation, privacy/deletion, encrypted-object, and recovery
+business routes remain closed. No Stripe, GCP KMS, identity/mail, object, or
+backup provider is constructed or contacted. The existing profile-disabled
+subject-only E2E preparation remains compatible. The active subscription seed
+can conflict with a later checkout fixture; Issue #510 must use a separate
+scope or define explicit local-provider behavior and must not weaken this
+exact-state guard. This slice does not change any A/B/C feature state, complete
+V11, remove legacy TypeScript, deploy, or authorize production configuration.
+
+Rollback removes the profile/foundation code and its local fixture data only.
+It is not permission to delete a shared database, key, secret, Stripe object,
+or any production resource. The exact disposable schema may be reset only by
+the guarded local/test preparation command.
 
 ## T09d ordinary cancellation compatibility slice
 

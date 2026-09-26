@@ -117,6 +117,42 @@ func TestNotesProcessFailsClosedWithoutConfiguration(t *testing.T) {
 	}
 }
 
+func TestNotesProcessRejectsProductionFixtureProfileWithoutDisclosingValues(t *testing.T) {
+	binary := buildNotesBinary(t)
+	staticDirectory := t.TempDir()
+	command := exec.Command(binary)
+	command.Env = append(
+		withoutNotesEnvironment(os.Environ()),
+		"NOTES_ENVIRONMENT=production",
+		"NOTES_HTTP_ADDR=127.0.0.1:8080",
+		"NOTES_STATIC_DIR="+staticDirectory,
+		"NOTES_APPLICATION_PROFILE=local-fixture",
+		"NOTES_LOCAL_FIXTURE_SESSION_TOKEN=sensitive-fixture-token",
+		"NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY=sensitive-fixture-cursor-key",
+	)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatal("notes accepted the production local-fixture profile")
+	}
+	var exitError *exec.ExitError
+	if !errors.As(err, &exitError) || exitError.ExitCode() != 1 {
+		t.Fatalf("notes exit = %v", err)
+	}
+	logLine := string(output)
+	if !strings.Contains(logLine, `"error_code":"invalid_configuration"`) {
+		t.Fatalf("missing fixed configuration error: %s", logLine)
+	}
+	for _, forbidden := range []string{
+		"sensitive-fixture-token",
+		"sensitive-fixture-cursor-key",
+		staticDirectory,
+	} {
+		if strings.Contains(logLine, forbidden) {
+			t.Fatalf("production fixture rejection disclosed a value: %s", logLine)
+		}
+	}
+}
+
 func buildNotesBinary(t *testing.T) string {
 	t.Helper()
 	moduleRoot, err := filepath.Abs(filepath.Join("..", ".."))
