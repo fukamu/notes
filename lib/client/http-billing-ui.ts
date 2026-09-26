@@ -14,7 +14,7 @@ import type {
 import {
   parseSubscriptionCancellationIdempotencyKey,
   type SubscriptionCancellationIdempotencyKey,
-} from '@/server/billing/public';
+} from '@/lib/contracts/billing-cancellation';
 import { decideBrowserExternalDestination } from '@/lib/application/external-transmission';
 import {
   contractEvidenceIdDecoder,

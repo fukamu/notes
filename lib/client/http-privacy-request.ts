@@ -16,7 +16,7 @@ import {
   privacyRequestIdDecoder,
   privacyRequestKindDecoder,
   privacyRequestOutcomeDecoder,
-} from '@/server/privacy-request/public';
+} from '@/lib/contracts/privacy-request';
 
 type FetchRequest = (
   input: RequestInfo | URL,
