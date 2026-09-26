@@ -9,6 +9,12 @@ import {
 const initialOfferHash = `sha256:${'0'.repeat(64)}`;
 const refreshedOfferHash = `sha256:${'b'.repeat(64)}`;
 const evidenceId = '01991f20-61d2-7000-8000-000000002301';
+const termsConsentId = '01991f20-61d2-7000-8000-000000002601';
+const termsReference = {
+  termsVersion: 'terms-v1:2026-09-15',
+  termsHash: `sha256:${'a'.repeat(64)}`,
+  effectiveDate: '2026-09-15',
+} as const;
 const publicRouteNavigationTimeoutMs = 10_000;
 
 async function expectPublicRouteUrl(page: Page, path: string) {
@@ -110,7 +116,32 @@ test('local fixture exercises checkout and cancellation without a provider', asy
     .getByRole('checkbox', { name: /有料サブスクリプションの申込み/ })
     .check();
   await page.getByRole('checkbox', { name: /利用規約.*同意/ }).check();
+  const termsResponsePromise = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/account/terms-consent' &&
+      response.request().method() === 'POST',
+  );
+  const checkoutResponsePromise = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/billing/checkout' &&
+      response.request().method() === 'POST',
+  );
   await page.getByTestId('confirm-subscription').click();
+  const [termsResponse, checkoutResponse] = await Promise.all([
+    termsResponsePromise,
+    checkoutResponsePromise,
+  ]);
+  expect(termsResponse.status()).toBe(200);
+  expect(checkoutResponse.status()).toBe(200);
+  const checkoutResult: unknown = await checkoutResponse.json();
+  expect(checkoutResult).toMatchObject({
+    kind: 'local-confirmed',
+    evidenceOutcome: expect.stringMatching(/^(recorded|replayed)$/),
+  });
+  expect(checkoutResult).not.toHaveProperty('checkoutUrl');
+  const termsCommand = requestRecord(termsResponse.request().postData());
+  const checkoutCommand = requestRecord(checkoutResponse.request().postData());
+  expect(termsCommand.submissionId).not.toBe(checkoutCommand.submissionId);
   await expect(
     page.getByRole('heading', { name: '開発用の申込み確認' }),
   ).toBeVisible();
@@ -129,7 +160,19 @@ test('local fixture exercises checkout and cancellation without a provider', asy
     page.getByRole('button', { name: 'サブスクリプションを解約' }),
   );
   await page.getByRole('button', { name: 'サブスクリプションを解約' }).click();
+  const cancellationResponsePromise = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/billing/cancel' &&
+      response.request().method() === 'POST',
+  );
   await page.getByRole('button', { name: '解約を申し込む' }).click();
+  const cancellationResponse = await cancellationResponsePromise;
+  expect(cancellationResponse.status()).toBe(200);
+  const cancellationResult: unknown = await cancellationResponse.json();
+  expect(cancellationResult).toMatchObject({
+    status: 'cancellation-scheduled',
+    outcome: 'scheduled',
+  });
   await expect(page.getByTestId('cancellation-confirmed')).toContainText(
     '実際の契約状態は変更されていません',
   );
@@ -338,6 +381,10 @@ test('checkout retry reuses the same submission identifier', async ({
 }) => {
   const submissions: string[] = [];
   await page.route('**/api/billing/checkout', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
     const command = requestRecord(route.request().postData());
     const submissionId = command.submissionId;
     if (typeof submissionId !== 'string') {
@@ -442,6 +489,37 @@ test('account billing cancellation uses an accessible dialog, focus return, and 
 test('account terms uses a dedicated keyboard-accessible page and resets on navigation', async ({
   page,
 }) => {
+  let accepted = false;
+  await page.route('**/api/account/terms-consent', async (route) => {
+    if (route.request().method() === 'POST') {
+      const command = requestRecord(route.request().postData());
+      expect(command.submissionId).toEqual(expect.any(String));
+      accepted = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          outcome: 'recorded',
+          status: acceptedTermsStatus(),
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        outcome: 'status',
+        status: accepted
+          ? acceptedTermsStatus()
+          : {
+              kind: 'current',
+              acceptanceRequired: true,
+              current: termsReference,
+            },
+      }),
+    });
+  });
   await openPublicRoute(
     page,
     '/account/terms',
@@ -540,6 +618,20 @@ function requestRecord(body: string | null): Record<string, unknown> {
 
 function isRecord(input: unknown): input is Record<string, unknown> {
   return input !== null && typeof input === 'object' && !Array.isArray(input);
+}
+
+function acceptedTermsStatus() {
+  return {
+    kind: 'accepted',
+    acceptanceRequired: false,
+    current: termsReference,
+    accepted: {
+      consentId: termsConsentId,
+      termsVersion: termsReference.termsVersion,
+      termsHash: termsReference.termsHash,
+      acceptedAt: 2_000,
+    },
+  } as const;
 }
 
 function checkoutOffer(input: {

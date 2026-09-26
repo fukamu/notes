@@ -4,6 +4,8 @@ import {
   e2eAudience,
   e2eIssuer,
   e2eOwnerSubject,
+  e2eSessionCookieName,
+  e2eSessionToken,
   localAssertionHeader,
 } from './tests/e2e/identity-fixture';
 
@@ -20,6 +22,21 @@ export default defineConfig({
     baseURL: 'http://localhost:3100',
     extraHTTPHeaders: {
       [localAssertionHeader]: identity.ownerAssertion,
+    },
+    storageState: {
+      cookies: [
+        {
+          name: e2eSessionCookieName,
+          value: e2eSessionToken,
+          domain: 'localhost',
+          path: '/',
+          expires: -1,
+          httpOnly: true,
+          secure: true,
+          sameSite: 'Strict',
+        },
+      ],
+      origins: [],
     },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',

@@ -266,10 +266,12 @@ The real-PostgreSQL adapter integration test covers migration, exact closed
 seed retry, readiness, session resolution, and key unwrap. It does not call the
 unexported `composeRuntime` entry point: that function cannot reach successful
 composition without a live PostgreSQL server. Configuration preflight and each
-constructed adapter are covered independently. Constructor wiring across the
-complete process remains a residual risk; a whole-process local-fixture check
-must run serially with live local PostgreSQL/HTTP verification before later
-business-route connection claims.
+constructed adapter are covered independently. The serial Playwright server
+now selects `local-fixture`, creates an owner-private disposable fixture root,
+installs only the seeded hash-only session cookie, and requires real 200
+responses from terms acceptance, URL-free checkout, and period-end
+cancellation. This whole-process check uses the same disposable PostgreSQL
+guard and loopback port; it never selects a production provider or deployment.
 
 Filesystem validation is path-based rather than descriptor-relative. This is
 accepted only for an owner-private local/test root on a trusted host; do not

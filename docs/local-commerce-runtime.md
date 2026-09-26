@@ -59,6 +59,13 @@ an exact, strictly decoded `404 {"error":"not-found"}`. Authentication errors,
 the fallback. Checkout and cancellation success bodies are strict
 discriminated unions; a local confirmation cannot carry a checkout URL.
 
+The serial Playwright server selects this profile explicitly, creates a fresh
+owner-private fixture root, and installs the matching hash-only test session
+cookie. Its primary commerce flow requires HTTP 200 responses from all three
+Go routes and verifies that the terms and checkout submission UUIDv7 values
+are distinct. Other UI error-state tests may intercept one endpoint locally;
+they do not replace that whole-process assertion.
+
 ## Verification and rollback
 
 Focused checks are:
