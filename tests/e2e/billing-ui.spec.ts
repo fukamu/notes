@@ -17,6 +17,18 @@ const termsReference = {
 } as const;
 const publicRouteNavigationTimeoutMs = 10_000;
 
+test.use({ serviceWorkers: 'block' });
+
+function isExternalNetworkRequest(rawUrl: string): boolean {
+  const url = new URL(rawUrl);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+  return !(
+    url.protocol === 'http:' &&
+    url.port === '3100' &&
+    (url.hostname === 'localhost' || url.hostname === '127.0.0.1')
+  );
+}
+
 async function expectPublicRouteUrl(page: Page, path: string) {
   if (path === '/') {
     await expect
@@ -92,8 +104,24 @@ async function goBackToPublicRoute(page: Page, path: string, ready: Locator) {
 }
 
 test('local fixture exercises checkout and cancellation without a provider', async ({
+  context,
   page,
 }) => {
+  const externalRequests = new Set<string>();
+  context.on('request', (request) => {
+    if (isExternalNetworkRequest(request.url())) {
+      externalRequests.add(request.url());
+    }
+  });
+  await context.route('**/*', async (route) => {
+    if (isExternalNetworkRequest(route.request().url())) {
+      externalRequests.add(route.request().url());
+      await route.abort('blockedbyclient');
+      return;
+    }
+    await route.continue();
+  });
+
   await openPublicRoute(
     page,
     '/pricing',
@@ -176,6 +204,7 @@ test('local fixture exercises checkout and cancellation without a provider', asy
   await expect(page.getByTestId('cancellation-confirmed')).toContainText(
     '実際の契約状態は変更されていません',
   );
+  expect([...externalRequests]).toEqual([]);
 });
 
 test('dedicated checkout keeps legal detail out of Notes and requires affirmative consent', async ({

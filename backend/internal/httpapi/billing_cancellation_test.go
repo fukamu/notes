@@ -169,6 +169,9 @@ func TestBillingCancellationContractMapsClosedFailureResponses(t *testing.T) {
 		{name: "provider unavailable", result: billing.SubscriptionCancellationResult{Kind: billing.SubscriptionCancellationRetryableFailure, Reason: billing.CancellationProviderUnavailable}, status: http.StatusServiceUnavailable, code: "unavailable"},
 		{name: "application error", err: errors.New("database secret detail"), status: http.StatusServiceUnavailable, code: "unavailable"},
 		{name: "cross effect response", result: billing.SubscriptionCancellationResult{Kind: billing.SubscriptionCancellationConfirmed, Outcome: billing.SubscriptionCancelled, ConfirmedAt: 1_500, AccessEndsAt: 1_500}, status: http.StatusServiceUnavailable, code: "unavailable"},
+		{name: "scheduled before observation", result: billing.SubscriptionCancellationResult{Kind: billing.SubscriptionCancellationConfirmed, Outcome: billing.SubscriptionCancellationScheduled, ConfirmedAt: 1_500, AccessEndsAt: 1_499}, status: http.StatusServiceUnavailable, code: "unavailable"},
+		{name: "scheduled before request", result: billing.SubscriptionCancellationResult{Kind: billing.SubscriptionCancellationConfirmed, Outcome: billing.SubscriptionCancellationScheduled, ConfirmedAt: 1_400, AccessEndsAt: 1_450}, status: http.StatusServiceUnavailable, code: "unavailable"},
+		{name: "already cancelled with future access", result: billing.SubscriptionCancellationResult{Kind: billing.SubscriptionCancellationConfirmed, Outcome: billing.SubscriptionAlreadyCancelled, ConfirmedAt: 1_400, AccessEndsAt: 1_401}, status: http.StatusServiceUnavailable, code: "unavailable"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

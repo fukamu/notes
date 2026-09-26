@@ -19,10 +19,12 @@ legal review, pricing approval, publication approval, or authorization to
 charge anyone.
 
 The provider has only read ports for the seeded Billing and Entitlement rows.
-Before confirming an operation it requires the exact prepared owner, exact
-seeded subscription and entitlement values, canonical offer hash, and internal
-evidence-to-subscription mapping. It has no HTTP client, Stripe client,
-credential, webhook, or write port.
+Before confirming an operation it requires the exact prepared AccountID and
+VaultID owner scope, exact seeded subscription and entitlement values,
+canonical offer hash, and internal evidence-to-subscription mapping. A later
+valid session for that same owner scope is accepted; changing either owner ID
+is rejected before the seeded stores are read. The provider has no HTTP client,
+Stripe client, credential, webhook, or write port.
 
 - Checkout records/replays immutable terms and contract evidence in PostgreSQL,
   then returns `kind: local-confirmed` with no URL or provider reference. It
@@ -58,13 +60,20 @@ an exact, strictly decoded `404 {"error":"not-found"}`. Authentication errors,
 503 responses, malformed bodies, and 404 bodies with extra fields never select
 the fallback. Checkout and cancellation success bodies are strict
 discriminated unions; a local confirmation cannot carry a checkout URL.
+Scheduled cancellation responses require the access end to be at or after both
+the request time and provider observation; already-cancelled responses require
+it to be at or before the observation. Go HTTP mapping and the browser decoder
+both reject contradictory timestamps.
 
 The serial Playwright server selects this profile explicitly, creates a fresh
 owner-private fixture root, and installs the matching hash-only test session
 cookie. Its primary commerce flow requires HTTP 200 responses from all three
 Go routes and verifies that the terms and checkout submission UUIDv7 values
-are distinct. Other UI error-state tests may intercept one endpoint locally;
-they do not replace that whole-process assertion.
+are distinct. It collects attempted external HTTP(S) requests, blocks any such
+request across the browser context, and requires the collection to remain
+empty. Service workers are blocked for that assertion so they cannot bypass
+the browser-context route. Other UI error-state tests may intercept one
+endpoint locally; they do not replace that whole-process assertion.
 
 ## Verification and rollback
 

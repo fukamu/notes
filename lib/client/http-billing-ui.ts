@@ -116,18 +116,26 @@ const checkoutResponseDecoder = unionDecoder(
 );
 
 const cancellationResponseDecoder = unionDecoder(
-  objectDecoder({
-    status: literalDecoder('cancellation-scheduled'),
-    outcome: literalDecoder('scheduled'),
-    confirmedAt: safeIntegerDecoder({ minimum: 0 }),
-    accessEndsAt: safeIntegerDecoder({ minimum: 0 }),
-  }),
-  objectDecoder({
-    status: literalDecoder('cancelled'),
-    outcome: literalDecoder('already-cancelled'),
-    confirmedAt: safeIntegerDecoder({ minimum: 0 }),
-    accessEndsAt: safeIntegerDecoder({ minimum: 0 }),
-  }),
+  refineDecoder(
+    objectDecoder({
+      status: literalDecoder('cancellation-scheduled'),
+      outcome: literalDecoder('scheduled'),
+      confirmedAt: safeIntegerDecoder({ minimum: 0 }),
+      accessEndsAt: safeIntegerDecoder({ minimum: 0 }),
+    }),
+    (value) => value.accessEndsAt >= value.confirmedAt,
+    'scheduled access must not end before confirmation',
+  ),
+  refineDecoder(
+    objectDecoder({
+      status: literalDecoder('cancelled'),
+      outcome: literalDecoder('already-cancelled'),
+      confirmedAt: safeIntegerDecoder({ minimum: 0 }),
+      accessEndsAt: safeIntegerDecoder({ minimum: 0 }),
+    }),
+    (value) => value.accessEndsAt <= value.confirmedAt,
+    'cancelled access must not end after observation',
+  ),
 );
 
 const errorResponseDecoder = objectDecoder({

@@ -41,18 +41,65 @@ func TestNoNetworkProviderConfirmsOnlyExactSeededFacts(t *testing.T) {
 		t.Fatalf("wrong offer checkout = %#v reads=%d/%d", result, subscriptions.reads, entitlements.reads)
 	}
 
-	wrongContext := seed.Context
-	wrongContext.VaultID = "01999c20-9e33-7000-8000-000000000099"
-	result = provider.BeginHostedCheckout(context.Background(), wrongContext, command)
-	if result.Kind != stripebilling.HostedCheckoutRejected ||
-		result.Reason != stripebilling.ReasonProviderMappingMismatch || subscriptions.reads != 1 {
-		t.Fatalf("cross owner checkout = %#v reads=%d", result, subscriptions.reads)
-	}
-
 	subscriptions.record.ProviderSubscriptionReference = "fixture-subscription-mismatch"
 	result = provider.BeginHostedCheckout(context.Background(), seed.Context, command)
 	if result.Kind != stripebilling.HostedCheckoutRejected || result.Reason != stripebilling.ReasonProviderMappingMismatch {
 		t.Fatalf("mismatched projection checkout = %#v", result)
+	}
+}
+
+func TestNoNetworkProviderScopesSeedChecksToAccountAndVault(t *testing.T) {
+	t.Parallel()
+	seed := providerSeed(t)
+	subscriptions := &subscriptionStub{record: seed.Subscription}
+	entitlements := &entitlementStub{record: seed.Entitlement}
+	provider, err := NewProvider(seed, subscriptions, entitlements)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sameOwner := seed.Context
+	sameOwner.SessionID, err = identity.ParseSessionID("01999c20-9e33-7000-8000-000000000004")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameOwner.SessionEpoch, err = identity.ParseSessionEpoch(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := provider.BeginHostedCheckout(context.Background(), sameOwner, providerCheckoutCommand())
+	if result.Kind != stripebilling.HostedCheckoutLocalConfirmed || subscriptions.reads != 1 ||
+		entitlements.reads != 1 || len(subscriptions.scopes) != 1 || len(entitlements.contexts) != 1 ||
+		subscriptions.scopes[0].AccountID != sameOwner.AccountID ||
+		subscriptions.scopes[0].VaultID != sameOwner.VaultID || entitlements.contexts[0] != sameOwner {
+		t.Fatalf("same-owner checkout = %#v scopes=%#v contexts=%#v", result, subscriptions.scopes, entitlements.contexts)
+	}
+
+	crossAccount := sameOwner
+	crossAccount.AccountID, err = identity.ParseAccountID("01999c20-9e33-7000-8000-000000000099")
+	if err != nil {
+		t.Fatal(err)
+	}
+	crossVault := sameOwner
+	crossVault.VaultID, err = identity.ParseVaultID("01999c20-9e33-7000-8000-000000000099")
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidSession := sameOwner
+	invalidSession.SessionID = ""
+	for name, vaultContext := range map[string]identity.VaultContext{
+		"cross account":   crossAccount,
+		"cross vault":     crossVault,
+		"invalid session": invalidSession,
+	} {
+		t.Run(name, func(t *testing.T) {
+			result := provider.BeginHostedCheckout(context.Background(), vaultContext, providerCheckoutCommand())
+			if result.Kind != stripebilling.HostedCheckoutRejected ||
+				result.Reason != stripebilling.ReasonProviderMappingMismatch ||
+				subscriptions.reads != 1 || entitlements.reads != 1 {
+				t.Fatalf("checkout = %#v reads=%d/%d", result, subscriptions.reads, entitlements.reads)
+			}
+		})
 	}
 }
 
@@ -146,10 +193,12 @@ type subscriptionStub struct {
 	record billing.SubscriptionRecord
 	err    error
 	reads  int
+	scopes []billing.OwnerScope
 }
 
-func (stub *subscriptionStub) FindByOwner(context.Context, billing.OwnerScope) (*billing.SubscriptionRecord, error) {
+func (stub *subscriptionStub) FindByOwner(_ context.Context, scope billing.OwnerScope) (*billing.SubscriptionRecord, error) {
 	stub.reads++
+	stub.scopes = append(stub.scopes, scope)
 	if stub.err != nil {
 		return nil, stub.err
 	}
@@ -158,13 +207,15 @@ func (stub *subscriptionStub) FindByOwner(context.Context, billing.OwnerScope) (
 }
 
 type entitlementStub struct {
-	record entitlement.ProjectionRecord
-	err    error
-	reads  int
+	record   entitlement.ProjectionRecord
+	err      error
+	reads    int
+	contexts []identity.VaultContext
 }
 
-func (stub *entitlementStub) FindProjection(context.Context, identity.VaultContext) (*entitlement.ProjectionRecord, error) {
+func (stub *entitlementStub) FindProjection(_ context.Context, vaultContext identity.VaultContext) (*entitlement.ProjectionRecord, error) {
 	stub.reads++
+	stub.contexts = append(stub.contexts, vaultContext)
 	if stub.err != nil {
 		return nil, stub.err
 	}

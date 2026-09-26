@@ -467,16 +467,24 @@ components:
           properties:
             status: { type: string, enum: [cancellation-scheduled] }
             outcome: { type: string, enum: [scheduled] }
-            confirmedAt: { $ref: '#/components/schemas/SafeInteger' }
-            accessEndsAt: { $ref: '#/components/schemas/SafeInteger' }
+            confirmedAt:
+              allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+              description: Provider observation time for the schedule.
+            accessEndsAt:
+              allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+              description: Must be at or after both confirmedAt and the server request time.
         - type: object
           additionalProperties: false
           required: [status, outcome, confirmedAt, accessEndsAt]
           properties:
             status: { type: string, enum: [cancelled] }
             outcome: { type: string, enum: [already-cancelled] }
-            confirmedAt: { $ref: '#/components/schemas/SafeInteger' }
-            accessEndsAt: { $ref: '#/components/schemas/SafeInteger' }
+            confirmedAt:
+              allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+              description: Provider observation time for the completed cancellation.
+            accessEndsAt:
+              allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+              description: Must be at or before confirmedAt.
     TermsReference:
       type: object
       additionalProperties: false

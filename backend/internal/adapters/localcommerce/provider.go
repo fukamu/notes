@@ -61,12 +61,13 @@ func (provider *Provider) BeginHostedCheckout(
 	vaultContext identity.VaultContext,
 	command stripebilling.HostedCheckoutCommand,
 ) stripebilling.HostedCheckoutResult {
-	if provider == nil || vaultContext != provider.context || !validCheckoutCommand(command) {
+	if provider == nil || !entitlement.ValidVaultContext(vaultContext) ||
+		!sameOwner(vaultContext, provider.context) || !validCheckoutCommand(command) {
 		return stripebilling.HostedCheckoutResult{
 			Kind: stripebilling.HostedCheckoutRejected, Reason: stripebilling.ReasonProviderMappingMismatch,
 		}
 	}
-	if err := provider.verifySeededFacts(ctx); err != nil {
+	if err := provider.verifySeededFacts(ctx, vaultContext); err != nil {
 		reason := stripebilling.ReasonProviderMappingMismatch
 		if errors.Is(err, errSeededFactsUnavailable) {
 			reason = stripebilling.ReasonProviderUnavailable
@@ -91,7 +92,7 @@ func (provider *Provider) CancelSubscription(
 			IdempotencyKey: command.IdempotencyKey, ObservedAt: identity.MaximumSafeInteger,
 		}, nil
 	}
-	if err := provider.verifySeededFacts(ctx); err != nil {
+	if err := provider.verifySeededFacts(ctx, provider.context); err != nil {
 		if errors.Is(err, errSeededFactsUnavailable) {
 			return billing.ProviderCancellationObservation{}, errSeededFactsUnavailable
 		}
@@ -109,12 +110,13 @@ func (provider *Provider) CancelSubscription(
 	}, nil
 }
 
-func (provider *Provider) verifySeededFacts(ctx context.Context) error {
-	if provider == nil || ctx == nil || provider.subscriptions == nil || provider.entitlements == nil {
+func (provider *Provider) verifySeededFacts(ctx context.Context, vaultContext identity.VaultContext) error {
+	if provider == nil || ctx == nil || provider.subscriptions == nil || provider.entitlements == nil ||
+		!entitlement.ValidVaultContext(vaultContext) || !sameOwner(vaultContext, provider.context) {
 		return ErrInvalidProviderConfiguration
 	}
 	storedSubscription, err := provider.subscriptions.FindByOwner(ctx, billing.OwnerScope{
-		AccountID: provider.context.AccountID, VaultID: provider.context.VaultID,
+		AccountID: vaultContext.AccountID, VaultID: vaultContext.VaultID,
 	})
 	if err != nil {
 		return errSeededFactsUnavailable
@@ -122,7 +124,7 @@ func (provider *Provider) verifySeededFacts(ctx context.Context) error {
 	if storedSubscription == nil || !matchesSubscription(*storedSubscription, provider.expected.Subscription) {
 		return ErrInvalidProviderConfiguration
 	}
-	storedEntitlement, err := provider.entitlements.FindProjection(ctx, provider.context)
+	storedEntitlement, err := provider.entitlements.FindProjection(ctx, vaultContext)
 	if err != nil {
 		return errSeededFactsUnavailable
 	}
@@ -130,6 +132,10 @@ func (provider *Provider) verifySeededFacts(ctx context.Context) error {
 		return ErrInvalidProviderConfiguration
 	}
 	return nil
+}
+
+func sameOwner(left identity.VaultContext, right identity.VaultContext) bool {
+	return left.AccountID == right.AccountID && left.VaultID == right.VaultID
 }
 
 func validCheckoutCommand(command stripebilling.HostedCheckoutCommand) bool {

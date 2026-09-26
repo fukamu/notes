@@ -294,6 +294,55 @@ func TestLocalCommerceRuntimePostgres(t *testing.T) {
 		t.Fatalf("no-effect cancellation changed billing row:\nbefore %s\nafter  %s", billingBefore, billingAfter)
 	}
 
+	otherAccountID, err := identity.ParseAccountID("01999c20-9e33-7000-8000-000000000099")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSessionID, err := identity.ParseSessionID("01999c20-9e33-7000-8000-000000000098")
+	if err != nil {
+		t.Fatal(err)
+	}
+	crossOwnerSession := seed.Session
+	crossOwnerSession.AccountID = otherAccountID
+	crossOwnerSession.SessionID = otherSessionID
+	crossOwnerSession.SessionEpoch = 2
+	countedProvider := &countingCancellationProvider{delegate: provider}
+	crossOwnerCancellation, err := billing.NewCancellationService(billingStore, countedProvider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crossOwnerHandler, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory: staticDirectory,
+		BodyLimit:       4_000_000,
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		BillingCancellationRuntime: &httpapi.BillingCancellationRuntime{
+			ExpectedOrigin: localCommerceOrigin,
+			Clock:          func() int64 { return now },
+			Sessions:       fixedSessionResolver{session: crossOwnerSession},
+			Cancellation:   crossOwnerCancellation,
+		},
+		EnableDisconnectedFixtures: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	crossOwnerResponse := serveLocalCommerce(
+		crossOwnerHandler,
+		localCommerceRequest(ctx, http.MethodPost, "/api/billing/cancel", marshalLocalCommerceBody(t, map[string]any{
+			"idempotencyKey": "cancel_local_commerce_cross_owner",
+		}), rawToken),
+	)
+	assertLocalCommerceError(t, crossOwnerResponse, http.StatusConflict, "cancellation-unavailable")
+	if countedProvider.calls != 0 {
+		t.Fatalf("cross-owner cancellation reached provider %d times", countedProvider.calls)
+	}
+	if billingAfter := localCommerceBillingRow(t, ctx, pool, seed); billingAfter != billingBefore {
+		t.Fatalf("cross-owner cancellation changed billing row:\nbefore %s\nafter  %s", billingBefore, billingAfter)
+	}
+	assertLocalCommerceRowCount(t, ctx, pool, "billing_subscriptions", 1)
+	assertLocalCommerceRowCount(t, ctx, pool, "terms_consent_evidence", 1)
+	assertLocalCommerceRowCount(t, ctx, pool, "contract_evidence", 1)
+
 	if _, err := pool.Exec(
 		ctx,
 		"UPDATE billing_subscriptions SET provider_subscription_ref = $1 WHERE account_id = $2 AND vault_id = $3",
@@ -324,6 +373,31 @@ func TestLocalCommerceRuntimePostgres(t *testing.T) {
 	}
 	assertLocalCommerceRowCount(t, ctx, pool, "terms_consent_evidence", 1)
 	assertLocalCommerceRowCount(t, ctx, pool, "contract_evidence", 1)
+}
+
+type fixedSessionResolver struct {
+	session identity.Session
+}
+
+func (resolver fixedSessionResolver) FindSessionByToken(
+	context.Context,
+	identity.SessionToken,
+) (*identity.Session, error) {
+	session := resolver.session
+	return &session, nil
+}
+
+type countingCancellationProvider struct {
+	delegate billing.SubscriptionCancellationProviderPort
+	calls    int
+}
+
+func (provider *countingCancellationProvider) CancelSubscription(
+	ctx context.Context,
+	command billing.ProviderCancellationCommand,
+) (billing.ProviderCancellationObservation, error) {
+	provider.calls++
+	return provider.delegate.CancelSubscription(ctx, command)
 }
 
 func localCommerceSeed(t *testing.T) (localfixture.Seed, string) {

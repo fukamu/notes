@@ -98,7 +98,7 @@ func billingCancellationHandler(runtime *BillingCancellationRuntime, logger *slo
 			writeBillingCancellationError(response, request, http.StatusServiceUnavailable, "unavailable")
 			return
 		}
-		writeBillingCancellationResult(response, request, result, logger)
+		writeBillingCancellationResult(response, request, result, now, logger)
 	}
 }
 
@@ -152,14 +152,12 @@ func writeBillingCancellationResult(
 	response http.ResponseWriter,
 	request *http.Request,
 	result billing.SubscriptionCancellationResult,
+	requestedAt int64,
 	logger *slog.Logger,
 ) {
 	switch result.Kind {
 	case billing.SubscriptionCancellationConfirmed:
-		if (result.Outcome != billing.SubscriptionCancellationScheduled &&
-			result.Outcome != billing.SubscriptionAlreadyCancelled) ||
-			result.ConfirmedAt < 0 || result.ConfirmedAt > identity.MaximumSafeInteger ||
-			result.AccessEndsAt < 0 || result.AccessEndsAt > identity.MaximumSafeInteger {
+		if !validBillingCancellationConfirmation(result, requestedAt) {
 			logger.Error("billing cancellation failed", "error_code", "invalid_application_response")
 			writeBillingCancellationError(response, request, http.StatusServiceUnavailable, "unavailable")
 			return
@@ -189,6 +187,22 @@ func writeBillingCancellationResult(
 	default:
 		logger.Error("billing cancellation failed", "error_code", "invalid_application_response")
 		writeBillingCancellationError(response, request, http.StatusServiceUnavailable, "unavailable")
+	}
+}
+
+func validBillingCancellationConfirmation(result billing.SubscriptionCancellationResult, requestedAt int64) bool {
+	if requestedAt < 0 || requestedAt > identity.MaximumSafeInteger ||
+		result.ConfirmedAt < 0 || result.ConfirmedAt > identity.MaximumSafeInteger ||
+		result.AccessEndsAt < 0 || result.AccessEndsAt > identity.MaximumSafeInteger {
+		return false
+	}
+	switch result.Outcome {
+	case billing.SubscriptionCancellationScheduled:
+		return result.AccessEndsAt >= result.ConfirmedAt && result.AccessEndsAt >= requestedAt
+	case billing.SubscriptionAlreadyCancelled:
+		return result.AccessEndsAt <= result.ConfirmedAt
+	default:
+		return false
 	}
 }
 

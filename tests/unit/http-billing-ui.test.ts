@@ -146,6 +146,53 @@ describe('billing UI HTTP adapter', () => {
       accessEndsAt: 9_000,
     });
 
+    const alreadyCancelled = createBillingUiHttpTransport(async () =>
+      Response.json({
+        status: 'cancelled',
+        outcome: 'already-cancelled',
+        confirmedAt: 2_000,
+        accessEndsAt: 1_900,
+      }),
+    );
+    await expect(
+      alreadyCancelled.cancelSubscription(
+        createBillingCancellationIdempotencyKey(),
+      ),
+    ).resolves.toEqual({
+      kind: 'confirmed',
+      outcome: 'already-cancelled',
+      confirmedAt: 2_000,
+      accessEndsAt: 1_900,
+    });
+
+    const expiredSchedule = createBillingUiHttpTransport(async () =>
+      Response.json({
+        status: 'cancellation-scheduled',
+        outcome: 'scheduled',
+        confirmedAt: 2_000,
+        accessEndsAt: 1_999,
+      }),
+    );
+    await expect(
+      expiredSchedule.cancelSubscription(
+        createBillingCancellationIdempotencyKey(),
+      ),
+    ).resolves.toEqual({ kind: 'unavailable' });
+
+    const futureAlreadyCancelled = createBillingUiHttpTransport(async () =>
+      Response.json({
+        status: 'cancelled',
+        outcome: 'already-cancelled',
+        confirmedAt: 2_000,
+        accessEndsAt: 2_001,
+      }),
+    );
+    await expect(
+      futureAlreadyCancelled.cancelSubscription(
+        createBillingCancellationIdempotencyKey(),
+      ),
+    ).resolves.toEqual({ kind: 'unavailable' });
+
     const unavailable = createBillingUiHttpTransport(async () =>
       Response.json({ error: 'unavailable' }, { status: 503 }),
     );
