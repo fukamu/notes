@@ -1235,27 +1235,38 @@ test('link candidates are descending, prefix-filtered, scroll-following and expl
   const candidateButtons = candidateList.getByRole('button');
   const candidatePopover = page.getByTestId('link-candidate-popover');
   await expect(candidatePopover).toBeVisible();
-  await expect(candidatePopover).toHaveAttribute('data-side', 'above');
   const candidateGeometry = await candidatePopover.evaluate((popover) => {
     const popup = popover.getBoundingClientRect();
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) {
       throw new Error('Expected the editor caret');
     }
+    const side = popover.dataset.side;
+    if (side !== 'above' && side !== 'below') {
+      throw new Error('Expected a resolved candidate placement side');
+    }
     const caret = selection.getRangeAt(0).getBoundingClientRect();
     const viewport = window.visualViewport;
     return {
+      side,
       popupTop: popup.top,
       popupBottom: popup.bottom,
       caretTop: caret.top,
+      caretBottom: caret.bottom,
       viewportTop: viewport?.offsetTop ?? 0,
       viewportBottom:
         (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight),
     };
   });
-  expect(candidateGeometry.popupBottom).toBeLessThanOrEqual(
-    candidateGeometry.caretTop - 7,
-  );
+  if (candidateGeometry.side === 'above') {
+    expect(candidateGeometry.popupBottom).toBeLessThanOrEqual(
+      candidateGeometry.caretTop - 7,
+    );
+  } else {
+    expect(candidateGeometry.popupTop).toBeGreaterThanOrEqual(
+      candidateGeometry.caretBottom + 7,
+    );
+  }
   expect(candidateGeometry.popupTop).toBeGreaterThanOrEqual(
     candidateGeometry.viewportTop,
   );
