@@ -95,9 +95,7 @@ describe('Go E2E server', () => {
     expect(result.goCalls).toContain('run ./cmd/notesctl prepare-e2e');
     expect(result.goCalls).toContain('run ./cmd/notes');
     expect(result.environment).toContain('NOTES_ENVIRONMENT=test');
-    expect(result.environment).toContain(
-      'NOTES_APPLICATION_PROFILE=disabled',
-    );
+    expect(result.environment).toContain('NOTES_APPLICATION_PROFILE=disabled');
     expect(result.environment).toContain(
       'NOTES_DATABASE_URL=postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable',
     );
