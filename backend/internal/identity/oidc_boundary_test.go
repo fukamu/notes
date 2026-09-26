@@ -140,7 +140,7 @@ func TestGoogleOidcStartBoundary(t *testing.T) {
 	if !result.Redirect || store.remaining() != 1 || result.Request.CodeChallenge != mustOidcChallenge(t, fixtureOidcChallenge) {
 		t.Fatalf("start result = %#v, remaining=%d", result, store.remaining())
 	}
-	serialized, err := SerializeOidcAuthorizationRequest(result.Request)
+	serialized, err := SerializeGoogleOidcAuthorizationRequest(result.Request)
 	if err != nil {
 		t.Fatal(err)
 	}

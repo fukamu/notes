@@ -302,11 +302,15 @@ The command never pushes or deploys the disposable image.
 
 `npm run verify:migration-closure` strictly checks the complete F01-F28 and
 V01-V12 evidence inventory, the frozen legacy source trees, and the
-legacy-dependent test corpus before T17 retirement. See
+legacy-dependent test corpus before T17 retirement.
+`npm run verify:legacy-retirement` additionally checks all 138 frozen test
+paths, per-file digests, dispositions, and executable replacement evidence.
+See
 [`docs/legacy-typescript-retirement.md`](../docs/legacy-typescript-retirement.md).
-F22 ordinary period-end cancellation remains blocked by #403 / Draft PR #404;
-the immediate account-deletion cancellation effect is not treated as a
-substitute.
+F22 has separate Go evidence for ordinary period-end cancellation and the
+immediate account-deletion effect. The ordinary handler remains disconnected;
+Draft PR #404, public activation, and production provider use remain
+unapproved.
 
 The shared crypto fixture is executed by both TypeScript Web Crypto and Go's
 AES-GCM implementation. Focused Go checks are:

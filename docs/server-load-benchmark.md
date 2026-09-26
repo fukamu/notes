@@ -1,9 +1,10 @@
 # Local server load verification
 
-Issue #216 adds a reproducible, local-only load harness for the authenticated
-Sync V2 HTTP boundary. It provides correctness evidence at the expected peak of
-1,000 concurrent users without contacting Cloudflare, Stripe, a mail provider,
-or any other remote service.
+Issue #501 replaces the legacy TypeScript harness from Issue #216 with a
+deterministic Go regression test for the authenticated Sync v2 HTTP boundary.
+It provides correctness evidence for 1,000 concurrent requests without making
+a production-capacity claim or contacting a hosted database, KMS, object store,
+Stripe, mail provider, or any other remote service.
 
 ## Safety boundary
 
@@ -13,61 +14,93 @@ Run the harness with:
 npm run benchmark:server-load
 ```
 
-The only supported execution mode is the in-process `local-fake` mode. The
-runner fails before creating traffic when `FUKAMU_SERVER_LOAD_MODE` names
-another mode, `FUKAMU_SERVER_LOAD_TARGET_URL` is present, or
-`FUKAMU_SERVER_LOAD_CREDENTIAL` is present. The runner has no remote transport
-adapter and does not read application or provider credentials.
+The only supported execution mode is `local-go-postgres`. The database URL is
+validated by `ValidateTestDatabaseURL`: only a loopback host and the dedicated
+`fukamu_notes_go_test` database are accepted. The runner fails before creating
+traffic when `FUKAMU_SERVER_LOAD_MODE` names another mode,
+`FUKAMU_SERVER_LOAD_TARGET_URL` is present, or
+`FUKAMU_SERVER_LOAD_CREDENTIAL` is present. It has no remote HTTP transport and
+does not read application or provider credentials.
 
-The test calls the real authenticated `/api/v2/sync` HTTP handler, including
-cookie/session scope derivation, CSRF origin checks, entitlement checks, request
-decoding, application dispatch, and response encoding. Session, application,
-object-storage, KMS, and partition behavior below the HTTP boundary use
-deterministic fakes. Consequently, the artifact is not a Cloudflare, D1, R2, or
-production SLO measurement.
+The test calls the real Go `/api/v2/sync` contract handler and Go Sync v2
+application. Cookie/session resolution, tenant ownership, the journal, quota,
+encrypted-object metadata, and durable replay state use an isolated PostgreSQL
+schema. Entitlement is an injected deterministic decision, while object storage,
+data-key unwrap, nonce reservation, and encryption use concurrency-safe in-memory
+adapters. Consequently, this is not a provider, network, or production SLO
+measurement.
 
 ## Scenarios and required invariants
 
-Each wave starts 1,000 promises before waiting for any response. The artifact
-must report `maximumInFlight: 1000` and zero tenant-scope violations.
+Each wave admits 1,000 goroutines before releasing any request to the handler.
+The evidence must report `maximumInFlight: 1000`, while the PostgreSQL pool is
+bounded to 16 connections and application execution is serialized after the
+concurrent HTTP/session boundary. This mirrors the single-threaded legacy
+application fake while making PostgreSQL results independent of scheduler
+interleavings. Every scenario requires zero tenant-scope violations.
 
-| Scenario              | Shape                                                            | Required result                                                                                      |
-| --------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `cold-start`          | 1,000 users and 1,000 independently composed HTTP handlers       | all 1,000 responses succeed; 1,000 Vaults stay isolated                                              |
-| `normal-poll`         | 1,000 users through one handler and 16 simulated partitions      | all 1,000 no-change polls succeed; object and KMS calls remain zero                                  |
-| `hot-vault-partition` | 1,000 requests against one Vault and one partition               | all requests succeed without scope confusion; object and KMS calls remain zero                       |
-| `response-loss-retry` | 1,000 mutations commit once, lose the first response, then retry | first responses are unavailable, retries succeed, and exactly 1,000 commits plus 1,000 replays occur |
+| Scenario              | Shape                                                            | Required result                                                                                                 |
+| --------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `cold-start`          | 1,000 users and 1,000 independently composed HTTP handlers       | all 1,000 responses succeed; 1,000 Vaults stay isolated                                                         |
+| `normal-poll`         | 1,000 users through one handler and 16 simulated partitions      | all 1,000 no-change polls succeed; object and KMS calls remain zero                                             |
+| `hot-vault-partition` | 1,000 requests against one Vault and one partition               | all requests succeed without scope confusion; object and KMS calls remain zero                                  |
+| `response-loss-retry` | 1,000 mutations commit once, lose the first response, then retry | first responses are unavailable, retries succeed, and exactly 1,000 PostgreSQL commits plus 1,000 replays occur |
 
-The response-loss fake records one object write and one KMS encryption for the
-first durable commit. A retry is accepted only when it replays the receipt
-without a second write or encryption. The no-change scenarios reject any
-object read/write or KMS encrypt/decrypt count above zero.
+The response-loss adapter replaces the first successful, fully committed Go
+application result with an unavailable response. The mutation request carries
+an authenticated cursor positioned at the sequence committed by that request,
+so it can verify receipt replay without hydrating the newly written object. A
+retry is accepted only when PostgreSQL still contains exactly one commit per
+mutation and the in-memory adapters report no second object write or encryption.
+The real encrypted-object write protocol performs one not-found object probe
+before each first write, so the retry scenario requires exactly 1,000 object
+reads in total; any replay read is a failure. The no-change scenarios reject any
+object read/write or encrypt/decrypt call above zero.
 
 ## Baseline result
 
-[`benchmarks/server-load-local.json`](benchmarks/server-load-local.json) records
-the host information, raw scenario counts, observed durations, and memory
-deltas from the Issue #216 branch point
-`78a77aadbcc29aa628f25be287ece307acebf70d`.
+[`benchmarks/server-load-go.json`](benchmarks/server-load-go.json) records the
+deterministic scenario counts from the Issue #501 branch point
+`b95a8155efabe4a29ddafb01b62d7190b926c208`. The test decodes the checked-in
+file with unknown fields rejected, executes every scenario in order, and
+requires an exact match. It also queries PostgreSQL after the run for 1,000
+distinct durable commits, encrypted objects, committed quota reservations, and
+active cards.
 
-The correctness counts are required test assertions. Duration, heap delta, and
-RSS delta are observations only: host contention and garbage collection make an
-absolute wall-clock or memory threshold unsuitable for this local harness. No
-5-second or other unsupported timing gate is introduced.
+The correctness counts are required test assertions. Duration and memory remain
+observations only: host contention, PostgreSQL scheduling, and garbage
+collection make absolute wall-clock or memory thresholds unsuitable for this
+local harness. They are deliberately not persisted, and no unsupported timing
+gate is introduced.
 
-The checked-in artifact is decoded and re-evaluated during `npm run verify`, so
-missing scenarios, malformed fields, tenant violations, duplicate commits, or
-unexpected no-change adapter calls fail the existing test gate. Re-running the
-benchmark intentionally refreshes observational values in the artifact; review
-that diff before committing it.
+`npm run verify` runs the Go integration suite, including this regression test.
+`npm run benchmark:server-load` runs only the focused evidence test. The
+checked-in counts do not change when the benchmark is re-run.
+
+## Legacy assertion mapping
+
+The TypeScript harness is frozen at
+`e8936ab90768774371d84b4808c100d546649943` until T17 removes the legacy server
+test corpus. Its assertions map to Go evidence as follows:
+
+| Legacy evidence                                         | Go replacement                                                                                                                                                     |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1,000 started promises and `maximumInFlight`            | 1,000 admitted goroutines released as one wave; application dispatch is serialized like the legacy single-threaded fake                                            |
+| cookie/session fake                                     | PostgreSQL-backed Go `SessionResolver` plus the real CSRF/session boundary                                                                                         |
+| application call, Vault, partition, and tenant counters | a synchronized observer around the real Go Sync v2 application                                                                                                     |
+| synthetic commit and response loss                      | real encrypted-object, quota, and journal commits followed by injected response loss                                                                               |
+| object/KMS fake call counts                             | concurrency-safe memory object storage and counted in-memory encryption adapter; one required not-found probe per real Go write is asserted separately from replay |
+| unique commits and replays                              | exact counters plus durable PostgreSQL row and ownership checks                                                                                                    |
+| host timing and memory deltas                           | intentionally non-gating and omitted from deterministic evidence                                                                                                   |
 
 ## Rollback and limitations
 
-Rollback removes the benchmark command, Vitest configuration, support/tests,
-this document, and the checked-in artifact. It does not require a schema or data
-migration.
+Rollback of Issue #501 restores the previous benchmark command and removes the
+Go load test plus `server-load-go.json`. It does not require a schema or data
+migration. The old TypeScript files and artifact remain unchanged on this branch
+so their frozen evidence is available to the T17 retirement review.
 
-This harness does not authorize or replace provider-scale load testing. Actual
-Cloudflare/D1/R2/KMS testing, production credentials, paid services, staging or
-production traffic, and SLO selection remain outside Issue #216 and require
-their applicable approvals.
+This harness does not authorize or replace provider-scale load testing. Hosted
+PostgreSQL, Cloudflare, KMS, object-storage, production credentials, paid
+services, staging or production traffic, capacity statements, and SLO selection
+remain outside Issue #501 and require their applicable approvals.

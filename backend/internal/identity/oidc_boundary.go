@@ -5,6 +5,8 @@ import (
 	"net/url"
 )
 
+const googleOidcAuthorizationEndpoint = "https://accounts.google.com/o/oauth2/v2/auth"
+
 type OidcClock interface {
 	NowEpochSeconds() int64
 }
@@ -214,12 +216,15 @@ func OidcCallbackInputFromURL(raw string) (OidcCallbackInput, error) {
 	return input, nil
 }
 
-func SerializeOidcAuthorizationRequest(request OidcAuthorizationRequest) (string, error) {
-	endpoint, err := url.Parse(string(request.AuthorizationEndpoint))
+func SerializeGoogleOidcAuthorizationRequest(request OidcAuthorizationRequest) (string, error) {
+	if !validGoogleOidcAuthorizationRequest(request) {
+		return "", ErrInvalidOidcValue
+	}
+	endpoint, err := url.Parse(googleOidcAuthorizationEndpoint)
 	if err != nil {
 		return "", ErrInvalidOidcValue
 	}
-	query := endpoint.Query()
+	query := make(url.Values, 8)
 	query.Set("response_type", request.ResponseType)
 	query.Set("client_id", string(request.ClientID))
 	query.Set("redirect_uri", string(request.RedirectURI))
@@ -230,6 +235,30 @@ func SerializeOidcAuthorizationRequest(request OidcAuthorizationRequest) (string
 	query.Set("code_challenge_method", request.CodeChallengeMethod)
 	endpoint.RawQuery = query.Encode()
 	return endpoint.String(), nil
+}
+
+func validGoogleOidcAuthorizationRequest(request OidcAuthorizationRequest) bool {
+	if string(request.AuthorizationEndpoint) != googleOidcAuthorizationEndpoint ||
+		request.ResponseType != "code" || request.Scope != "openid email" ||
+		request.CodeChallengeMethod != "S256" {
+		return false
+	}
+	if _, err := ParseOidcClientID(string(request.ClientID)); err != nil {
+		return false
+	}
+	if _, err := ParseOidcRedirectURI(string(request.RedirectURI)); err != nil {
+		return false
+	}
+	if _, err := ParseOidcState(string(request.State)); err != nil {
+		return false
+	}
+	if _, err := ParseOidcNonce(string(request.Nonce)); err != nil {
+		return false
+	}
+	if _, err := ParsePkceCodeChallenge(string(request.CodeChallenge)); err != nil {
+		return false
+	}
+	return true
 }
 
 type OidcCompletionKind string
