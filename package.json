@@ -54,8 +54,9 @@
     "check:launch-compliance": "node --experimental-strip-types scripts/verify-launch-compliance.mjs",
     "check:production-launch": "node --experimental-strip-types scripts/verify-launch-compliance.mjs --production-release",
     "verify:migration-closure": "node --experimental-strip-types scripts/verify-migration-closure.mts",
+    "verify:legacy-retirement": "node --experimental-strip-types scripts/verify-legacy-retirement.mts",
     "verify:release": "node --experimental-strip-types scripts/verify-release-artifact.mts",
-    "verify": "npm run contracts:check && npm run verify:migration-closure && npm run format:check && npm run check && npm run go:check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e && npm run verify:release",
+    "verify": "npm run contracts:check && npm run verify:migration-closure && npm run verify:legacy-retirement && npm run format:check && npm run check && npm run go:check && FUKAMU_E2E_USE_PREBUILT=1 npm run test:e2e && npm run verify:release",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

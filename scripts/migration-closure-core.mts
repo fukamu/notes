@@ -1,4 +1,4 @@
-export const migrationClosureSchemaVersion = 1;
+export const migrationClosureSchemaVersion = 2;
 
 const shaPattern = /^[a-f0-9]{40}$/u;
 const digestPattern = /^[a-f0-9]{64}$/u;
@@ -37,7 +37,11 @@ export type RetirementEvidence = Readonly<{
   phase: 'reference-present' | 'retired';
   sourceRevision: string;
   sourceTrees: readonly Readonly<{ path: string; gitTree: string }>[];
-  legacyTestCorpus: Readonly<{ files: number; sha256: string }>;
+  legacyTestCorpus: Readonly<{
+    revision: string;
+    files: number;
+    sha256: string;
+  }>;
   groups: readonly Readonly<{
     id: string;
     features: readonly string[];
@@ -210,6 +214,7 @@ function decodeRetirement(candidate: unknown): RetirementEvidence {
   }
   const corpus = record(value.legacyTestCorpus, 'legacy test corpus');
   const legacyTestCorpus = {
+    revision: revision(corpus.revision, 'legacy test corpus revision'),
     files: positiveInteger(corpus.files, 'legacy test corpus files'),
     sha256: digest(corpus.sha256, 'legacy test corpus digest'),
   };

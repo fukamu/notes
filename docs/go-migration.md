@@ -1820,14 +1820,18 @@ immediate Go effects, a pinned Stripe transport, and a closed HTTP contract.
 The draft itself remains untouched and unapproved. F28 remains intentionally
 absent rather than silently becoming a scheduler or realtime service.
 
-`npm run verify:migration-closure` is part of the shared gate. While the
-reference implementation remains checked in, it binds `app/api`, `server`,
+`npm run verify:migration-closure` and
+`npm run verify:legacy-retirement` are part of the shared gate. While the
+reference implementation remains checked in, they bind `app/api`, `server`,
 `db`, and `drizzle` to the exact T14a integration revision and Git tree IDs,
-assigns every file to one retirement group, and fixes the complete legacy test
-corpus by count and digest. Any unrecorded feature ID, evidence path, source
-file, test drift, revision drift, overlap, or unsafe path fails verification.
-T17 must change the phase and retained evidence deliberately in the same
-reviewed removal, rather than merely deleting directories until checks pass.
+assign every source file to one retirement group, and bind each of the 138
+legacy-dependent test files to its own path, digest, feature rows, disposition,
+and executable evidence. The legacy source snapshot and later test-corpus
+snapshot have separate recorded revisions. Any unrecorded feature ID, evidence
+path, source file, test drift, revision drift, overlap, or unsafe path fails
+verification. T17 must change the phase and retained evidence deliberately in
+the same reviewed removal, rather than merely deleting directories until
+checks pass.
 
 The typed migration benchmark accepts only a root loopback HTTP URL, requires a
 unique disposable-store label, uses the same checked-in legacy sync fixture,
