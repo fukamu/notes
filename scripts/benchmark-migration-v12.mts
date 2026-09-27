@@ -2200,6 +2200,7 @@ async function writeOwnedSQL(
 
 async function singleSQLiteFile(root: string): Promise<string> {
   const matches: string[] = [];
+  const metadata: string[] = [];
   const visit = async (directory: string): Promise<void> => {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const absolute = path.join(directory, entry.name);
@@ -2208,15 +2209,18 @@ async function singleSQLiteFile(root: string): Promise<string> {
         throw new Error('D1 store contains a symlink');
       }
       if (info.isDirectory()) await visit(absolute);
-      else if (info.isFile() && /\.sqlite(?:3)?$/u.test(entry.name))
-        matches.push(absolute);
-      else if (!info.isFile())
+      else if (info.isFile() && /\.sqlite(?:3)?$/u.test(entry.name)) {
+        if (entry.name === 'metadata.sqlite') metadata.push(absolute);
+        else matches.push(absolute);
+      } else if (!info.isFile())
         throw new Error('D1 store contains a non-regular entry');
     }
   };
   await visit(root);
-  if (matches.length !== 1 || !matches[0]) {
-    throw new Error('fresh D1 store must contain exactly one SQLite database');
+  if (metadata.length !== 1 || matches.length !== 1 || !matches[0]) {
+    throw new Error(
+      'fresh D1 store must contain one D1 database and one metadata database',
+    );
   }
   return matches[0];
 }
