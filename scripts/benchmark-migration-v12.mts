@@ -462,10 +462,15 @@ async function buildRuntime(paths: OwnedPaths): Promise<BuiltRuntime> {
     ),
   ]);
 
-  const referenceWrangler = path.join(
-    referenceRoot,
-    'node_modules/.bin/wrangler',
+  const referenceModules = path.join(referenceRoot, 'node_modules');
+  const referenceWrangler = await realpath(
+    path.join(referenceModules, '.bin/wrangler'),
   );
+  if (!referenceWrangler.startsWith(`${referenceModules}${path.sep}`)) {
+    throw new Error(
+      'reference Wrangler resolves outside reference node_modules',
+    );
+  }
   await requireRegularExecutable(referenceWrangler, 'reference Wrangler');
   await buildReferenceTrees(paths, baseEnvironment);
 
