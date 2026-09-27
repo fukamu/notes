@@ -1,4 +1,3 @@
-import type { Metadata } from 'next';
 import {
   BillingCheckoutBoundary,
   type BillingCheckoutSource,
@@ -7,7 +6,7 @@ import { billingUiOfferFromDisclosure } from '@/lib/application/billing-ui';
 import { commercialDisclosureForCurrentEnvironment } from '@/lib/environment/legal-commerce';
 import { legalTermsForCurrentEnvironment } from '@/lib/environment/legal-terms';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: '申込み内容の最終確認 | FUKAMU Notes',
 };
 

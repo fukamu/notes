@@ -1,18 +1,28 @@
 # GCP Cloud KMS adapter
 
-Issue #260 supplies the provider adapter selected for wrapping and unwrapping
-Vault data-encryption keys (DEKs). It implements the existing
-`KeyManagementPort`; envelope encryption, Vault keyring selection, rotation,
-and content storage remain provider-neutral. This change does not create a GCP
-project, key ring, key, service account, credential, secret, or production
+Issue #260 supplied the historical TypeScript provider adapter selected for
+wrapping and unwrapping Vault data-encryption keys (DEKs). T17 removed that
+server implementation. Envelope encryption, Vault keyring selection, rotation,
+and content storage remain provider-neutral in Go. This work does not create a
+GCP project, key ring, key, service account, credential, secret, or production
 binding, and it does not deploy or rotate any production key.
+
+Issue #428 ported the same boundary to Go under
+`backend/internal/adapters/kms`. The frozen vector records the former
+TypeScript/Go migration comparison; current executable coverage is Go unit
+coverage with a local injected transport. The Go module is disconnected from
+the running server. This documentation describes a candidate provider adapter,
+not approval to create a key, identity, credential, network path, or paid
+service.
 
 ## Envelope boundary
 
-The application creates each 32-byte DEK locally with Web Crypto. It sends only
-that DEK and authenticated context to Cloud KMS `Encrypt`, then retains only the
-returned ciphertext and metadata. Content plaintext is encrypted locally with
-AES-256-GCM by the existing envelope service and is never sent to Cloud KMS.
+The current Go adapter creates each 32-byte DEK locally with `crypto/rand`. The
+removed TypeScript adapter used Web Crypto and remains historical comparison
+only. Go sends only the DEK and authenticated context to Cloud KMS `Encrypt`,
+then retains only the returned ciphertext and metadata. Content plaintext is
+encrypted locally with AES-256-GCM by the envelope service and is never sent to
+Cloud KMS.
 
 The adapter requires one fully qualified CryptoKeyVersion resource, for example:
 
@@ -86,3 +96,11 @@ and its composition option only; it must not delete metadata, ciphertext, or a
 provider key. Once production metadata refers to a GCP CryptoKeyVersion, retain
 that readable version until the explicit recovery and retirement process proves
 it safe to disable or destroy.
+
+The Go tests additionally pass caller cancellation through every KMS request,
+bound response bodies, reject malformed canonical base64 and CRC32C values, and
+return fixed errors without including provider responses or tokens. PostgreSQL
+migration 00004 stores the exact version reference and wrapped ciphertext only.
+Applying that migration outside the disposable local/test database, selecting
+the resource, granting IAM, and accepting KMS cost all remain separate approval
+points.

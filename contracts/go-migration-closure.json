@@ -1,0 +1,883 @@
+{
+  "schemaVersion": 3,
+  "baseline": {
+    "mainRevision": "f423da9932163980485ecc5bc2055b7c8c3b3d8b",
+    "legacyRetirementRevision": "e8936ab90768774371d84b4808c100d546649943",
+    "integrationBranch": "integration/409-go-backend-migration"
+  },
+  "features": [
+    {
+      "id": "F01",
+      "state": "A",
+      "migration": "migrated",
+      "verification": ["V01", "V10"],
+      "goEvidence": ["backend/internal/httpapi/static.go"]
+    },
+    {
+      "id": "F02",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V02", "V03"],
+      "goEvidence": [
+        "backend/internal/access/access.go",
+        "backend/internal/launchgate/gate.go"
+      ]
+    },
+    {
+      "id": "F03",
+      "state": "A",
+      "migration": "migrated",
+      "verification": ["V01", "V04", "V10"],
+      "goEvidence": [
+        "backend/internal/synclegacy/decode.go",
+        "backend/internal/adapters/postgres/legacy_sync.go"
+      ]
+    },
+    {
+      "id": "F04",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V02", "V03", "V04"],
+      "goEvidence": [
+        "backend/internal/identity/session.go",
+        "backend/internal/runtimefoundation/foundation.go",
+        "backend/internal/httpapi/session_context.go"
+      ],
+      "note": "Issue #511 connects the scoped hash-only local-fixture session; production issuance and routes remain closed."
+    },
+    {
+      "id": "F05",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V03"],
+      "goEvidence": [
+        "backend/internal/identity/oidc.go",
+        "backend/internal/adapters/oidc/provider.go"
+      ]
+    },
+    {
+      "id": "F06",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V03"],
+      "goEvidence": [
+        "backend/internal/identity/email_otp.go",
+        "backend/internal/adapters/otp/crypto.go"
+      ]
+    },
+    {
+      "id": "F07",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V03", "V04"],
+      "goEvidence": [
+        "backend/internal/identity/session.go",
+        "backend/internal/adapters/postgres/session.go",
+        "backend/internal/httpapi/session_context.go"
+      ],
+      "note": "Issue #511 exposes only the authenticated local-fixture Vault context and never returns the bearer token."
+    },
+    {
+      "id": "F08",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V03", "V07"],
+      "goEvidence": [
+        "backend/internal/identity/signup.go",
+        "backend/internal/legal/terms_signup.go"
+      ]
+    },
+    {
+      "id": "F09",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V04", "V05"],
+      "goEvidence": [
+        "backend/internal/syncv2/content.go",
+        "backend/internal/adapters/postgres/sync_v2_content.go",
+        "backend/cmd/notes/main.go"
+      ],
+      "note": "Issue #511 connects encrypted hydration only in the exact local-fixture graph; production remains closed."
+    },
+    {
+      "id": "F10",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V01", "V04", "V05"],
+      "goEvidence": [
+        "backend/internal/syncv2/application.go",
+        "backend/internal/httpapi/sync_v2.go"
+      ],
+      "note": "Issue #511 mounts Sync v2 only for the exact local-fixture profile and closes legacy sync there."
+    },
+    {
+      "id": "F11",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V06"],
+      "goEvidence": [
+        "backend/internal/cryptocontent/service.go",
+        "backend/internal/adapters/contentcrypto/aes_gcm.go",
+        "backend/cmd/notes/main.go"
+      ],
+      "note": "Issue #511 connects AES-256-GCM content sealing in the guarded local fixture; production remains closed."
+    },
+    {
+      "id": "F12",
+      "state": "A/B/C",
+      "migration": "migrated",
+      "verification": ["V06", "V09"],
+      "goEvidence": [
+        "backend/internal/adapters/kms/gcp.go",
+        "backend/internal/adapters/kms/rest.go",
+        "backend/internal/adapters/recoverykey/directory.go"
+      ],
+      "note": "Issue #511 connects only the local fixture key directory; production KMS and external proof remain approval-pending."
+    },
+    {
+      "id": "F13",
+      "state": "B",
+      "migration": "migrated",
+      "verification": ["V04", "V06", "V08"],
+      "goEvidence": [
+        "backend/internal/cryptocontent/rotation.go",
+        "backend/internal/operations/dek_rotation.go"
+      ]
+    },
+    {
+      "id": "F14",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V04", "V06", "V08"],
+      "goEvidence": [
+        "backend/internal/encryptedobject/core.go",
+        "backend/internal/adapters/postgres/encrypted_object.go",
+        "backend/internal/adapters/objectstorage/directory.go"
+      ],
+      "note": "Issue #511 connects immutable encrypted objects only under the owner-private local fixture root."
+    },
+    {
+      "id": "F15",
+      "state": "B/C",
+      "migration": "migrated",
+      "verification": ["V06", "V08"],
+      "goEvidence": [
+        "backend/internal/encryptedobject/recovery_service.go",
+        "backend/internal/operations/recovery_drill.go"
+      ]
+    },
+    {
+      "id": "F16",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V04", "V05"],
+      "goEvidence": [
+        "backend/internal/quota/ledger.go",
+        "backend/internal/adapters/postgres/quota.go",
+        "backend/internal/httpapi/sync_v2.go"
+      ],
+      "note": "Issue #511 enforces the PostgreSQL quota ledger through local Sync v2; production remains closed."
+    },
+    {
+      "id": "F17",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V04", "V07"],
+      "goEvidence": [
+        "backend/internal/billing/core.go",
+        "backend/internal/adapters/postgres/billing.go",
+        "backend/cmd/notes/main.go"
+      ],
+      "note": "Issues #510 and #511 reuse the exact seeded local Billing projection without enabling provider effects."
+    },
+    {
+      "id": "F18",
+      "state": "B/C",
+      "migration": "migrated",
+      "verification": ["V07", "V09"],
+      "goEvidence": [
+        "backend/internal/stripebilling/core.go",
+        "backend/internal/adapters/stripe/provider.go"
+      ]
+    },
+    {
+      "id": "F19",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V05", "V07"],
+      "goEvidence": [
+        "backend/internal/entitlement/core.go",
+        "backend/internal/adapters/postgres/entitlement.go",
+        "backend/internal/runtimefoundation/foundation.go"
+      ],
+      "note": "Issue #511 connects seeded local entitlement evaluation; production and external provider decisions remain closed."
+    },
+    {
+      "id": "F20",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V01", "V07"],
+      "goEvidence": [
+        "backend/internal/legal/contract_service.go",
+        "backend/internal/httpapi/legal.go",
+        "backend/internal/adapters/localcommerce/provider.go"
+      ],
+      "note": "Issue #510 connects URL-free no-charge checkout only in the guarded local-fixture profile; production remains closed."
+    },
+    {
+      "id": "F21",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V01", "V07"],
+      "goEvidence": [
+        "backend/internal/legal/terms_service.go",
+        "backend/internal/httpapi/legal.go",
+        "backend/internal/adapters/localcommerce/source.go"
+      ],
+      "note": "Issue #510 connects typed test terms and PostgreSQL evidence only in the guarded local-fixture profile; production remains closed."
+    },
+    {
+      "id": "F22",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V01", "V07"],
+      "goEvidence": [
+        "backend/internal/billing/cancellation.go",
+        "backend/internal/adapters/stripe/provider.go",
+        "backend/internal/adapters/localcommerce/provider.go",
+        "backend/internal/httpapi/billing_cancellation.go"
+      ],
+      "note": "Issue #496 ports the Draft PR #404 effect contract; Issue #510 connects only a deterministic no-write local-fixture provider. Stripe and production remain disconnected."
+    },
+    {
+      "id": "F23",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V03", "V04", "V07", "V08", "V10"],
+      "goEvidence": [
+        "backend/internal/accountdeletion/application.go",
+        "backend/internal/httpapi/account_deletion.go",
+        "backend/internal/adapters/localfixture/deletion_barrier.go",
+        "backend/internal/adapters/postgres/local_fixture_deletion_preflight.go",
+        "backend/internal/adapters/postgres/local_fixture_runtime_lease.go",
+        "backend/internal/runtimefoundation/vault_activity_fence.go",
+        "backend/cmd/notes/main.go"
+      ],
+      "note": "Issue #512 connects the full saga only in the exact disposable local fixture with an explicit delete-live-evidence policy. Undecided/default/production stay closed; non-pristine fixture restart without that policy fails closed."
+    },
+    {
+      "id": "F24",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V01", "V03", "V04", "V08", "V10"],
+      "goEvidence": [
+        "backend/cmd/notes/main.go",
+        "backend/internal/adapters/postgres/privacy_request.go",
+        "backend/internal/adapters/privacydeletion/handoff.go",
+        "backend/internal/adapters/privacyunavailable/provider.go",
+        "backend/internal/httpapi/privacy_request.go",
+        "backend/internal/privacyrequest/application.go",
+        "backend/internal/runtimefoundation/vault_activity_fence.go"
+      ],
+      "note": "Issue #513 mounts only owner-scoped Submit/Status in the exact disposable local fixture. Verification, fulfillment, scheduling, and production remain closed; explicit delete-live evidence composes a controlled Start-only deletion handoff without Resume."
+    },
+    {
+      "id": "F25",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V04", "V11"],
+      "goEvidence": [
+        "backend/migrations/migrations.go",
+        "backend/internal/adapters/postgres/migrator.go"
+      ]
+    },
+    {
+      "id": "F26",
+      "state": "B/C",
+      "migration": "migrated",
+      "verification": ["V08", "V09"],
+      "goEvidence": [
+        "backend/internal/operations/account_deletion_audit.go",
+        "backend/internal/operations/billing_reconciliation.go",
+        "backend/internal/operations/dek_reencryption.go",
+        "backend/internal/operations/dek_rotation.go",
+        "backend/internal/operations/delete_outbox.go",
+        "backend/internal/operations/launch_policy.go",
+        "backend/internal/operations/orphan_scan.go",
+        "backend/internal/operations/quota_finalization.go",
+        "backend/internal/operations/quota_reconciliation.go",
+        "backend/internal/operations/recovery_drill.go",
+        "backend/internal/telemetry/alert.go",
+        "backend/internal/telemetry/codec.go",
+        "backend/internal/telemetry/delivery.go",
+        "backend/internal/telemetry/logger.go",
+        "backend/internal/telemetry/metrics.go",
+        "backend/internal/telemetry/policy.go",
+        "backend/cmd/notesctl/main.go"
+      ]
+    },
+    {
+      "id": "F27",
+      "state": "A/B",
+      "migration": "migrated",
+      "verification": ["V01", "V10", "V11"],
+      "goEvidence": [
+        "contracts/openapi.yaml",
+        "backend/internal/httpapi/handler.go",
+        "backend/internal/httpapi/static.go"
+      ]
+    },
+    {
+      "id": "F28",
+      "state": "C",
+      "migration": "intentionally-absent",
+      "verification": ["V08"],
+      "goEvidence": [],
+      "note": "No scheduler or realtime service exists in the connected product; migration does not add one."
+    }
+  ],
+  "verifications": [
+    {
+      "id": "V01",
+      "status": "complete",
+      "evidence": [
+        "contracts/openapi.yaml",
+        "tests/contracts/migration-fixtures.test.ts",
+        "backend/internal/httpapi/handler_test.go",
+        "backend/internal/httpapi/privacy_request_test.go",
+        "backend/internal/httpapi/session_context_test.go",
+        "backend/internal/httpapi/sync_v2_test.go"
+      ]
+    },
+    {
+      "id": "V02",
+      "status": "complete",
+      "evidence": [
+        "backend/internal/adapters/access/local_test.go",
+        "backend/internal/launchgate/gate_test.go"
+      ]
+    },
+    {
+      "id": "V03",
+      "status": "complete",
+      "evidence": [
+        "backend/internal/identity/session_test.go",
+        "backend/internal/identity/oidc_test.go",
+        "backend/internal/identity/email_otp_test.go",
+        "backend/internal/runtimefoundation/foundation_test.go"
+      ]
+    },
+    {
+      "id": "V04",
+      "status": "complete",
+      "evidence": [
+        "backend/tests/integration/postgres_foundation_test.go",
+        "backend/tests/integration/legacy_sync_test.go",
+        "backend/tests/integration/local_fixture_foundation_test.go",
+        "backend/tests/integration/local_fixture_runtime_lease_test.go",
+        "backend/tests/integration/account_deletion_test.go",
+        "backend/cmd/notes/main_integration_test.go"
+      ]
+    },
+    {
+      "id": "V05",
+      "status": "complete",
+      "evidence": [
+        "backend/tests/integration/quota_ledger_test.go",
+        "backend/tests/integration/sync_v2_application_test.go",
+        "backend/cmd/notes/main_integration_test.go"
+      ]
+    },
+    {
+      "id": "V06",
+      "status": "complete",
+      "evidence": [
+        "backend/internal/cryptocontent/model_test.go",
+        "backend/internal/encryptedobject/recovery_service_test.go",
+        "backend/cmd/notes/main_integration_test.go"
+      ]
+    },
+    {
+      "id": "V07",
+      "status": "complete",
+      "evidence": [
+        "backend/internal/billing/cancellation_test.go",
+        "backend/internal/adapters/localcommerce/provider_test.go",
+        "backend/internal/adapters/localcommerce/source_test.go",
+        "backend/internal/adapters/stripe/provider_test.go",
+        "backend/internal/httpapi/billing_cancellation_test.go",
+        "backend/tests/integration/billing_projection_test.go",
+        "backend/tests/integration/contract_evidence_test.go",
+        "backend/tests/integration/local_commerce_runtime_test.go",
+        "tests/e2e/billing-ui.spec.ts",
+        "tests/unit/e2e-server.test.ts"
+      ]
+    },
+    {
+      "id": "V08",
+      "status": "complete",
+      "evidence": [
+        "backend/cmd/notesctl/main_test.go",
+        "backend/internal/operations/account_deletion_audit_test.go",
+        "backend/internal/operations/billing_reconciliation_test.go",
+        "backend/internal/operations/dek_reencryption_test.go",
+        "backend/tests/integration/account_deletion_test.go",
+        "backend/cmd/notes/main_integration_test.go",
+        "backend/cmd/notesctl/prepare_e2e_integration_test.go",
+        "backend/internal/operations/dek_rotation_test.go",
+        "backend/internal/operations/delete_outbox_test.go",
+        "backend/internal/operations/launch_policy_test.go",
+        "backend/internal/operations/launch_policy_architecture_test.go",
+        "backend/internal/operations/orphan_scan_test.go",
+        "backend/internal/operations/quota_finalization_test.go",
+        "backend/internal/operations/quota_reconciliation_test.go",
+        "backend/internal/operations/recovery_drill_test.go",
+        "backend/internal/telemetry/alert_test.go",
+        "backend/internal/telemetry/codec_test.go",
+        "backend/internal/telemetry/delivery_test.go",
+        "backend/internal/telemetry/logger_test.go",
+        "backend/internal/telemetry/metrics_test.go",
+        "backend/internal/telemetry/policy_test.go"
+      ]
+    },
+    {
+      "id": "V09",
+      "status": "approval-pending",
+      "evidence": ["docs/go-migration-decisions.md"],
+      "note": "External provider and staging evidence requires separate approval."
+    },
+    {
+      "id": "V10",
+      "status": "complete",
+      "evidence": [
+        "tests/e2e/notes.spec.ts",
+        "tests/e2e/privacy-request-ui.spec.ts",
+        "tests/e2e/logout-purge.spec.ts",
+        "tests/integration/authenticated-notes-account-deletion.test.tsx",
+        "tests/integration/logout-runtime-coordination.test.ts",
+        "tests/unit/service-worker.test.ts",
+        "backend/cmd/notes/main_integration_test.go"
+      ]
+    },
+    {
+      "id": "V11",
+      "status": "complete",
+      "evidence": [
+        "scripts/verify-release-artifact.mts",
+        "docs/go-release-artifact.md",
+        "scripts/verify-legacy-retirement.mts",
+        "docs/legacy-typescript-retirement.md"
+      ]
+    },
+    {
+      "id": "V12",
+      "status": "complete",
+      "evidence": [
+        "docs/benchmarks/migration-v12-local.json",
+        "docs/migration-v12-performance.md",
+        "scripts/benchmark-migration-v12.mts",
+        "scripts/verify-migration-v12-evidence.mts"
+      ],
+      "note": "Issue #525 records five independent local runs for the representative 100/1,000/10,000-card legacy API matrix, 100/10,000-card native UI matrix, and 10,000-entry Sync v2 plus 100-vault concurrency evidence. The provisional review envelope is diagnostic: direct API cases are within it, while the 10,000-card current native UI initial-ready case is recorded for production-shaped follow-up because UI and protocol paths differ."
+    }
+  ],
+  "profiles": [
+    {
+      "id": "local-private-legacy",
+      "features": [
+        { "id": "F01", "state": "connected", "evidence": ["E01"] },
+        { "id": "F02", "state": "connected", "evidence": ["E01"] },
+        { "id": "F03", "state": "connected", "evidence": ["E01"] },
+        { "id": "F04", "state": "closed", "evidence": ["E01"] },
+        { "id": "F05", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F06", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F07", "state": "closed", "evidence": ["E01"] },
+        { "id": "F08", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F09", "state": "closed", "evidence": ["E01"] },
+        { "id": "F10", "state": "closed", "evidence": ["E01"] },
+        { "id": "F11", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F12", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F13", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F14", "state": "closed", "evidence": ["E01"] },
+        { "id": "F15", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F16", "state": "closed", "evidence": ["E01"] },
+        { "id": "F17", "state": "closed", "evidence": ["E01"] },
+        { "id": "F18", "state": "not-connected", "evidence": ["E01"] },
+        { "id": "F19", "state": "closed", "evidence": ["E01"] },
+        { "id": "F20", "state": "closed", "evidence": ["E01"] },
+        { "id": "F21", "state": "closed", "evidence": ["E01"] },
+        { "id": "F22", "state": "closed", "evidence": ["E01"] },
+        { "id": "F23", "state": "closed", "evidence": ["E01"] },
+        { "id": "F24", "state": "closed", "evidence": ["E01"] },
+        { "id": "F25", "state": "connected", "evidence": ["E01"] },
+        {
+          "id": "F26",
+          "state": "partially-connected",
+          "evidence": ["E01"],
+          "note": "Structured process lifecycle telemetry and guarded profile preparation are executable; provider delivery, scheduling, and production operations automation are not connected."
+        },
+        {
+          "id": "F27",
+          "state": "partially-connected",
+          "evidence": ["E01"],
+          "note": "Static and legacy wire contracts are live; fixture-only business wires are closed."
+        },
+        {
+          "id": "F28",
+          "state": "intentionally-absent",
+          "evidence": ["E01"],
+          "note": "No scheduler or realtime runtime exists."
+        }
+      ],
+      "note": "The private loopback composition keeps the historical signed legacy Sync surface. Fixture-only business routes are deliberately closed, and this profile is serialized because it does not own the local-fixture runtime lease."
+    },
+    {
+      "id": "local-fixture-undecided",
+      "features": [
+        { "id": "F01", "state": "connected", "evidence": ["E02"] },
+        { "id": "F02", "state": "connected", "evidence": ["E02"] },
+        { "id": "F03", "state": "closed", "evidence": ["E02"] },
+        { "id": "F04", "state": "connected", "evidence": ["E02"] },
+        { "id": "F05", "state": "not-connected", "evidence": ["E02"] },
+        { "id": "F06", "state": "not-connected", "evidence": ["E02"] },
+        { "id": "F07", "state": "connected", "evidence": ["E02"] },
+        { "id": "F08", "state": "not-connected", "evidence": ["E02"] },
+        { "id": "F09", "state": "connected", "evidence": ["E02"] },
+        { "id": "F10", "state": "connected", "evidence": ["E02"] },
+        { "id": "F11", "state": "connected", "evidence": ["E02"] },
+        { "id": "F12", "state": "connected", "evidence": ["E02"] },
+        { "id": "F13", "state": "not-connected", "evidence": ["E02"] },
+        { "id": "F14", "state": "connected", "evidence": ["E02"] },
+        { "id": "F15", "state": "not-connected", "evidence": ["E02"] },
+        { "id": "F16", "state": "connected", "evidence": ["E02"] },
+        {
+          "id": "F17",
+          "state": "partially-connected",
+          "evidence": ["E02"],
+          "note": "The seeded projection is live without an external billing provider."
+        },
+        { "id": "F18", "state": "not-connected", "evidence": ["E02"] },
+        { "id": "F19", "state": "connected", "evidence": ["E02"] },
+        { "id": "F20", "state": "connected", "evidence": ["E02"] },
+        { "id": "F21", "state": "connected", "evidence": ["E02"] },
+        { "id": "F22", "state": "connected", "evidence": ["E02"] },
+        { "id": "F23", "state": "closed", "evidence": ["E02"] },
+        {
+          "id": "F24",
+          "state": "partially-connected",
+          "evidence": ["E02"],
+          "note": "Submit and Status are live; verification and fulfillment remain unavailable."
+        },
+        { "id": "F25", "state": "connected", "evidence": ["E02"] },
+        {
+          "id": "F26",
+          "state": "partially-connected",
+          "evidence": ["E02"],
+          "note": "Structured process lifecycle telemetry and guarded fixture preparation/migration commands are executable; provider delivery and scheduling are not connected."
+        },
+        { "id": "F27", "state": "connected", "evidence": ["E02"] },
+        {
+          "id": "F28",
+          "state": "intentionally-absent",
+          "evidence": ["E02"],
+          "note": "No scheduler or realtime runtime exists."
+        }
+      ],
+      "note": "The exact disposable fixture connects scoped Sync v2, session, legal, URL-free commerce, cancellation, and privacy Submit/Status. Account deletion remains unavailable under the safe undecided policy."
+    },
+    {
+      "id": "local-fixture-delete-live-evidence",
+      "features": [
+        { "id": "F01", "state": "connected", "evidence": ["E03"] },
+        { "id": "F02", "state": "connected", "evidence": ["E03"] },
+        { "id": "F03", "state": "closed", "evidence": ["E03"] },
+        { "id": "F04", "state": "connected", "evidence": ["E03"] },
+        { "id": "F05", "state": "not-connected", "evidence": ["E03"] },
+        { "id": "F06", "state": "not-connected", "evidence": ["E03"] },
+        { "id": "F07", "state": "connected", "evidence": ["E03"] },
+        { "id": "F08", "state": "not-connected", "evidence": ["E03"] },
+        { "id": "F09", "state": "connected", "evidence": ["E03"] },
+        { "id": "F10", "state": "connected", "evidence": ["E03"] },
+        { "id": "F11", "state": "connected", "evidence": ["E03"] },
+        { "id": "F12", "state": "connected", "evidence": ["E03"] },
+        { "id": "F13", "state": "not-connected", "evidence": ["E03"] },
+        { "id": "F14", "state": "connected", "evidence": ["E03"] },
+        { "id": "F15", "state": "not-connected", "evidence": ["E03"] },
+        { "id": "F16", "state": "connected", "evidence": ["E03"] },
+        {
+          "id": "F17",
+          "state": "partially-connected",
+          "evidence": ["E03"],
+          "note": "The seeded projection is live without an external billing provider."
+        },
+        { "id": "F18", "state": "not-connected", "evidence": ["E03"] },
+        { "id": "F19", "state": "connected", "evidence": ["E03"] },
+        { "id": "F20", "state": "connected", "evidence": ["E03"] },
+        { "id": "F21", "state": "connected", "evidence": ["E03"] },
+        { "id": "F22", "state": "connected", "evidence": ["E03"] },
+        {
+          "id": "F23",
+          "state": "connected",
+          "evidence": ["E03", "E04"],
+          "note": "Only the exact disposable delete-live-evidence policy admits this saga."
+        },
+        {
+          "id": "F24",
+          "state": "partially-connected",
+          "evidence": ["E03"],
+          "note": "Submit and Status are live; controlled deletion handoff is test-only and no processor is mounted."
+        },
+        { "id": "F25", "state": "connected", "evidence": ["E03"] },
+        {
+          "id": "F26",
+          "state": "partially-connected",
+          "evidence": ["E03"],
+          "note": "Structured process lifecycle telemetry and guarded fixture preparation/migration commands are executable; provider delivery and scheduling are not connected."
+        },
+        { "id": "F27", "state": "connected", "evidence": ["E03"] },
+        {
+          "id": "F28",
+          "state": "intentionally-absent",
+          "evidence": ["E03"],
+          "note": "No scheduler or realtime runtime exists."
+        }
+      ],
+      "note": "This profile is only the exact fresh disposable local fixture with explicit delete-live-evidence opt-in. It is not a production legal-evidence policy or deployment approval."
+    },
+    {
+      "id": "production-disabled",
+      "features": [
+        { "id": "F01", "state": "connected", "evidence": ["E05"] },
+        { "id": "F02", "state": "closed", "evidence": ["E05"] },
+        { "id": "F03", "state": "closed", "evidence": ["E05"] },
+        { "id": "F04", "state": "closed", "evidence": ["E05"] },
+        { "id": "F05", "state": "not-connected", "evidence": ["E05"] },
+        { "id": "F06", "state": "not-connected", "evidence": ["E05"] },
+        { "id": "F07", "state": "closed", "evidence": ["E05"] },
+        { "id": "F08", "state": "not-connected", "evidence": ["E05"] },
+        { "id": "F09", "state": "closed", "evidence": ["E05"] },
+        { "id": "F10", "state": "closed", "evidence": ["E05"] },
+        { "id": "F11", "state": "not-connected", "evidence": ["E05"] },
+        {
+          "id": "F12",
+          "state": "approval-pending",
+          "evidence": ["E05"],
+          "note": "No production key provider or credential is selected."
+        },
+        { "id": "F13", "state": "not-connected", "evidence": ["E05"] },
+        { "id": "F14", "state": "closed", "evidence": ["E05"] },
+        { "id": "F15", "state": "not-connected", "evidence": ["E05"] },
+        { "id": "F16", "state": "closed", "evidence": ["E05"] },
+        { "id": "F17", "state": "closed", "evidence": ["E05"] },
+        {
+          "id": "F18",
+          "state": "approval-pending",
+          "evidence": ["E05"],
+          "note": "No production Stripe provider, secret, webhook, or paid action is configured."
+        },
+        { "id": "F19", "state": "closed", "evidence": ["E05"] },
+        { "id": "F20", "state": "closed", "evidence": ["E05"] },
+        { "id": "F21", "state": "closed", "evidence": ["E05"] },
+        { "id": "F22", "state": "closed", "evidence": ["E05"] },
+        { "id": "F23", "state": "closed", "evidence": ["E05"] },
+        { "id": "F24", "state": "closed", "evidence": ["E05"] },
+        { "id": "F25", "state": "not-connected", "evidence": ["E05"] },
+        {
+          "id": "F26",
+          "state": "partially-connected",
+          "evidence": ["E05"],
+          "note": "Structured process lifecycle telemetry is executable; operational runners, provider delivery, scheduling, and production operations automation are not connected."
+        },
+        {
+          "id": "F27",
+          "state": "partially-connected",
+          "evidence": ["E05"],
+          "note": "Static frontend delivery is live while every business wire remains closed."
+        },
+        {
+          "id": "F28",
+          "state": "intentionally-absent",
+          "evidence": ["E05"],
+          "note": "No scheduler or realtime runtime exists."
+        }
+      ],
+      "note": "The production-shaped artifact serves static content and health only. Identity, persistence, providers, business APIs, deployment, data migration, and traffic cutover remain unavailable or approval-pending."
+    }
+  ],
+  "executableEvidence": [
+    {
+      "id": "E01",
+      "profile": "local-private-legacy",
+      "kind": "go-test",
+      "path": "backend/cmd/notes/runtime_closure_integration_test.go",
+      "name": "TestWholeRuntimeLocalPrivateLegacy",
+      "gate": "go:test:integration",
+      "selector": "./cmd/notes"
+    },
+    {
+      "id": "E02",
+      "profile": "local-fixture-undecided",
+      "kind": "go-test",
+      "path": "backend/cmd/notes/runtime_closure_integration_test.go",
+      "name": "TestWholeRuntimeLocalFixtureUndecided",
+      "gate": "go:test:integration",
+      "selector": "./cmd/notes"
+    },
+    {
+      "id": "E03",
+      "profile": "local-fixture-delete-live-evidence",
+      "kind": "go-test",
+      "path": "backend/cmd/notes/runtime_closure_integration_test.go",
+      "name": "TestWholeRuntimeLocalFixtureDeleteLiveEvidence",
+      "gate": "go:test:integration",
+      "selector": "./cmd/notes"
+    },
+    {
+      "id": "E04",
+      "profile": "local-fixture-delete-live-evidence",
+      "kind": "playwright-test",
+      "path": "tests/e2e-live-deletion/account-deletion-live.spec.ts",
+      "name": "live disposable account deletion survives an actual Go restart",
+      "gate": "test:e2e:deletion-live",
+      "selector": "playwright.deletion-live.config.ts"
+    },
+    {
+      "id": "E05",
+      "profile": "production-disabled",
+      "kind": "verification-script",
+      "path": "scripts/verify-release-artifact.mts",
+      "name": "verify:release",
+      "gate": "verify:release",
+      "selector": "scripts/verify-release-artifact.mts"
+    }
+  ],
+  "gate": {
+    "rootScript": "verify"
+  },
+  "productionTransition": {
+    "deployment": "not-performed",
+    "databaseMigration": "not-performed",
+    "trafficCutover": "not-performed",
+    "externalResources": "not-performed",
+    "approval": "pending",
+    "note": "Issue #514 records local and CI evidence only. No production hosting, database, provider, key, deployment, migration, traffic, or paid operation was performed."
+  },
+  "retirement": {
+    "phase": "retired",
+    "sourceRevision": "e8936ab90768774371d84b4808c100d546649943",
+    "sourceTrees": [
+      {
+        "path": "app/api",
+        "gitTree": "33be5898306605bb5e16287066f11f069054801f"
+      },
+      {
+        "path": "server",
+        "gitTree": "f01b0ad2dab939766e2d86d46effa61becba5d35"
+      },
+      { "path": "db", "gitTree": "049835774238c8b1726f3e85dc992eb26a6cf144" },
+      {
+        "path": "drizzle",
+        "gitTree": "25f61bc391b0d90c9e3c145f0ebe20caae693632"
+      }
+    ],
+    "legacyTestCorpus": {
+      "revision": "af743246f14f7e0b96accf1ed7e1a1201fc3aaaf",
+      "files": 142,
+      "sha256": "878036f18d5bbfc107ad8f7873f5c9c942145b61d20f9c508a138ed797c1fc1e"
+    },
+    "groups": [
+      {
+        "id": "delivery-sync",
+        "features": ["F02", "F03", "F25"],
+        "legacyPrefixes": [
+          "app/api/launch-status/",
+          "app/api/sync/",
+          "app/api/tsconfig.json",
+          "db/",
+          "server/launch-gate/",
+          "server/runtime-mode.ts"
+        ]
+      },
+      {
+        "id": "identity",
+        "features": ["F04", "F05", "F06", "F07", "F08"],
+        "legacyPrefixes": [
+          "server/core/",
+          "server/control-plane/",
+          "server/signup-admission/",
+          "server/session-boundary.ts",
+          "server/oidc-boundary.ts",
+          "server/email-otp-boundary.ts",
+          "server/adapters/fake-email-otp.ts",
+          "server/adapters/fake-oidc.ts",
+          "server/adapters/fake-session-resolver.ts",
+          "server/adapters/web-oidc.ts",
+          "server/adapters/web-session.ts"
+        ]
+      },
+      {
+        "id": "crypto-object",
+        "features": ["F11", "F12", "F13", "F14", "F15"],
+        "legacyPrefixes": [
+          "server/crypto/",
+          "server/encrypted-object/",
+          "server/adapters/fake-key-management.ts",
+          "server/adapters/fake-private-object-storage.ts",
+          "server/adapters/fake-vault-recovery-backup.ts",
+          "server/adapters/gcp-cloud-kms.ts",
+          "server/adapters/web-object-key.ts"
+        ]
+      },
+      {
+        "id": "vault-sync-quota",
+        "features": ["F09", "F10", "F16"],
+        "legacyPrefixes": [
+          "app/api/v2/sync/",
+          "server/composition/",
+          "server/quota/",
+          "server/sync-v2/",
+          "server/vault-content/"
+        ]
+      },
+      {
+        "id": "billing",
+        "features": ["F17", "F18", "F19", "F22"],
+        "legacyPrefixes": [
+          "app/api/billing/",
+          "server/billing/",
+          "server/entitlement/",
+          "server/stripe/"
+        ]
+      },
+      {
+        "id": "legal",
+        "features": ["F20", "F21"],
+        "legacyPrefixes": [
+          "app/api/account/terms-consent/",
+          "server/legal-checkout/",
+          "server/terms-consent/"
+        ]
+      },
+      {
+        "id": "deletion-privacy",
+        "features": ["F23", "F24"],
+        "legacyPrefixes": [
+          "app/api/account/deletion/",
+          "app/api/account/privacy-requests/",
+          "server/account-deletion/",
+          "server/privacy-request/"
+        ]
+      },
+      {
+        "id": "operations",
+        "features": ["F26"],
+        "legacyPrefixes": ["server/operations/", "server/telemetry/"]
+      },
+      {
+        "id": "migrations",
+        "features": ["F25"],
+        "legacyPrefixes": ["server/migrations/", "drizzle/"]
+      }
+    ]
+  }
+}

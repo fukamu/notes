@@ -56,6 +56,17 @@ approved production composition provides the source, session resolver,
 repository, clock, and identifier generator. Fake ports cover local and test
 composition without external providers.
 
+Go Issue #446 provides the equivalent strict HTTP factories behind an optional
+`LegalRuntime`. It also changes checkout verification to use the latest current
+owner-scoped consent because the real terms and commercial clients generate
+independent submission IDs. Issue #510 supplies that runtime only for the
+explicit local-fixture profile, using typed immutable test terms and
+PostgreSQL evidence. The production/default composition still supplies no
+source or runtime and remains closed. Browser decoders are owned by
+`lib/contracts/terms-consent.ts`, not a server runtime module. Fixture text and
+classification are not production legal approval; see
+[`local-commerce-runtime.md`](local-commerce-runtime.md).
+
 ## Migration and rollback
 
 There is no schema migration in this Issue. Rollback disables the new route and

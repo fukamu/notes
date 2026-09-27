@@ -1,5 +1,11 @@
 # Authenticated legal checkout orchestration
 
+> Historical migration-source note: the TypeScript route/D1 composition
+> described below was removed by T17. The current executable closed boundary is
+> `backend/internal/httpapi/legal.go`, with Go legal/billing services and
+> PostgreSQL persistence. No Sites route or D1 adapter remains in the source
+> tree.
+
 Issue #224 connects the contract evidence from #223 to the existing Billing and
 Stripe public ports. It adds handler factories and fail-closed route stubs, but
 does not compose a production provider, create credentials, send a Stripe
@@ -28,11 +34,15 @@ server clock. It intentionally has no Entitlement dependency, so payment-locked
 customers retain the cancellation recovery path. Confirmed, retryable, and
 terminal results remain distinct while provider references stay server-side.
 
-The checked-in route files return 404 in `legacy-test` and 503 otherwise until a
-separately approved production composition supplies the session store, D1
-evidence/Billing repositories, approved legal offer, provider transport, clock,
-and identifiers. They never select a fake fallback. Local Notes editing and the
-current Sites test environment therefore acquire no billing requirement.
+The Go route returns the disabled-profile compatibility 404 and otherwise
+fails closed until an explicit runtime supplies the session store, PostgreSQL
+evidence/Billing repositories, legal offer, provider transport, clock, and
+identifiers. Issue #510 supplies those ports only in the guarded local-fixture
+profile. Its deterministic provider validates the exact seeded rows and
+returns a URL-free `local-confirmed` result without a network request, charge,
+provider reference, or Billing mutation. Production never selects this fake.
+Removing the historical Sites/D1 source does not activate production Checkout
+or impose a billing requirement on local Notes editing.
 
 ## Evidence and retry ordering
 
@@ -43,6 +53,13 @@ types with one stable UUID value per orchestration. A retry that generates a new
 candidate evidence ID first reloads the original scoped evidence, then sends the
 same provider idempotency key and contract metadata. Provider response loss
 cannot create a second Billing aggregate or change the accepted offer.
+
+Go Issue #444 additionally derives the retry's Billing `createdAt` from the
+first immutable evidence rather than a later request clock. This makes the full
+Billing command stable after provider response loss. The disconnected
+TypeScript path passed the current handler clock and could therefore conflict
+with its existing checkout intent if a retry occurred later; that edge case is
+not preserved as compatibility behavior.
 
 Missing consent, stale hashes, cross-Vault repository results, and identifier
 conflicts stop before provider access. Provider response metadata must match the
@@ -69,17 +86,39 @@ Terms-of-service version consent remains #132. This Issue does not enable
 Stripe Dashboard ToS consent or claim that its commercial-offer consent is the
 same legal act.
 
+The removed TypeScript terms verifier indexed evidence by the checkout submission ID,
+but the terms-consent and checkout clients generate separate identifiers. Go
+Issue #446 deliberately does not reproduce that unreachable composition. It
+verifies the latest immutable evidence in the resolved Account/Vault scope
+against the authoritative current terms. Missing or reconsent-required evidence
+stops before commercial evidence and provider access; an explicitly reviewed
+notice-only change is non-blocking. The commercial submission ID remains solely
+the checkout/provider idempotency key, and the two legal acts remain separate.
+
+Issue #446 also ports the authenticated GET/POST wire contracts to Go. The
+handler factories require a complete, separately supplied `LegalRuntime`, use
+Cookie session ownership, same-origin CSRF, strict 2-KiB JSON, server-generated
+IDs and clocks, and fixed no-store errors. Issue #510 carries the runtime
+through `ServerOptions` only for `local-fixture`; the production command still
+supplies no legal runtime, so the existing 404/503 closure remains there and no
+provider is called.
+
 ## Rollback and verification
 
-There is no new migration beyond #223. Rollback stops new Checkout acceptance
-and reverts the handler/provider mapping while keeping the existing cancellation
-port available. Stored live evidence is not rewritten; account deletion still
-removes it through the #223 cascade. Production changes and real provider
-operations require separate approval.
+The removed TypeScript implementation had no migration beyond #223. Go Issue #444 adds
+PostgreSQL migration 00010 and keeps it disconnected. Rollback stops new
+Checkout acceptance and reverts handler/provider composition while keeping the
+existing cancellation port available. Once evidence exists, migration 00010 and
+stored rows are preserved and a compatible artifact or reviewed forward
+migration is used. T12 must explicitly execute the approved deletion/retention
+workflow; the Go foreign key does not silently cascade. Production changes and
+real provider operations require separate approval.
 
-Focused tests cover authentication, CSRF, body scope injection and limits,
+Focused Go tests cover authentication, CSRF, body scope injection and limits,
 consent/stale-offer rejection, response-loss replay, contract metadata mismatch,
-secret-safe errors, and cancellation during payment lock. Repository gates are:
+secret-safe errors, and cancellation during payment lock. Retained TypeScript
+tests cover only browser disclosure and wire decoding; the former server tests
+are frozen ledger evidence. Repository gates are:
 
 ```bash
 git diff --check

@@ -12,7 +12,7 @@ calling `fetch` or CacheStorage.
 | Request                                                                                              | Policy                                                          |
 | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | `GET /`, canonical card/history/connections navigation                                               | Network response; cached `/` shell only as the offline fallback |
-| `GET /manifest.webmanifest`, `/favicon.svg`, `/_next/static/**` without query or hash                | Static cache                                                    |
+| `GET /manifest.webmanifest`, `/favicon.svg`, `/assets/**` without query or hash                      | Static cache                                                    |
 | API, auth/OAuth callback, billing/account, query-bearing, cross-origin, non-GET, and all other paths | Network only                                                    |
 
 The `/` response is therefore required to stay non-personalized. Personal
@@ -24,10 +24,10 @@ application starts.
 `OfflineAppPort.prepare()` sends the current same-origin resource URLs together
 with `/`, `/manifest.webmanifest`, and `/favicon.svg`. The worker applies the
 cache allowlist and removes duplicates before opening the static cache. It then
-checks `/_next/static/**` entries in parallel and omits only entries already in
+checks `/assets/**` entries in parallel and omits only entries already in
 that same cache from `cache.addAll`. The remaining URLs keep their input order.
 
-The build uses content-hashed chunk names under `/_next/static/`, so a changed
+The build uses content-hashed chunk names under `/assets/`, so a changed
 chunk URL is still fetched and stored. The app shell, manifest, and favicon are
 refreshed on every preparation even when already cached. The worker sends the
 `CACHE_URLS_RESULT/ready` acknowledgement only after all required cache writes
@@ -45,7 +45,7 @@ cleanup after #147 establishes multi-tab quiescence. The page adapter accepts
 only the exact acknowledgement and lists CacheStorage again before allowing
 the pure purge state machine to advance.
 
-Activation of `fukamu-notes-static-v3` removes older FUKAMU cache versions but
+Activation of `fukamu-notes-static-v4` removes older FUKAMU cache versions but
 does not touch another application's caches. This is the forward migration from
 the unsafe v2 policy.
 

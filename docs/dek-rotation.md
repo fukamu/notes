@@ -1,5 +1,10 @@
 # Vault DEK rotation lifecycle
 
+The D1 lifecycle details below are the frozen TypeScript compatibility oracle.
+The executable lifecycle and operations runner are now Go, with state in the
+PostgreSQL migrations/adapters under `backend`; T17 removed the old
+TypeScript/D1 implementation.
+
 Issue #188 adds the first, independently reversible stage of parent #124: a
 provider-neutral lifecycle for generating the next Vault DEK and promoting it
 as the logical write version. Existing ciphertext re-encryption is owned by
@@ -77,3 +82,34 @@ Issue #190 now supplies the fixture-only recovery drill and retirement evidence
 gate described in [DEK rotation recovery drill and retirement gate](dek-rotation-recovery.md).
 The gate has no delete effect and terminates at a separate explicit-production-
 approval-required result even after all evidence passes.
+
+## Explicit Go operations runner
+
+Issue #480 composes the Go state machine and PostgreSQL repository as
+`notesctl dek rotate`. One invocation advances only one exact Account/Vault and
+operation ID through the durable phases. Stable request, generation, and
+completion timestamps make the same command replayable after interruption.
+The runner skips generation when wrapped metadata is already durable and skips
+all provider work after completion. Unknown or cross-owner scope fails before
+KMS access.
+
+The command accepts the existing GCP adapter configuration as a candidate, but
+its flags are only accidental-run guards. Issue tests use a fake key port and a
+disposable loopback database and make no real KMS request. Production identity,
+CryptoKeyVersion, IAM, region/protection level, network, monitoring, cost, and
+shared-service impact remain unapproved. See [Go operations runner](go-operations.md#vault-dek-rotation)
+for invocation, resume, output-redaction, and rollback rules.
+
+Issue #482 adds the bounded follow-on command `notesctl dek reencrypt`. It
+verifies exact ownership and the promoted target before calling the existing
+durable batch service. Each invocation advances no more than the explicit
+limit; `pending` retains the PostgreSQL cursor and completed replay performs no
+storage, crypto, object-key, or KMS work. A committed replacement retains the
+old immutable object through the delete outbox.
+
+Only local/test loopback-database composition exists. Temporary test fakes and
+secure local directories prove process-restart persistence for immutable
+objects and nonce reservations; they are not a production object/nonce-store
+choice. No real provider request was made. Production object storage, nonce
+storage, KMS identity/resource, cost, retention, and shared-service impact
+remain unapproved. See [Vault ciphertext re-encryption](go-operations.md#vault-ciphertext-re-encryption).

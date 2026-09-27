@@ -1,5 +1,11 @@
 # Account deletion browser handoff core
 
+The browser handoff remains TypeScript. References below to the former
+TypeScript server, Sites environment, or D1 persistence are historical
+compatibility context; the server saga and HTTP contracts are now Go with
+PostgreSQL persistence and are composed only by the explicit destructive
+disposable local fixture.
+
 Issue #175 defines the pure browser handoff state machine and runner between the
 server boundary from #174 and the existing crash-resumable logout purge from
 #148. Issue #183 supplies browser persistence, HTTP, entropy, and clock adapters.
@@ -16,16 +22,25 @@ request. The marker contains the generation, revision, idempotency key, current
 phase, and latest continuation status. It contains no note content, email,
 payment data, or provider identifier.
 
-The ordered handoff is:
+The connected exact-fixture handoff is:
 
 1. persist `starting` before the start request;
 2. persist the returned continuation capability as `revoke-pending`;
-3. send one status request so the server executes or confirms the mandatory
+3. prepare the existing logout-purge marker and cross-tab coordination, which
+   immediately quiesces existing peers and blocks newly opened Notes runtimes
+   but does not yet run a deletion target;
+4. send one status request so the server executes or confirms the mandatory
    all-session revocation step;
-4. persist `purge-pending`, then call the existing verified logout-purge runner;
-5. persist `server-pending` and advance at most one remaining server step for
+5. persist `purge-pending`, then call the existing verified logout-purge runner;
+6. persist `server-pending` and advance at most one remaining server step for
    each explicit status action;
-6. conditionally clear the marker only after a terminal server response.
+7. conditionally clear the marker only after a terminal server response.
+
+Logout preparation occurs only after Start has been durably accepted. A policy
+rejection therefore cannot leave the browser durably quiesced. A crash in
+`starting` replays Start with the same idempotency key and then prepares logout;
+a crash in `revoke-pending` idempotently prepares the same logout generation
+before Resume. Preparation failure prevents the first Resume.
 
 A `retry-wait` response while revocation is pending keeps the handoff in that
 phase and leaves local content retained but inaccessible. Local purge starts
@@ -57,19 +72,28 @@ success body from `unknown`. AccountId and VaultId are never accepted from UI
 or request body. Web Crypto supplies 256 random bits for the unpadded base64url
 idempotency key, while clock and fetch remain injected for deterministic tests.
 
-The browser composition reuses the existing `BrowserLogoutPurgeService`; it
-does not duplicate cache, Service Worker, graph worker, tab-lock, or Vault
-database deletion. `LegacyNotesApp` still does not construct this composition,
-so local development and the current test Sites environment remain free of
-authentication, billing, and deletion requirements unless explicitly composed.
+The browser composition reuses one `BrowserLogoutPurgeService` instance for the
+runtime fence, Account deletion runner, cache, Service Worker, graph worker,
+tab coordination, and Vault database deletion. It does not duplicate those
+ports. The live local-fixture route now supplies this runner and deletion UI;
+default/production or an undecided fixture still has no server route and fails
+closed.
+
+The authenticated session-context response carries a strict boolean discovery
+bit derived from whether that complete deletion runtime is mounted. Recovery
+of an existing marker never depends on the bit. A new deletion trigger is
+shown only when it is true, so an undecided fixture cannot persist a `starting`
+marker for a route that will reject admission and then block ordinary Notes.
 
 ## UI and access behavior
 
-`AccountDeletionBoundary` checks durable state before rendering
-`SessionNotesApp`, entering its runtime fence, or constructing Notes runtime
-ports. It wraps the authenticated and anonymous branches when explicitly
-injected, so a reload after server session revocation continues the stored
-handoff instead of showing anonymous content or starting Notes state.
+`AccountDeletionBoundary` is the client composition root outside both
+`ProductionLaunchGate` and authenticated-session bootstrap. It checks durable
+state before requesting launch/session data, rendering `SessionNotesApp`,
+entering its runtime fence, or constructing Notes runtime ports. A reload after
+server session revocation or a launch 403/503 therefore continues the stored
+handoff instead of showing anonymous content or starting Notes state. Only the
+idle/no-marker child mounts launch, session, and Notes runtime.
 
 An authenticated user must open an alert dialog and explicitly confirm the
 irreversible operation. Status distinguishes data retained while revocation is
@@ -80,18 +104,34 @@ timeout. The recovery path does not consult content entitlement, matching the
 server policy that keeps deletion available to payment-locked accounts.
 
 The browser E2E starts the production browser composition with test-only HTTP
-responses, uses two tabs, gives two Vaults the same CardId, and verifies that
-session revocation handoff, local database/cache/worker deletion, reload,
+responses, uses existing and newly opened tabs, gives two Vaults the same
+CardId, and verifies that a revocation `retry-wait` immediately quiesces the
+existing peer and blocks the new runtime while local database/cache/worker data
+is still retained. Only recovery beyond revocation runs purge. Reload,
 back/forward navigation, and continuation completion cannot resurrect the
 deleted Vault or affect the other Vault.
 
 ## Security and rollback
 
 The continuation capability must survive session revocation, so its browser
-storage treats it as a high-entropy, owner-bound, sequence-rotated,
-expiry-bound capability, omits it from URLs and logs, and removes it only with
-the terminal marker's conditional clear. Same-origin script can read IndexedDB;
+storage treats it as a high-entropy, owner-bound, sequence-rotated capability,
+omits it from URLs and logs, and removes it only with the terminal marker's
+conditional clear. The server initially bounds it to seven days, then promotes
+only the already-authorized saga when the revoke claim commits so it can
+recover after the live session is gone. Same-origin script can read IndexedDB;
 preventing script injection remains a required application security control.
+
+If the seven-day token expires before the revocation claim, the runner renews
+only after Resume returns the exact decoded `continuation-required` denial. It
+uses the durable marker's same idempotency key for authenticated Start replay,
+then compare-and-swap persists the returned capability before retrying Resume.
+An arbitrary 401 never takes this path. Renewal requires a live authenticated
+session in the same Account/Vault owner scope and the server operation to
+remain initial with zero receipts;
+ordinary unexpired replay and lost renewal responses are idempotent without a
+sliding expiry. Once a claim exists, Start cannot renew: the claim transaction
+has instead promoted the already-authorized operation's continuation for
+long-lived recovery.
 
 Rolling back the visible composition is safe only if the durable adapter and
 runner remain able to detect and finish existing markers. A deployed rollback

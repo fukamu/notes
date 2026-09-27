@@ -1,0 +1,41 @@
+{
+  "profile": "entitlement-offline-lease-v1",
+  "context": {
+    "accountId": "01991f20-61d2-7000-8000-000000000101",
+    "vaultId": "01991f20-61d2-7000-8000-000000000201",
+    "sessionId": "01991f20-61d2-7000-8000-000000000301",
+    "sessionEpoch": 1
+  },
+  "facts": {
+    "subscriptionId": "01991f20-61d2-7000-8000-000000000701",
+    "version": 2,
+    "lifecycle": {
+      "kind": "trialing",
+      "trialStartedAt": 2000,
+      "trialEndsAt": 1209602000
+    },
+    "paymentMethodReady": true,
+    "cancelAt": null,
+    "updatedAt": 2000
+  },
+  "projectionCheckedAt": 3000,
+  "lease": {
+    "leaseId": "01991f20-61d2-7000-8000-000000001801",
+    "issuedAt": 3100,
+    "policyDuration": 86400000
+  },
+  "expected": {
+    "projectionVersion": 1,
+    "state": "trial-active",
+    "validUntil": 1209602000,
+    "leaseBasis": "trial",
+    "leaseExpiresAt": 86403100,
+    "expiryReason": "lease-expired",
+    "limits": {
+      "activeCards": 10000,
+      "displayCharactersPerCard": 1000,
+      "serializedPlaintextBytesPerCard": 8192,
+      "plaintextBytesPerVault": 134217728
+    }
+  }
+}

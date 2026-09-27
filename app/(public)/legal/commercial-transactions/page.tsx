@@ -1,4 +1,3 @@
-import type { Metadata } from 'next';
 import {
   LegalDefinitionList,
   LegalDocument,
@@ -9,7 +8,7 @@ import {
 } from '@/lib/application/legal-commerce';
 import { commercialDisclosureForCurrentEnvironment } from '@/lib/environment/legal-commerce';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: '特定商取引法に基づく表記 | FUKAMU Notes',
 };
 

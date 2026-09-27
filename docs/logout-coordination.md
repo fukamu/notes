@@ -30,8 +30,10 @@ passive effect releases the shared lock. In-flight load/save/sync completions
 therefore fail #143's epoch/lifecycle checks before the purge owner can prove
 runtime quiescence.
 
-The current `LegacyNotesApp` does not use this authenticated composition and
-remains the explicit auth- and billing-free local development harness.
+The live authenticated notes bootstrap now constructs this browser fence only
+after the Go session context succeeds. `LegacyNotesApp` remains compatibility
+code and is not a route fallback. No logout button or server-session revocation
+route is added by the local Sync v2 connection.
 
 ## Protocol and ownership
 

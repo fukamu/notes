@@ -1,0 +1,667 @@
+package config
+
+import (
+	"bytes"
+	"crypto/ed25519"
+	"encoding/base64"
+	"fmt"
+	"log/slog"
+	"net"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/fukamu/notes/backend/internal/access"
+	"github.com/fukamu/notes/backend/internal/identity"
+	"github.com/fukamu/notes/backend/internal/localfixture"
+)
+
+const (
+	defaultBodyLimit       = 4_000_000
+	defaultShutdownTimeout = 10 * time.Second
+)
+
+type Environment string
+
+const (
+	EnvironmentLocal      Environment = "local"
+	EnvironmentTest       Environment = "test"
+	EnvironmentProduction Environment = "production"
+)
+
+type Config struct {
+	Environment        Environment
+	HTTPAddress        string
+	StaticDirectory    string
+	BodyLimit          int64
+	ShutdownTimeout    time.Duration
+	LogLevel           slog.Level
+	ApplicationProfile ApplicationProfile
+	PrivateRuntime     *PrivateRuntimeConfig
+	LocalFixture       *LocalFixtureConfig
+}
+
+type ApplicationProfile string
+
+const (
+	ApplicationProfileDisabled     ApplicationProfile = "disabled"
+	ApplicationProfileLocalFixture ApplicationProfile = "local-fixture"
+)
+
+type PrivateRuntimeConfig struct {
+	DatabaseURL        string
+	MaximumConnections int32
+	PublicOrigin       *url.URL
+	Issuer             string
+	Audience           string
+	PublicKey          ed25519.PublicKey
+	LegacyOwner        access.Subject
+}
+
+type LocalFixtureConfig struct {
+	DatabaseURL         string
+	PublicOrigin        *url.URL
+	AllowedSubject      access.Subject
+	AccountID           identity.AccountID
+	VaultID             identity.VaultID
+	SessionID           identity.SessionID
+	SessionEpoch        identity.SessionEpoch
+	SessionToken        identity.SessionToken
+	PrivateRoot         string
+	ObjectDirectory     string
+	NonceDirectory      string
+	KeyDirectory        string
+	CursorHMACKey       [32]byte
+	DeletionHMACKey     [32]byte
+	LegalEvidencePolicy LocalFixtureLegalEvidencePolicy
+}
+
+type LocalFixtureLegalEvidencePolicy string
+
+const (
+	LocalFixtureLegalEvidenceUndecided LocalFixtureLegalEvidencePolicy = "undecided"
+	LocalFixtureDeleteLiveEvidence     LocalFixtureLegalEvidencePolicy = "delete-live-evidence"
+)
+
+type DatabaseConfig struct {
+	Environment Environment
+	URL         string
+}
+
+type Error struct {
+	Key    string
+	Reason string
+}
+
+func (e *Error) Error() string {
+	return fmt.Sprintf("%s: %s", e.Key, e.Reason)
+}
+
+func Load(lookup func(string) (string, bool)) (Config, error) {
+	values := make(map[string]string)
+	for _, key := range []string{
+		"NOTES_ENVIRONMENT",
+		"NOTES_HTTP_ADDR",
+		"NOTES_STATIC_DIR",
+		"NOTES_BODY_LIMIT_BYTES",
+		"NOTES_SHUTDOWN_TIMEOUT",
+		"NOTES_LOG_LEVEL",
+		"NOTES_APPLICATION_PROFILE",
+		"NOTES_PRIVATE_AUTH_MODE",
+		"NOTES_DATABASE_URL",
+		"NOTES_DATABASE_MAX_CONNECTIONS",
+		"NOTES_PUBLIC_ORIGIN",
+		"NOTES_LOCAL_AUTH_ISSUER",
+		"NOTES_LOCAL_AUTH_AUDIENCE",
+		"NOTES_LOCAL_AUTH_PUBLIC_KEY",
+		"NOTES_LEGACY_OWNER_SUBJECT",
+	} {
+		if value, ok := lookup(key); ok {
+			values[key] = value
+		}
+	}
+	if values["NOTES_APPLICATION_PROFILE"] == string(ApplicationProfileLocalFixture) &&
+		(values["NOTES_ENVIRONMENT"] == string(EnvironmentLocal) ||
+			values["NOTES_ENVIRONMENT"] == string(EnvironmentTest)) {
+		for _, key := range []string{
+			"NOTES_LOCAL_FIXTURE_ROOT",
+			"NOTES_LOCAL_FIXTURE_ACCOUNT_ID",
+			"NOTES_LOCAL_FIXTURE_VAULT_ID",
+			"NOTES_LOCAL_FIXTURE_SESSION_ID",
+			"NOTES_LOCAL_FIXTURE_SESSION_EPOCH",
+			"NOTES_LOCAL_FIXTURE_SESSION_TOKEN",
+			"NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY",
+			"NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY",
+			"NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY",
+		} {
+			if value, ok := lookup(key); ok {
+				values[key] = value
+			}
+		}
+	}
+	return Parse(values)
+}
+
+func LoadDatabase(lookup func(string) (string, bool)) (DatabaseConfig, error) {
+	values := make(map[string]string)
+	for _, key := range []string{"NOTES_ENVIRONMENT", "NOTES_DATABASE_URL"} {
+		if value, ok := lookup(key); ok {
+			values[key] = value
+		}
+	}
+	return ParseDatabase(values)
+}
+
+func ParseDatabase(values map[string]string) (DatabaseConfig, error) {
+	environmentValue, err := required(values, "NOTES_ENVIRONMENT")
+	if err != nil {
+		return DatabaseConfig{}, err
+	}
+	environment, err := parseEnvironment(environmentValue)
+	if err != nil {
+		return DatabaseConfig{}, err
+	}
+	databaseURL, err := required(values, "NOTES_DATABASE_URL")
+	if err != nil {
+		return DatabaseConfig{}, err
+	}
+	if strings.ContainsAny(databaseURL, "\r\n\x00") {
+		return DatabaseConfig{}, invalid("NOTES_DATABASE_URL", "contains invalid control characters")
+	}
+	return DatabaseConfig{Environment: environment, URL: databaseURL}, nil
+}
+
+func Parse(values map[string]string) (Config, error) {
+	environmentValue, err := required(values, "NOTES_ENVIRONMENT")
+	if err != nil {
+		return Config{}, err
+	}
+	environment, err := parseEnvironment(environmentValue)
+	if err != nil {
+		return Config{}, err
+	}
+	applicationProfile, err := parseApplicationProfile(values, environment)
+	if err != nil {
+		return Config{}, err
+	}
+
+	address, err := required(values, "NOTES_HTTP_ADDR")
+	if err != nil {
+		return Config{}, err
+	}
+	if err := validateAddress(address); err != nil {
+		return Config{}, err
+	}
+
+	staticDirectory, err := required(values, "NOTES_STATIC_DIR")
+	if err != nil {
+		return Config{}, err
+	}
+	if !filepath.IsAbs(staticDirectory) {
+		return Config{}, invalid("NOTES_STATIC_DIR", "must be an absolute path")
+	}
+
+	bodyLimit, err := optionalPositiveInt(
+		values,
+		"NOTES_BODY_LIMIT_BYTES",
+		defaultBodyLimit,
+		4_000_000,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+
+	shutdownTimeout, err := optionalDuration(
+		values,
+		"NOTES_SHUTDOWN_TIMEOUT",
+		defaultShutdownTimeout,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+
+	logLevel, err := optionalLogLevel(values)
+	if err != nil {
+		return Config{}, err
+	}
+	privateRuntime, err := parsePrivateRuntime(values, environment)
+	if err != nil {
+		return Config{}, err
+	}
+	localFixture, err := parseLocalFixture(
+		values,
+		environment,
+		applicationProfile,
+		address,
+		filepath.Clean(staticDirectory),
+		privateRuntime,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+
+	return Config{
+		Environment:        environment,
+		HTTPAddress:        address,
+		StaticDirectory:    filepath.Clean(staticDirectory),
+		BodyLimit:          bodyLimit,
+		ShutdownTimeout:    shutdownTimeout,
+		LogLevel:           logLevel,
+		ApplicationProfile: applicationProfile,
+		PrivateRuntime:     privateRuntime,
+		LocalFixture:       localFixture,
+	}, nil
+}
+
+func parseApplicationProfile(
+	values map[string]string,
+	environment Environment,
+) (ApplicationProfile, error) {
+	value := values["NOTES_APPLICATION_PROFILE"]
+	if value == "" || value == string(ApplicationProfileDisabled) {
+		return ApplicationProfileDisabled, nil
+	}
+	if value != string(ApplicationProfileLocalFixture) {
+		return "", invalid("NOTES_APPLICATION_PROFILE", "must be disabled or local-fixture")
+	}
+	if environment == EnvironmentProduction {
+		return "", invalid("NOTES_APPLICATION_PROFILE", "local-fixture is unavailable in production")
+	}
+	return ApplicationProfileLocalFixture, nil
+}
+
+func parseLocalFixture(
+	values map[string]string,
+	environment Environment,
+	profile ApplicationProfile,
+	address string,
+	staticDirectory string,
+	privateRuntime *PrivateRuntimeConfig,
+) (*LocalFixtureConfig, error) {
+	if profile == ApplicationProfileDisabled {
+		return nil, nil
+	}
+	if environment != EnvironmentLocal && environment != EnvironmentTest {
+		return nil, invalid("NOTES_APPLICATION_PROFILE", "local-fixture requires local or test")
+	}
+	if privateRuntime == nil {
+		return nil, invalid("NOTES_PRIVATE_AUTH_MODE", "local-fixture requires local-signed")
+	}
+	if err := localfixture.ValidateDatabaseURL(privateRuntime.DatabaseURL); err != nil {
+		return nil, invalid("NOTES_DATABASE_URL", "local-fixture requires the exact disposable test database")
+	}
+	if err := validateLocalFixtureEndpoint(address, privateRuntime.PublicOrigin); err != nil {
+		return nil, err
+	}
+	rootValue, err := required(values, "NOTES_LOCAL_FIXTURE_ROOT")
+	if err != nil {
+		return nil, err
+	}
+	root, err := validatePrivateRoot(rootValue)
+	if err != nil {
+		return nil, err
+	}
+	staticResolved, err := filepath.EvalSymlinks(staticDirectory)
+	if err != nil || staticResolved != staticDirectory {
+		return nil, invalid("NOTES_STATIC_DIR", "local-fixture requires an existing non-symlink directory")
+	}
+	if pathsOverlap(root, staticResolved) {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_ROOT", "must be separate from the static directory")
+	}
+	accountValue, err := required(values, "NOTES_LOCAL_FIXTURE_ACCOUNT_ID")
+	if err != nil {
+		return nil, err
+	}
+	accountID, err := identity.ParseAccountID(accountValue)
+	if err != nil || accountValue != strings.ToLower(accountValue) {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_ACCOUNT_ID", "must be a UUIDv7 account identifier")
+	}
+	vaultValue, err := required(values, "NOTES_LOCAL_FIXTURE_VAULT_ID")
+	if err != nil {
+		return nil, err
+	}
+	vaultID, err := identity.ParseVaultID(vaultValue)
+	if err != nil || vaultValue != strings.ToLower(vaultValue) {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_VAULT_ID", "must be a UUIDv7 vault identifier")
+	}
+	sessionValue, err := required(values, "NOTES_LOCAL_FIXTURE_SESSION_ID")
+	if err != nil {
+		return nil, err
+	}
+	sessionID, err := identity.ParseSessionID(sessionValue)
+	if err != nil || sessionValue != strings.ToLower(sessionValue) {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_SESSION_ID", "must be a UUIDv7 session identifier")
+	}
+	epochValue, err := required(values, "NOTES_LOCAL_FIXTURE_SESSION_EPOCH")
+	if err != nil {
+		return nil, err
+	}
+	rawEpoch, err := strconv.ParseInt(epochValue, 10, 64)
+	if err != nil {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_SESSION_EPOCH", "must be a valid session epoch")
+	}
+	sessionEpoch, err := identity.ParseSessionEpoch(rawEpoch)
+	if err != nil {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_SESSION_EPOCH", "must be a valid session epoch")
+	}
+	tokenValue, err := required(values, "NOTES_LOCAL_FIXTURE_SESSION_TOKEN")
+	if err != nil {
+		return nil, err
+	}
+	sessionToken, err := identity.ParseSessionToken(tokenValue)
+	if err != nil {
+		return nil, invalid("NOTES_LOCAL_FIXTURE_SESSION_TOKEN", "must be a canonical session token")
+	}
+	cursorKey, err := parseFixtureSecret(values, "NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY")
+	if err != nil {
+		return nil, err
+	}
+	deletionKey, err := parseFixtureSecret(values, "NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY")
+	if err != nil {
+		return nil, err
+	}
+	if bytes.Equal(cursorKey[:], deletionKey[:]) {
+		return nil, invalid(
+			"NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY",
+			"must be distinct from the cursor HMAC key",
+		)
+	}
+	legalEvidencePolicy := LocalFixtureLegalEvidencePolicy(
+		values["NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY"],
+	)
+	if legalEvidencePolicy == "" {
+		legalEvidencePolicy = LocalFixtureLegalEvidenceUndecided
+	}
+	if legalEvidencePolicy != LocalFixtureLegalEvidenceUndecided &&
+		legalEvidencePolicy != LocalFixtureDeleteLiveEvidence {
+		return nil, invalid(
+			"NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY",
+			"must be undecided or delete-live-evidence",
+		)
+	}
+	fixtureOrigin := *privateRuntime.PublicOrigin
+	return &LocalFixtureConfig{
+		DatabaseURL:         privateRuntime.DatabaseURL,
+		PublicOrigin:        &fixtureOrigin,
+		AllowedSubject:      privateRuntime.LegacyOwner,
+		AccountID:           accountID,
+		VaultID:             vaultID,
+		SessionID:           sessionID,
+		SessionEpoch:        sessionEpoch,
+		SessionToken:        sessionToken,
+		PrivateRoot:         root,
+		ObjectDirectory:     filepath.Join(root, localfixture.ObjectDirectoryName),
+		NonceDirectory:      filepath.Join(root, localfixture.NonceDirectoryName),
+		KeyDirectory:        filepath.Join(root, localfixture.KeyDirectoryName),
+		CursorHMACKey:       cursorKey,
+		DeletionHMACKey:     deletionKey,
+		LegalEvidencePolicy: legalEvidencePolicy,
+	}, nil
+}
+
+func parseFixtureSecret(values map[string]string, key string) ([32]byte, error) {
+	value, err := required(values, key)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil || len(decoded) != 32 || base64.RawURLEncoding.EncodeToString(decoded) != value {
+		clear(decoded)
+		return [32]byte{}, invalid(key, "must be a canonical 32-byte base64url secret")
+	}
+	var result [32]byte
+	copy(result[:], decoded)
+	clear(decoded)
+	return result, nil
+}
+
+func validateLocalFixtureEndpoint(address string, publicOrigin *url.URL) error {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil || !isLoopbackHost(host) {
+		return invalid("NOTES_HTTP_ADDR", "local-fixture requires an explicit loopback address")
+	}
+	if publicOrigin == nil || publicOrigin.Scheme != "http" ||
+		!isLoopbackHost(publicOrigin.Hostname()) || publicOrigin.Port() != port {
+		return invalid("NOTES_PUBLIC_ORIGIN", "local-fixture requires the same loopback port as NOTES_HTTP_ADDR")
+	}
+	return nil
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	parsed := net.ParseIP(host)
+	return parsed != nil && parsed.IsLoopback()
+}
+
+func validatePrivateRoot(value string) (string, error) {
+	if value == "" || strings.ContainsRune(value, '\x00') || !filepath.IsAbs(value) {
+		return "", invalid("NOTES_LOCAL_FIXTURE_ROOT", "must be an absolute private directory")
+	}
+	clean := filepath.Clean(value)
+	resolved, err := filepath.EvalSymlinks(clean)
+	if err != nil || resolved != clean {
+		return "", invalid("NOTES_LOCAL_FIXTURE_ROOT", "must be an existing non-symlink directory")
+	}
+	info, err := os.Lstat(clean)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
+		return "", invalid("NOTES_LOCAL_FIXTURE_ROOT", "must allow access only to its owner")
+	}
+	return clean, nil
+}
+
+func pathsOverlap(left string, right string) bool {
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	return left == right || pathContains(left, right) || pathContains(right, left)
+}
+
+func pathContains(parent string, child string) bool {
+	relative, err := filepath.Rel(parent, child)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
+func parsePrivateRuntime(
+	values map[string]string,
+	environment Environment,
+) (*PrivateRuntimeConfig, error) {
+	mode := values["NOTES_PRIVATE_AUTH_MODE"]
+	if mode == "" || mode == "disabled" {
+		return nil, nil
+	}
+	if mode != "local-signed" {
+		return nil, invalid("NOTES_PRIVATE_AUTH_MODE", "must be disabled or local-signed")
+	}
+	if environment == EnvironmentProduction {
+		return nil, invalid("NOTES_PRIVATE_AUTH_MODE", "local-signed is unavailable in production")
+	}
+	databaseURL, err := required(values, "NOTES_DATABASE_URL")
+	if err != nil {
+		return nil, err
+	}
+	if strings.ContainsAny(databaseURL, "\r\n\x00") {
+		return nil, invalid("NOTES_DATABASE_URL", "contains invalid control characters")
+	}
+	maximumConnections, err := optionalPositiveInt(
+		values,
+		"NOTES_DATABASE_MAX_CONNECTIONS",
+		4,
+		32,
+	)
+	if err != nil {
+		return nil, err
+	}
+	publicOriginValue, err := required(values, "NOTES_PUBLIC_ORIGIN")
+	if err != nil {
+		return nil, err
+	}
+	publicOrigin, err := parsePublicOrigin(publicOriginValue, environment)
+	if err != nil {
+		return nil, err
+	}
+	issuer, err := required(values, "NOTES_LOCAL_AUTH_ISSUER")
+	if err != nil {
+		return nil, err
+	}
+	if err := validateIssuer(issuer); err != nil {
+		return nil, err
+	}
+	audience, err := required(values, "NOTES_LOCAL_AUTH_AUDIENCE")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := access.ParseSubject(audience); err != nil {
+		return nil, invalid("NOTES_LOCAL_AUTH_AUDIENCE", "must be a bounded opaque value")
+	}
+	publicKeyValue, err := required(values, "NOTES_LOCAL_AUTH_PUBLIC_KEY")
+	if err != nil {
+		return nil, err
+	}
+	publicKey, err := base64.RawURLEncoding.DecodeString(publicKeyValue)
+	if err != nil || len(publicKey) != ed25519.PublicKeySize ||
+		base64.RawURLEncoding.EncodeToString(publicKey) != publicKeyValue {
+		return nil, invalid("NOTES_LOCAL_AUTH_PUBLIC_KEY", "must be a canonical Ed25519 public key")
+	}
+	ownerValue, err := required(values, "NOTES_LEGACY_OWNER_SUBJECT")
+	if err != nil {
+		return nil, err
+	}
+	owner, err := access.ParseSubject(ownerValue)
+	if err != nil {
+		return nil, invalid("NOTES_LEGACY_OWNER_SUBJECT", "must be a bounded opaque value")
+	}
+	return &PrivateRuntimeConfig{
+		DatabaseURL:        databaseURL,
+		MaximumConnections: int32(maximumConnections),
+		PublicOrigin:       publicOrigin,
+		Issuer:             issuer,
+		Audience:           audience,
+		PublicKey:          append(ed25519.PublicKey(nil), publicKey...),
+		LegacyOwner:        owner,
+	}, nil
+}
+
+func parsePublicOrigin(value string, environment Environment) (*url.URL, error) {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" || parsed.User != nil ||
+		(parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return nil, invalid("NOTES_PUBLIC_ORIGIN", "must be an absolute origin")
+	}
+	if parsed.Scheme == "https" {
+		parsed.Path = ""
+		return parsed, nil
+	}
+	loopback := parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "::1"
+	if parsed.Scheme != "http" || !loopback || environment == EnvironmentProduction {
+		return nil, invalid("NOTES_PUBLIC_ORIGIN", "must use HTTPS or local loopback HTTP")
+	}
+	parsed.Path = ""
+	return parsed, nil
+}
+
+func validateIssuer(value string) error {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil ||
+		parsed.RawQuery != "" || parsed.Fragment != "" {
+		return invalid("NOTES_LOCAL_AUTH_ISSUER", "must be an absolute HTTPS issuer")
+	}
+	return nil
+}
+
+func required(values map[string]string, key string) (string, error) {
+	value, ok := values[key]
+	if !ok || strings.TrimSpace(value) == "" {
+		return "", invalid(key, "is required")
+	}
+	return value, nil
+}
+
+func parseEnvironment(value string) (Environment, error) {
+	switch Environment(value) {
+	case EnvironmentLocal, EnvironmentTest, EnvironmentProduction:
+		return Environment(value), nil
+	default:
+		return "", invalid("NOTES_ENVIRONMENT", "must be local, test, or production")
+	}
+}
+
+func validateAddress(value string) error {
+	host, portValue, err := net.SplitHostPort(value)
+	if err != nil || strings.TrimSpace(host) == "" {
+		return invalid("NOTES_HTTP_ADDR", "must contain an explicit host and port")
+	}
+	port, err := strconv.Atoi(portValue)
+	if err != nil || port < 1 || port > 65_535 {
+		return invalid("NOTES_HTTP_ADDR", "must contain a port from 1 to 65535")
+	}
+	return nil
+}
+
+func optionalPositiveInt(
+	values map[string]string,
+	key string,
+	fallback int64,
+	maximum int64,
+) (int64, error) {
+	value, ok := values[key]
+	if !ok {
+		return fallback, nil
+	}
+	if strings.TrimSpace(value) == "" {
+		return 0, invalid(key, "must not be empty")
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || parsed < 1 || parsed > maximum {
+		return 0, invalid(key, fmt.Sprintf("must be an integer from 1 to %d", maximum))
+	}
+	return parsed, nil
+}
+
+func optionalDuration(
+	values map[string]string,
+	key string,
+	fallback time.Duration,
+) (time.Duration, error) {
+	value, ok := values[key]
+	if !ok {
+		return fallback, nil
+	}
+	if strings.TrimSpace(value) == "" {
+		return 0, invalid(key, "must not be empty")
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil || parsed < time.Second || parsed > time.Minute {
+		return 0, invalid(key, "must be a duration from 1s to 1m")
+	}
+	return parsed, nil
+}
+
+func optionalLogLevel(values map[string]string) (slog.Level, error) {
+	value, ok := values["NOTES_LOG_LEVEL"]
+	if !ok {
+		return slog.LevelInfo, nil
+	}
+	switch value {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return 0, invalid(
+			"NOTES_LOG_LEVEL",
+			"must be debug, info, warn, or error",
+		)
+	}
+}
+
+func invalid(key string, reason string) error {
+	return &Error{Key: key, Reason: reason}
+}

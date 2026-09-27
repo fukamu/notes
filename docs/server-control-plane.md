@@ -4,6 +4,16 @@ Issue #114 introduces the provider-neutral ownership boundary for accounts,
 identities, personal Vaults, and sessions. It does not connect production
 authentication or migrate the current Sites data.
 
+## Status after T17
+
+The TypeScript/D1 paths below describe the retired migration source. T17
+removed `server/control-plane`, `server/migrations`, D1/Drizzle, Miniflare, and
+their server tests. The executable identity/session model is
+`backend/internal/identity`, persistence is in
+`backend/internal/adapters/postgres`, and versioned schema changes are under
+`backend/migrations`. The retired paths are not current extension points or
+rollback commands.
+
 ## Data ownership
 
 `server/control-plane/public.ts` is the small API available to later feature

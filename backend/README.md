@@ -1,0 +1,438 @@
+# Notes Go backend
+
+This directory contains the replacement server tracked by parent Issue #409.
+The T05 implementation serves the statically built TypeScript/React frontend,
+process health, database readiness, the private launch-status path, and the
+v1-compatible sync path from one Go process. It has no request-time Node, Workers,
+RSC, or SSR dependency. Disconnected APIs remain closed; non-production
+environments keep their legacy 404 fixture contract without connecting
+provider operations. The explicit `local-fixture` application profile is a
+separate switch for the prepared local runtime foundation. T17 removed the old
+TypeScript API/server/database source and D1 toolchain from the repository;
+React/browser and build-time TypeScript remain.
+
+Go 1.27.1 is pinned in `go.mod`, CI, and the container build stage. PostgreSQL
+access uses pinned pgx and goose versions; no ORM is used.
+
+T06 Issues #422, #424, and #426 also provide disconnected Go session/CSRF,
+Google OIDC, Email OTP, verified-email ownership, and signup boundaries. The
+session store hashes raw bearer tokens before lookup,
+performs rotation and revocation transactionally, and can derive a VaultContext
+through an injected resolver. The OIDC core preserves ten-minute single-use
+transactions, exact redirect/state/nonce/audience policy, PKCE S256, identity
+collision/linking decisions, and same-vault session establishment. Its concrete
+provider adapter uses pinned `go-oidc` and `oauth2`; tests exercise discovery,
+code exchange, and JWKS signature verification against a local TLS provider.
+Email OTP uses an eight-digit/ten-minute single-use core, HMAC-SHA-256 peppered
+digests, non-reversible abuse keys, and compare-and-swap storage contracts.
+Signup reserves IDs idempotently and atomically creates the account, personal
+vault, provider identity, canonical verified-email owner, and hash-only initial
+session in PostgreSQL. No auth HTTP route, mail adapter, production challenge
+store, rate-limit store, terms adapter, or provider configuration uses these
+packages; local signed launch-gate identity and user sessions remain separate
+boundaries.
+
+T07 Issue #428 adds a disconnected Go envelope-encryption module. It preserves
+the existing AES-256-GCM format and canonical object AAD, keeps DEKs in
+zeroizing in-process handles, and obtains key material only through an injected
+key-management port. The GCP Cloud KMS REST adapter validates the exact
+CryptoKeyVersion, wrapped-key AAD, canonical base64, and CRC32C fields and
+fails with fixed errors. Migration 00004 stores wrapped DEK metadata only and
+allows one write key per Vault. The production server does not compose these
+packages, no persistent nonce adapter is supplied, and no GCP resource,
+credential, request, or billing relationship is created.
+
+T08a Issue #430 adds the disconnected immutable encrypted-object repository.
+Migration 00005 stores only Vault-scoped metadata, durable write intents, and
+delete-outbox state; object bytes remain behind an injected immutable storage
+port. Lost-response replay has zero object/crypto calls, upload-plus-DB-failure
+reuses and authenticates the same object key, revision updates use CAS, and
+active intents are excluded from orphan deletion across all Vaults. The only
+storage adapter is an in-memory test/drill fake. No R2 bucket, credential,
+provider request, production route, persistent nonce store, or scheduler is
+configured.
+
+T08b Issue #432 adds disconnected Go DEK rotation and re-encryption services.
+Rotation persists `generating`, `promoting`, and `completed` revisions, destroys
+generated raw-key handles on every return path, and changes the PostgreSQL
+write-key pointer atomically while retaining old read keys. Re-encryption uses
+a durable per-Vault checkpoint, bounded batches, authenticated old ciphertext,
+fresh immutable replacement objects, and one transaction for metadata CAS,
+old-object outbox enqueue, and checkpoint advance. Old-version intent
+reservation and promotion share a Vault advisory lock, so rotation cannot race
+a newly reserved old-key write. These services remain uncomposed: no route,
+scheduler, real object provider, production KMS request, or key destruction is
+enabled.
+
+T08c Issue #434 adds a disconnected fixture-only Vault recovery drill. It
+strictly decodes the versioned backup manifest, authenticates every declared
+mixed-version object with exact Vault/object/revision AAD, clears recovered
+plaintext, and emits only a content-free receipt. The retirement evidence gate
+never returns a delete action: even complete evidence stops at a separately
+approved production-key-destruction requirement. T08c initially supplies an
+isolated in-memory fake; T13i later adds a local read-only fixture adapter. No
+production backup provider, credential, route, scheduler, KMS disable/delete
+call, or production recovery claim is configured.
+
+T09a Issue #436 adds the disconnected provider-neutral billing aggregate and
+PostgreSQL projection. T09b Issue #438 adds the pure Stripe Checkout/webhook/
+reconciliation boundary, exact raw-body HMAC verification, and an official
+`stripe-go/v84` v84.4.1 adapter pinned to API `2026-02-25.clover`. The frozen
+signed fixture established migration parity and remains Go test evidence, while
+local HTTP stubs verify SDK headers, forms, expansions, retrieval fallback, and
+provider failures. The Stripe packages are not composed into the server: there
+is no route, API key, endpoint secret, provider request, webhook registration,
+scheduler, charge, cancellation mutation, entitlement grant, or production
+operation.
+
+T13d Issue #478 composes only explicit `notesctl billing reconcile`: it
+derives both provider mapping references from an exact Account/Vault-owned
+PostgreSQL record, requires the provider response to match both, replays an
+exact checkpoint without a provider call, emits bounded redacted
+JSON, and requires an invocation-supplied API key. It adds no server route,
+scheduler, stored credential, automatic provider request, or fake fallback.
+Its verification uses injected fakes, local HTTP stubs, and the disposable
+database only.
+
+T13g Issue #486 composes only explicit `notesctl objects orphan-scan`. It
+checks exact Account/Vault ownership before inventory, globally protects every
+committed, active-intent, and already-queued object key, and enqueues at most an
+explicit 1..100 batch in deterministic order. The command is restricted to a
+loopback disposable database and an existing private local directory, emits
+only redacted counts, and never deletes object bytes. It adds no production
+object provider, credential, route, scheduler, deployment, or external
+resource operation.
+
+T13h Issue #488 composes only explicit `notesctl objects delete-outbox`. It
+checks the exact Account/Vault before selecting or deleting, drains at most an
+explicit 1..100 due batch, treats storage `not-found` as an idempotent replay,
+reschedules storage failures, and distinguishes applied, replayed, and losing
+CAS mutations. Referenced object keys are excluded and remain pending for
+investigation. The command accepts only a loopback disposable database and an
+existing private local directory and emits redacted counts. It adds no
+production object provider, credential, route, scheduler, deployment, or
+external resource operation.
+
+T13i Issue #490 composes only explicit `notesctl recovery drill` over two
+separate, existing private fixture directories. The read-only backup adapter
+loads one strict manifest plus its declared ciphertext files; the fixture-key
+adapter binds each local 32-byte DEK to the exact Vault, version, KEK reference,
+and wrapped value before the existing recovery core authenticates every object.
+The command is local/test-only and emits only versions and counts. It performs
+no write, restore, provider request, database operation, backup mutation, or
+key retirement/destruction. Local raw fixture keys remain sensitive test data
+and are not a production KMS design.
+
+T09c Issue #440 adds the disconnected Go Entitlement core, service, and
+PostgreSQL repository. Migration 00008 stores Account/Vault-scoped projections
+and Session/SessionEpoch-bound offline leases. Projection CAS and active-lease
+revocation are one serializable transaction; lease creation locks and validates
+the exact active projection. The explicit product policy caps leases at 24
+hours and at the Billing period boundary. Frozen migration fixtures and
+disposable-PostgreSQL Go tests cover exclusive expiry, replay, cross-owner
+access, old/new paid ordering, issue/lock races, and rollback on revocation failure.
+Nothing is composed into an HTTP, notes, quota, or Sync v2 path, and no
+production migration or provider operation is performed.
+
+T10a Issue #442 adds the disconnected Go terms-consent core, fail-closed
+service, checkout verifier, signup admission adapter, and PostgreSQL immutable
+evidence repository. Migration 00009 authorizes insert only for an exact
+Personal Vault owner or the exact pre-finalization signup reservation and
+blocks updates. A frozen migration fixture fixes canonical JSON bytes and
+SHA-256 across `<>&` and U+2028/U+2029 and remains executable Go evidence. Unit and disposable-PostgreSQL tests
+cover stale/missing consent, replay, changed-term classification, cross-owner
+access, reservation-before-finalization, immutable evidence, and concurrent
+duplicate submissions. The package has no HTTP route, configured legal source,
+public signup, provider call, production migration, or deployment.
+
+## Local start
+
+```bash
+repo_root="$PWD"
+npm run build:frontend
+NOTES_ENVIRONMENT=local \
+NOTES_HTTP_ADDR=127.0.0.1:8080 \
+NOTES_STATIC_DIR="$repo_root/dist/frontend" \
+go -C backend run ./cmd/notes
+```
+
+Required configuration is `NOTES_ENVIRONMENT`, `NOTES_HTTP_ADDR`, and an
+absolute `NOTES_STATIC_DIR`. Optional bounded settings are
+`NOTES_BODY_LIMIT_BYTES` (default 4,000,000), `NOTES_SHUTDOWN_TIMEOUT` (default
+10s), and `NOTES_LOG_LEVEL` (`debug`, `info`, `warn`, or `error`). Invalid or
+missing configuration stops the process before it listens.
+
+Shutdown first stops listener admission and waits for active handlers. If the
+bounded graceful timeout expires, the server closes active connections to
+cancel request contexts but still does not return to runtime cleanup until
+every admitted handler has actually returned. This keeps pools, leases, and
+held deletion filesystem roots alive for the complete handler lifetime.
+
+`/healthz` reports process health. With private mode disabled, `/readyz` and
+`/api/launch-status` fail closed. `/api` and API routes other than
+`/api/launch-status`, the conditionally configured `/api/sync`, and the exact
+`local-fixture` routes described below remain closed. Known disconnected routes
+return the legacy local/test fixture response only in non-production
+environments and a 503 in production; they never execute billing, deletion,
+privacy, or terms effects.
+
+## Local signed identity and launch gate
+
+T04 part 1 provides a provider-independent identity verifier and launch-gate
+reader. The only concrete identity adapter is `local-signed`, which is for
+local and isolated test use. Configuration rejects that mode in `production`.
+It is not a selection or simulation of the eventual managed access product.
+
+Enabling the local private runtime requires all of these settings:
+
+- `NOTES_PRIVATE_AUTH_MODE=local-signed`
+- `NOTES_DATABASE_URL` and optional `NOTES_DATABASE_MAX_CONNECTIONS` (default
+  4, maximum 32)
+- `NOTES_PUBLIC_ORIGIN`
+- `NOTES_LOCAL_AUTH_ISSUER` and `NOTES_LOCAL_AUTH_AUDIENCE`
+- `NOTES_LOCAL_AUTH_PUBLIC_KEY`, a canonical unpadded base64url Ed25519 public
+  key
+- `NOTES_LEGACY_OWNER_SUBJECT`, a bounded opaque identity
+
+The server receives only the public verification key. Test code owns the
+ephemeral private signing key. Assertions have an exact issuer, audience,
+subject, issued-at, and expiry contract and a maximum ten-minute lifetime.
+Unsigned identity values and the former `Oai-Authenticated-User-Id` header are
+not trusted. The frontend sign-in link is omitted unless
+`FUKAMU_AUTH_ENTRY_URL` is supplied at build time as a same-origin absolute
+path. No production identity entry is selected by T05.
+
+With this mode configured, `/readyz` succeeds only when the PostgreSQL schema
+is at the embedded migration version and the default-closed launch row exists.
+`/api/launch-status` verifies the signed identity before reading the allowlist
+and returns a private, non-cacheable response.
+
+`POST /api/sync` additionally requires the signed subject to equal
+`NOTES_LEGACY_OWNER_SUBJECT`, a successful gate decision, the exact
+`NOTES_PUBLIC_ORIGIN`, and an `application/json` body. These checks run before
+the body is read. The request remains capped at 4,000,000 bytes even if the
+general body limit is configured higher. The PostgreSQL adapter applies the
+legacy mutations in one serializable transaction with bounded retries for
+serialization failures and deadlocks. A public launch flag never grants legacy
+data access by itself. T05 Playwright points the browser at this Go route with
+an ephemeral private key owned by the test runner. `notesctl prepare-e2e` is
+test-only: it requires the `test` environment plus the loopback/exact-database
+allowlist, resets only that disposable schema, applies migrations, and inserts
+one opaque allowlisted fixture subject.
+
+### Fail-closed local fixture foundation
+
+Issue #509 adds an application profile with exactly two states:
+`disabled` (the default when unset) and `local-fixture`. Merely setting fixture
+values does not enable it. Production rejects `local-fixture` before reading
+its private-directory or secret values. The enabled profile additionally
+requires the complete `local-signed` private runtime, an explicit loopback bind
+and loopback HTTP origin on the same port, and the exact disposable
+`fukamu_notes_go_test` PostgreSQL URL.
+
+The profile is one strictly decoded `LocalFixtureConfig` assembled from the
+existing private-runtime database/origin plus these values:
+
+- `NOTES_LOCAL_FIXTURE_ROOT`, an existing absolute, symlink-free, owner-only
+  directory separate from the static tree;
+- canonical lowercase UUIDv7 account, Vault, and session IDs in
+  `NOTES_LOCAL_FIXTURE_ACCOUNT_ID`, `NOTES_LOCAL_FIXTURE_VAULT_ID`, and
+  `NOTES_LOCAL_FIXTURE_SESSION_ID`;
+- `NOTES_LOCAL_FIXTURE_SESSION_EPOCH` and a canonical 32-byte unpadded
+  base64url `NOTES_LOCAL_FIXTURE_SESSION_TOKEN`;
+- distinct canonical 32-byte unpadded base64url secrets in
+  `NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY` and
+  `NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY`;
+- optional `NOTES_LOCAL_FIXTURE_LEGAL_EVIDENCE_POLICY`, whose safe default is
+  `undecided`. Only the exact value `delete-live-evidence` mounts the
+  destructive fixture deletion routes. It is disposable test evidence, not a
+  production legal decision.
+
+With this explicit profile, the same `notesctl prepare-e2e` command prepares
+only three fixed owner-only child directories (`objects`, `nonces`, `keys`),
+creates or reuses one private fixture DEK file, resets only the already
+allowlisted disposable schema, migrates it, and transactionally seeds the
+launch subject, Account/Vault, hash-only active session, local paid Billing and
+Entitlement projections, and wrapped DEK metadata. A retry reuses the exact key
+and rows; a mismatched row, key, unexpected root entry, or foreign
+Account/Vault scope fails closed. The server opens one PostgreSQL pool, shares
+one session resolver, and requires schema, seed, exclusive scope, directory,
+and DEK checks to pass before listening and on readiness checks.
+
+Issue #509 established this foundation without mounting a business route.
+Issue #510 uses it for local-fixture terms consent, URL-free no-charge checkout
+confirmation, and no-effect period-end cancellation. Issue #511 uses the same
+pool, scoped hash-only session resolver, and real HTTP clock to mount
+`GET /api/session-context` and `POST /api/v2/sync`, closing `/api/sync` in that
+profile. PostgreSQL supplies Billing/Entitlement, Sync v2 journal,
+encrypted-object metadata, quota, and DEK stores. Guarded fixture directories
+supply immutable objects, nonce reservations, and the fixture key; content is
+sealed with AES-256-GCM. Entitlement evaluation alone is pinned to the
+deterministic fixture timestamp. Issue #512 mounts the complete account
+deletion Start/Resume graph only under explicit `delete-live-evidence` and
+requires that value again when restarting a deleting or completed fixture.
+Omitted/`undecided` policy rejects admission without sealing Sync, creating a
+journal, revoking a session, or mutating database/filesystem state. No external
+or remote Stripe, KMS, identity,
+mail, object, or backup provider is constructed or contacted. See
+[`docs/local-commerce-runtime.md`](../docs/local-commerce-runtime.md). This is
+local/CI evidence, not production configuration, legal/price approval,
+deployment, charging, or cutover approval.
+
+Issue #513 mounts `POST /api/account/privacy-requests` and its `/status`
+companion for every exact local-fixture phase and policy. They share the same
+pool, scoped session resolver, HTTP clock, and runtime lease, and persist only
+an owner-scoped PostgreSQL journal. Identity verification and generic
+fulfillment use explicit unavailable adapters. Under `undecided`, deletion is
+also explicitly unavailable. Under disposable `delete-live-evidence`, the
+internal processor graph can hand an already verified deletion record to the
+real fenced account-deletion Start boundary, but HTTP exposes no Verify,
+Process, scheduler, or Resume ownership for that privacy request. Normal
+Submit/Status therefore remains `verification-pending` and never claims
+fulfillment or deletion completion. Default and production pass no privacy
+runtime and keep both routes closed.
+
+The live notes layout first recovers any durable deletion handoff. Only its
+idle/no-marker children proceed through the launch gate and then fetch the
+strict, private, no-store session context; Vault-scoped IndexedDB and Sync v2
+are constructed only after authentication. The response includes a boolean
+deletion-availability capability, which is true only when the destructive
+runtime is mounted; existing marker recovery is independent of that bit, while
+a new Start control appears only when it is true. The path has no legacy
+fallback and never returns the bearer token to browser code. An offline reload
+therefore remains closed until the session context can be validated again;
+already saved local content is opened only after reconnection. Playwright
+supplies the deterministic fixture token only as a host-only `Secure`,
+`HttpOnly`, `SameSite=Strict` cookie.
+
+No Stripe, GCP KMS, OIDC/mail, remote object, or backup provider is constructed
+or contacted. Billing is read only as the seeded local entitlement and commerce
+source; checkout never charges and cancellation never contacts a provider. No
+login/session issuance or legacy-data migration is enabled. The delete wire is
+available only under the explicit disposable policy. Default and production
+composition pass none of the local-fixture Sync v2, session-context, legal,
+cancellation, privacy-request, or deletion runtimes to the HTTP handler, so
+those routes stay
+closed. This is local/CI composition evidence, not
+production configuration, deployment, or cutover approval.
+
+The real-PostgreSQL foundation test covers migration, exact closed
+`launch_config` (`singleton = 1`, public access disabled, `updated_at = 0`),
+seed retry, readiness, session resolution, and key unwrap. The Issue #511
+composition test additionally calls `composeRuntime`, sends authenticated HTTP
+through the mounted route, verifies filesystem ciphertext contains no
+plaintext, reconstructs the process graph, decrypts the persisted card, and
+checks direct application deletion replay plus the next Sync v2 tombstone.
+The Issue #510 PostgreSQL and whole-process tests exercise terms acceptance,
+URL-free checkout, period-end cancellation, cross-owner refusal without writes,
+and zero external HTTP(S) requests. Serial Playwright coverage requires real
+200 responses from both the commerce and Sync v2 local-fixture routes.
+The default E2E server keeps deletion policy `undecided`; account-deletion
+browser handoff tests inject test-only Start/Resume responses in their in-page
+harness and do not open the real destructive Go route. Issue #512 real
+PostgreSQL/filesystem tests opt into `delete-live-evidence` explicitly and cover
+all effect/receipt restart windows, runtime-lease loss, and completed restart.
+Issue #513 desktop and mobile coverage submits through the real Go privacy
+route, restarts the Go process without reseeding, proves the journal status is
+still pending, and separately proves the browser form/tracking state resets.
+The E2E launcher owns a fresh 0700 restart-control directory and random 0600
+marker for that invocation; the server validates the marker and cleanup removes
+only the known control artifacts before requiring the directory to be empty.
+The existing Sync v2 integration suite remains the evidence for
+object-before-journal retry, cursor/device/owner isolation, conflicts, quota
+admission, dependency failures, and replay. These tests use only the allowlisted
+disposable PostgreSQL database and private temporary directories.
+
+Deletion filesystem validation and mutation use lifetime-held roots with
+descriptor-relative operations and device/inode, owner, mode, and link-count
+checks. Runtime and prepare-e2e also hold a fixed host flock plus a PostgreSQL
+advisory lock. Cooperating same-UID Notes/notesctl processes must not rename or
+unlink the lock namespace. A hostile same-UID process can already mutate the
+disposable fixture directly and remains outside this local/test boundary.
+
+## Local PostgreSQL migration
+
+The test fixture is loopback-only, uses a tmpfs instead of a persistent volume,
+and is pinned to the PostgreSQL 18.6 multi-architecture image digest.
+
+```bash
+docker compose -f deploy/compose.test.yaml up -d postgres
+NOTES_ENVIRONMENT=test \
+NOTES_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend run ./cmd/notesctl migrate --environment=test
+```
+
+The command refuses non-loopback hosts, any database name other than
+`fukamu_notes_go_test`, production environments, and an environment flag that
+does not match `NOTES_ENVIRONMENT`. It does not print connection values.
+
+## Checks
+
+With the Compose database running, run `npm run go:check` from the repository
+root. It verifies Go formatting, vet, unit/process/integration tests, the race
+detector, and both commands. The parent `npm run verify` gate runs that Go gate
+and then the separate Go-served desktop/mobile browser suites.
+
+`npm run verify:release` builds the production-shaped scratch image, rejects
+Node and legacy server artifacts in every runtime layer, and uses the validated
+immutable image ID for normal post-build operations. Release manifest v2 pins
+the fixed non-root identity and Git provenance, exact foundation plus all 13
+OpenAPI production-disabled route responses, one minimal-environment loopback
+smoke, and exactly two distinct `--network=none` lifecycle records. It writes
+ignored local manifest/SBOM evidence and records every production transition as
+`not-performed`. See
+[`docs/go-release-artifact.md`](../docs/go-release-artifact.md). The command
+never pushes or deploys the disposable image.
+
+`npm run verify:migration-closure` strictly checks the exact F01-F28 and
+V01-V12 evidence inventory (including V12's explicit in-progress baseline),
+the completed T17 source/config retirement state, and closure
+schema v3: exactly four profiles, exact per-feature truth, direct same-profile
+E01-E05 executable evidence, and shared-gate reachability. Actual-process
+evidence builds/runs `notes` and `notesctl` for two no-reseed cycles, while the
+separate Chromium lane proves explicitly opted-in disposable deletion across
+real Go restarts. See
+[`docs/go-runtime-closure.md`](../docs/go-runtime-closure.md).
+`npm run verify:legacy-retirement` checks all 142 frozen test paths, per-file
+digests and dispositions, requires the 127 Go-replaced paths to be absent and
+the 11 frontend plus four tooling paths to remain legacy-free, validates
+executable replacement evidence plus the ledger's named Go-test anchors, and rejects retired
+source/config/script/package reintroduction.
+See
+[`docs/legacy-typescript-retirement.md`](../docs/legacy-typescript-retirement.md).
+F22 has separate Go evidence for ordinary period-end cancellation and the
+immediate account-deletion effect. The ordinary handler is connected only to
+the no-effect local-fixture provider; Draft PR #404, public/production
+activation, and production provider use remain unapproved.
+
+The frozen crypto fixture is decoded by the Go AES-GCM tests; browser wire
+fixtures remain TypeScript-only. Focused Go checks are:
+
+```bash
+go -C backend test ./internal/cryptocontent/... ./internal/adapters/contentcrypto/... ./internal/adapters/kms/...
+go -C backend test ./internal/encryptedobject/... ./internal/adapters/objectstorage/...
+NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend test -tags=integration ./tests/integration -run 'Test(VaultDEKKeyring|EncryptedObject)Postgres'
+go -C backend test -race ./internal/cryptocontent/... ./internal/adapters/contentcrypto/... ./internal/adapters/kms/...
+go -C backend test -race ./internal/encryptedobject/... ./internal/adapters/objectstorage/...
+go -C backend test -race ./internal/billing/...
+go -C backend test -race ./internal/stripebilling/... ./internal/adapters/stripe/...
+go -C backend test -race ./internal/operations/... ./cmd/notesctl/...
+NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend test -tags=integration ./tests/integration -run TestScopedDEKRotationRunnerPersistsResumeAndOwnerIsolation -count=3
+NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend test -tags=integration ./tests/integration -run TestScopedDEKReencryptionRunnerPersistsFailureResumeReplayAndOwnerIsolation -count=3
+NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend test -tags=integration ./tests/integration -run TestScopedOrphanScanRunnerProtectsGlobalInventoryAndResumesBoundedBatches -count=3
+go -C backend test -race ./internal/entitlement/... ./internal/adapters/postgres/...
+NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend test -tags=integration ./tests/integration -run 'TestBilling(ProjectionAtomicityAndReplay|ReconciliationRunnerScopesAndReplaysBeforeProvider)Postgres' -count=3
+NOTES_TEST_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fukamu_notes_go_test?sslmode=disable' \
+go -C backend test -tags=integration ./tests/integration -run Entitlement -count=1
+```
+
+The billing and entitlement checks use only normalized facts, fixtures, and the
+loopback disposable database. Migrations 00007 and 00008, their services, and
+their PostgreSQL adapters are not composed into an HTTP route and make no
+Stripe, cancellation, charge, entitlement-enforcement, or production database
+call.

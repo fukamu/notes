@@ -1,0 +1,13 @@
+.git
+.github
+.env*
+*.pem
+node_modules
+coverage
+dist
+out
+outputs
+playwright-report
+test-results
+.wrangler
+work

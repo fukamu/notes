@@ -21,18 +21,19 @@ and back/forward navigation are covered by E2E tests.
 
 ## Evidence correlation and retry
 
-Checkout creates one UUIDv7 submission identifier and sends that same value to
-the terms-consent endpoint and the commercial checkout endpoint. The two
-immutable ledgers can therefore correlate the decisions without accepting an
-AccountId or VaultId from the browser. The server derives ownership from the
-session for both requests. The checkout application looks up the terms evidence
-for that same submission and verifies its version/hash against the current
-server status before it records commercial evidence or calls the payment
-provider. Calling the checkout endpoint directly cannot bypass this gate.
+The terms-consent and commercial checkout boundaries each create their own
+UUIDv7 submission identifier. They represent different legal acts and different
+idempotency domains; current UI code does not send one shared identifier. The
+server derives Account and Vault from the session for both requests. Go checkout
+therefore verifies the latest owner-scoped immutable terms evidence against the
+authoritative current version/hash before recording commercial evidence or
+calling the payment provider. Calling checkout directly cannot bypass this
+gate, and a commercial submission identifier is never treated as terms proof.
 
 Terms acceptance runs before hosted checkout creation. A lost response or a
-retry reuses the same identifier, so each server application replays its prior
-result. If the terms version/hash changes before acceptance, the UI reloads the
+retry reuses the identifier for that individual operation, so each server
+application replays its own prior result. If the terms version/hash changes
+before acceptance, the UI reloads the
 authoritative terms and offer, clears both checkboxes, and requires a fresh
 review. An offer change does the same. Redirect alone remains insufficient for
 contract or entitlement state.
@@ -41,7 +42,7 @@ contract or entitlement state.
 
 The HTTP adapter treats JSON as `unknown` and strictly decodes every success
 and error response. A success must echo the exact displayed terms version,
-hash, and effective date. Requests contain only the shared submission ID,
+hash, and effective date. Requests contain only their operation submission ID,
 presented version/hash, and affirmative consent; no tenant identifiers are
 accepted. Requests use same-origin credentials and no-store caching.
 

@@ -57,6 +57,11 @@ describe('account deletion browser handoff runner', () => {
       },
     };
     const logoutPurge: LogoutPurgeRunner = {
+      async prepare(received) {
+        calls.push(`prepare:${received.vaultId}`);
+        expect(progress.current()).toMatchObject({ kind: 'revoke-pending' });
+        return { kind: 'prepared' };
+      },
       async run(received) {
         calls.push(`purge:${received.vaultId}`);
         expect(progress.current()).toMatchObject({ kind: 'purge-pending' });
@@ -72,6 +77,7 @@ describe('account deletion browser handoff runner', () => {
     });
     expect(calls).toEqual([
       `start:${idempotencyKey}`,
+      `prepare:${generation.vaultId}`,
       `resume:${token0}`,
       `purge:${generation.vaultId}`,
     ]);
@@ -100,7 +106,7 @@ describe('account deletion browser handoff runner', () => {
     const runner = createRunner({
       progress,
       remote: { start, resume },
-      logoutPurge: { run: purge },
+      logoutPurge: purgeWithRun(purge),
     });
 
     await expect(runner.begin(generation)).resolves.toEqual({
@@ -122,6 +128,242 @@ describe('account deletion browser handoff runner', () => {
     expect(resume).toHaveBeenCalledWith({ continuationToken: token0 });
     expect(purge).toHaveBeenCalledWith(generation);
     expect(progress.current()).toBeUndefined();
+  });
+
+  it('renews only an expired pre-revocation continuation through authenticated Start replay and persists it before retrying Resume', async () => {
+    const progress = memoryProgressPort();
+    const calls: string[] = [];
+    const start = vi
+      .fn<AccountDeletionRemotePort['start']>()
+      .mockImplementationOnce(async () => {
+        calls.push('start-initial');
+        return {
+          kind: 'accepted',
+          status: { kind: 'in-progress', continuationToken: token0 },
+        };
+      })
+      .mockImplementationOnce(async ({ idempotencyKey: replayedKey }) => {
+        calls.push('start-renewal');
+        expect(replayedKey).toBe(idempotencyKey);
+        expect(progress.current()).toMatchObject({
+          kind: 'revoke-pending',
+          revision: 2,
+          idempotencyKey,
+        });
+        return {
+          kind: 'accepted',
+          // Renewal preserves the operation secret and sequence, so the wire
+          // token can remain byte-for-byte identical while its server expiry
+          // is extended atomically.
+          status: { kind: 'in-progress', continuationToken: token0 },
+        };
+      });
+    const resume = vi
+      .fn<AccountDeletionRemotePort['resume']>()
+      .mockImplementationOnce(async () => {
+        calls.push('resume-expired');
+        return { kind: 'rejected', reason: 'continuation-required' };
+      })
+      .mockImplementationOnce(async ({ continuationToken }) => {
+        calls.push('resume-renewed');
+        expect(continuationToken).toBe(token0);
+        expect(progress.current()).toMatchObject({
+          kind: 'revoke-pending',
+          revision: 3,
+          server: { continuationToken: token0 },
+        });
+        return {
+          kind: 'accepted',
+          status: { kind: 'in-progress', continuationToken: token1 },
+        };
+      });
+    const prepare = vi
+      .fn<LogoutPurgeRunner['prepare']>()
+      .mockResolvedValueOnce({
+        kind: 'blocked',
+        reason: 'progress-unavailable',
+      })
+      .mockResolvedValue({ kind: 'prepared' });
+    const purge = vi.fn<LogoutPurgeRunner['run']>(async () => {
+      calls.push('purge');
+      return { kind: 'completed', completionAnnouncement: 'sent' };
+    });
+    const runner = createRunner({
+      progress,
+      remote: { start, resume },
+      logoutPurge: { prepare, run: purge },
+    });
+
+    await expect(runner.begin(generation)).resolves.toEqual({
+      kind: 'failed',
+      reason: 'local-purge-failed',
+    });
+    await expect(runner.recover()).resolves.toEqual({
+      kind: 'pending',
+      localContent: 'deleted',
+      status: { kind: 'in-progress', continuationToken: token1 },
+    });
+    expect(calls).toEqual([
+      'start-initial',
+      'resume-expired',
+      'start-renewal',
+      'resume-renewed',
+      'purge',
+    ]);
+    expect(start).toHaveBeenCalledTimes(2);
+    expect(resume).toHaveBeenCalledTimes(2);
+    expect(purge).toHaveBeenCalledExactlyOnceWith(generation);
+  });
+
+  it('recovers when the server renews but the browser marker CAS fails before Resume retry', async () => {
+    const progress = memoryProgressPort();
+    const start = vi.fn<AccountDeletionRemotePort['start']>(async () => ({
+      kind: 'accepted',
+      status: { kind: 'in-progress', continuationToken: token0 },
+    }));
+    const resume = vi
+      .fn<AccountDeletionRemotePort['resume']>()
+      .mockResolvedValueOnce({
+        kind: 'rejected',
+        reason: 'continuation-required',
+      })
+      // The first Start renewal committed server-side even though its marker
+      // replacement failed. The unchanged token is valid on recovery.
+      .mockResolvedValueOnce({
+        kind: 'accepted',
+        status: { kind: 'in-progress', continuationToken: token1 },
+      });
+    const prepare = vi
+      .fn<LogoutPurgeRunner['prepare']>()
+      .mockResolvedValueOnce({
+        kind: 'blocked',
+        reason: 'progress-unavailable',
+      })
+      .mockResolvedValue({ kind: 'prepared' });
+    const purge = vi.fn<LogoutPurgeRunner['run']>(async () => ({
+      kind: 'completed',
+      completionAnnouncement: 'sent',
+    }));
+    const runner = createRunner({
+      progress,
+      remote: { start, resume },
+      logoutPurge: { prepare, run: purge },
+    });
+
+    await runner.begin(generation);
+    progress.failReplaceOnce();
+    await expect(runner.recover()).resolves.toEqual({
+      kind: 'failed',
+      reason: 'concurrent-progress-change',
+    });
+    expect(progress.current()).toMatchObject({
+      kind: 'revoke-pending',
+      revision: 2,
+      server: { continuationToken: token0 },
+    });
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(purge).not.toHaveBeenCalled();
+
+    await expect(runner.recover()).resolves.toEqual({
+      kind: 'pending',
+      localContent: 'deleted',
+      status: { kind: 'in-progress', continuationToken: token1 },
+    });
+    expect(start).toHaveBeenCalledTimes(2);
+    expect(resume).toHaveBeenCalledTimes(2);
+    expect(purge).toHaveBeenCalledExactlyOnceWith(generation);
+  });
+
+  it('never revokes the session until logout preparation is durable and peer tabs are quiesced', async () => {
+    const progress = memoryProgressPort();
+    const calls: string[] = [];
+    const prepare = vi
+      .fn<LogoutPurgeRunner['prepare']>()
+      .mockImplementationOnce(async () => {
+        calls.push('prepare-failed');
+        expect(progress.current()).toMatchObject({ kind: 'revoke-pending' });
+        return { kind: 'blocked', reason: 'progress-unavailable' };
+      })
+      .mockImplementationOnce(async () => {
+        calls.push('prepare-completed');
+        expect(progress.current()).toMatchObject({ kind: 'revoke-pending' });
+        return { kind: 'prepared' };
+      });
+    const resume = vi.fn<AccountDeletionRemotePort['resume']>(async () => {
+      calls.push('resume');
+      return {
+        kind: 'accepted',
+        status: { kind: 'in-progress', continuationToken: token1 },
+      };
+    });
+    const purge = vi.fn<LogoutPurgeRunner['run']>(async () => {
+      calls.push('purge');
+      return { kind: 'completed', completionAnnouncement: 'sent' };
+    });
+    const runner = createRunner({
+      progress,
+      remote: {
+        start: async () => {
+          calls.push('start');
+          return {
+            kind: 'accepted',
+            status: { kind: 'in-progress', continuationToken: token0 },
+          };
+        },
+        resume,
+      },
+      logoutPurge: { prepare, run: purge },
+    });
+
+    await expect(runner.begin(generation)).resolves.toEqual({
+      kind: 'failed',
+      reason: 'local-purge-failed',
+    });
+    expect(calls).toEqual(['start', 'prepare-failed']);
+    expect(resume).not.toHaveBeenCalled();
+    expect(purge).not.toHaveBeenCalled();
+    expect(progress.current()).toMatchObject({ kind: 'revoke-pending' });
+
+    await expect(runner.recover()).resolves.toEqual({
+      kind: 'pending',
+      localContent: 'deleted',
+      status: { kind: 'in-progress', continuationToken: token1 },
+    });
+    expect(calls).toEqual([
+      'start',
+      'prepare-failed',
+      'prepare-completed',
+      'resume',
+      'purge',
+    ]);
+  });
+
+  it('does not prepare logout when the server rejects Start', async () => {
+    const progress = memoryProgressPort();
+    const prepare = vi.fn<LogoutPurgeRunner['prepare']>();
+    const resume = vi.fn<AccountDeletionRemotePort['resume']>();
+    const runner = createRunner({
+      progress,
+      remote: {
+        start: async () => ({
+          kind: 'rejected',
+          reason: 'remote-unavailable',
+        }),
+        resume,
+      },
+      logoutPurge: {
+        prepare,
+        run: vi.fn<LogoutPurgeRunner['run']>(),
+      },
+    });
+
+    await expect(runner.begin(generation)).resolves.toEqual({
+      kind: 'failed',
+      reason: 'remote-unavailable',
+    });
+    expect(prepare).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+    expect(progress.current()).toMatchObject({ kind: 'starting' });
   });
 
   it('keeps purge-pending durable when local deletion fails and retries no server effect', async () => {
@@ -148,7 +390,7 @@ describe('account deletion browser handoff runner', () => {
     const runner = createRunner({
       progress,
       remote: { start, resume },
-      logoutPurge: { run: purge },
+      logoutPurge: purgeWithRun(purge),
     });
 
     await expect(runner.begin(generation)).resolves.toEqual({
@@ -195,7 +437,7 @@ describe('account deletion browser handoff runner', () => {
         }),
         resume,
       },
-      logoutPurge: { run: purge },
+      logoutPurge: purgeWithRun(purge),
       clock: { now: () => now },
     });
 
@@ -397,9 +639,21 @@ function createRunner(input: {
 
 function completedPurge(): LogoutPurgeRunner {
   return {
+    async prepare() {
+      return { kind: 'prepared' };
+    },
     async run() {
       return { kind: 'completed', completionAnnouncement: 'sent' };
     },
+  };
+}
+
+function purgeWithRun(run: LogoutPurgeRunner['run']): LogoutPurgeRunner {
+  return {
+    async prepare() {
+      return { kind: 'prepared' };
+    },
+    run,
   };
 }
 

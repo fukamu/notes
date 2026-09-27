@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createLocalTermsConsentUiTransport,
+  createRemoteFirstTermsConsentUiTransport,
   createTermsConsentSubmissionId,
   createTermsConsentUiHttpTransport,
 } from '@/lib/client/terms-consent-ui';
@@ -144,6 +145,43 @@ describe('terms consent UI adapters', () => {
       kind: 'available',
       status: { kind: 'accepted', acceptanceRequired: false },
     });
+  });
+
+  it('uses local fixture fallback only for an exact decoded 404 not-found', async () => {
+    const fallback = createLocalTermsConsentUiTransport(current());
+    let remoteCalls = 0;
+    const missing = createRemoteFirstTermsConsentUiTransport(
+      fallback,
+      createTermsConsentUiHttpTransport(async () => {
+        remoteCalls += 1;
+        return Response.json({ error: 'not-found' }, { status: 404 });
+      }),
+    );
+    await expect(missing.loadStatus()).resolves.toMatchObject({
+      kind: 'available',
+      status: { kind: 'current' },
+    });
+    await expect(
+      missing.accept({
+        current: current(),
+        submissionId: termsConsentIds.submissionA,
+      }),
+    ).resolves.toMatchObject({ kind: 'accepted', outcome: 'recorded' });
+    expect(remoteCalls).toBe(2);
+
+    for (const response of [
+      Response.json({ error: 'unavailable' }, { status: 503 }),
+      Response.json({ error: 'unexpected' }, { status: 404 }),
+      Response.json({ error: 'not-found', extra: true }, { status: 404 }),
+    ]) {
+      const closed = createRemoteFirstTermsConsentUiTransport(
+        createLocalTermsConsentUiTransport(current()),
+        createTermsConsentUiHttpTransport(async () => response.clone()),
+      );
+      await expect(closed.loadStatus()).resolves.toEqual({
+        kind: 'unavailable',
+      });
+    }
   });
 
   it('creates UUIDv7 submission identifiers at the client boundary', () => {

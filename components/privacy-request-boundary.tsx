@@ -17,7 +17,6 @@ import {
   createPrivacyRequestUiHttpTransport,
   type PrivacyRequestUiTransport,
 } from '@/lib/client/http-privacy-request';
-import { createLocalPrivacyRequestUiTransport } from '@/lib/client/local-privacy-request';
 import { privacyRequestKinds } from '@/lib/domain/privacy-request';
 
 export function PrivacyRequestBoundary({
@@ -32,11 +31,8 @@ export function PrivacyRequestBoundary({
   readonly fee: string;
 }) {
   const transport = useMemo<PrivacyRequestUiTransport>(
-    () =>
-      source === 'local-fixture'
-        ? createLocalPrivacyRequestUiTransport()
-        : createPrivacyRequestUiHttpTransport(),
-    [source],
+    () => createPrivacyRequestUiHttpTransport(),
+    [],
   );
   const [state, dispatch] = useReducer(
     privacyRequestUiReducer,
@@ -123,7 +119,7 @@ export function PrivacyRequestBoundary({
           aria-label="開発用表示"
           data-testid="privacy-request-fixture-notice"
         >
-          ローカル開発・テスト専用の画面です。操作しても本人確認、データ開示・変更・削除、退会は行われず、受付内容はブラウザへ保存されません。
+          ローカル開発・テスト専用です。受付記録はテスト用PostgreSQLへ保存されますが、本人確認、開示・変更・削除の実行、退会処理は行われません。画面の入力・追跡状態はブラウザへ保存されません。
         </aside>
       ) : null}
 

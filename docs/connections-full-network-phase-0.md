@@ -21,11 +21,11 @@ The current product's browser evidence is
 
 ## Runtime and scope baseline
 
-`app/(notes)/layout.tsx` still mounts `LegacyNotesApp`. The authenticated
-`SessionNotesApp` and Vault-scoped Sync v2 runtime exist as a separate
-composition. “All cards” therefore means the active provider's permitted,
-single-scope visible replica. It never means a union across accounts, Vaults,
-or databases.
+At this historical phase-0 checkpoint, `app/(notes)/layout.tsx` mounted
+`LegacyNotesApp`; Issue #511 later replaced the live route with authenticated
+`SessionNotesApp` and the Vault-scoped Sync v2 runtime. “All cards” in both the
+baseline and current UI means the active provider's permitted, single-scope
+visible replica. It never means a union across accounts, Vaults, or databases.
 
 Sync v2 requests pages until the terminal page and commits the collected plan
 once. A focused test now protects 501 changes split across a 500-change

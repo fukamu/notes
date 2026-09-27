@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import type { BillingCheckoutReview } from '@/lib/application/billing-ui';
 import {
   createBillingCancellationIdempotencyKey,
   createBillingCheckoutSubmissionId,
   createBillingUiHttpTransport,
 } from '@/lib/client/http-billing-ui';
-import { planContractOffer } from '@/server/legal-checkout/core';
+import { createTermsConsentSubmissionId } from '@/lib/client/terms-consent-ui';
 import {
-  contractDisclosure,
-  contractIds,
-} from '@/tests/fixtures/legal-checkout';
+  billingCheckoutReviewFixture,
+  billingUiContractIds,
+  billingUiContractOfferFixture,
+} from '@/tests/fixtures/billing-ui';
 
 describe('billing UI HTTP adapter', () => {
   it('decodes the authoritative offer and sends only consent correlation fields', async () => {
@@ -20,14 +20,14 @@ describe('billing UI HTTP adapter', () => {
       if (init.method === 'GET') {
         return Response.json({
           offer,
-          offerHash: contractIds.offerHashA,
+          offerHash: billingUiContractIds.offerHashA,
         });
       }
       return Response.json({
         kind: 'redirect',
         evidenceOutcome: 'recorded',
-        evidenceId: contractIds.evidenceA,
-        offerHash: contractIds.offerHashA,
+        evidenceId: billingUiContractIds.evidenceA,
+        offerHash: billingUiContractIds.offerHashA,
         offerVersion: offer.offerVersion,
         checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_fukamu',
       });
@@ -47,8 +47,8 @@ describe('billing UI HTTP adapter', () => {
       throw new Error('expected a JSON request body');
     }
     expect(JSON.parse(requestBody)).toEqual({
-      submissionId: contractIds.submissionA,
-      presentedOfferHash: contractIds.offerHashA,
+      submissionId: billingUiContractIds.submissionA,
+      presentedOfferHash: billingUiContractIds.offerHashA,
       consent: { kind: 'affirmed' },
     });
     expect(calls[1]?.init.credentials).toBe('same-origin');
@@ -60,8 +60,8 @@ describe('billing UI HTTP adapter', () => {
       Response.json({
         kind: 'redirect',
         evidenceOutcome: 'recorded',
-        evidenceId: contractIds.evidenceA,
-        offerHash: contractIds.offerHashA,
+        evidenceId: billingUiContractIds.evidenceA,
+        offerHash: billingUiContractIds.offerHashA,
         offerVersion: contractOffer().offerVersion,
         checkoutUrl: 'https://attacker.example/checkout',
       }),
@@ -83,19 +83,115 @@ describe('billing UI HTTP adapter', () => {
     await expect(missingTerms.submitCheckout(review())).resolves.toEqual({
       kind: 'terms-changed',
     });
+
+    const localConfirmed = createBillingUiHttpTransport(async () =>
+      Response.json({
+        kind: 'local-confirmed',
+        evidenceOutcome: 'recorded',
+        evidenceId: billingUiContractIds.evidenceA,
+        offerHash: billingUiContractIds.offerHashA,
+        offerVersion: contractOffer().offerVersion,
+      }),
+    );
+    await expect(localConfirmed.submitCheckout(review())).resolves.toEqual({
+      kind: 'local-confirmed',
+      evidenceOutcome: 'recorded',
+    });
+
+    const localWithUrl = createBillingUiHttpTransport(async () =>
+      Response.json({
+        kind: 'local-confirmed',
+        evidenceOutcome: 'recorded',
+        evidenceId: billingUiContractIds.evidenceA,
+        offerHash: billingUiContractIds.offerHashA,
+        offerVersion: contractOffer().offerVersion,
+        checkoutUrl: 'https://checkout.stripe.com/unexpected',
+      }),
+    );
+    await expect(localWithUrl.submitCheckout(review())).resolves.toEqual({
+      kind: 'unavailable',
+    });
+
+    const redirectWithExtraField = createBillingUiHttpTransport(async () =>
+      Response.json({
+        kind: 'redirect',
+        evidenceOutcome: 'recorded',
+        evidenceId: billingUiContractIds.evidenceA,
+        offerHash: billingUiContractIds.offerHashA,
+        offerVersion: contractOffer().offerVersion,
+        checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_fukamu',
+        providerReference: 'must-not-cross-the-boundary',
+      }),
+    );
+    await expect(
+      redirectWithExtraField.submitCheckout(review()),
+    ).resolves.toEqual({ kind: 'unavailable' });
   });
 
   it('keeps cancellation confirmation, retry, and local not-found distinct', async () => {
     const confirmed = createBillingUiHttpTransport(async () =>
       Response.json({
-        status: 'cancelled',
-        outcome: 'already-cancelled',
+        status: 'cancellation-scheduled',
+        outcome: 'scheduled',
         confirmedAt: 2_000,
+        accessEndsAt: 9_000,
       }),
     );
     await expect(
       confirmed.cancelSubscription(createBillingCancellationIdempotencyKey()),
-    ).resolves.toEqual({ kind: 'confirmed', confirmedAt: 2_000 });
+    ).resolves.toEqual({
+      kind: 'confirmed',
+      outcome: 'scheduled',
+      confirmedAt: 2_000,
+      accessEndsAt: 9_000,
+    });
+
+    const alreadyCancelled = createBillingUiHttpTransport(async () =>
+      Response.json({
+        status: 'cancelled',
+        outcome: 'already-cancelled',
+        confirmedAt: 2_000,
+        accessEndsAt: 1_900,
+      }),
+    );
+    await expect(
+      alreadyCancelled.cancelSubscription(
+        createBillingCancellationIdempotencyKey(),
+      ),
+    ).resolves.toEqual({
+      kind: 'confirmed',
+      outcome: 'already-cancelled',
+      confirmedAt: 2_000,
+      accessEndsAt: 1_900,
+    });
+
+    const expiredSchedule = createBillingUiHttpTransport(async () =>
+      Response.json({
+        status: 'cancellation-scheduled',
+        outcome: 'scheduled',
+        confirmedAt: 2_000,
+        accessEndsAt: 1_999,
+      }),
+    );
+    await expect(
+      expiredSchedule.cancelSubscription(
+        createBillingCancellationIdempotencyKey(),
+      ),
+    ).resolves.toEqual({ kind: 'unavailable' });
+
+    const futureAlreadyCancelled = createBillingUiHttpTransport(async () =>
+      Response.json({
+        status: 'cancelled',
+        outcome: 'already-cancelled',
+        confirmedAt: 2_000,
+        accessEndsAt: 2_001,
+      }),
+    );
+    await expect(
+      futureAlreadyCancelled.cancelSubscription(
+        createBillingCancellationIdempotencyKey(),
+      ),
+    ).resolves.toEqual({ kind: 'unavailable' });
 
     const unavailable = createBillingUiHttpTransport(async () =>
       Response.json({ error: 'unavailable' }, { status: 503 }),
@@ -108,12 +204,40 @@ describe('billing UI HTTP adapter', () => {
       Response.json({ error: 'not-found' }, { status: 404 }),
     );
     await expect(local.loadOffer()).resolves.toEqual({ kind: 'not-found' });
+
+    const malformedMissing = createBillingUiHttpTransport(async () =>
+      Response.json({ error: 'not-found', extra: true }, { status: 404 }),
+    );
+    await expect(malformedMissing.loadOffer()).resolves.toEqual({
+      kind: 'unavailable',
+    });
+
+    const malformedCancellation = createBillingUiHttpTransport(async () =>
+      Response.json({
+        status: 'cancellation-scheduled',
+        outcome: 'scheduled',
+        confirmedAt: 2_000,
+        accessEndsAt: 9_000,
+        providerReference: 'must-not-cross-the-boundary',
+      }),
+    );
+    await expect(
+      malformedCancellation.cancelSubscription(
+        createBillingCancellationIdempotencyKey(),
+      ),
+    ).resolves.toEqual({ kind: 'unavailable' });
   });
 
   it('creates server-decodable non-sensitive identifiers at the client edge', () => {
-    expect(createBillingCheckoutSubmissionId()).toMatch(
+    const checkoutSubmissionId = createBillingCheckoutSubmissionId();
+    const termsSubmissionId = createTermsConsentSubmissionId();
+    expect(checkoutSubmissionId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
+    expect(termsSubmissionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(termsSubmissionId).not.toBe(checkoutSubmissionId);
     expect(createBillingCancellationIdempotencyKey()).toMatch(
       /^cancel_[0-9a-f]{32}$/,
     );
@@ -121,22 +245,11 @@ describe('billing UI HTTP adapter', () => {
 });
 
 function contractOffer() {
-  const offer = planContractOffer(contractDisclosure());
-  if (offer.kind === 'rejected') throw new Error('invalid fixture');
-  return offer.offer;
+  return billingUiContractOfferFixture();
 }
 
-function review(): BillingCheckoutReview {
-  return {
-    offer: contractOffer(),
-    offerHash: contractIds.offerHashA,
-    terms: {
-      termsVersion: 'terms-v1:2026-09-15',
-      termsHash: `sha256:${'a'.repeat(64)}`,
-      effectiveDate: '2026-09-15',
-    },
-    submissionId: contractIds.submissionA,
-  };
+function review() {
+  return billingCheckoutReviewFixture();
 }
 
 function requestLabel(input: RequestInfo | URL): string {

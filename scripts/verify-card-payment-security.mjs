@@ -35,16 +35,12 @@ if (
 
 const sources = await Promise.all(
   [
-    'app/api/billing/http.ts',
-    'app/api/billing/checkout/handler.ts',
     'lib/application/billing-ui.ts',
     'lib/client/http-billing-ui.ts',
-    'server/legal-checkout/checkout-core.ts',
-    'server/legal-checkout/public.ts',
-    'server/stripe/core.ts',
-    'server/stripe/ports.ts',
-    'server/stripe/public.ts',
-    'server/stripe/service.ts',
+    'components/billing-checkout-boundary.tsx',
+    'backend/internal/httpapi/legal.go',
+    'backend/internal/stripebilling/core.go',
+    'backend/internal/adapters/stripe/provider.go',
   ].map(async (path) => ({ path, source: await readFile(path, 'utf8') })),
 );
 const forbiddenCardFields =
@@ -58,19 +54,24 @@ if (violations.length > 0) {
   );
 }
 
-const stripeCore = await readFile('server/stripe/core.ts', 'utf8');
-if (
-  !stripeCore.includes(
-    "['payment_method_options[card][request_three_d_secure]', 'any']",
-  )
-) {
+const [stripeCore, stripeProvider, checkoutHandler] = await Promise.all([
+  readFile('backend/internal/stripebilling/core.go', 'utf8'),
+  readFile('backend/internal/adapters/stripe/provider.go', 'utf8'),
+  readFile('backend/internal/httpapi/legal.go', 'utf8'),
+]);
+if (!stripeProvider.includes('RequestThreeDSecure: stripe.String("any")')) {
   throw new Error(
     'Stripe Checkout no longer explicitly requests EMV 3-D Secure',
   );
 }
-if (!stripeCore.includes("url.hostname === 'checkout.stripe.com'")) {
+if (!stripeCore.includes('parsed.Hostname() == "checkout.stripe.com"')) {
   throw new Error(
     'Stripe Checkout response is not restricted to the hosted origin',
+  );
+}
+if (!checkoutHandler.includes('contractCheckoutHandler')) {
+  throw new Error(
+    'Go HTTP Checkout boundary is absent from the card-data gate',
   );
 }
 

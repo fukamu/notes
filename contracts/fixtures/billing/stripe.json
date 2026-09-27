@@ -1,0 +1,89 @@
+{
+  "profile": "stripe-billing-v1",
+  "configuration": {
+    "mode": "test",
+    "apiVersion": "2026-02-25.clover",
+    "priceReference": "price_FukamuMonthly",
+    "successUrl": "https://notes.example.test/billing/success?session_id={CHECKOUT_SESSION_ID}",
+    "cancelUrl": "https://notes.example.test/billing/cancel"
+  },
+  "command": {
+    "subscriptionId": "01991f20-61d2-7000-8000-000000009001",
+    "checkoutIntentId": "01991f20-61d2-7000-8000-000000009002",
+    "createdAt": 1000,
+    "contract": {
+      "evidenceId": "01991f20-61d2-7000-8000-000000009003",
+      "offerHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "offer": {
+        "schemaVersion": 1,
+        "offerVersion": "legal-commerce-v1:2026-09-15",
+        "disclosureVersion": "2026-09-15",
+        "serviceName": "FUKAMU Notes",
+        "quantity": "one-personal-vault",
+        "planName": "FUKAMU Notes 月額プラン",
+        "priceYen": 980,
+        "billingPeriod": "monthly",
+        "taxIncluded": true,
+        "trialDays": 14,
+        "trialPriceYen": 0,
+        "firstChargeDay": 15,
+        "renewalChargeYen": 980,
+        "annualEstimateYen": 11760,
+        "automaticRenewal": true,
+        "paymentMethod": "credit-card",
+        "serviceStart": "after-registration-and-payment-method-confirmation",
+        "servicePeriod": "indefinite-until-cancelled",
+        "cancellationPolicy": "次回更新前に解約できます。",
+        "refundPolicy": "提供済み期間の返金はありません。",
+        "additionalFees": "通信費は利用者負担です。",
+        "onlineLockPolicy": "immediate-on-payment-failure-or-action-required",
+        "cancellationSeparateFromAccountDeletion": true
+      }
+    }
+  },
+  "expectedCheckout": {
+    "idempotencyKey": "01991f20-61d2-7000-8000-000000009002",
+    "fields": {
+      "mode": "subscription",
+      "submit_type": "subscribe",
+      "line_items[0][price]": "price_FukamuMonthly",
+      "line_items[0][quantity]": "1",
+      "payment_method_collection": "always",
+      "payment_method_options[card][request_three_d_secure]": "any",
+      "subscription_data[trial_period_days]": "14",
+      "subscription_data[trial_settings][end_behavior][missing_payment_method]": "cancel",
+      "client_reference_id": "01991f20-61d2-7000-8000-000000009002",
+      "metadata[billing_subscription_id]": "01991f20-61d2-7000-8000-000000009001",
+      "metadata[checkout_intent_id]": "01991f20-61d2-7000-8000-000000009002",
+      "metadata[contract_evidence_id]": "01991f20-61d2-7000-8000-000000009003",
+      "metadata[contract_offer_hash]": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "metadata[contract_offer_version]": "legal-commerce-v1:2026-09-15",
+      "metadata[contract_disclosure_version]": "2026-09-15",
+      "subscription_data[metadata][billing_subscription_id]": "01991f20-61d2-7000-8000-000000009001",
+      "subscription_data[metadata][contract_evidence_id]": "01991f20-61d2-7000-8000-000000009003",
+      "subscription_data[metadata][contract_offer_hash]": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "custom_text[submit][message]": "14日間は0円です。15日目から税込980円を毎月自動課金します。支払い方法の登録が必要です。支払い失敗または追加認証が必要な場合はオンライン利用を停止し、invoice.paid確認後に再開します。解約と退会は別手続です。",
+      "success_url": "https://notes.example.test/billing/success?session_id={CHECKOUT_SESSION_ID}",
+      "cancel_url": "https://notes.example.test/billing/cancel"
+    }
+  },
+  "webhook": {
+    "secret": "whsec_fixtureabcdefghijklmnop",
+    "timestampSeconds": 5,
+    "receivedAt": 5100,
+    "signatureHeader": "t=5,v1=a68eaaf9b9a5a3938fe0d8f6ffebc3920ff7dc3fa90cf54a31fb43b648d9b9ba",
+    "rawBody": "{\"id\":\"evt_fixture_paid\",\"object\":\"event\",\"api_version\":\"2026-02-25.clover\",\"created\":5,\"livemode\":false,\"type\":\"invoice.paid\",\"data\":{\"object\":{\"id\":\"in_Fukamu1\",\"object\":\"invoice\",\"customer\":\"cus_FukamuA\",\"status\":\"paid\",\"period_start\":10,\"period_end\":2592010,\"parent\":{\"type\":\"subscription_details\",\"subscription_details\":{\"subscription\":\"sub_FukamuA\",\"metadata\":{\"billing_subscription_id\":\"01991f20-61d2-7000-8000-000000009001\"}}}}}}",
+    "expected": {
+      "kind": "invoice-paid",
+      "eventId": "evt_fixture_paid",
+      "subscriptionId": "01991f20-61d2-7000-8000-000000009001",
+      "providerCustomerReference": "cus_FukamuA",
+      "providerSubscriptionReference": "sub_FukamuA",
+      "invoiceReference": "in_Fukamu1",
+      "occurredAt": 5000,
+      "recordedAt": 5100,
+      "paidPeriodStartedAt": 10000,
+      "paidPeriodEndsAt": 2592010000
+    }
+  }
+}

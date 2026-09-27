@@ -9,13 +9,14 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/{unit,integration}/**/*.test.ts'],
+    include: ['tests/{unit,integration,contracts}/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary'],
       include: [
-        'app/api/account/deletion/handler.ts',
-        'app/api/account/terms-consent/handler.ts',
+        'app/(notes)/notes-route-runtime.tsx',
+        'app/(notes)/production-launch-gate.tsx',
+        'components/authenticated-notes-bootstrap.tsx',
         'components/billing-checkout-boundary.tsx',
         'components/account-deletion-boundary.tsx',
         'components/history-view.tsx',
@@ -56,7 +57,6 @@ export default defineConfig({
         'lib/client/browser-service-worker-purge.ts',
         'lib/client/http-billing-ui.ts',
         'lib/client/http-privacy-request.ts',
-        'lib/client/local-privacy-request.ts',
         'lib/client/card-editor-index-cache.ts',
         'lib/client/browser-connectivity.ts',
         'lib/client/http-account-deletion.ts',
@@ -73,7 +73,6 @@ export default defineConfig({
         'lib/editor/body-document.ts',
         'lib/sync/**/*.ts',
         'lib/storage/**/*.ts',
-        'server/**/*.ts',
       ],
     },
   },

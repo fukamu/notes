@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { fixtureCardId, fixtureConflictId } from '@/tests/fixtures/ids';
+import { createSyncV2Fixture } from './sync-v2-fixture';
 
 type DesignTokenCard = {
   id: string;
@@ -36,34 +37,35 @@ function designTokenCards(): DesignTokenCard[] {
 async function serveDesignTokenFixture(page: Page, cards: DesignTokenCard[]) {
   const current = cards[0];
   if (!current) throw new Error('Design-token fixture must contain a card');
-  await page.route('**/api/sync', async (route) => {
+  const fixture = createSyncV2Fixture({
+    cards: cards.map((card) => ({
+      id: card.id,
+      officialDisplayId: card.displayId,
+      title: card.title,
+      body: card.body,
+      createdAt: card.createdAt,
+      updatedAt: card.updatedAt,
+      revision: 1,
+    })),
+    conflicts: [
+      {
+        id: fixtureConflictId('design-token-conflict'),
+        cardId: current.id,
+        serverRevision: 1,
+        localTitle: '端末側の長い日本語編集案',
+        localBody: current.body,
+        serverTitle: '同期先の長い日本語編集案',
+        serverBody: current.body,
+        createdAt: 14,
+      },
+    ],
+  });
+  await page.route('**/api/v2/sync', async (route) => {
+    const { response } = fixture.respond(route.request().postDataJSON());
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
-        cards: cards.map((card) => ({
-          id: card.id,
-          officialDisplayId: card.displayId,
-          title: card.title,
-          body: card.body,
-          createdAt: card.createdAt,
-          updatedAt: card.updatedAt,
-          revision: 1,
-        })),
-        conflicts: [
-          {
-            id: fixtureConflictId('design-token-conflict'),
-            cardId: current.id,
-            serverRevision: 1,
-            localTitle: '端末側の長い日本語編集案',
-            localBody: current.body,
-            serverTitle: '同期先の長い日本語編集案',
-            serverBody: current.body,
-            createdAt: 14,
-          },
-        ],
-        acknowledgedMutationIds: [],
-      }),
+      body: JSON.stringify(response),
     });
   });
 }

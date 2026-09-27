@@ -1,5 +1,10 @@
 # Dedicated checkout and account billing UI
 
+The UI remains TypeScript, but the TypeScript/D1 server contract referenced in
+the historical sections below was removed by T17. Its request boundary and
+persistence replacement are Go/PostgreSQL. Checkout/provider activation and
+the local fixture connection remain separate from this source retirement.
+
 Issue #225 keeps subscription review and cancellation outside the Notes editing
 surface. The canonical entry points are `/checkout` and `/account/billing`.
 Neither route is mounted by the Notes route group, and card, history, and

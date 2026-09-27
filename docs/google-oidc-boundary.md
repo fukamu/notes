@@ -1,8 +1,15 @@
 # Google OIDC boundary
 
-Issue #111 defines the provider-neutral Google sign-in boundary. It does not
-create a Google Cloud client, store a client secret, call Google, add a login
-route, or enable authentication in the local notes composition.
+The TypeScript contract discussed below is historical migration-source
+evidence. T17 removed its server code and the leftover TypeScript-only OIDC
+domain types. The executable provider-neutral boundary is now
+`backend/internal/identity`, with the concrete provider adapter isolated under
+`backend/internal/adapters/oidc`; route/provider activation remains separate.
+
+Issue #111 defines the TypeScript provider-neutral Google sign-in boundary.
+Migration Issue #424 implements its Go replacement without creating a Google
+Cloud client, adding a repository secret, calling Google, adding a login route,
+or enabling authentication in the local notes composition.
 
 ## Flow and trust boundaries
 
@@ -12,18 +19,28 @@ an injected entropy port, derives an S256 challenge, and atomically inserts a
 ten-minute pending transaction. Only the challenge enters the authorization
 request; the verifier remains in the server-side transaction.
 
+Before browser navigation, the product-specific serializer requires the exact
+query-free base destination
+`https://accounts.google.com/o/oauth2/v2/auth`. It rejects userinfo,
+fragments, pre-existing queries, alternate paths, lookalike hosts, HTTP, and
+otherwise valid non-Google HTTPS providers before adding the controlled OAuth
+fields. Endpoint parsing and the provider adapter remain provider-neutral so
+local TLS adapter tests do not weaken this Google navigation policy.
+
 The callback decoder accepts exactly one authorization code or provider error.
 The transaction store must atomically return and consume the state, so provider
 denial, malformed claims, token-exchange failure, and successful login all make
 the callback single-use. The boundary consumes before code exchange and maps
 every public failure to the same `authentication-failed` result.
 
-The token port is a deliberately narrow seam. A production implementation must
-exchange the code over TLS, use the stored verifier and exact redirect URI, and
-verify ID-token signature, algorithm, key origin, and discovered provider
-metadata before returning claims as `unknown`. The boundary then decodes the
-claims again and checks exact issuer allowlisting, audience, `azp` for multiple
-audiences, expiry, issued-at bounds, nonce, subject, and verified email.
+The token port is a deliberately narrow seam. The Go adapter uses pinned
+`coreos/go-oidc/v3/oidc` and `golang.org/x/oauth2` to exchange the code over
+TLS, send the stored verifier and exact redirect URI, and verify ID-token
+signature, advertised algorithm, JWKS, exact discovery issuer, audience, and
+expiry. The application boundary then decodes the returned claims into bounded
+types and independently checks the configured issuer allowlist, audience,
+`azp` for multiple audiences, expiry, issued-at bounds, nonce, subject, and
+verified email.
 Google documents both `https://accounts.google.com` and its legacy exact
 `accounts.google.com` issuer value; the issuer codec can represent both, but a
 deployment accepts only values explicitly present in its configured allowlist.
@@ -43,8 +60,12 @@ fails generically; it is not silently merged.
 Account linking is a separate transaction purpose. The target AccountId is
 derived from the authenticated `VaultContext` at the start boundary and cannot
 be supplied in the request body. A new identity can link only to that account;
-an identity or verified email owned by another account is rejected. Persistence
-of the resulting provision/link plan belongs to the control-plane schema work.
+an identity or verified email owned by another account is rejected. Issue #426
+adds a provider-neutral `verified_email_owners` table and a PostgreSQL
+directory; one canonical address can belong to only one account even when that
+account has multiple provider identities. Both OIDC and OTP preserve the local
+part and lowercase only the domain. Issuer or subject is never treated as a
+substitute for email. Link writes remain disconnected work.
 
 After the identity/control-plane operation commits, `establishOidcSession`
 creates a fresh initial session or rotates a same-account/same-vault session via
@@ -53,13 +74,20 @@ never reuses the previous session ID, bearer token, or epoch.
 
 ## Local development, migration, and rollback
 
-The current route continues to mount `LegacyNotesApp`; therefore local notes,
-offline editing, and E2E do not require Google or billing configuration. Tests
-use fake entropy, transaction, provider, and identity-directory adapters plus
-the runtime Web Crypto S256 adapter. No real provider request or email is sent.
+The Go static handler continues to mount the unchanged React notes UI; local
+notes, offline editing, and E2E do not require Google or billing configuration.
+There is no request-time TypeScript authentication or page server. Go boundary
+tests use fake entropy, atomic in-memory transaction, provider, and
+identity-directory adapters. Adapter tests use an ephemeral local TLS discovery,
+token, and JWKS server and verify the RFC 7636 S256 vector. No real provider
+request or email is sent.
 
-This Issue creates no schema or data migration. Reverting it removes only the
-OIDC contracts, fake/Web adapters, tests, and documentation. A real Google
-client/secret, callback route, production token verifier, and production
-transaction/identity stores require later Issues and explicit secret/provider
-approval.
+Issue #424 itself creates no schema or data migration; #426 adds the
+verified-email and signup schema only to disposable local/test PostgreSQL.
+Reverting before production use removes the disconnected code and recreates
+that test schema. A real Google client/secret, callback route,
+callback-browser binding, production transaction store, and linking composition
+require later Issues and explicit secret/provider approval. The Strict session
+cookie is not weakened: because it will not accompany a cross-site Google
+callback, a separate short-lived callback binding remains required before
+publication.

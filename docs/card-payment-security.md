@@ -28,10 +28,11 @@ FUKAMU checkout review
   -> entitlement state
 ```
 
-The source/build gate checks the relevant billing and Stripe contracts for
-cardholder-data field names. This is evidence of the intended source boundary,
-not a substitute for browser/network inspection of the final production
-configuration or for Stripe/acquirer PCI guidance.
+The source/build gate checks the browser transport, the actual Go HTTP Checkout
+handler, and the billing and Stripe contracts for cardholder-data field names.
+This is evidence of the intended source boundary, not a substitute for
+browser/network inspection of the final production configuration or for
+Stripe/acquirer PCI guidance.
 
 ## EMV 3-D Secure and recurring charges
 
@@ -91,14 +92,13 @@ as provider/acquirer confirmation.
 
 ### Dependency audit result
 
-On 2026-09-15, `npm audit --omit=dev --audit-level=high` exited with status 1
-and reported five high-severity findings involving `image-size` through
-`vinext`, `react-server-dom-webpack`, `undici`, and `vite`. The suggested full
-remediation changes framework/runtime versions outside their current declared
-ranges, so this Issue does not apply an unreviewed forced upgrade. These results
-are unresolved production-launch blockers and require applicability triage,
-safe version selection, regression verification, and recorded ownership before
-the launch checklist may pass.
+T17 removed vinext/RSC/Sites runtime dependencies and the remaining Drizzle,
+Miniflare, and Cloudflare Workers development dependencies. `shadcn` remains a
+build-only dependency and Vite is pinned by the lockfile. The residual
+retirement gate checks both `package.json` and `package-lock.json` so the old
+server packages cannot return unnoticed. Dependency audit output remains only
+one input to the separately approved production vulnerability review; it is
+not a PCI or launch-readiness claim.
 
 ## EC merchant controls
 

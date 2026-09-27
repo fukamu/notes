@@ -1,9 +1,12 @@
 # Provider-neutral telemetry and alert contract
 
-Issue #217 defines the telemetry vocabulary used to observe authentication,
+Issue #217 defined the telemetry vocabulary used to observe authentication,
 Sync V2, billing, encrypted storage, and envelope-crypto boundaries without
-exporting user content or tenant identifiers. It does not select or connect a
-production monitoring provider.
+exporting user content or tenant identifiers. Issue #503 preserved that frozen
+TypeScript contract at `e8936ab90768774371d84b4808c100d546649943` in typed Go
+policy. T17 then retired the legacy server source and tests, so
+`backend/internal/telemetry` is now the executable contract. It does not select
+or connect a production monitoring provider.
 
 ## Data contract
 
@@ -19,8 +22,10 @@ Every event contains only five bounded dimensions plus `schemaVersion: 1`:
 
 Raw durations and counts are converted to buckets before recording. A pure
 invariant rejects successful outcomes with a failure category and rejected or
-failed outcomes without one. The unknown-value decoder rejects unknown fields
-and all values outside this vocabulary.
+failed outcomes without one. The bounded Go JSON decoder rejects missing,
+duplicate, unknown, or trailing fields; malformed UTF-8 or surrogate escapes;
+oversized input; and all values outside this vocabulary. Rejection returns one
+fixed error and never reflects the rejected value.
 
 The powers-of-ten duration and count boundaries are stable aggregation bins for
 bounded cardinality, not pass/fail targets or alert thresholds. Changing their
@@ -43,18 +48,19 @@ VaultId, CardId, SessionId, and mutation identifiers. Tests submit sensitive
 markers, a raw Vault identifier, arbitrary operations, and incoherent states to
 the decoder and require rejection.
 
-The Sync V2 HTTP handler records representative anonymous/CSRF denial, invalid
-input, billing lock, dependency/internal failure, expected application denial,
-normal success, and no-change outcomes. It records only mutation/change count
-buckets; it never records request values or authenticated context identifiers.
+The historical TypeScript Sync V2 handler supplied the comparison cases for
+anonymous/CSRF denial, invalid input, billing lock, dependency/internal failure,
+expected application denial, normal success, and no-change outcomes. The Go
+tests retain those bounded semantics and never record request values or
+authenticated context identifiers. Issue #503 ports the policy and buffer
+boundary only; it does not silently connect a production exporter.
 
-`TelemetrySink.record` is a synchronous buffer boundary with a typed
-`buffered`/`dropped` result; a Promise-returning exporter does not satisfy the
-port. A production adapter must enqueue locally and perform provider I/O
-outside the request correctness path. `recordTelemetrySafely` catches sink
-failure and normalizes backpressure drops, and the Sync V2 tests verify that
-such a failure does not change a successful HTTP response. An explicit no-op
-sink and deterministic fake sink support local development and tests.
+The Go `telemetry.Sink.Record` port is a synchronous buffer boundary with a
+typed `buffered`/`dropped` result. A production adapter must enqueue locally and
+perform provider I/O outside the request correctness path. `RecordSafely`
+recovers sink failure and normalizes backpressure drops. An explicit no-op sink
+and deterministic test fake verify ordering, failure isolation, and the fixed
+event vocabulary without any provider call.
 
 ## Alert contract
 
@@ -82,20 +88,26 @@ adapter or live alert is configured.
 Run focused verification with:
 
 ```sh
-npx vitest run tests/unit/telemetry-core.test.ts tests/unit/sync-v2-http-handler.test.ts tests/unit/architecture.test.ts
+cd backend
+go test ./internal/telemetry
 ```
 
-The fake sink tests ordering, success/denial/failure/no-change events, and
-export-failure isolation. Existing `npm run verify` remains the shared gate and
-includes the telemetry server modules in the existing `server/**/*.ts`
-coverage target.
+The Go tests exhaust every operation/outcome/failure-category coherence
+combination, exact bucket boundaries, alert precedence, sensitive and
+high-cardinality rejection, fixed metric serialization, sink ordering, and
+export-failure isolation. Existing `npm run verify` remains the shared gate;
+T17 removed the frozen TypeScript server tests after their Go replacements were
+bound to the retirement ledger.
 
 This contract proves vocabulary, redaction-by-construction, bounded
 cardinality, and request-result isolation. It does not prove provider delivery,
 retention, sampling, cost, dashboard correctness, alert latency, or notification
 delivery. No production monitoring account, secret, destination, or alert is
-created by Issue #217.
+created by Issue #503. Clocks, request logging, provider export, and notification
+delivery remain effect adapters outside the pure event, metric, and alert
+policy.
 
-Rollback is a single PR revert: remove the telemetry core/public/fake modules,
-Sync V2 recording calls, tests, and this document. There is no schema or data
-migration.
+The immutable TypeScript revision remains historical investigation evidence,
+not a runtime rollback. A future Go release rollback must preserve its
+compatible schema and use a reviewed immutable release artifact. Issue #503
+itself created no schema, data, provider, or external-resource migration.

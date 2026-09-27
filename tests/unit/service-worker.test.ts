@@ -104,7 +104,7 @@ describe('Service Worker cache policy', () => {
         'https://notes.example',
       );
 
-    expect(policy('GET', '/_next/static/chunks/app-Ab12.js')).toEqual({
+    expect(policy('GET', '/assets/app-Ab12.js')).toEqual({
       kind: 'immutable-static',
     });
     expect(policy('GET', '/manifest.webmanifest')).toEqual({
@@ -121,7 +121,7 @@ describe('Service Worker cache policy', () => {
     });
 
     const denied = [
-      ['POST', '/_next/static/chunks/app-Ab12.js', 'no-cors'],
+      ['POST', '/assets/app-Ab12.js', 'no-cors'],
       ['GET', 'https://other.example/static.js', 'no-cors'],
       ['GET', '/api/sync', 'cors'],
       ['GET', '/auth/callback', 'navigate'],
@@ -132,7 +132,7 @@ describe('Service Worker cache policy', () => {
       ['GET', '/legal/privacy', 'navigate'],
       ['GET', '/account', 'navigate'],
       ['GET', '/cards/card-id?token=secret', 'navigate'],
-      ['GET', '/_next/static/chunks/app.js?user=1', 'no-cors'],
+      ['GET', '/assets/app.js?user=1', 'no-cors'],
       ['GET', '/cards/card-id', 'cors'],
       ['GET', '/unlisted.js', 'no-cors'],
     ] as const;
@@ -148,8 +148,8 @@ describe('Service Worker cache policy', () => {
       urls: [
         '/',
         '/manifest.webmanifest',
-        '/_next/static/chunks/app-Ab12.js',
-        '/_next/static/chunks/app-Ab12.js',
+        '/assets/app-Ab12.js',
+        '/assets/app-Ab12.js',
         '/cards/card-id',
         '/api/sync',
         '/favicon.svg?user=1',
@@ -161,7 +161,7 @@ describe('Service Worker cache policy', () => {
     expect(result).toEqual([
       '/',
       '/manifest.webmanifest',
-      '/_next/static/chunks/app-Ab12.js',
+      '/assets/app-Ab12.js',
     ]);
     for (const data of [
       null,
@@ -177,13 +177,13 @@ describe('Service Worker cache migration', () => {
   it('deletes only stale FUKAMU caches during activation', async () => {
     const { context, state } = await loadWorkerHarness([
       'fukamu-notes-v2',
-      'fukamu-notes-static-v3',
+      'fukamu-notes-static-v4',
       'unrelated-cache',
     ]);
 
     await Promise.resolve(callWorkerFunction(context, '__deleteStale'));
 
-    expect(state.keys).toEqual(['fukamu-notes-static-v3', 'unrelated-cache']);
+    expect(state.keys).toEqual(['fukamu-notes-static-v4', 'unrelated-cache']);
     expect(state.deleted).toEqual(['fukamu-notes-v2']);
   });
 });
@@ -197,7 +197,7 @@ describe('Service Worker cache preparation', () => {
         '/',
         '/manifest.webmanifest',
         '/favicon.svg',
-        '/_next/static/chunks/app-Ab12.js',
+        '/assets/app-Ab12.js',
       ],
     });
     const secondCommand = callWorkerFunction(context, '__command', {
@@ -206,8 +206,8 @@ describe('Service Worker cache preparation', () => {
         '/',
         '/manifest.webmanifest',
         '/favicon.svg',
-        '/_next/static/chunks/app-Ab12.js',
-        '/_next/static/chunks/lazy-Cd34.js',
+        '/assets/app-Ab12.js',
+        '/assets/lazy-Cd34.js',
       ],
     });
     const postMessage = vi.fn();
@@ -220,23 +220,13 @@ describe('Service Worker cache preparation', () => {
     );
 
     expect(state.matched).toEqual([
-      '/_next/static/chunks/app-Ab12.js',
-      '/_next/static/chunks/app-Ab12.js',
-      '/_next/static/chunks/lazy-Cd34.js',
+      '/assets/app-Ab12.js',
+      '/assets/app-Ab12.js',
+      '/assets/lazy-Cd34.js',
     ]);
     expect(state.added).toEqual([
-      [
-        '/',
-        '/manifest.webmanifest',
-        '/favicon.svg',
-        '/_next/static/chunks/app-Ab12.js',
-      ],
-      [
-        '/',
-        '/manifest.webmanifest',
-        '/favicon.svg',
-        '/_next/static/chunks/lazy-Cd34.js',
-      ],
+      ['/', '/manifest.webmanifest', '/favicon.svg', '/assets/app-Ab12.js'],
+      ['/', '/manifest.webmanifest', '/favicon.svg', '/assets/lazy-Cd34.js'],
     ]);
     expect(postMessage).toHaveBeenCalledTimes(2);
     expect(postMessage).toHaveBeenLastCalledWith({
@@ -247,10 +237,10 @@ describe('Service Worker cache preparation', () => {
 
   it('acknowledges when every requested immutable asset is already cached', async () => {
     const { context, state } = await loadWorkerHarness();
-    state.cached.add('/_next/static/chunks/app-Ab12.js');
+    state.cached.add('/assets/app-Ab12.js');
     const command = callWorkerFunction(context, '__command', {
       type: 'CACHE_URLS',
-      urls: ['/_next/static/chunks/app-Ab12.js'],
+      urls: ['/assets/app-Ab12.js'],
     });
     const postMessage = vi.fn();
 
@@ -270,7 +260,7 @@ describe('Service Worker cache preparation', () => {
     state.failAdd = true;
     const command = callWorkerFunction(context, '__command', {
       type: 'CACHE_URLS',
-      urls: ['/', '/_next/static/chunks/app-Ab12.js'],
+      urls: ['/', '/assets/app-Ab12.js'],
     });
     const postMessage = vi.fn();
 
@@ -287,7 +277,7 @@ describe('Service Worker logout cache purge', () => {
   it('acknowledges only after every FUKAMU cache is absent', async () => {
     const { context, state } = await loadWorkerHarness([
       'fukamu-notes-v2',
-      'fukamu-notes-static-v3',
+      'fukamu-notes-static-v4',
       'unrelated-cache',
     ]);
     const command = callWorkerFunction(context, '__command', {
@@ -306,11 +296,11 @@ describe('Service Worker logout cache purge', () => {
     expect(state.keys).toEqual(['unrelated-cache']);
     expect(state.deleted).toEqual([
       'fukamu-notes-v2',
-      'fukamu-notes-static-v3',
+      'fukamu-notes-static-v4',
     ]);
     expect(state.timeline).toEqual([
       'delete:fukamu-notes-v2',
-      'delete:fukamu-notes-static-v3',
+      'delete:fukamu-notes-static-v4',
       'ack',
     ]);
     expect(replies).toEqual([
@@ -320,7 +310,7 @@ describe('Service Worker logout cache purge', () => {
 
   it('rejects deletion failures without sending a success acknowledgement', async () => {
     const { context, state } = await loadWorkerHarness([
-      'fukamu-notes-static-v3',
+      'fukamu-notes-static-v4',
     ]);
     state.failDelete = true;
     const command = callWorkerFunction(context, '__command', {

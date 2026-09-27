@@ -1,4 +1,3 @@
-import type { Metadata } from 'next';
 import {
   LegalDefinitionList,
   LegalDocument,
@@ -6,7 +5,7 @@ import {
 import { PublicRouteLink } from '@/components/public-route-link';
 import { commercialDisclosureForCurrentEnvironment } from '@/lib/environment/legal-commerce';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: '会社概要 | FUKAMU Notes',
 };
 

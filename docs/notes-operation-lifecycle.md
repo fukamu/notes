@@ -53,9 +53,10 @@ operations have been fenced. Browser data deletion remains #148.
 
 The same active generation still accepts ordinary autosave and sync. Visible
 card reconciliation continues to preserve an edit made while a sync request is
-in flight. The explicit `LegacyNotesApp` receives the same guard using its
-fixed scope, so local development and E2E do not require Google, email, Stripe,
-or production infrastructure.
+in flight. The live local-fixture route now supplies the authenticated
+Account/Vault/session generation; compatibility tests continue to exercise the
+fixed legacy scope. Neither path requires Google, email, Stripe, or production
+infrastructure.
 
 Pure tests cover all operation kinds and every Vault/session identity field.
 Provider integration tests use an in-memory DOM and deferred adapter promises

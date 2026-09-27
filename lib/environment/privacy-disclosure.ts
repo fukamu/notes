@@ -2,6 +2,7 @@ import {
   resolvePrivacyDisclosure,
   type PrivacyDisclosureResolution,
 } from '@/lib/application/privacy-disclosure';
+import { currentPublicBuildEnvironment } from './public-build';
 
 export class PrivacyDisclosureConfigurationError extends Error {
   readonly reason: Extract<
@@ -21,7 +22,7 @@ export class PrivacyDisclosureConfigurationError extends Error {
 }
 
 export function privacyDisclosureForCurrentEnvironment() {
-  const resolution = resolvePrivacyDisclosure(process.env);
+  const resolution = resolvePrivacyDisclosure(currentPublicBuildEnvironment());
   if (resolution.kind === 'blocked') {
     throw new PrivacyDisclosureConfigurationError(resolution);
   }

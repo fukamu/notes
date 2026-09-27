@@ -13,10 +13,11 @@ through a restrained public header/footer. Future signup and account flows may
 link directly to the canonical legal URL without copying the full disclosure
 into the Notes interface.
 
-Public-page links temporarily use full-document navigation because the current
-vinext beta throws during its `next/link` prefetch/client-navigation path. The
-focused browser test protects this workaround; remove it after a vinext upgrade
-demonstrably restores client navigation.
+Public pages are prerendered at build time and their links use ordinary
+same-origin document navigation. This keeps the public route artifact usable
+without mounting the Notes application or depending on a request-time
+TypeScript server. Focused browser tests protect direct navigation and the
+absence of external transmission.
 
 ## Local and test behavior
 
@@ -25,8 +26,8 @@ fixture. Operator identity and contact values are visibly marked as development
 samples, while the approved JPY 980 monthly price and contract policies are the
 same values that production validation requires. An accessible notice says that
 the operator is not real and that the local screen cannot create a contract or
-charge. This keeps `npm run dev`, local builds, CI, and the current Sites test
-environment independent of production credentials and services.
+charge. This keeps `npm run dev`, local builds, CI, and the Go local/test
+runtime independent of production credentials and services.
 The replaceable operator sample is defined once in
 `lib/application/legal-operator-fixture.ts` and shared with the local privacy and
 terms fixtures so those pages cannot accidentally identify different operators.

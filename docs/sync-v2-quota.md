@@ -1,10 +1,15 @@
 # Sync v2 quota enforcement
 
-Issue #196 connects the paid Personal Vault limits and the Vault quota ledger
-to the authenticated Sync v2 application. It remains inactive in the existing
-local and Sites test mode: `legacy-test` continues to use the local-first v1
-path without checkout, KMS, R2, or quota setup, while the production v2 route
-still fails closed until real provider adapters are separately approved.
+> Historical migration-source note: references below to the TypeScript,
+> `legacy-test`, Sites, and D1 composition describe the frozen pre-T17 system.
+> Current executable policy/application code is Go, with quota state in
+> PostgreSQL; route activation is tracked separately from source retirement.
+
+Historically, Issue #196 connected the paid Personal Vault limits and the Vault
+quota ledger to the TypeScript authenticated Sync v2 application while
+`legacy-test` and Sites still used the local-first v1 path. In the current
+source tree, the Go route remains fail closed until an explicit runtime is
+composed; there is no Sites/D1 runtime path.
 
 ## Enforcement order and boundaries
 
@@ -76,3 +81,19 @@ must remain intact for evidence-based reconciliation rather than being deleted
 or released by age.
 
 Main is unchanged and production is not deployed by this integration.
+
+## Go and PostgreSQL migration status
+
+Issue #454 connects the Go quota ledger from #450 to the disconnected Go Sync
+v2 application. The Go order is the same reservation, immutable encrypted
+write, journal receipt, and finalization sequence documented above. A real
+PostgreSQL/encrypted-object vertical test interrupts the journal boundary,
+observes the still-reserved capacity, and proves an identical request resumes
+without another encryption or object upload. It also proves deletion commits
+the tombstone before active-card usage is reduced and that response-loss replay
+does not reduce it twice.
+
+The exact 10,000-card concurrent final-slot test remains at the shared
+PostgreSQL ledger boundary used by this application. The Go HTTP handler is
+still unmounted, so these checks do not enable quota enforcement for the
+existing v1 route or publish the paid v2 path.

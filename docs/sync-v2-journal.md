@@ -1,5 +1,10 @@
 # Tenant-scoped Sync v2 journal
 
+> Historical migration-source note: the D1 journal below is retained only as a
+> compatibility oracle. The executable journal is Go
+> `backend/internal/syncv2` with the PostgreSQL adapter and migrations; T17
+> removed the TypeScript/D1 source and Sites tooling.
+
 Issue #162 provides the D1 metadata transaction that the authenticated Sync v2
 endpoint in #121 will call after encrypted payload storage succeeds. It does not
 expose an HTTP route, authorize a session or entitlement, or read and write R2
@@ -60,7 +65,7 @@ path intact.
 ## Failure and rollback
 
 The checked-in migration is additive and targets the new, empty production
-schema. It is not applied to the current Sites D1 or any production database by
+schema. It was not applied to the historical Sites D1 or any production database by
 this Issue. An injected journal-insert failure is tested to leave no card,
 receipt, display ID, sequence advance, or change row. Partition remapping makes
 an already-open repository fail closed; the caller must reopen it.
@@ -68,3 +73,40 @@ an already-open repository fail closed; the caller must reopen it.
 Rollback removes or disables the unused #121 composition and reverts this
 migration before production application. The existing `/api/sync` v1 tables,
 wire format, browser replica, conflict behavior, and route are unchanged.
+
+## Go and PostgreSQL migration status
+
+Issue #452 ports the same disconnected journal contract to
+`backend/internal/syncv2` and the PostgreSQL adapter. Migration
+`00012_sync_v2_journal` uses the verified `(account_id, vault_id)` owner pair
+as its scope. The PostgreSQL deployment is one database rather than a D1
+partition directory, so a physical partition route is not copied; the captured
+owner scope is repeated in every key and query instead.
+
+One serializable transaction and a Vault-scoped advisory lock atomically apply
+the card/conflict index, durable receipt, ordered changes, and allocator state.
+Unlike the D1 pending-receipt batch protocol, PostgreSQL needs no externally
+visible pending row because transaction rollback removes every partial write.
+Retry is limited to serialization and deadlock errors, with at most three
+attempts. Exact receipt replay is stable; a different fingerprint and a stale
+revision remain distinct failures.
+
+Reads retain the first page's high watermark, return no more than 500 changes,
+and reject gaps, malformed tagged rows, future watermarks, or an `after`
+position beyond the fixed window. The test suite injects a journal trigger
+failure to prove that card and receipt writes roll back, races two updates from
+the same predecessor revision, verifies cross-Vault isolation, and exercises a
+500-item page followed by a fixed-watermark continuation.
+
+The journal still contains descriptors only. Issue #454 now hydrates upserts
+through the existing encrypted-object service and composes authentication,
+Entitlement, quota, HMAC cursor authentication, and the strict Go HTTP
+contract. The constructor remains deliberately absent from the public Go
+handler composition, so `/api/v2/sync` is still closed. Neither Issue applies
+migration 00012 outside the disposable test database.
+
+Before persistent use, rollback may recreate only the disposable schema. Once
+accepted receipts exist, rollback must stop writes and preserve journal state,
+immutable encrypted objects, and quota reservations as one consistency set;
+use a compatible artifact or reviewed forward migration rather than dropping
+tables, deleting objects, or rewinding sequences.

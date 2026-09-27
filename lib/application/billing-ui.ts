@@ -1,5 +1,7 @@
 import type { LegalCommerceDisclosure } from '@/lib/application/legal-commerce';
 import type { TermsConsentUiReference } from '@/lib/application/terms-consent-ui';
+import type { ContractSubmissionId } from '@/lib/contracts/contract-checkout';
+import type { TermsConsentSubmissionId } from '@/lib/contracts/terms-consent';
 
 export type BillingUiOffer = Readonly<{
   offerVersion: string;
@@ -30,7 +32,8 @@ export type BillingCheckoutReview = Readonly<{
   offer: BillingUiOffer;
   offerHash: string;
   terms: TermsConsentUiReference;
-  submissionId: string;
+  submissionId: ContractSubmissionId;
+  termsSubmissionId: TermsConsentSubmissionId;
 }>;
 
 export type BillingCheckoutFailure =

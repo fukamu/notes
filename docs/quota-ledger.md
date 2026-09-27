@@ -1,5 +1,11 @@
 # Vault quota ledger
 
+> Historical migration-source note: the D1 adapter and Sites migration details
+> below are compatibility evidence, not current runtime instructions. The
+> executable ledger is `backend/internal/quota` with
+> `backend/internal/adapters/postgres`; its schema is delivered by the embedded
+> PostgreSQL migrations.
+
 Issue #195 adds the provider-neutral reservation contract, fake, and D1 adapter
 used to make the Personal Vault limits authoritative under concurrent writes.
 Issue #196 connects it to the authenticated Sync v2 application; see
@@ -73,3 +79,37 @@ disable new online mutations before changing ledger state and must preserve
 reservations for reconciliation.
 
 Main is unchanged and production is not deployed.
+
+## Go and PostgreSQL migration status
+
+Issue #450 ports this policy and ledger contract to `backend/internal/quota`
+and the PostgreSQL adapter. Migration `00011_vault_quota_ledger` keeps the same
+owner scope and durable fields. PostgreSQL finalization uses a serializable
+transaction with exact one-row checks for both usage and reservation updates;
+the D1 finalization assertion table is retained as an empty schema-parity table
+but is not part of the PostgreSQL atomicity mechanism.
+
+Admission and finalization lock the Vault usage row, retry only serialization
+failures and deadlocks a bounded number of times, and return an explicit
+`cas-conflict` on exhaustion. Reconciliation candidate reads remain bounded to
+100, owner scoped, and ordered by `reconcile_after` then reservation ID. No
+candidate read changes state or treats age as proof that capacity can be
+released.
+
+The Go journal/content index was added as a disconnected boundary by Issue
+#452. T11c Issue #454 composes the ledger and immutable journal receipt behind
+a closed Sync v2 route. No production migration, backfill, public route,
+provider, automatic reconciler, or deployment is authorized by those slices.
+
+T13a Issue #470 adds an explicit owner-scoped, bounded,
+read-only candidate audit. T13b Issue #472 adds only the positive-evidence
+commit operation: the reservation can be committed after it is due when its
+ID, fingerprint, card ID, and original timestamp exactly match an immutable
+Sync v2 receipt. Missing or mismatched evidence fails closed, a released
+reservation cannot be recommitted, retries do not advance usage twice, and
+concurrent attempts serialize to one commit plus one replay.
+
+There is still no automatic release path. Determining that a write did not
+commit requires durable negative evidence not present in the current model;
+age is not sufficient. The operations commands add no schema, scheduling,
+HTTP/UI exposure, production execution, or production authorization.

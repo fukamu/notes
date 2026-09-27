@@ -7,13 +7,13 @@ import {
   formatBillingUiYen,
   initialBillingCancellationUiState,
   initialBillingCheckoutUiState,
-  type BillingCheckoutReview,
 } from '@/lib/application/billing-ui';
-import { planContractOffer } from '@/server/legal-checkout/core';
 import {
-  contractDisclosure,
-  contractIds,
-} from '@/tests/fixtures/legal-checkout';
+  billingCheckoutReviewFixture,
+  billingUiContractIds,
+  billingUiContractOfferFixture,
+  billingUiDisclosureFixture,
+} from '@/tests/fixtures/billing-ui';
 
 describe('billing checkout UI pure state', () => {
   it('requires a fresh affirmative choice before entering one submitting state', () => {
@@ -49,7 +49,10 @@ describe('billing checkout UI pure state', () => {
     });
     expect(submitting).toMatchObject({
       kind: 'submitting',
-      review: { submissionId: contractIds.submissionA },
+      review: {
+        submissionId: billingUiContractIds.submissionA,
+        termsSubmissionId: billingUiContractIds.termsSubmissionA,
+      },
     });
     expect(
       billingCheckoutUiReducer(submitting, { type: 'submit-requested' }),
@@ -66,7 +69,10 @@ describe('billing checkout UI pure state', () => {
       kind: 'review',
       subscriptionConsent: true,
       termsConsent: true,
-      review: { submissionId: contractIds.submissionA },
+      review: {
+        submissionId: billingUiContractIds.submissionA,
+        termsSubmissionId: billingUiContractIds.termsSubmissionA,
+      },
     });
 
     const loading = billingCheckoutUiReducer(submitting, {
@@ -78,7 +84,11 @@ describe('billing checkout UI pure state', () => {
     ).toEqual({ kind: 'loading', reason: 'terms-changed' });
     const refreshed = billingCheckoutUiReducer(loading, {
       type: 'offer-loaded',
-      review: { ...review(), submissionId: contractIds.submissionB },
+      review: {
+        ...review(),
+        submissionId: billingUiContractIds.submissionB,
+        termsSubmissionId: billingUiContractIds.termsSubmissionB,
+      },
       notice: 'offer-changed',
     });
     expect(refreshed).toMatchObject({
@@ -86,7 +96,10 @@ describe('billing checkout UI pure state', () => {
       subscriptionConsent: false,
       termsConsent: false,
       notice: 'offer-changed',
-      review: { submissionId: contractIds.submissionB },
+      review: {
+        submissionId: billingUiContractIds.submissionB,
+        termsSubmissionId: billingUiContractIds.termsSubmissionB,
+      },
     });
   });
 
@@ -115,13 +128,11 @@ describe('billing checkout UI pure state', () => {
     expect(billingUiPeriodLabel('annual')).toBe('毎年');
   });
 
-  it('keeps the local display offer compatible with the server contract offer', () => {
-    const disclosure = contractDisclosure();
-    const serverOffer = planContractOffer(disclosure);
-    if (serverOffer.kind === 'rejected') throw new Error('invalid fixture');
+  it('keeps the local display offer compatible with the shared wire contract offer', () => {
+    const disclosure = billingUiDisclosureFixture();
     const uiOffer = billingUiOfferFromDisclosure(disclosure);
     if (uiOffer === undefined) throw new Error('invalid UI fixture');
-    expect(serverOffer.offer).toMatchObject(uiOffer);
+    expect(billingUiContractOfferFixture()).toMatchObject(uiOffer);
   });
 });
 
@@ -151,19 +162,8 @@ describe('billing cancellation UI pure state', () => {
   });
 });
 
-function review(): BillingCheckoutReview {
-  const offer = planContractOffer(contractDisclosure());
-  if (offer.kind === 'rejected') throw new Error('invalid fixture');
-  return {
-    offer: offer.offer,
-    offerHash: contractIds.offerHashA,
-    terms: {
-      termsVersion: 'terms-v1:2026-09-15',
-      termsHash: `sha256:${'a'.repeat(64)}`,
-      effectiveDate: '2026-09-15',
-    },
-    submissionId: contractIds.submissionA,
-  };
+function review() {
+  return billingCheckoutReviewFixture();
 }
 
 function submittingState() {

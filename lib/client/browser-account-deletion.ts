@@ -7,7 +7,9 @@ import type { BrowserLogoutPurgeService } from '@/lib/client/browser-logout-purg
 import { createAccountDeletionHttpRemote } from '@/lib/client/http-account-deletion';
 import type { SyncFetch } from '@/lib/client/http-sync-transport';
 
-export type AccountDeletionRandomValues = (bytes: Uint8Array) => unknown;
+export type AccountDeletionRandomValues = (
+  bytes: Uint8Array<ArrayBuffer>,
+) => unknown;
 
 export function createBrowserAccountDeletionRunner(
   logout: BrowserLogoutPurgeService,

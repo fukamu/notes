@@ -33,10 +33,20 @@ fixture. Its controller, purposes, contact, retention, processor, transfer, and
 request text is marked as a development sample. An accessible notice states that
 it is not a real operator, processor list, contact, or production handling policy.
 No identity provider, mail provider, KMS, billing provider, or production data is
-used. The local request adapter is in-memory only, does not persist or send the
-request, never performs identity verification or deletion, and returns only the
-`verification-pending` sample state. Reload and back/forward restoration clear
-the displayed request.
+used. The browser always sends the request to the Go HTTP runtime. In the exact
+local fixture that runtime stores the request in the durable PostgreSQL journal
+and returns `verification-pending`; the default/production runtime keeps the
+routes closed. No verification or fulfillment processor is mounted. The
+explicit disposable `delete-live-evidence` fixture may hand a verified deletion
+record to the account-deletion Start boundary, but the public route exposes no
+verification or processing endpoint and does not run that handoff by itself.
+
+The browser form and its currently displayed request are intentionally
+ephemeral: reload and back/forward restoration clear that UI state. This does
+not delete the durable journal record. An authenticated status request holding
+the returned request ID can retrieve the persisted status after a Go server
+restart. `account-deletion-started` means only that a deletion saga was durably
+admitted; it is not evidence of effect progress or deletion completion.
 
 ## Production configuration
 

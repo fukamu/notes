@@ -15,6 +15,13 @@ Production session storage must hash presented 256-bit tokens before lookup.
 The in-memory resolver in this Issue is a fake test adapter and must not be
 used as a production token store.
 
+Migration Issue #422 adds the equivalent Go boundary and a PostgreSQL adapter.
+The adapter persists only canonical SHA-256 token digests, validates every row
+on read, and derives VaultContext only after cookie, CSRF, active-state,
+expiry, and scope checks. Issue #511 connects that resolver only for the exact
+prepared local-fixture generation. It does not add login, callback, rotation,
+logout, OIDC, OTP, or production session issuance routes.
+
 ## Session lifecycle
 
 The pure session core models active and revoked records. Authorization returns
@@ -47,28 +54,46 @@ key. It checks that the returned repository/transport scope matches the
 VaultContext before mounting `NotesProvider`. This prevents IndexedDB, sync, or
 Service Worker preparation from starting for anonymous or purge-blocked access.
 
-When the optional account-deletion runner is supplied, its durable handoff
-boundary wraps both authenticated and anonymous branches. It checks progress
-before the runtime fence is entered and therefore resumes local purge even
-after the server has revoked the browser session. The legacy route does not
-supply this runner. See
+The current `NotesRouteRuntime` constructs one logout service and one
+account-deletion runner, then places `AccountDeletionBoundary` outside both the
+production launch gate and `AuthenticatedNotesBootstrap`. It checks progress
+before any launch/session request or runtime-fence entry and therefore resumes
+status/local purge after the server revokes the browser session or when launch
+would return 403/503. Pending, error, and terminal deletion states never mount
+the normal Notes children. See
 [Account deletion browser handoff](account-deletion-browser-handoff.md).
 
-The current route deliberately mounts `LegacyNotesApp` as an explicit local
-compatibility harness. A vault-scoped IndexedDB repository now exists, but it
-is not mounted in the route. The Provider now rejects stale load/save/sync
-completion by trusted scope and operation epoch. The authenticated composition
-requires an injected logout runtime fence, stops operations in the layout
-phase, and uses the typed BroadcastChannel/Web Locks coordination from #147.
-Actual browser deletion remains in #148. This preserves current local
-development and E2E
-behavior without Google, email, billing, or production configuration; it is
-not the production public-service composition. See
+Only the deletion boundary's idle children mount the launch gate and
+`AuthenticatedNotesBootstrap`. The bootstrap calls the
+local-only Go `GET /api/session-context`, strictly decodes the four VaultContext
+fields plus `accountDeletionAvailable`, and passes authenticated access to
+`SessionNotesApp`. The boolean is true only when the explicit destructive
+fixture runtime is mounted; existing marker recovery is always available, but
+a new deletion button receives the generation only when this bit is true.
+Until that succeeds it does not construct the Vault IndexedDB repository, Sync
+transport, Service Worker preparation, or logout fence. The endpoint is
+private/no-store, never returns the bearer token, and is closed outside the
+exact local fixture. An offline reload therefore fails closed until the server
+can validate the cookie again.
+
+The authenticated composition requires the browser logout runtime fence,
+stops operations in the layout phase, and uses the typed
+BroadcastChannel/Web Locks coordination from #147. Actual browser deletion
+remains #148. The same service instance supplies the runner's prepare/run ports
+and `SessionNotesApp` fence, which prevents a split coordination graph. An
+accepted Account-deletion Start persists the logout marker and quiesces peers
+before the first Resume; it retains local data until session revocation is
+confirmed. `LegacyNotesApp` remains compatibility/test code but is not a route
+fallback. This connects local/E2E behavior without Google, email, Stripe, or
+production configuration; it is not the production public-service
+composition. See
 [Notes operation lifecycle boundary](notes-operation-lifecycle.md).
 
 ## Migration and rollback
 
-This Issue creates no schema and migrates no data. Reverting the Issue removes
-only new contracts, fake adapters, and the composition gate. No production
-session store, secret, email, payment, or deployment is created. `main` remains
-unchanged.
+The original TypeScript Issue created no schema or production data. The Go
+migration reuses the control-plane tables created by T03 and adds no migration.
+Rolling back #511 removes the local session endpoint/bootstrap connection but
+must preserve any disposable fixture journal, ciphertext, quota, and key state
+until the complete local graph is stopped. No production session, secret,
+email, payment, provider, or deployment is created.

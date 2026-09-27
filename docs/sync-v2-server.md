@@ -1,5 +1,11 @@
 # Authenticated Sync v2 server composition
 
+> Historical migration-source note: the TypeScript/D1 composition described
+> below was removed by T17. The executable implementation is now
+> `backend/internal/syncv2` plus `backend/internal/httpapi/sync_v2.go`, backed by
+> the checked-in PostgreSQL migrations and adapters. Sites/D1 is not a current
+> repository runtime or deployable fallback.
+
 Issue #121 connects the versioned Sync v2 protocol to authenticated session
 ownership, the Entitlement public capability API, the tenant-scoped D1 journal,
 and encrypted object storage. It does not enable production, select an R2 or
@@ -36,9 +42,8 @@ claims, tenant identifiers, or billing values.
 The `FUKAMU_SERVICE_MODE` binding separates the existing development service
 from the future paid service:
 
-- an absent binding or `legacy-test` preserves the current local/Sites test
-  `/api/sync` behavior, so local editing does not require checkout, Stripe,
-  R2, or a production KMS; `/api/v2/sync` is not exposed in this mode;
+- historically, an absent D1 binding or `legacy-test` preserved the old
+  local/Sites `/api/sync` behavior without checkout or providers;
 - explicit `public-paid` disables the unauthenticated v1 handler; and
 - an invalid binding fails closed and also disables v1.
 
@@ -82,3 +87,27 @@ require their owning Issues and explicit approval. Until then, rollback is to
 leave `public-paid` unset (or revert the unused v2 route/composition); the
 existing local-first v1 client and its offline, conflict, rebase, link, and
 display-ID behavior remain unchanged.
+
+## Go and PostgreSQL migration status
+
+Issue #454 implements the equivalent provider-independent Go composition in
+`backend/internal/syncv2`, `backend/internal/adapters/postgres`, and
+`backend/internal/httpapi/sync_v2.go`. The wire decoder rejects duplicate or
+unknown members, invalid UTF-8 and escaped UTF-16, unsafe integers, and invalid
+tagged unions. Canonical JSON preserves JavaScript-compatible mutation and
+stored-content bytes, and cursor claims are accepted only after HMAC-SHA-256
+verification and exact Vault/device binding.
+
+The PostgreSQL application keeps the same quota reservation, immutable write,
+journal receipt, and quota finalization order. A disposable vertical test uses
+the real session, Entitlement, quota, encrypted-object, journal, and keyring
+adapters. An injected journal failure proves that retry reuses the already
+committed encrypted object rather than encrypting or uploading again; the same
+test verifies cursor tamper/device isolation, MutationId reuse, ciphertext
+separation, idempotent deletion, quota release, and tombstone delivery.
+
+This is an implemented but disconnected handler contract. It is not included
+in the public `HandlerOptions`, does not configure a production cursor secret
+or object/KMS provider, and does not change the existing route's 404/503
+behavior. Those activation choices, production migration, and deployment
+remain separate approvals.

@@ -4,6 +4,15 @@ Issue #142 introduces the provider-neutral Billing boundary used by later
 Entitlement, Stripe, sync, and legal-flow work. It does not enable paid access,
 call a payment provider, or deploy a production migration.
 
+## Status after T17
+
+The TypeScript/D1 design through “Verification and remaining work” is a
+historical migration-source record. T17 removed `server/billing`, D1/Drizzle,
+Miniflare, and their server tests. The executable implementation is now
+`backend/internal/billing` with `backend/internal/adapters/postgres`; the Go
+status section below records its migration provenance. Historical identifiers
+in this document are not current import paths or operational commands.
+
 ## Responsibility and ownership
 
 Billing owns contract and payment facts. It is the only feature allowed to
@@ -103,3 +112,28 @@ Capabilities and the approved 24-hour offline entitlement lease belong to #119
 and its decision implementation #265.
 Price, refund, cancellation deadline, and application confirmation UI remain
 in their legal/product Issues and are not decided here.
+
+## Go T09a implementation
+
+Issue #436 implements the same provider-neutral boundary in
+`backend/internal/billing` and the PostgreSQL adapter. Migration 00007 owns the
+four billing tables in the Go schema. PostgreSQL uses one serializable
+transaction for aggregate CAS plus receipt/checkpoint insertion; it does not
+rely on an event timestamp as a uniqueness key. `last_delinquency_at` is a
+dedicated ordering-evidence column rather than overloading the current
+`delinquency_since` lifecycle field.
+
+The original reconciliation comparison treated `observedAt <= previous` as
+stale. Two independently identified snapshots observed in the same millisecond
+could therefore hide a newer failure state. Migration comparison established
+the corrected rule, and the Go core rejects only an older observation. The
+unique provider/snapshot receipt
+still makes exact replay idempotent, and per-evidence timestamps keep
+same-time delinquency dominant.
+
+The #436 Go implementation was disconnected and registered no billing route,
+Stripe webhook, SDK transport, checkout, cancellation, charge, entitlement,
+offline lease, or production migration. Issue #496 later ports the exact
+reviewed Draft PR #404 period-end versus account-deletion cancellation contract
+without modifying or publishing that draft. The resulting Go handler also
+remains disconnected; see [`billing-cancellation.md`](billing-cancellation.md).

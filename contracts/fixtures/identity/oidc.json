@@ -1,0 +1,34 @@
+{
+  "profile": "oidc-core",
+  "configuration": {
+    "authorizationEndpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+    "clientId": "fukamu-test.apps.googleusercontent.com",
+    "allowedIssuers": ["https://accounts.google.com"],
+    "redirectUris": ["https://notes.example/auth/google/callback"]
+  },
+  "transaction": {
+    "state": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCA",
+    "nonce": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDA",
+    "codeVerifier": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+    "redirectUri": "https://notes.example/auth/google/callback",
+    "purpose": { "kind": "sign-in" },
+    "createdAtEpochSeconds": 1000,
+    "expiresAtEpochSeconds": 1600
+  },
+  "claims": {
+    "iss": "https://accounts.google.com",
+    "sub": "google-subject-123",
+    "aud": "fukamu-test.apps.googleusercontent.com",
+    "exp": 2000,
+    "iat": 1000,
+    "nonce": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDA",
+    "email": "person@example.com",
+    "email_verified": true
+  },
+  "nowEpochSeconds": 1500,
+  "expected": {
+    "issuer": "https://accounts.google.com",
+    "subject": "google-subject-123",
+    "email": "person@example.com"
+  }
+}

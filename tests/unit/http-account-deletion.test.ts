@@ -63,7 +63,6 @@ describe('account deletion browser HTTP adapter', () => {
   });
 
   it.each([
-    [401, 'authorization-required'],
     [409, 'request-conflict'],
     [500, 'remote-unavailable'],
   ] as const)(
@@ -78,6 +77,40 @@ describe('account deletion browser HTTP adapter', () => {
       });
     },
   );
+
+  it('distinguishes authenticated Start from continuation authorization without trusting another 401 body', async () => {
+    const authenticationRequired = createAccountDeletionHttpRemote(async () =>
+      Response.json({ error: 'authentication-required' }, { status: 401 }),
+    );
+    await expect(
+      authenticationRequired.start({ idempotencyKey: key }),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      reason: 'authentication-required',
+    });
+    await expect(
+      authenticationRequired.resume({ continuationToken: token }),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      reason: 'remote-unavailable',
+    });
+
+    const continuationRequired = createAccountDeletionHttpRemote(async () =>
+      Response.json({ error: 'continuation-required' }, { status: 401 }),
+    );
+    await expect(
+      continuationRequired.resume({ continuationToken: token }),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      reason: 'continuation-required',
+    });
+    await expect(
+      continuationRequired.start({ idempotencyKey: key }),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      reason: 'remote-unavailable',
+    });
+  });
 
   it('rejects malformed success JSON and transport failures', async () => {
     await expect(

@@ -42,9 +42,15 @@ then lists CacheStorage again. IndexedDB absence is checked with
 `indexedDB.databases()` so verification cannot recreate the deleted database.
 
 `createBrowserLogoutPurgeService` exposes the authenticated runtime fence and
-purge runner as one explicit composition. `LegacyNotesApp` does not construct
-this service, so local development remains authentication- and billing-free
-and does not delete data unless a caller explicitly invokes the logout flow.
+purge runner as one explicit composition. `NotesRouteRuntime` now constructs
+one service before launch/session bootstrap and shares that exact instance with
+the outer Account-deletion boundary and `SessionNotesApp`. Normal Notes runtime
+still enters only after session validation. After the server accepts an
+Account-deletion Start, the runner's preparation phase persists this logout
+marker and quiesces existing peers; new tabs observe the durable marker and are
+blocked. Preparation runs no target, so a revocation `retry-wait` retains the
+Vault database, cache, and worker. The existing target sequence runs only after
+the server confirms progress beyond revocation.
 
 Browser E2E bundles this production composition into a test-only in-page
 harness; no test route or production fake is shipped. It exercises two tabs,
@@ -55,8 +61,11 @@ worker reset, back/forward navigation, and a subsequent Vault login.
 
 This change has no server schema migration and no production data operation.
 A rollback must not ship an authenticated logout path that clears or ignores a
-pending marker; retaining the marker and blocking the runtime is safer. Server
-session revocation and account deletion server effects remain owned by #123.
+pending marker; retaining the marker and blocking the runtime is safer. It must
+also leave account-deletion recovery outside launch/session bootstrap so a
+revoked session can continue. Server session revocation and account deletion
+effects are connected only in the explicit disposable fixture; production
+remains closed.
 The browser handoff that reuses this purge is described in
 [Account deletion browser handoff](account-deletion-browser-handoff.md).
 

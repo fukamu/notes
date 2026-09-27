@@ -1,12 +1,16 @@
 import { expect, test } from '@playwright/test';
+import { assertionForSubject, localAssertionHeader } from './identity-fixture';
 
-test('an unapproved production-like browser sees the limited-release screen and cannot call sync directly', async ({
+test('an unapproved production-like browser sees the limited-release screen and cannot call Sync v2 directly', async ({
   browser,
 }) => {
   const context = await browser.newContext({
     extraHTTPHeaders: {
-      'oai-authenticated-user-id': 'fukamu-notes-e2e-not-allowed',
+      [localAssertionHeader]: assertionForSubject(
+        'fukamu-notes-e2e-not-allowed',
+      ),
     },
+    storageState: { cookies: [], origins: [] },
   });
   const page = await context.newPage();
 
@@ -14,10 +18,23 @@ test('an unapproved production-like browser sees the limited-release screen and 
   await expect(
     page.getByText('現在、このサービスは限定公開中です。'),
   ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: '許可済みアカウントでログイン' }),
+  ).toHaveCount(0);
 
   const response = await context.request.post('/api/sync', { data: {} });
-  expect(response.status()).toBe(403);
-  expect(await response.json()).toEqual({ error: 'launch-access-denied' });
+  expect(response.status()).toBe(404);
+  expect(await response.json()).toEqual({ code: 'not_found' });
+
+  const syncV2 = await context.request.post('/api/v2/sync', {
+    data: {},
+    headers: {
+      Origin: 'http://localhost:3100',
+      'Sec-Fetch-Site': 'same-origin',
+    },
+  });
+  expect(syncV2.status()).toBe(401);
+  expect(await syncV2.json()).toEqual({ error: 'authentication-required' });
 
   await context.close();
 });

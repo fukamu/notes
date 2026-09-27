@@ -1,21 +1,69 @@
 # Privacy request HTTP and execution boundary
 
-Issue #236 adds an authenticated, provider-neutral application/HTTP boundary for the journal from #235. It does not change the Notes UI. The later UI is limited to a dedicated account privacy page; normal card, history, and connections views receive no legal banner, panel, or modal.
+Issue #456 ported the provider-neutral privacy journal and strict Go contract.
+Issue #513 connects only its Submit and Status surface in the exact disposable
+`local-fixture` composition. The dedicated `/account/privacy` page is the only
+browser entry; Notes card, history, and connections views do not mount these
+controls. Default and production compositions pass no privacy runtime, so both
+routes stay closed.
 
-## HTTP scope and cache boundary
+## Connected HTTP scope
 
-`POST /api/account/privacy-requests` accepts only `submissionId` and `requestKind`. `POST /api/account/privacy-requests/status` accepts only `requestId`. Both use bounded UTF-8 JSON, same-origin CSRF checks, a valid Secure/HttpOnly session, `Cache-Control: no-store`, and `X-Content-Type-Options: nosniff`. `AccountId` and `VaultId` are always derived from the server session; unknown body fields are rejected.
+`POST /api/account/privacy-requests` accepts exactly `submissionId` and
+`requestKind`. `POST /api/account/privacy-requests/status` accepts exactly
+`requestId`. Both derive Account/Vault ownership from the host-only session,
+perform authentication and same-origin CSRF checks before reading any body,
+and cap the body at `min(NOTES_BODY_LIMIT_BYTES, 2048)`. Duplicate/unknown
+members, invalid UTF-8 or UUIDv7 values, trailing JSON, and malformed generated
+request IDs fail closed. The local runtime lease is checked immediately before
+the PostgreSQL insert or lookup.
 
-The response exposes the opaque request ID, request kind, public status, and timestamps. It excludes Account/Vault IDs, verification receipt, failure code, email, provider details, and content. A request outside the authenticated Vault returns the same `not-found` result as an absent request.
+Responses are `no-store`, omit owner IDs and private evidence, and strictly
+pair request kind with completion outcome. A request outside the authenticated
+Vault is indistinguishable from an absent request. Idempotent submission replay
+returns the existing journal row; reusing a submission ID for another kind is
+a conflict. Browser decoders reject unknown fields, timestamp reversal,
+`fulfilled` for deletion, and `account-deletion-started` for non-deletion.
 
-There is deliberately no entitlement dependency. Payment-locked users must retain access to privacy, account deletion, billing, and support paths.
+## Runtime matrix
 
-## Provider-neutral execution
+- Default and production: no `PrivacyRequestRuntime`; exact routes remain
+  closed.
+- Exact local fixture with omitted/`undecided` legal policy: real PostgreSQL
+  Submit/Status plus explicit unavailable verification, fulfillment, and
+  deletion ports.
+- Exact local fixture with `delete-live-evidence`: the same public Submit/Status
+  surface. The internal service additionally composes the real fenced
+  account-deletion Start handoff for controlled integration evidence only.
 
-The application never executes work while status is `verification-pending`. A verification port may approve with an opaque UUIDv7 receipt, reject, or remain unavailable. Local/integration tests use explicit fake adapters only.
+The HTTP handler intentionally exposes no Verify, Process, scheduler, provider
+callback, or account-deletion Resume operation. A normal browser submission
+therefore remains `verification-pending`. The explicit deletion handoff can be
+reached only after a controlled test transitions a row to verified/ready and
+invokes the internal service. A successful handoff records
+`account-deletion-started`, meaning one deletion operation and continuation
+were durably admitted; it does not mean any deletion effect ran or data was
+deleted.
 
-After verification, non-deletion requests use a generic fulfillment port. Deletion requests cannot use that port: they call `startExistingAccountDeletionSaga`, an explicit handoff to the already implemented deletion workflow. A provider error or thrown effect records a retryable, redacted failure rather than completion. CAS claim replay does not execute a second effect.
+## Durability, recovery, and retention
 
-The actual identity-verification method, export/correction implementation, provider mapping, answer deadline, fee, and export format remain Decision Required. The checked-in public routes therefore fail closed: legacy-test returns 404 and public-paid/unconfigured modes return 503. Test fakes are never selected by a route.
+The browser form and displayed tracking record are ephemeral and clear on
+reload/back-forward restoration. The PostgreSQL journal is separate durable
+state: a caller retaining the returned request ID can query it after a Go
+process restart while its authenticated owner still exists. Deleting/completed
+fixture phases continue to compose the journal service, but the removed/revoked
+owner cannot authenticate through normal HTTP.
 
-No provider call, real email, production D1 operation, deployment, or `main` update is part of this Issue.
+No processor claims queued work, so the connected browser flow cannot enter
+`processing`. Recovery for a future processor response-loss window or a record
+left permanently `processing` is not implemented. Post-deletion user access to
+status and the production journal retention/purge policy also remain undecided.
+These are not reasons to invent success or delete accepted evidence.
+
+Rollback first closes new submissions and processing, then preserves migration
+00013 and every journal revision. If a controlled handoff admitted deletion,
+also preserve the deletion operation/continuation and serve its reviewed
+recovery path. Restore a compatible artifact or apply a forward fix; never
+drop a journal row, synthesize verification, or claim fulfillment/deletion.
+No production provider, external request, deployment, or paid operation is
+authorized by this local connection.

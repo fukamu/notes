@@ -12,7 +12,6 @@ const strictOptions = [
 
 const runtimeConfigs = [
   'tsconfig.json',
-  'tsconfig.api.json',
   'tsconfig.service-worker.json',
   'tsconfig.tooling.json',
   'tsconfig.test.json',
@@ -31,21 +30,24 @@ describe('runtime typecheck configuration', () => {
     }
   });
 
-  it('includes the server boundary in typecheck, lint, architecture and coverage', async () => {
-    const [apiConfig, packageSource, architecture, vitest] = await Promise.all([
-      readFile('tsconfig.api.json', 'utf8'),
-      readFile('package.json', 'utf8'),
-      readFile('tests/unit/architecture.test.ts', 'utf8'),
-      readFile('vitest.config.ts', 'utf8'),
-    ]);
+  it('keeps browser TS and Go server checks in the shared gate', async () => {
+    const [packageSource, architecture, goArchitecture, vitest] =
+      await Promise.all([
+        readFile('package.json', 'utf8'),
+        readFile('tests/unit/architecture.test.ts', 'utf8'),
+        readFile('backend/internal/architecture/dependency_test.go', 'utf8'),
+        readFile('vitest.config.ts', 'utf8'),
+      ]);
 
-    expect(apiConfig).toContain('"server/**/*.ts"');
-    expect(apiConfig).toContain('"lib/codec/**/*.ts"');
-    expect(apiConfig).toContain('"lib/shared/**/*.ts"');
-    expect(packageSource).toContain('app/api db server');
-    expect(architecture).toContain("'server'");
-    expect(architecture).toContain("'server/core'");
-    expect(vitest).toContain("'server/**/*.ts'");
+    expect(packageSource).toContain('npm run typecheck:app');
+    expect(packageSource).toContain('go -C backend vet ./...');
+    expect(packageSource).not.toContain('typecheck:api');
+    expect(packageSource).not.toContain('lint:api');
+    expect(architecture).toContain("'frontend'");
+    expect(goArchitecture).toContain('internal/adapters');
+    expect(goArchitecture).toContain('internal/httpapi');
+    expect(goArchitecture).toContain('internal/runtimefoundation');
+    expect(vitest).not.toContain(["'server", "**/*.ts'"].join('/'));
   });
 
   it('includes the extracted data ports and adapters in coverage', async () => {
@@ -55,7 +57,6 @@ describe('runtime typecheck configuration', () => {
       'lib/application/notes-runtime.ts',
       'lib/application/notes-access.ts',
       'components/session-notes-app.tsx',
-      'server/**/*.ts',
       'lib/client/browser-clock.ts',
       'lib/client/browser-connectivity.ts',
       'lib/client/http-sync-transport.ts',

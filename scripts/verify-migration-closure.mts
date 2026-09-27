@@ -1,0 +1,208 @@
+import { spawnSync } from 'node:child_process';
+import { lstat, readFile, readdir } from 'node:fs/promises';
+import path from 'node:path';
+import {
+  legacyTestCorpusDigest,
+  selectLegacyTestCorpus,
+} from './legacy-retirement-core.mts';
+import {
+  decodeMigrationClosure,
+  reachableNpmScripts,
+  validateEvidenceFileIdentity,
+  validateExecutableEvidenceGate,
+  validateExecutableEvidenceSource,
+  validateLegacyCoverage,
+} from './migration-closure-core.mts';
+
+const manifestPath = 'contracts/go-migration-closure.json';
+const manifest: unknown = JSON.parse(await readFile(manifestPath, 'utf8'));
+const closure = decodeMigrationClosure(manifest);
+
+const packageCandidate: unknown = JSON.parse(
+  await readFile('package.json', 'utf8'),
+);
+if (!isRecord(packageCandidate) || !isRecord(packageCandidate.scripts)) {
+  throw new TypeError('package scripts are unavailable');
+}
+const packageScripts = packageCandidate.scripts;
+const reachableScripts = reachableNpmScripts(
+  packageScripts,
+  closure.gate.rootScript,
+);
+
+const evidencePaths = new Set([
+  ...closure.features.flatMap(({ goEvidence }) => goEvidence),
+  ...closure.verifications.flatMap(({ evidence }) => evidence),
+  ...closure.executableEvidence.map(({ path: evidencePath }) => evidencePath),
+  ...closure.executableEvidence
+    .filter(({ kind }) => kind === 'playwright-test')
+    .flatMap(({ selector }) => [selector, 'scripts/run-deletion-live-e2e.mts']),
+]);
+await Promise.all(
+  [...evidencePaths].map(async (evidencePath) => {
+    const details = await lstat(evidencePath);
+    validateEvidenceFileIdentity({
+      tracked: gitTracked(evidencePath),
+      regularFile: details.isFile(),
+      symbolicLink: details.isSymbolicLink(),
+    });
+  }),
+);
+for (const evidence of closure.executableEvidence) {
+  if (!reachableScripts.has(evidence.gate)) {
+    throw new TypeError(
+      `executable evidence gate is unreachable from npm run verify: ${evidence.gate}`,
+    );
+  }
+  validateExecutableEvidenceSource(
+    evidence,
+    await readFile(evidence.path, 'utf8'),
+    packageScripts,
+  );
+  const supportingSources: Readonly<Record<string, string>> =
+    evidence.kind === 'playwright-test'
+      ? {
+          [evidence.selector]: await readFile(evidence.selector, 'utf8'),
+          'scripts/run-deletion-live-e2e.mts': await readFile(
+            'scripts/run-deletion-live-e2e.mts',
+            'utf8',
+          ),
+        }
+      : {};
+  validateExecutableEvidenceGate(evidence, packageScripts, supportingSources);
+}
+
+const sourcePaths = (
+  await Promise.all(
+    closure.retirement.sourceTrees.map(({ path: sourceRoot }) =>
+      filesBelow(sourceRoot),
+    ),
+  )
+).flat();
+
+if (closure.retirement.phase === 'reference-present') {
+  validateLegacyCoverage(sourcePaths, closure.retirement.groups);
+  for (const sourceTree of closure.retirement.sourceTrees) {
+    const currentTree = gitTree(sourceTree.path);
+    if (currentTree !== sourceTree.gitTree) {
+      throw new TypeError(
+        `legacy source tree drifted without retirement evidence: ${sourceTree.path}`,
+      );
+    }
+  }
+  const corpus = await legacyTestCorpus();
+  if (
+    corpus.files !== closure.retirement.legacyTestCorpus.files ||
+    corpus.sha256 !== closure.retirement.legacyTestCorpus.sha256
+  ) {
+    throw new TypeError(
+      'legacy TypeScript test corpus drifted without evidence',
+    );
+  }
+} else if (sourcePaths.length !== 0) {
+  throw new TypeError('retired legacy source roots must be absent');
+}
+
+const migrated = closure.features.filter(
+  ({ migration }) => migration === 'migrated',
+).length;
+const blocked = closure.features.filter(
+  ({ migration }) => migration === 'blocked-existing-work',
+).length;
+const pendingVerification = closure.verifications.filter(
+  ({ status }) => status !== 'complete',
+).length;
+process.stdout.write(
+  `Migration closure verified: ${migrated} migrated features, ${blocked} blocked feature, ${pendingVerification} pending verification records\n`,
+);
+
+async function filesBelow(root: string): Promise<readonly string[]> {
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    const children = await Promise.all(
+      entries.map(async (entry) => {
+        const child = path.posix.join(root, entry.name);
+        if (entry.isDirectory()) return filesBelow(child);
+        if (!entry.isFile()) {
+          throw new TypeError(
+            `legacy source contains an unsupported entry: ${child}`,
+          );
+        }
+        return [child];
+      }),
+    );
+    return children.flat().sort();
+  } catch (error) {
+    if (
+      error !== null &&
+      typeof error === 'object' &&
+      Reflect.get(error, 'code') === 'ENOENT'
+    ) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+function gitTree(sourcePath: string): string {
+  const output = gitOutput(['rev-parse', `HEAD:${sourcePath}`]).trim();
+  if (!/^[a-f0-9]{40}$/u.test(output)) {
+    throw new TypeError(`invalid Git tree identity for ${sourcePath}`);
+  }
+  return output;
+}
+
+async function legacyTestCorpus(): Promise<{
+  files: number;
+  sha256: string;
+}> {
+  const names = gitOutput(['ls-files', 'tests'])
+    .split(/\r?\n/u)
+    .filter((name) => name.length > 0)
+    .sort();
+  const selected = selectLegacyTestCorpus(
+    await Promise.all(
+      names.map(async (name) => ({
+        path: name,
+        content: await readFile(name, 'utf8'),
+      })),
+    ),
+  );
+  return {
+    files: selected.length,
+    sha256: legacyTestCorpusDigest(selected),
+  };
+}
+
+function gitOutput(arguments_: readonly string[]): string {
+  const result = spawnSync('git', arguments_, { encoding: 'utf8' });
+  // Some restricted Linux runners report a child-process EPERM even though Git
+  // exited successfully. Accept output only when the exit status, signal, and
+  // stderr independently prove success; every other spawn anomaly still fails.
+  if (
+    result.status !== 0 ||
+    result.signal !== null ||
+    result.stderr.length !== 0
+  ) {
+    throw result.error ?? new Error(`git ${arguments_.join(' ')} failed`);
+  }
+  return result.stdout;
+}
+
+function gitTracked(evidencePath: string): boolean {
+  const result = spawnSync(
+    'git',
+    ['ls-files', '--error-unmatch', '--', evidencePath],
+    { encoding: 'utf8' },
+  );
+  return (
+    result.status === 0 &&
+    result.signal === null &&
+    result.stderr.length === 0 &&
+    result.stdout.trim() === evidencePath
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}

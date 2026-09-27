@@ -69,9 +69,9 @@ This is a completeness/drift check, not legal approval or production authority.
 
 ## Scope and rollback
 
-There is no D1/R2/KMS/Stripe operation, provider call, schema migration, real
-email, deployment, or production data change. Runtime processors are not
-configured. The change is reversible as one PR containing the typed vocabulary,
-registry/resolution core, environment adapter, build gate, tests and docs.
+There is no PostgreSQL/object-storage/KMS/Stripe operation, provider call,
+schema migration, real email, deployment, or production data change in this
+registry gate. Runtime processors are not configured. The TypeScript code here
+is a browser/build-time disclosure validator; Go is the only server runtime.
 Rollback must not weaken the already implemented logout/account-deletion
 behavior or erase any later accepted data-subject request.

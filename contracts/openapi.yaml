@@ -1,0 +1,1305 @@
+openapi: 3.0.3
+info:
+  title: FUKAMU Notes HTTP contract
+  version: 0.1.0-go-migration
+  description: >-
+    External wire contract captured from main at
+    f423da9932163980485ecc5bc2055b7c8c3b3d8b. Route availability describes
+    the current production entry point; x-handler-contract records an
+    implemented but currently disconnected handler and does not publish it.
+servers:
+  - url: /
+paths:
+  /api/launch-status:
+    get:
+      operationId: getLaunchStatus
+      x-fukamu-state: connected
+      responses:
+        '200':
+          description: Current fail-closed launch admission decision.
+          headers:
+            Cache-Control:
+              { schema: { type: string, enum: [private, no-store] } }
+            X-Content-Type-Options:
+              { schema: { type: string, enum: [nosniff] } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LaunchStatus' }
+        '503': { $ref: '#/components/responses/LaunchGateUnavailable' }
+  /api/sync:
+    post:
+      operationId: legacySync
+      x-fukamu-state: connected-in-legacy-test
+      x-go-migration-state: connected-local-private-runtime
+      description: >-
+        The Go migration path additionally requires a verified configured
+        legacy owner and exact same-origin request before reading the body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncRequest' }
+      responses:
+        '200':
+          description: Full legacy synchronization result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncResponse' }
+        '400': { $ref: '#/components/responses/InvalidSyncRequest' }
+        '403': { $ref: '#/components/responses/LaunchForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/SyncPayloadTooLarge' }
+        '500': { $ref: '#/components/responses/SyncFailed' }
+        '503': { $ref: '#/components/responses/LaunchGateUnavailable' }
+  /api/v2/sync:
+    post:
+      operationId: syncV2Route
+      x-fukamu-state: connected-local-fixture-production-closed
+      x-handler-contract: sync-v2
+      x-go-handler: backend/internal/httpapi/sync_v2.go
+      description: >-
+        The exact local-fixture profile authenticates a scoped hash-only
+        session before reading the bounded body, then uses PostgreSQL journal,
+        quota, encrypted metadata, and guarded AES-GCM filesystem adapters.
+        The legacy route is closed in that profile. Production/default remain
+        closed because they supply no SyncV2Runtime.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncV2Request' }
+      responses:
+        '200':
+          description: Authenticated encrypted Sync v2 result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncV2Response' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '402': { $ref: '#/components/responses/OnlineAccessLocked' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/SyncV2RequestTooLarge' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/session-context:
+    get:
+      operationId: sessionContextRoute
+      x-fukamu-state: connected-local-fixture-production-closed
+      x-handler-contract: authenticated-session-context
+      x-go-handler: backend/internal/httpapi/session_context.go
+      description: >-
+        Returns the authenticated local-fixture Account/Vault/session context
+        plus a read-only account-deletion availability bit. Availability is
+        true only when the explicit destructive fixture runtime is mounted.
+        It never returns the bearer token and is closed in production/default
+        composition.
+      responses:
+        '200':
+          description: Authenticated Vault-scoped browser bootstrap context.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionContext' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/billing/checkout:
+    get:
+      operationId: billingCheckoutOfferRoute
+      x-fukamu-state: connected-local-fixture-production-closed
+      x-handler-contract: billing-checkout-offer
+      x-go-handler: backend/internal/httpapi/legal.go
+      description: >-
+        The guarded local-fixture profile serves the typed no-charge offer.
+        The production/default route remains closed because it supplies no LegalRuntime.
+      responses:
+        '200':
+          description: Current local fixture offer and canonical hash.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContractOfferResponse' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      operationId: billingCheckoutRoute
+      x-fukamu-state: connected-local-fixture-production-closed
+      x-handler-contract: billing-checkout-submit
+      x-go-handler: backend/internal/httpapi/legal.go
+      description: >-
+        The local fixture records immutable evidence and returns URL-free
+        confirmation without charging or provider I/O. Production remains closed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContractCheckoutRequest' }
+      responses:
+        '200':
+          description: Provider redirect or URL-free local confirmation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContractCheckoutResponse' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/RequestTooLarge' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/billing/cancel:
+    post:
+      operationId: billingCancellationRoute
+      x-fukamu-state: connected-local-fixture-production-closed
+      x-handler-contract: billing-cancellation-period-end
+      x-go-handler: backend/internal/httpapi/billing_cancellation.go
+      description: >-
+        The guarded local fixture returns a deterministic no-write period-end
+        schedule. Production remains closed and Stripe is not constructed.
+        Account deletion continues to use its distinct immediate-only port.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BillingCancellationRequest' }
+      responses:
+        '200':
+          description: Scheduled or already-cancelled confirmation.
+          content:
+            application/json:
+              schema:
+                { $ref: '#/components/schemas/BillingCancellationResponse' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/RequestTooLarge' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/account/deletion:
+    post:
+      operationId: accountDeletionStartRoute
+      x-fukamu-state: connected-local-fixture-production-closed
+      x-handler-contract: account-deletion-start
+      x-go-handler: backend/internal/httpapi/account_deletion.go
+      description: >-
+        Mounted only by the exact disposable local fixture when the explicit
+        delete-live-evidence policy is selected. Authentication, same-origin
+        CSRF checks precede bounded body reads; the runtime lease is checked
+        before application mutation or effect dispatch. The
+        production/default and undecided-policy routes remain closed. The
+        operation and initial seven-day capability are stored before effects;
+        claiming session revocation atomically promotes that operation-only
+        recovery capability before the first irreversible effect. If that
+        initial capability expires first, only an authenticated Start replay
+        with the same idempotency key may atomically extend it, and only while
+        the operation is still the initial revoke-sessions Ready state with no
+        receipt. An unexpired Start replay is read-only and never slides the
+        seven-day window. Generic 401 responses do not trigger renewal, and a
+        claimed operation cannot be renewed through Start.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountDeletionStartRequest' }
+      responses:
+        '200':
+          description: Replayed terminal operation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountDeletionResponse' }
+        '202':
+          description: Deletion accepted or replayed and remains nonterminal.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountDeletionResponse' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/RequestTooLarge' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/account/deletion/status:
+    post:
+      operationId: accountDeletionResumeRoute
+      x-fukamu-state: connected-local-fixture-production-closed
+      x-handler-contract: account-deletion-resume-one-step
+      x-go-handler: backend/internal/httpapi/account_deletion.go
+      description: >-
+        Mounted under the same exact-fixture and explicit-policy guard as
+        Start. Same-origin CSRF checks precede bounded body reads; the runtime
+        lease is checked before application mutation or effect dispatch. The
+        operation-scoped continuation consumes one sequence before
+        at most one effect and does not require the revoked session.
+        Production/default and undecided-policy routes remain closed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: '#/components/schemas/AccountDeletionResumeRequest' }
+      responses:
+        '200':
+          description: Terminal deletion status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountDeletionResponse' }
+        '202':
+          description: One step attempted and the operation remains nonterminal.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountDeletionResponse' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/ContinuationRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/RequestTooLarge' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/account/privacy-requests:
+    post:
+      operationId: privacyRequestSubmitRoute
+      x-fukamu-state: connected-local-fixture-production-closed
+      x-handler-contract: privacy-request-submit
+      x-go-handler: backend/internal/httpapi/privacy_request.go
+      description: >-
+        The exact disposable local fixture authenticates the owner and checks
+        same-origin CSRF before reading a body bounded by the lower of the
+        configured limit and 2,048 bytes. The runtime lease is checked before
+        the durable PostgreSQL insert. This route records or replays a journal
+        entry only; it does not verify identity, execute fulfillment, or invoke
+        account deletion. Default and production compositions remain closed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PrivacyRequestSubmitRequest' }
+      responses:
+        '200':
+          description: Idempotent replay of an existing terminal journal entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PrivacyRequestResponse' }
+        '202':
+          description: New or replayed nonterminal journal entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PrivacyRequestResponse' }
+        '400': { $ref: '#/components/responses/PrivacyRequestInvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/PrivacyRequestForbidden' }
+        '404': { $ref: '#/components/responses/PrivacyRequestNotFound' }
+        '409': { $ref: '#/components/responses/PrivacyRequestConflict' }
+        '413': { $ref: '#/components/responses/PrivacyRequestTooLarge' }
+        '503': { $ref: '#/components/responses/PrivacyRequestUnavailable' }
+  /api/account/privacy-requests/status:
+    post:
+      operationId: privacyRequestStatusRoute
+      x-fukamu-state: connected-local-fixture-production-closed
+      x-handler-contract: privacy-request-status
+      x-go-handler: backend/internal/httpapi/privacy_request.go
+      description: >-
+        The exact local fixture derives Account and Vault ownership from the
+        secure session, performs same-origin checks before its bounded body read,
+        and checks the runtime lease before the owner-scoped PostgreSQL lookup.
+        The browser's displayed form state is not durable; this endpoint reads
+        the durable journal when the caller retains the request ID. It does not
+        schedule or resume processing. Default and production remain closed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PrivacyRequestStatusRequest' }
+      responses:
+        '200':
+          description: Owner-scoped terminal journal status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PrivacyRequestResponse' }
+        '202':
+          description: Owner-scoped nonterminal journal status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PrivacyRequestResponse' }
+        '400': { $ref: '#/components/responses/PrivacyRequestInvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/PrivacyRequestForbidden' }
+        '404': { $ref: '#/components/responses/PrivacyRequestNotFound' }
+        '413': { $ref: '#/components/responses/PrivacyRequestTooLarge' }
+        '503': { $ref: '#/components/responses/PrivacyRequestUnavailable' }
+  /api/account/terms-consent:
+    get:
+      operationId: termsConsentStatusRoute
+      x-fukamu-state: connected-local-fixture-production-closed
+      x-handler-contract: terms-consent-status
+      x-go-handler: backend/internal/httpapi/legal.go
+      description: >-
+        The guarded local fixture returns owner-scoped PostgreSQL consent
+        status. Production/default remains closed without a LegalRuntime.
+      responses:
+        '200':
+          description: Current owner-scoped terms consent status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TermsConsentResponse' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      operationId: termsConsentSubmitRoute
+      x-fukamu-state: connected-local-fixture-production-closed
+      x-handler-contract: terms-consent-submit
+      x-go-handler: backend/internal/httpapi/legal.go
+      description: >-
+        The local fixture strictly decodes a bounded command after session and
+        same-origin checks, then records/replays immutable evidence. Production is closed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TermsConsentRequest' }
+      responses:
+        '200':
+          description: Recorded or replayed owner-scoped consent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TermsConsentResponse' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/RequestTooLarge' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+components:
+  responses:
+    LaunchGateUnavailable:
+      description: Launch admission could not be established.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: launch-gate-unavailable }
+    LaunchForbidden:
+      description: The authenticated subject is not admitted.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Closed or unavailable in the current service mode.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: not-found }
+    Unavailable:
+      description: Closed or unavailable in the current service mode.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: unavailable }
+    AuthenticationRequired:
+      description: An authenticated local fixture session is required.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AuthenticationRequiredError' }
+          example: { error: authentication-required }
+    ContinuationRequired:
+      description: A valid operation-scoped continuation capability is required.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ContinuationRequiredError' }
+          example: { error: continuation-required }
+    PrivacyRequestInvalidRequest:
+      description: The privacy request body or identifiers are invalid.
+      content:
+        application/json:
+          schema:
+            { $ref: '#/components/schemas/PrivacyRequestInvalidRequestError' }
+          example: { error: invalid-request }
+    PrivacyRequestForbidden:
+      description: Privacy request same-origin or owner verification failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PrivacyRequestForbiddenError' }
+          example: { error: forbidden }
+    PrivacyRequestNotFound:
+      description: >-
+        The privacy route is closed in this composition, or no privacy journal
+        entry exists for this owner and request ID.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PrivacyRequestNotFoundError' }
+          example: { error: not-found }
+    PrivacyRequestConflict:
+      description: The submission identifier is already bound to another request kind.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PrivacyRequestConflictError' }
+          example: { error: request-conflict }
+    PrivacyRequestTooLarge:
+      description: The body exceeds the configured effective limit, capped at 2,048 bytes.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PrivacyRequestTooLargeError' }
+          example: { error: request-too-large }
+    PrivacyRequestUnavailable:
+      description: The privacy journal runtime or its fixture lease is unavailable.
+      content:
+        application/json:
+          schema:
+            { $ref: '#/components/schemas/PrivacyRequestUnavailableError' }
+          example: { error: unavailable }
+    Forbidden:
+      description: Owner or same-origin verification failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: forbidden }
+    OnlineAccessLocked:
+      description: The seeded entitlement does not permit online synchronization.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: online-access-locked }
+    InvalidRequest:
+      description: Strict request decoding or an application precondition failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: invalid-request }
+    Conflict:
+      description: Stale disclosure, identifier conflict, or unavailable cancellation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RequestTooLarge:
+      description: More than the configured effective limit, capped at 2,048 request bytes.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: request-too-large }
+    SyncV2RequestTooLarge:
+      description: More than the configured limit or 4,000,000 request bytes.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: request-too-large }
+    InvalidSyncRequest:
+      description: Legacy request JSON or invariants are invalid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: 同期データが正しくありません。 }
+    SyncPayloadTooLarge:
+      description: More than 4,000,000 request bytes.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: 同期データが正しくありません。 }
+    SyncFailed:
+      description: Legacy storage or synchronization failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string }
+    AuthenticationRequiredError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [authentication-required] }
+    ContinuationRequiredError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [continuation-required] }
+    PrivacyRequestInvalidRequestError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [invalid-request] }
+    PrivacyRequestForbiddenError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [forbidden] }
+    PrivacyRequestNotFoundError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [not-found] }
+    PrivacyRequestConflictError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [request-conflict] }
+    PrivacyRequestTooLargeError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [request-too-large] }
+    PrivacyRequestUnavailableError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string, enum: [unavailable] }
+    LaunchStatus:
+      type: object
+      additionalProperties: false
+      required: [publicAccessEnabled, userAllowed, canAccess, authenticated]
+      properties:
+        publicAccessEnabled: { type: boolean }
+        userAllowed: { type: boolean }
+        canAccess: { type: boolean }
+        authenticated: { type: boolean }
+    UuidV7:
+      type: string
+      minLength: 36
+      maxLength: 36
+      pattern: '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-7[0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$'
+    SafeInteger:
+      type: integer
+      minimum: 0
+      maximum: 9007199254740991
+    Sha256Digest:
+      type: string
+      pattern: '^sha256:[a-f0-9]{64}$'
+    AffirmedConsent:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [affirmed] }
+    ContractOffer:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          schemaVersion,
+          offerVersion,
+          disclosureVersion,
+          serviceName,
+          quantity,
+          planName,
+          priceYen,
+          billingPeriod,
+          taxIncluded,
+          trialDays,
+          trialPriceYen,
+          firstChargeDay,
+          renewalChargeYen,
+          annualEstimateYen,
+          automaticRenewal,
+          paymentMethod,
+          serviceStart,
+          servicePeriod,
+          cancellationPolicy,
+          refundPolicy,
+          additionalFees,
+          onlineLockPolicy,
+          cancellationSeparateFromAccountDeletion,
+        ]
+      properties:
+        schemaVersion: { type: integer, enum: [1] }
+        offerVersion:
+          { type: string, pattern: '^legal-commerce-v1:\d{4}-\d{2}-\d{2}$' }
+        disclosureVersion: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        serviceName: { type: string, enum: [FUKAMU Notes] }
+        quantity: { type: string, enum: [one-personal-vault] }
+        planName: { type: string, minLength: 1, maxLength: 200 }
+        priceYen: { type: integer, minimum: 1, maximum: 10000000 }
+        billingPeriod: { type: string, enum: [monthly, annual] }
+        taxIncluded: { type: boolean, enum: [true] }
+        trialDays: { type: integer, enum: [14] }
+        trialPriceYen: { type: integer, enum: [0] }
+        firstChargeDay: { type: integer, enum: [15] }
+        renewalChargeYen: { type: integer, minimum: 1, maximum: 10000000 }
+        annualEstimateYen: { type: integer, minimum: 1, maximum: 120000000 }
+        automaticRenewal: { type: boolean, enum: [true] }
+        paymentMethod: { type: string, enum: [credit-card] }
+        serviceStart:
+          {
+            type: string,
+            enum: [after-registration-and-payment-method-confirmation],
+          }
+        servicePeriod: { type: string, enum: [indefinite-until-cancelled] }
+        cancellationPolicy: { type: string, minLength: 1, maxLength: 1000 }
+        refundPolicy: { type: string, minLength: 1, maxLength: 1000 }
+        additionalFees: { type: string, minLength: 1, maxLength: 500 }
+        onlineLockPolicy:
+          {
+            type: string,
+            enum: [immediate-on-payment-failure-or-action-required],
+          }
+        cancellationSeparateFromAccountDeletion: { type: boolean, enum: [true] }
+    ContractOfferResponse:
+      type: object
+      additionalProperties: false
+      required: [offer, offerHash]
+      properties:
+        offer: { $ref: '#/components/schemas/ContractOffer' }
+        offerHash: { $ref: '#/components/schemas/Sha256Digest' }
+    ContractCheckoutRequest:
+      type: object
+      additionalProperties: false
+      required: [submissionId, presentedOfferHash, consent]
+      properties:
+        submissionId: { $ref: '#/components/schemas/UuidV7' }
+        presentedOfferHash: { $ref: '#/components/schemas/Sha256Digest' }
+        consent: { $ref: '#/components/schemas/AffirmedConsent' }
+    ContractCheckoutResponse:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required:
+            [
+              kind,
+              evidenceOutcome,
+              evidenceId,
+              offerHash,
+              offerVersion,
+              checkoutUrl,
+            ]
+          properties:
+            kind: { type: string, enum: [redirect] }
+            evidenceOutcome: { type: string, enum: [recorded, replayed] }
+            evidenceId: { $ref: '#/components/schemas/UuidV7' }
+            offerHash: { $ref: '#/components/schemas/Sha256Digest' }
+            offerVersion:
+              { type: string, pattern: '^legal-commerce-v1:\d{4}-\d{2}-\d{2}$' }
+            checkoutUrl: { type: string, format: uri, maxLength: 2048 }
+        - type: object
+          additionalProperties: false
+          required: [kind, evidenceOutcome, evidenceId, offerHash, offerVersion]
+          properties:
+            kind: { type: string, enum: [local-confirmed] }
+            evidenceOutcome: { type: string, enum: [recorded, replayed] }
+            evidenceId: { $ref: '#/components/schemas/UuidV7' }
+            offerHash: { $ref: '#/components/schemas/Sha256Digest' }
+            offerVersion:
+              { type: string, pattern: '^legal-commerce-v1:\d{4}-\d{2}-\d{2}$' }
+    BillingCancellationRequest:
+      type: object
+      additionalProperties: false
+      required: [idempotencyKey]
+      properties:
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[A-Za-z0-9][A-Za-z0-9:_-]{0,254}$'
+    BillingCancellationResponse:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [status, outcome, confirmedAt, accessEndsAt]
+          properties:
+            status: { type: string, enum: [cancellation-scheduled] }
+            outcome: { type: string, enum: [scheduled] }
+            confirmedAt:
+              allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+              description: Provider observation time for the schedule.
+            accessEndsAt:
+              allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+              description: Must be at or after both confirmedAt and the server request time.
+        - type: object
+          additionalProperties: false
+          required: [status, outcome, confirmedAt, accessEndsAt]
+          properties:
+            status: { type: string, enum: [cancelled] }
+            outcome: { type: string, enum: [already-cancelled] }
+            confirmedAt:
+              allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+              description: Provider observation time for the completed cancellation.
+            accessEndsAt:
+              allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+              description: Must be at or before confirmedAt.
+    AccountDeletionIdempotencyKey:
+      type: string
+      minLength: 43
+      maxLength: 43
+      pattern: '^[A-Za-z0-9_-]{43}$'
+    AccountDeletionContinuationToken:
+      type: string
+      minLength: 49
+      maxLength: 58
+      pattern: '^ad1\.[A-Za-z0-9_-]{43}\.(?:0|[1-9][0-9]{0,8}|1[0-9]{9}|20[0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]|214748364[0-7])$'
+    AccountDeletionStartRequest:
+      type: object
+      additionalProperties: false
+      required: [idempotencyKey]
+      properties:
+        idempotencyKey:
+          { $ref: '#/components/schemas/AccountDeletionIdempotencyKey' }
+    AccountDeletionResumeRequest:
+      type: object
+      additionalProperties: false
+      required: [continuationToken]
+      properties:
+        continuationToken:
+          { $ref: '#/components/schemas/AccountDeletionContinuationToken' }
+    AccountDeletionResponse:
+      oneOf:
+        - $ref: '#/components/schemas/AccountDeletionInProgress'
+        - $ref: '#/components/schemas/AccountDeletionRetryWait'
+        - $ref: '#/components/schemas/AccountDeletionFailed'
+        - $ref: '#/components/schemas/AccountDeletionCompleted'
+      discriminator:
+        propertyName: status
+        mapping:
+          in-progress: '#/components/schemas/AccountDeletionInProgress'
+          retry-wait: '#/components/schemas/AccountDeletionRetryWait'
+          failed: '#/components/schemas/AccountDeletionFailed'
+          completed: '#/components/schemas/AccountDeletionCompleted'
+    AccountDeletionInProgress:
+      type: object
+      additionalProperties: false
+      required: [status, continuationToken]
+      properties:
+        status: { type: string, enum: [in-progress] }
+        continuationToken:
+          { $ref: '#/components/schemas/AccountDeletionContinuationToken' }
+    AccountDeletionRetryWait:
+      type: object
+      additionalProperties: false
+      required: [status, retryAt, continuationToken]
+      properties:
+        status: { type: string, enum: [retry-wait] }
+        retryAt: { $ref: '#/components/schemas/SafeInteger' }
+        continuationToken:
+          { $ref: '#/components/schemas/AccountDeletionContinuationToken' }
+    AccountDeletionFailed:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string, enum: [failed] }
+    AccountDeletionCompleted:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string, enum: [completed] }
+    PrivacyRequestKind:
+      type: string
+      enum:
+        [
+          purpose-notification,
+          disclosure,
+          correction,
+          usage-suspension,
+          deletion,
+          third-party-provision-suspension,
+        ]
+    PrivacyRequestNonDeletionKind:
+      type: string
+      enum:
+        [
+          purpose-notification,
+          disclosure,
+          correction,
+          usage-suspension,
+          third-party-provision-suspension,
+        ]
+    PrivacyRequestSubmitRequest:
+      type: object
+      additionalProperties: false
+      required: [submissionId, requestKind]
+      properties:
+        submissionId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { $ref: '#/components/schemas/PrivacyRequestKind' }
+    PrivacyRequestStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [requestId]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+    PrivacyRequestResponse:
+      description: >-
+        updatedAt is at or after requestedAt. A deletion completion can only be
+        account-deletion-started; every non-deletion completion can only be fulfilled.
+      oneOf:
+        - $ref: '#/components/schemas/PrivacyRequestVerificationPending'
+        - $ref: '#/components/schemas/PrivacyRequestReady'
+        - $ref: '#/components/schemas/PrivacyRequestProcessing'
+        - $ref: '#/components/schemas/PrivacyRequestCompletedFulfilled'
+        - $ref: '#/components/schemas/PrivacyRequestCompletedDeletionHandoff'
+        - $ref: '#/components/schemas/PrivacyRequestRejected'
+        - $ref: '#/components/schemas/PrivacyRequestFailed'
+    PrivacyRequestVerificationPending:
+      type: object
+      additionalProperties: false
+      required: [requestId, requestKind, requestedAt, updatedAt, status]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { $ref: '#/components/schemas/PrivacyRequestKind' }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [verification-pending] }
+    PrivacyRequestReady:
+      type: object
+      additionalProperties: false
+      required: [requestId, requestKind, requestedAt, updatedAt, status]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { $ref: '#/components/schemas/PrivacyRequestKind' }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [ready] }
+    PrivacyRequestProcessing:
+      type: object
+      additionalProperties: false
+      required: [requestId, requestKind, requestedAt, updatedAt, status]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { $ref: '#/components/schemas/PrivacyRequestKind' }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [processing] }
+    PrivacyRequestCompletedFulfilled:
+      type: object
+      additionalProperties: false
+      required:
+        [requestId, requestKind, requestedAt, updatedAt, status, outcome]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind:
+          { $ref: '#/components/schemas/PrivacyRequestNonDeletionKind' }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [completed] }
+        outcome: { type: string, enum: [fulfilled] }
+    PrivacyRequestCompletedDeletionHandoff:
+      type: object
+      additionalProperties: false
+      required:
+        [requestId, requestKind, requestedAt, updatedAt, status, outcome]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { type: string, enum: [deletion] }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [completed] }
+        outcome: { type: string, enum: [account-deletion-started] }
+    PrivacyRequestRejected:
+      type: object
+      additionalProperties: false
+      required: [requestId, requestKind, requestedAt, updatedAt, status]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { $ref: '#/components/schemas/PrivacyRequestKind' }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [rejected] }
+    PrivacyRequestFailed:
+      type: object
+      additionalProperties: false
+      required:
+        [requestId, requestKind, requestedAt, updatedAt, status, retryable]
+      properties:
+        requestId: { $ref: '#/components/schemas/UuidV7' }
+        requestKind: { $ref: '#/components/schemas/PrivacyRequestKind' }
+        requestedAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        status: { type: string, enum: [failed] }
+        retryable: { type: boolean }
+    TermsReference:
+      type: object
+      additionalProperties: false
+      required: [termsVersion, termsHash, effectiveDate]
+      properties:
+        termsVersion: { type: string, pattern: '^terms-v1:\d{4}-\d{2}-\d{2}$' }
+        termsHash: { $ref: '#/components/schemas/Sha256Digest' }
+        effectiveDate: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+    AcceptedTermsReference:
+      type: object
+      additionalProperties: false
+      required: [consentId, termsVersion, termsHash, acceptedAt]
+      properties:
+        consentId: { $ref: '#/components/schemas/UuidV7' }
+        termsVersion: { type: string, pattern: '^terms-v1:\d{4}-\d{2}-\d{2}$' }
+        termsHash: { $ref: '#/components/schemas/Sha256Digest' }
+        acceptedAt: { $ref: '#/components/schemas/SafeInteger' }
+    TermsConsentStatus:
+      type: object
+      additionalProperties: false
+      required: [kind, acceptanceRequired, current]
+      properties:
+        kind:
+          {
+            type: string,
+            enum: [current, accepted, reconsent-required, notice-only],
+          }
+        acceptanceRequired: { type: boolean }
+        current: { $ref: '#/components/schemas/TermsReference' }
+        accepted: { $ref: '#/components/schemas/AcceptedTermsReference' }
+    TermsConsentResponse:
+      type: object
+      additionalProperties: false
+      required: [outcome, status]
+      properties:
+        outcome: { type: string, enum: [status, recorded, replayed] }
+        status: { $ref: '#/components/schemas/TermsConsentStatus' }
+    TermsConsentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        [submissionId, presentedTermsVersion, presentedTermsHash, consent]
+      properties:
+        submissionId: { $ref: '#/components/schemas/UuidV7' }
+        presentedTermsVersion:
+          { type: string, pattern: '^terms-v1:\d{4}-\d{2}-\d{2}$' }
+        presentedTermsHash: { $ref: '#/components/schemas/Sha256Digest' }
+        consent: { $ref: '#/components/schemas/AffirmedConsent' }
+    BodySegment:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [type, text]
+          properties:
+            type: { type: string, enum: [text] }
+            text: { type: string, maxLength: 100000 }
+        - type: object
+          additionalProperties: false
+          required: [type, targetCardId]
+          properties:
+            type: { type: string, enum: [link] }
+            targetCardId: { $ref: '#/components/schemas/UuidV7' }
+    Mutation:
+      type: object
+      additionalProperties: false
+      required:
+        - mutationId
+        - cardId
+        - baseServerRevision
+        - title
+        - body
+        - createdAt
+        - updatedAt
+        - kind
+        - conflictIds
+      properties:
+        mutationId: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        baseServerRevision:
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/SafeInteger' }]
+        title: { type: string, maxLength: 10000 }
+        body:
+          type: array
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        kind: { type: string, enum: [upsert, resolve] }
+        conflictIds:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/UuidV7' }
+    SyncV2Mutation:
+      oneOf:
+        - $ref: '#/components/schemas/SyncV2UpsertMutation'
+        - $ref: '#/components/schemas/SyncV2ResolveMutation'
+      discriminator:
+        propertyName: kind
+        mapping:
+          upsert: '#/components/schemas/SyncV2UpsertMutation'
+          resolve: '#/components/schemas/SyncV2ResolveMutation'
+    SyncV2UpsertMutation:
+      type: object
+      additionalProperties: false
+      required:
+        - mutationId
+        - cardId
+        - baseServerRevision
+        - title
+        - body
+        - createdAt
+        - updatedAt
+        - kind
+        - conflictIds
+      properties:
+        mutationId: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        baseServerRevision:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 2147483647
+        title: { type: string, maxLength: 10000 }
+        body:
+          type: array
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        kind: { type: string, enum: [upsert] }
+        conflictIds:
+          type: array
+          maxItems: 0
+          items: { $ref: '#/components/schemas/UuidV7' }
+      description: createdAt must be less than or equal to updatedAt.
+    SyncV2ResolveMutation:
+      type: object
+      additionalProperties: false
+      required:
+        - mutationId
+        - cardId
+        - baseServerRevision
+        - title
+        - body
+        - createdAt
+        - updatedAt
+        - kind
+        - conflictIds
+      properties:
+        mutationId: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        baseServerRevision:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        title: { type: string, maxLength: 10000 }
+        body:
+          type: array
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        kind: { type: string, enum: [resolve] }
+        conflictIds:
+          type: array
+          minItems: 1
+          maxItems: 500
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/UuidV7' }
+      description: createdAt must be less than or equal to updatedAt.
+    SyncRequest:
+      type: object
+      additionalProperties: false
+      required: [deviceId, mutations]
+      properties:
+        deviceId: { $ref: '#/components/schemas/UuidV7' }
+        mutations:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/Mutation' }
+    SyncV2Cursor:
+      type: string
+      minLength: 24
+      maxLength: 2048
+      pattern: '^[A-Za-z0-9._~-]+$'
+    SyncV2Request:
+      type: object
+      additionalProperties: false
+      required: [version, deviceId, cursor, mutations]
+      properties:
+        version: { type: string, enum: [sync/v2] }
+        deviceId: { $ref: '#/components/schemas/UuidV7' }
+        cursor:
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/SyncV2Cursor' }]
+        mutations:
+          type: array
+          maxItems: 500
+          description: mutationId values must be unique within the request.
+          items: { $ref: '#/components/schemas/SyncV2Mutation' }
+    SessionContext:
+      type: object
+      additionalProperties: false
+      required:
+        [accountId, vaultId, sessionId, sessionEpoch, accountDeletionAvailable]
+      properties:
+        accountId: { $ref: '#/components/schemas/UuidV7' }
+        vaultId: { $ref: '#/components/schemas/UuidV7' }
+        sessionId: { $ref: '#/components/schemas/UuidV7' }
+        sessionEpoch: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        accountDeletionAvailable: { type: boolean }
+    ServerCard:
+      type: object
+      additionalProperties: false
+      required:
+        [id, officialDisplayId, title, body, createdAt, updatedAt, revision]
+      properties:
+        id: { $ref: '#/components/schemas/UuidV7' }
+        officialDisplayId:
+          { type: integer, minimum: 1, maximum: 9007199254740991 }
+        title: { type: string, maxLength: 10000 }
+        body:
+          type: array
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        revision: { type: integer, minimum: 1, maximum: 9007199254740991 }
+    Conflict:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          cardId,
+          serverRevision,
+          localTitle,
+          localBody,
+          serverTitle,
+          serverBody,
+          createdAt,
+        ]
+      properties:
+        id: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        serverRevision: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        localTitle: { type: string, maxLength: 10000 }
+        localBody:
+          type: array
+          items: { $ref: '#/components/schemas/BodySegment' }
+        serverTitle: { type: string, maxLength: 10000 }
+        serverBody:
+          type: array
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+    SyncV2ServerCard:
+      type: object
+      additionalProperties: false
+      required:
+        [id, officialDisplayId, title, body, createdAt, updatedAt, revision]
+      properties:
+        id: { $ref: '#/components/schemas/UuidV7' }
+        officialDisplayId:
+          { type: integer, minimum: 1, maximum: 9007199254740991 }
+        title: { type: string, maxLength: 10000 }
+        body:
+          type: array
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+        updatedAt: { $ref: '#/components/schemas/SafeInteger' }
+        revision: { type: integer, minimum: 1, maximum: 2147483647 }
+    SyncV2Conflict:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          cardId,
+          serverRevision,
+          localTitle,
+          localBody,
+          serverTitle,
+          serverBody,
+          createdAt,
+        ]
+      properties:
+        id: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        serverRevision: { type: integer, minimum: 1, maximum: 2147483647 }
+        localTitle: { type: string, maxLength: 10000 }
+        localBody:
+          type: array
+          items: { $ref: '#/components/schemas/BodySegment' }
+        serverTitle: { type: string, maxLength: 10000 }
+        serverBody:
+          type: array
+          items: { $ref: '#/components/schemas/BodySegment' }
+        createdAt: { $ref: '#/components/schemas/SafeInteger' }
+    SyncV2Change:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [kind, sequence, card]
+          properties:
+            kind: { type: string, enum: [card-upsert] }
+            sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            card: { $ref: '#/components/schemas/SyncV2ServerCard' }
+        - type: object
+          additionalProperties: false
+          required: [kind, sequence, conflict]
+          properties:
+            kind: { type: string, enum: [conflict-upsert] }
+            sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            conflict: { $ref: '#/components/schemas/SyncV2Conflict' }
+        - type: object
+          additionalProperties: false
+          required: [kind, sequence, cardId, revision, deletedAt]
+          properties:
+            kind: { type: string, enum: [card-tombstone] }
+            sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            cardId: { $ref: '#/components/schemas/UuidV7' }
+            revision: { type: integer, minimum: 1, maximum: 2147483647 }
+            deletedAt: { $ref: '#/components/schemas/SafeInteger' }
+        - type: object
+          additionalProperties: false
+          required: [kind, sequence, conflictId, cardId, deletedAt]
+          properties:
+            kind: { type: string, enum: [conflict-tombstone] }
+            sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            conflictId: { $ref: '#/components/schemas/UuidV7' }
+            cardId: { $ref: '#/components/schemas/UuidV7' }
+            deletedAt: { $ref: '#/components/schemas/SafeInteger' }
+    SyncV2MutationReceipt:
+      type: object
+      additionalProperties: false
+      required: [mutationId, cardId, appliedRevision]
+      properties:
+        mutationId: { $ref: '#/components/schemas/UuidV7' }
+        cardId: { $ref: '#/components/schemas/UuidV7' }
+        appliedRevision: { type: integer, minimum: 1, maximum: 2147483647 }
+    SyncV2Page:
+      type: object
+      additionalProperties: false
+      required: [kind, nextCursor]
+      properties:
+        kind: { type: string, enum: [more, complete] }
+        nextCursor: { $ref: '#/components/schemas/SyncV2Cursor' }
+    SyncV2Response:
+      type: object
+      additionalProperties: false
+      required: [version, highWatermark, changes, receipts, page]
+      properties:
+        version: { type: string, enum: [sync/v2] }
+        highWatermark: { $ref: '#/components/schemas/SafeInteger' }
+        changes:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/SyncV2Change' }
+        receipts:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/SyncV2MutationReceipt' }
+        page: { $ref: '#/components/schemas/SyncV2Page' }
+    SyncResponse:
+      type: object
+      additionalProperties: false
+      required: [cards, conflicts, acknowledgedMutationIds]
+      properties:
+        cards:
+          type: array
+          maxItems: 100000
+          items: { $ref: '#/components/schemas/ServerCard' }
+        conflicts:
+          type: array
+          maxItems: 100000
+          items: { $ref: '#/components/schemas/Conflict' }
+        acknowledgedMutationIds:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/UuidV7' }

@@ -13,7 +13,7 @@ import {
   createBillingCancellationIdempotencyKey,
   createBillingUiHttpTransport,
 } from '@/lib/client/http-billing-ui';
-import type { SubscriptionCancellationIdempotencyKey } from '@/server/billing/public';
+import type { SubscriptionCancellationIdempotencyKey } from '@/lib/contracts/billing-cancellation';
 
 export function BillingAccountBoundary({
   source,
@@ -45,7 +45,7 @@ export function BillingAccountBoundary({
       case 'confirmed':
         dispatch({
           type: 'confirmed',
-          source: 'server',
+          source: source === 'local-fixture' ? 'local-fixture' : 'server',
           confirmedAt: result.confirmedAt,
         });
         return;

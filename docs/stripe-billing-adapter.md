@@ -1,10 +1,18 @@
 # Stripe Billing adapter boundary
 
-Issue #120 adds a provider adapter around the public Billing API. It does not
-add a production HTTP client, a route, credentials, a webhook registration, or
-any live/test charge. The Notes application composition is unchanged, so local
-editing does not acquire a billing prerequisite. Tests opt into the fake Stripe
-transport and verifier explicitly.
+Issue #120 added the historical TypeScript provider adapter around the public
+Billing API. It added no production HTTP client, route, credentials, webhook
+registration, or live/test charge. T17 removed that adapter and its fake
+transport tests; the current Go status is described below. Local editing still
+has no billing prerequisite.
+
+## Status after T17
+
+The TypeScript `server/stripe` design through the primary-reference section is
+a historical migration-source record. T17 removed that source and its server
+tests. The executable contract is `backend/internal/stripebilling`; only
+`backend/internal/adapters/stripe` may import the Stripe SDK. Historical paths
+below are not current import paths or deployable rollback artifacts.
 
 ## Responsibility and dependency direction
 
@@ -16,9 +24,10 @@ raw webhook / provider response
   -> Entitlement public decision on the next read
 ```
 
-`server/stripe` may import `server/billing/public` but not Billing records,
-repositories, D1 schema, or Entitlement internals. It never writes Billing or
-Entitlement tables. Billing remains responsible for atomic event receipts,
+The removed `server/stripe` was allowed to import `server/billing/public` but
+not Billing records, repositories, D1 schema, or Entitlement internals. It did
+not write Billing or Entitlement tables. The Go boundary preserves that
+dependency direction. Billing remains responsible for atomic event receipts,
 duplicate detection, ordering, provider mapping, reconciliation checkpoints,
 and CAS. Entitlement remains the only module that converts Billing facts into
 feature access.
@@ -70,7 +79,8 @@ Only a later verified `invoice.paid` fact can restore paid access.
 
 ## Webhook verification and mapping
 
-The Web Crypto verifier receives immutable raw bytes, not parsed JSON. It:
+The removed TypeScript Web Crypto verifier received immutable raw bytes, not
+parsed JSON. It:
 
 1. parses exactly one `t` value and one or more `v1` signatures;
 2. computes HMAC-SHA256 over `timestamp + "." + raw body`;
@@ -98,15 +108,21 @@ Other events are acknowledged as unsupported without changing Billing.
 Duplicate event IDs and snapshot IDs are handled by Billing's existing atomic
 receipts/checkpoints. Stripe delivery order is not trusted; an older payment
 fact cannot replace a newer delinquency. Scheduled reconciliation decodes the
-same provider references and refuses mismatched internal metadata.
+same provider references and refuses mismatched internal metadata. The
+operator observation time is checkpoint metadata, not payment evidence. A
+paid Invoice uses `status_transitions.paid_at`, and failed/action-required
+state uses the latest PaymentIntent `created` time. Missing, contradictory,
+reversed, or future provider timestamps make the snapshot malformed and grant
+nothing.
 
 ## Local and production composition
 
-`createFakeStripeTransport` and `createFakeStripeWebhookVerifier` are test-only
-ports and have no production consumer. They cover lost responses, malformed
-responses, duplicate/reordered delivery, provider snapshots, and no-network
-Billing/Entitlement integration. The Web Crypto signature adapter is tested
-against official header/payload construction without using a Stripe key.
+`createFakeStripeTransport` and `createFakeStripeWebhookVerifier` were
+TypeScript test-only ports with no production consumer. Their frozen tests
+covered lost responses, malformed responses, duplicate/reordered delivery,
+provider snapshots, and no-network Billing/Entitlement integration. T17 removed
+them; current executable replacement evidence is in
+`backend/internal/stripebilling` and `backend/internal/adapters/stripe`.
 
 A future production composition must fail closed when its API key, endpoint
 secret, pinned endpoint version, or provider transport is absent. It must not
@@ -126,3 +142,76 @@ approval recorded in parent #106.
 These references were checked on 2026-09-14. Before a real provider transport
 or endpoint is enabled, re-check the current GA API version and test the pinned
 version in Stripe test mode under a separately approved operation.
+
+## Go T09b implementation
+
+Issue #438 ports this boundary to the disconnected Go backend. The pure
+`internal/stripebilling` package owns configuration, Checkout planning,
+provider-response validation, raw-body event decoding, reconciliation mapping,
+and the application service. `internal/adapters/stripe` is the only package
+that imports the official Stripe SDK. It uses `stripe-go/v84` v84.4.1, whose
+pinned API version is exactly `2026-02-25.clover`; initialization fails if the
+SDK and application versions diverge or if a test/live key prefix disagrees
+with the configured mode. The version mismatch escape hatch is not enabled.
+SDK telemetry and its raw provider-error logger are disabled at the adapter;
+future composition must emit only the repository's bounded, redacted outcome.
+
+The Go HMAC verifier copies verified raw bytes, compares every `v1` signature
+in constant time, and applies the same five-minute timestamp and 256-KiB body
+limits. The frozen `billing/stripe.json` fixture established the TypeScript/Go
+migration comparison and remains exercised by Go. It fixes every Checkout field
+plus an exact signed `invoice.paid` payload. Local HTTP-stub tests inspect the SDK's Stripe-Version,
+Authorization, and Idempotency-Key headers, encoded form fields, required
+subscription expansions, unexpanded PaymentIntent retrieval, and provider
+failure propagation. They use no Stripe credential or network endpoint.
+
+The v84 Invoice model for the pinned Clover API has no legacy `paid` boolean;
+the authoritative invoice `status` is used instead. The frozen TypeScript
+decoder established compatibility with that pinned wire shape before T17
+removed it. The current Go pure core derives paid state from `status == paid`
+without carrying a redundant provider boolean. This corrects a stale
+provider-field assumption instead of preserving it as compatibility.
+
+Issue #476 also preserves stable provider evidence time during reconciliation.
+The SDK adapter maps Invoice `created` and `status_transitions.paid_at`, and
+maps the latest PaymentIntent `created` timestamp whether the PaymentIntent was
+expanded or fetched separately. Frozen TypeScript tests established the same
+rejection contract before their removal; current Go tests reject a paid Invoice
+without a paid transition, an unpaid Invoice with one, a paid transition before
+Invoice creation, and any provider timestamp later than the explicit
+observation. Re-running reconciliation later therefore cannot make unchanged
+old evidence win ordering. The focused Go provider tests use a local HTTP stub;
+no Stripe endpoint is contacted.
+
+Issue #478 composes that retrieve-and-commit path only into the explicit
+`notesctl billing reconcile` operations command. The shared Go
+`ReconciliationService` needs only the Billing and provider ports, so the
+runner does not invent Checkout URLs, a Price, or a webhook secret. Its
+owner-scoped policy derives both provider identifiers from PostgreSQL and
+checks an existing reconciliation checkpoint before the SDK can issue a
+request. A returned subscription must match the stored customer and
+subscription references. There
+is no fake-provider fallback in command composition; tests inject their fake
+at the command boundary or use local HTTP stubs.
+
+The server remains uncomposed: no HTTP route, endpoint secret, configured API
+key, webhook registration, scheduled reconciliation, cancellation mutation,
+charge, or entitlement grant is enabled. The explicit command requires an API
+key at invocation and was verified without a real provider request. A real
+Stripe test-mode call must
+first be separately approved and must confirm the Checkout-hosted rendering,
+the selected Price, the nested expansion shape, 3DS flows, trial end, invoice
+events, and webhook endpoint API version. Production use requires a separate
+review of credentials, cost, merchant/PCI evidence, replay/recovery steps, and
+the exact resource changes.
+
+Issue #496 later adds separate period-end and immediate cancellation methods to
+the same disconnected SDK adapter. Its local HTTP stubs and closed handler are
+documented in [`billing-cancellation.md`](billing-cancellation.md). No server
+composition, key configuration, provider request, or route enablement is added.
+
+Primary references rechecked for #438 on 2026-09-25 were the official
+[stripe-go v84.4.1 release](https://github.com/stripe/stripe-go/releases/tag/v84.4.1)
+and the current [Invoice object](https://docs.stripe.com/api/invoices/object)
+reference. Local module source fixes the exact generated SDK shape used by the
+tests; no live provider response was requested.
