@@ -941,7 +941,7 @@ async function executeReferenceSQL(
       isolatedEnvironment(runtime.paths),
     ),
     timeoutMilliseconds: 5 * 60_000,
-    label: 'execute isolated local D1 SQL file',
+    label: `execute isolated local D1 SQL file ${path.basename(sqlFile)}`,
   });
 }
 
