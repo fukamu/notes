@@ -440,7 +440,6 @@ async function buildRuntime(paths: OwnedPaths): Promise<BuiltRuntime> {
     GOMODCACHE: goModuleCache,
     GOTOOLCHAIN: 'auto',
     GOPROXY: 'off',
-    GOSUMDB: 'off',
     CGO_ENABLED: '0',
   };
   await commandText('npm', ['run', 'build:frontend'], {
@@ -1273,7 +1272,6 @@ async function collectSyncV2Evidence(
     GOMODCACHE: runtime.goModuleCache,
     GOTOOLCHAIN: 'auto',
     GOPROXY: 'off',
-    GOSUMDB: 'off',
     CGO_ENABLED: '0',
     NOTES_TEST_DATABASE_URL: databaseURL,
     FUKAMU_V12_PERFORMANCE_MODE: 'local-go-postgres',
