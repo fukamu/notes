@@ -9,7 +9,7 @@ const observerPath = 'server/v12-query-observer.ts';
 export const V12_REFERENCE_HANDLER_SHA256 =
   'b9a3156c5a0035472ea3d67945ba143990c6037866c543e500ed245e6478aa90';
 export const V12_REFERENCE_PATCHED_HANDLER_SHA256 =
-  '729b964e3d9b31edfd2139f21034513417aec3fcb6ad24c4e2ccb13d6d6871e4';
+  '729b964e005f204b10ae91f40ca6bdcfa518413bbe3c88b7ce3f8aa53032b91a';
 
 const observerSource = `type Counter = { count: number };
 
