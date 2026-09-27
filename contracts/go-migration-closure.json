@@ -471,12 +471,14 @@
     },
     {
       "id": "V12",
-      "status": "in-progress",
+      "status": "complete",
       "evidence": [
-        "scripts/benchmark-migration.mts",
-        "docs/legacy-typescript-retirement.md"
+        "docs/benchmarks/migration-v12-local.json",
+        "docs/migration-v12-performance.md",
+        "scripts/benchmark-migration-v12.mts",
+        "scripts/verify-migration-v12-evidence.mts"
       ],
-      "note": "The existing typed loopback runner records only a single-fixture reference/Go observation. The required 100/1,000/10,000-card, batch-500, two-device/full-sync, cold/warm/query/memory, and Sync v2 load baseline has not been executed; a follow-up Issue and PR must add that evidence."
+      "note": "Issue #525 records five independent local runs for the representative 100/1,000/10,000-card legacy API matrix, 100/10,000-card native UI matrix, and 10,000-entry Sync v2 plus 100-vault concurrency evidence. The provisional review envelope is diagnostic: direct API cases are within it, while the 10,000-card current native UI initial-ready case is recorded for production-shaped follow-up because UI and protocol paths differ."
     }
   ],
   "profiles": [

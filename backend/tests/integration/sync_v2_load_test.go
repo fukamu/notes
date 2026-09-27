@@ -217,11 +217,25 @@ func seedServerLoadUsers(
 	cursors *syncv2.CursorAuthenticator,
 ) []serverLoadUser {
 	t.Helper()
-	users := make([]serverLoadUser, serverLoadLogicalRequests)
-	accountRows := make([][]any, serverLoadLogicalRequests)
-	vaultRows := make([][]any, serverLoadLogicalRequests)
-	sessionRows := make([][]any, serverLoadLogicalRequests)
-	keyringRows := make([][]any, serverLoadLogicalRequests)
+	return seedServerLoadUserCount(t, ctx, pool, cursors, serverLoadLogicalRequests)
+}
+
+func seedServerLoadUserCount(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	cursors *syncv2.CursorAuthenticator,
+	count int,
+) []serverLoadUser {
+	t.Helper()
+	if count < 1 || count > serverLoadLogicalRequests {
+		t.Fatalf("server load fixture count = %d", count)
+	}
+	users := make([]serverLoadUser, count)
+	accountRows := make([][]any, count)
+	vaultRows := make([][]any, count)
+	sessionRows := make([][]any, count)
+	keyringRows := make([][]any, count)
 	for index := range users {
 		accountID := mustServerLoadAccountID(t, serverLoadUUID(0x100_000, index))
 		vaultID := mustServerLoadVaultID(t, serverLoadUUID(0x200_000, index))

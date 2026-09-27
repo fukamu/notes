@@ -34,6 +34,29 @@ func OpenPool(
 	databaseURL string,
 	maximumConnections int32,
 ) (*pgxpool.Pool, error) {
+	configuration, err := PoolConfiguration(databaseURL, maximumConnections)
+	if err != nil {
+		return nil, err
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, configuration)
+	if err != nil {
+		return nil, ErrDatabaseUnavailable
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, ErrDatabaseUnavailable
+	}
+	return pool, nil
+}
+
+// PoolConfiguration is the single source of truth for pool lifecycle limits.
+// Local measurement companions may attach a pgx tracer to the returned
+// connection configuration before opening a pool; production and benchmark
+// pools otherwise retain identical settings.
+func PoolConfiguration(
+	databaseURL string,
+	maximumConnections int32,
+) (*pgxpool.Config, error) {
 	if maximumConnections < 1 {
 		return nil, errors.New("maximum connections must be positive")
 	}
@@ -45,13 +68,5 @@ func OpenPool(
 	configuration.MinConns = 0
 	configuration.MaxConnLifetime = 30 * time.Minute
 	configuration.MaxConnIdleTime = 5 * time.Minute
-	pool, err := pgxpool.NewWithConfig(ctx, configuration)
-	if err != nil {
-		return nil, ErrDatabaseUnavailable
-	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, ErrDatabaseUnavailable
-	}
-	return pool, nil
+	return configuration, nil
 }

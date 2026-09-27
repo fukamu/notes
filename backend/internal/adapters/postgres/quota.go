@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const maximumQuotaTransactionAttempts = 3
+const maximumQuotaTransactionAttempts = 16
 
 var (
 	ErrInvalidQuotaOperation = errors.New("invalid quota operation")
@@ -120,6 +120,9 @@ func (directory *QuotaLedgerDirectory) Open(
 		if !isRetryableTransactionError(err) || ctx.Err() != nil {
 			return quota.OpenResult{}, err
 		}
+		if err := waitForSerializableRetry(ctx, attempt); err != nil {
+			return quota.OpenResult{}, err
+		}
 	}
 	return quota.OpenResult{}, ErrConcurrentChange
 }
@@ -209,6 +212,9 @@ func (ledger *QuotaLedger) Reserve(
 		if !errors.Is(err, ErrConcurrentChange) && !isRetryableTransactionError(err) && !isUniqueViolation(err) {
 			return quota.ReservationResult{}, err
 		}
+		if err := waitForSerializableRetry(ctx, attempt); err != nil {
+			return quota.ReservationResult{}, err
+		}
 	}
 	return quota.ReservationResult{
 		Kind: quota.ReservationRejected, Reason: quota.RejectionCASConflict,
@@ -291,6 +297,9 @@ func (ledger *QuotaLedger) Finalize(
 			return quota.FinalizationResult{}, ctx.Err()
 		}
 		if !errors.Is(err, ErrConcurrentChange) && !isRetryableTransactionError(err) {
+			return quota.FinalizationResult{}, err
+		}
+		if err := waitForSerializableRetry(ctx, attempt); err != nil {
 			return quota.FinalizationResult{}, err
 		}
 	}

@@ -1,10 +1,9 @@
 # Go whole-runtime closure
 
-Issue #514 records executable whole-runtime evidence and the remaining gaps for
-the Go migration. It does not complete the still-missing V12 scale/performance
-baseline, or perform production deployment, database migration, traffic
-cutover, external-resource creation, or a paid operation. The machine-readable
-source of truth is
+Issues #514 and #525 record executable whole-runtime and local V12 performance
+evidence for the Go migration. They do not perform production deployment,
+database migration, traffic cutover, external-resource creation, or a paid
+operation. The machine-readable source of truth is
 [`contracts/go-migration-closure.json`](../contracts/go-migration-closure.json)
 schema version 3.
 
@@ -14,26 +13,26 @@ schema version 3.
 its deliberately local or disconnected composition are complete; it does not
 mean a closed production provider or route is enabled.
 
-| Task | Status                                        | Exact boundary                                                                                                                                                                      |
-| ---- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T00  | complete (decision register; choices pending) | Baseline, overlapping work, profile boundaries, and still-unapproved production choices are recorded.                                                                               |
-| T01  | in-progress                                   | Contracts and fixtures exist, but V12 still lacks the required 100/1,000/10,000-card and comprehensive Sync v2 scale/performance baseline.                                          |
-| T02  | complete                                      | Go startup, strict configuration, shared checks, health, shutdown, and the Node-free runtime build are executable.                                                                  |
-| T03  | complete (approved scope)                     | Guarded local PostgreSQL migrations, empty-database initialization, and exact fixture preparation are executable; no managed database was selected or changed.                      |
-| T04  | complete (approved scope)                     | Signed private identity, owner gate, and legacy Sync run end-to-end in the private local profile.                                                                                   |
-| T05  | complete                                      | Static frontend/SW delivery and deep links run from the Go process without a request-time TypeScript server.                                                                        |
-| T06  | complete (approved scope)                     | Session, OIDC, OTP, and signup logic are in Go; only the exact local fixture session is composed, while public/production identity routes remain closed.                            |
-| T07  | complete (approved scope)                     | Envelope/keyring/KMS boundaries are in Go and the local AES path is connected; real production key provider selection and exercise remain approval-pending.                         |
-| T08  | complete (approved scope)                     | Immutable-object, rotation, recovery, and guarded runner behavior are implemented; no external object or backup resource is selected.                                               |
-| T09  | complete (approved scope)                     | Billing, Stripe, entitlement, cancellation, and lease boundaries are implemented; only no-network local evidence is composed and paid/provider effects remain closed.               |
-| T10  | complete (approved scope)                     | Terms and URL-free checkout evidence are connected only in the exact local fixture; no charge or public signup is enabled.                                                          |
-| T11  | complete (approved scope)                     | Owner/session/entitlement/quota/encryption/PostgreSQL Sync v2 is connected in the exact local fixture; production remains closed.                                                   |
-| T12  | complete (approved scope)                     | Disposable deletion and Privacy Submit/Status are connected only in their exact fixture profiles; privacy fulfillment and production deletion remain closed.                        |
-| T13  | complete (approved scope)                     | Explicit operation cores/commands and structured lifecycle telemetry are present; F26 stays partially connected because delivery, scheduling, and production automation are absent. |
-| T14  | in-progress                                   | Whole-process, release, closure, and retirement gates exist, but the incomplete V12 comparison baseline prevents T14 completion.                                                    |
-| T15  | approval-blocked / not-performed              | No approved staging provider/configuration, external rehearsal, backup restore, or production-shaped provider exercise was performed.                                               |
-| T16  | approval-blocked / not-performed              | This work did not change `main`, deploy, migrate production data, or cut over traffic; external state remains unverified and every action requires separate explicit approval.      |
-| T17  | complete (source/config retirement only)      | The request-time TypeScript server and dedicated runtime configuration are retired; external Sites/D1 artifacts and data were neither inspected nor changed or deleted.             |
+| Task | Status                                        | Exact boundary                                                                                                                                                                          |
+| ---- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T00  | complete (decision register; choices pending) | Baseline, overlapping work, profile boundaries, and still-unapproved production choices are recorded.                                                                                   |
+| T01  | complete (approved local scope)               | Contracts, fixtures, and repeated 100/1,000/10,000-card reference/Go plus separate Sync v2 local performance evidence are complete; production-shaped capacity evidence is not claimed. |
+| T02  | complete                                      | Go startup, strict configuration, shared checks, health, shutdown, and the Node-free runtime build are executable.                                                                      |
+| T03  | complete (approved scope)                     | Guarded local PostgreSQL migrations, empty-database initialization, and exact fixture preparation are executable; no managed database was selected or changed.                          |
+| T04  | complete (approved scope)                     | Signed private identity, owner gate, and legacy Sync run end-to-end in the private local profile.                                                                                       |
+| T05  | complete                                      | Static frontend/SW delivery and deep links run from the Go process without a request-time TypeScript server.                                                                            |
+| T06  | complete (approved scope)                     | Session, OIDC, OTP, and signup logic are in Go; only the exact local fixture session is composed, while public/production identity routes remain closed.                                |
+| T07  | complete (approved scope)                     | Envelope/keyring/KMS boundaries are in Go and the local AES path is connected; real production key provider selection and exercise remain approval-pending.                             |
+| T08  | complete (approved scope)                     | Immutable-object, rotation, recovery, and guarded runner behavior are implemented; no external object or backup resource is selected.                                                   |
+| T09  | complete (approved scope)                     | Billing, Stripe, entitlement, cancellation, and lease boundaries are implemented; only no-network local evidence is composed and paid/provider effects remain closed.                   |
+| T10  | complete (approved scope)                     | Terms and URL-free checkout evidence are connected only in the exact local fixture; no charge or public signup is enabled.                                                              |
+| T11  | complete (approved scope)                     | Owner/session/entitlement/quota/encryption/PostgreSQL Sync v2 is connected in the exact local fixture; production remains closed.                                                       |
+| T12  | complete (approved scope)                     | Disposable deletion and Privacy Submit/Status are connected only in their exact fixture profiles; privacy fulfillment and production deletion remain closed.                            |
+| T13  | complete (approved scope)                     | Explicit operation cores/commands and structured lifecycle telemetry are present; F26 stays partially connected because delivery, scheduling, and production automation are absent.     |
+| T14  | complete (approved local scope)               | Whole-process, release, closure, retirement, and V12 local performance evidence are complete; production transition remains separately approval-blocked.                                |
+| T15  | approval-blocked / not-performed              | No approved staging provider/configuration, external rehearsal, backup restore, or production-shaped provider exercise was performed.                                                   |
+| T16  | approval-blocked / not-performed              | This work did not change `main`, deploy, migrate production data, or cut over traffic; external state remains unverified and every action requires separate explicit approval.          |
+| T17  | complete (source/config retirement only)      | The request-time TypeScript server and dedicated runtime configuration are retired; external Sites/D1 artifacts and data were neither inspected nor changed or deleted.                 |
 
 ## Exact runtime profiles
 
@@ -140,8 +139,8 @@ one minimal-environment loopback smoke, and exactly two distinct
 The production transition is recorded as `not-performed` for deployment,
 database migration, traffic cutover, and external resources, with approval
 pending. A green closure gate means the inventory and executable links are
-internally consistent; it deliberately preserves V12 as `in-progress` and does
-not mean local implementation closure or production migration is complete.
+internally consistent; the separate #525 artifact completes V12 only for the
+approved local scope and does not mean production migration is complete.
 
 ## Remaining approval and implementation boundaries
 
@@ -153,13 +152,19 @@ Provider IAM, quota/cost, real backup recovery, observability/SLO, and on-call
 ownership also remain unresolved. These are explicit absent or approval-pending
 inventory, not hidden completion claims.
 
-V12 also remains an implementation-evidence gap: the existing typed runner is
-only a single-fixture observation. A follow-up Issue/PR must add fixed-host
-warm-up and repeated cold/warm, p50/p95/error/query/memory measurements for
-100/1,000/10,000 cards, one mutation and batch 500, two-device conflict and
-full sync, plus the separate real-DB/fake-external-I/O Sync v2 load baseline.
-Until that evidence passes, T01 and T14 remain in progress and the local
-implementation must not be reported as fully complete.
+Issue #525 closes V12 for the approved local scope with five independent runs
+per adopted cell: the reference/Go legacy API at 100/1,000/10,000 cards, native
+UI at 100/10,000 cards, and a separate 10,000-entry Sync v2 traversal plus 100
+independent concurrent vault requests. Raw data, summaries, source identities,
+reproduction, and limitations are in
+[`migration-v12-performance.md`](migration-v12-performance.md). Direct API
+comparisons had no errors or parity failures and stayed inside the provisional
+review envelope. The current native UI 10,000-card initial load is a recorded
+large-dataset UX limitation because it traverses 20 ordered Sync v2 pages; it
+must not be restated as Go API regression or hidden as a passing capacity SLO.
+T01 and T14 are complete only for this approved local/provider-independent
+scope. Production-shaped capacity, provider exercise, deployment, and cutover
+remain unverified and approval-blocked under T15/T16.
 
 Cutover, rollback, and data-recovery rules are in
 [`production-operations-runbook.md`](production-operations-runbook.md). The old

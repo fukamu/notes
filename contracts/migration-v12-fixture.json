@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "scales": [100, 1000, 10000],
+  "browserScales": [100, 10000],
+  "runsPerCell": 5,
+  "warmupsBeforeWarmFull": 3,
+  "batchSize": 500,
+  "legacyDeviceNamespaces": {
+    "primary": 9437184,
+    "stale": 9502720
+  },
+  "legacyCardNamespaces": {
+    "initial": 1048576,
+    "batch": 2097152
+  },
+  "legacyMutationNamespaces": {
+    "initial": 3145728,
+    "single": 4194304,
+    "batch": 5242880,
+    "deviceA": 6291456,
+    "staleDeviceB": 7340032
+  },
+  "timestampBaseMillis": 1789000000000,
+  "syncV2Entries": 10000,
+  "syncV2PageSize": 500,
+  "syncV2PageCount": 20,
+  "syncV2DeltaEntries": 1,
+  "syncV2ConcurrentRequests": 100,
+  "syncV2PoolLimit": 16,
+  "memoryScope": "linux-process-smaps-rollup-rss-pss-bytes"
+}

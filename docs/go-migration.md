@@ -7,7 +7,7 @@ delete existing resources.
 
 ## Baseline and boundaries
 
-- Audit date: 2026-09-25 JST
+- Audit date: 2026-09-27 JST
 - Exact latest `origin/main` and migration research baseline:
   `f423da9932163980485ecc5bc2055b7c8c3b3d8b`
 - Integration branch: `integration/409-go-backend-migration`
@@ -103,6 +103,12 @@ delete existing resources.
   isolated destructive Chromium lane, and release verifier v2. It performs no
   production deployment, database migration, traffic cutover, external
   resource, or paid operation.
+- V12 performance evidence Issue #525 starts from exact integration tip
+  `fa33eb8536c309e350c2617642b82ae38a096aa7`. Its measured Go revision is
+  `98f720740fa4939c56e5ff10e4b29e7514a3decd`; the reference revision is
+  `f423da9932163980485ecc5bc2055b7c8c3b3d8b`. It records repeated local API,
+  native UI, and Sync v2 load evidence without changing `main`, production, or
+  an external service.
 - The source worktree contained untracked `docs/concepts/`; migration work uses
   issue-specific worktrees and does not modify those files.
 
@@ -157,20 +163,20 @@ A disconnected handler is not the same contract as its closed route.
 
 ## Verification matrix
 
-| ID  | Required evidence                                       | Current evidence                                                                                                                                                                                                                   |
-| --- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454/#511; strict local session context #511; legal #442/#444/#446/#510; privacy #456/#513; exact four-profile actual-process route matrix #514                                                                     |
-| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                                                                                                                                       |
-| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; exact local scope and HTTP-before-body #511; OIDC #424; OTP/owner #426; legal #446; privacy #456; deletion #458; privacy/deletion owner binding #468                                                            |
-| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450/#472; sync #452/#454; local composition/restart #511; exact deletion phase/restart/lease #512; no-reseed process restart/lease #514      |
-| V05 | sync/quota paging, retry, conflict, limits              | quota #450/#472; journal #452; authenticated encrypted composition #454; live local HTTP/UI connection #511                                                                                                                        |
-| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434; filesystem ciphertext/restart proof #511                                                                                                                                      |
-| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438/#476; lease #440; legal #442/#444/#446/#510; scoped reconciliation #478                                                                                                                               |
-| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432/#482; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468; every receipt/effect crash boundary and filesystem replay #512                             |
-| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                                                                                          |
-| V10 | browser UI/offline/SW/deep links                        | #420 baseline; authenticated Vault-scoped Sync v2 #511; deletion recovery outside launch/session plus existing/new-tab quiescence and retained-before-revoke purge #512; fresh live deletion/restart/no-resurrection #514          |
-| V11 | clean build/migrate/image and server-runtime removal    | Node-free image/config/layer/smoke gate #492; legacy source/config/dependency retirement #498; immutable-ID exact-route and two-cycle network-none release v2 #514                                                                 |
-| V12 | isolated reference/Go performance comparison            | **in progress**: #494 supplies one loopback typed-runner D1/PostgreSQL observation, but the required 100/1,000/10,000-card, batch-500, two-device/full-sync, cold/warm/query/memory, and Sync v2 load baseline remains a follow-up |
+| ID  | Required evidence                                       | Current evidence                                                                                                                                                                                                                  |
+| --- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V01 | shared JSON, strict decoding, black-box HTTP            | sync #410/#418/#454/#511; strict local session context #511; legal #442/#444/#446/#510; privacy #456/#513; exact four-profile actual-process route matrix #514                                                                    |
+| V02 | signed identity, gate DB, spoof/direct-origin rejection | #416 identity/gate; #418 owner/origin/auth-before-body tests                                                                                                                                                                      |
+| V03 | session/OIDC/OTP/owner/CSRF failures                    | session/CSRF #422; exact local scope and HTTP-before-body #511; OIDC #424; OTP/owner #426; legal #446; privacy #456; deletion #458; privacy/deletion owner binding #468                                                           |
+| V04 | empty Postgres, transactions, concurrency, rollback     | #414/#418; signup #426; object #430; billing/lease #436/#440; legal #442/#444; quota #450/#472; sync #452/#454; local composition/restart #511; exact deletion phase/restart/lease #512; no-reseed process restart/lease #514     |
+| V05 | sync/quota paging, retry, conflict, limits              | quota #450/#472; journal #452; authenticated encrypted composition #454; live local HTTP/UI connection #511                                                                                                                       |
+| V06 | crypto vectors, tamper/AAD/KMS failures                 | envelope/KMS #428; rotation #432; recovery/AAD #434; filesystem ciphertext/restart proof #511                                                                                                                                     |
+| V07 | billing/evidence duplicate/order/failure                | projection #436; Stripe #438/#476; lease #440; legal #442/#444/#446/#510; scoped reconciliation #478                                                                                                                              |
+| V08 | resumable jobs/deletion fault injection                 | object #430; durable re-encryption #432/#482; recovery #434; privacy #456; deletion saga/effects/handoff #458/#460/#462/#464/#466/#468; every receipt/effect crash boundary and filesystem replay #512                            |
+| V09 | approved isolated provider environment / redacted logs  | external approval pending                                                                                                                                                                                                         |
+| V10 | browser UI/offline/SW/deep links                        | #420 baseline; authenticated Vault-scoped Sync v2 #511; deletion recovery outside launch/session plus existing/new-tab quiescence and retained-before-revoke purge #512; fresh live deletion/restart/no-resurrection #514         |
+| V11 | clean build/migrate/image and server-runtime removal    | Node-free image/config/layer/smoke gate #492; legacy source/config/dependency retirement #498; immutable-ID exact-route and two-cycle network-none release v2 #514                                                                |
+| V12 | isolated reference/Go performance comparison            | **complete for approved local scope**: #525 records five-run 100/1,000/10,000-card API, 100/10,000-card native UI, and separate 10,000-entry/100-concurrent-vault Sync v2 evidence; production-shaped capacity remains unverified |
 
 ## Intentional security differences
 
@@ -2014,20 +2020,27 @@ masked commands, and unreachable gates. E01-E03 run actual built
 confirmed destructive Chromium deletion/restart lane; E05 is release verifier
 v2. Full details are in [`go-runtime-closure.md`](go-runtime-closure.md).
 
-V12 remains explicitly `in-progress`. The typed benchmark below is a
-single-fixture observation; it does not provide the planned repeated fixed-host
-100/1,000/10,000-card, batch-500, two-device/full-sync,
-cold/warm/query/memory, or separate Sync v2 load evidence. Consequently T01
-and T14 remain in progress until a follow-up Issue/PR adds that baseline. The
-T00-T17 status table in `go-runtime-closure.md` is the concise closure view.
+Issue #525 completes V12 for the approved local scope. Its fixed-host runner
+records five independent runs per adopted cell for the reference/Go legacy API
+at 100/1,000/10,000 cards, native connected UI at 100/10,000 cards, and a
+separate 10,000-entry Sync v2 traversal plus 100 concurrent independent vaults.
+It records p50/p95, raw durations and statuses, query counts, process memory,
+result digests, source/build identities, and isolated store witnesses. T01 and
+T14 are therefore complete for provider-independent local implementation; T15
+and T16 continue to block any production-shaped provider exercise or cutover.
 
-The T14b typed migration benchmark accepted only a root loopback HTTP URL,
-required a unique disposable-store label, used the same checked-in legacy sync
-fixture, and never printed identity material. The reference and Go observations
-used separate D1 and PostgreSQL stores and executed no provider effect. Timing is
-diagnostic evidence from one local host, not a capacity target, production SLO,
-or permission to provision hosting. Exact procedure, observations, source
-identities, T17 preconditions, and recovery limits are in
+The reference and Go API observations used separate D1 and PostgreSQL stores
+and executed no provider effect. All direct API comparisons had zero errors and
+matching final-state digests and were inside the provisional review envelope.
+The current native UI 10,000-card initial-ready case exceeded that diagnostic
+envelope because it makes one session request plus 20 ordered Sync v2 page
+requests instead of the reference UI's single legacy Sync request. This
+reproducible UX limitation is recorded without weakening the envelope and is
+not claimed as Go API regression. Timing is evidence from one local host, not a
+capacity target, production SLO, or permission to provision hosting. Raw data,
+results, exact reproduction, and limitations are in
+[`migration-v12-performance.md`](migration-v12-performance.md); historical T14b
+procedure and retirement limits remain in
 [`legacy-typescript-retirement.md`](legacy-typescript-retirement.md).
 
 ## T17 legacy TypeScript backend retirement
