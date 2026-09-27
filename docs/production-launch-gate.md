@@ -8,9 +8,8 @@ decision remains:
 canAccess = publicAccessEnabled OR userAllowed
 ```
 
-This document describes the Go migration runtime on integration branch
-`integration/409-go-backend-migration`. It does not authorize a `main` change,
-deployment, identity-provider configuration, database write, or public launch.
+This document describes the Go runtime and the restricted-production work
+tracked by Issue #528. General public access remains a separate decision.
 
 ## Current trust boundary
 
@@ -22,7 +21,10 @@ invalid signatures, clock violations, and assertions lasting more than ten
 minutes. The private signing key exists only in the test runner; the server
 receives only the public key.
 
-`local-signed` is rejected in production. The former Sites
+`local-signed` is rejected in production. Migration 00017 and the PostgreSQL
+OIDC transaction adapter provide durable, atomic single-use state/nonce/PKCE
+transactions for the production provider composition. They do not yet mount a
+login route or configure provider credentials. The former Sites
 `oai-authenticated-user-id` header is also rejected, including when a caller
 supplies it together with a valid local assertion. A production assertion
 format, trusted proxy, issuer/audience, login entry URL, domain, and subject
@@ -53,6 +55,11 @@ network request makes a fresh server-side decision.
 
 Go migration `backend/migrations/00001_core.sql` creates PostgreSQL
 `launch_config` and `launch_allowed_users` with a default-closed singleton.
+Migration `00017_production_control_plane.sql` adds durable OIDC transactions,
+shared Vault/DEK nonce reservations, expiring/revocable limited-access grants,
+and server-side feature flags. `billing-checkout` is seeded OFF; unknown flags
+also evaluate OFF. A flag never replaces the launch gate, Vault ownership, or
+entitlement checks. The migration contains no synthetic Stripe subscription.
 The migration is applied only by `notesctl migrate`; request handlers never run
 DDL. T05 browser tests use profile-disabled `notesctl prepare-e2e`, which
 refuses any URL that is not loopback and the exact `fukamu_notes_go_test`

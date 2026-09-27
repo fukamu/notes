@@ -285,6 +285,11 @@ func assertCoreTables(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 		"schema_migrations",
 		"launch_config",
 		"launch_allowed_users",
+		"oidc_login_transactions",
+		"content_nonce_reservations",
+		"limited_access_grants",
+		"feature_flags",
+		"feature_flag_accounts",
 		"notes_goose_versions",
 		"notes_goose_checksums",
 	} {
