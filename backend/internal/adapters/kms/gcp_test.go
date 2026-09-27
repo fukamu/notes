@@ -61,7 +61,23 @@ func TestGCPKeyManagementWrapsAndUnwrapsWithAuthenticatedContext(t *testing.T) {
 	}
 	defer unwrapped.Destroy()
 	assertKeyBytes(t, unwrapped, testKeyBytes())
-	if len(transport.decryptCalls) != 1 || transport.decryptCalls[0].KeyName != testKeyName {
+	nextWriter, err := NewGCPKeyManagement(
+		testKeyName+"/cryptoKeyVersions/8",
+		transport,
+		&fixedEntropy{value: testKeyBytes()},
+		fixedClock(1_725_000_000_100),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldVersionRead, err := nextWriter.UnwrapDataKey(context.Background(), metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer oldVersionRead.Destroy()
+	assertKeyBytes(t, oldVersionRead, testKeyBytes())
+	if len(transport.decryptCalls) != 2 || transport.decryptCalls[0].KeyName != testKeyName ||
+		transport.decryptCalls[1].KeyName != testKeyName {
 		t.Fatalf("decrypt calls = %#v", transport.decryptCalls)
 	}
 

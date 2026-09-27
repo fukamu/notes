@@ -33,7 +33,18 @@ describe('Go local fixture foundation boundary', () => {
     ]);
 
     expect(main).not.toContain('internal/adapters/stripe');
-    expect(main).not.toContain('internal/adapters/kms');
+    const localComposition = main.slice(
+      main.indexOf('func composeRuntime('),
+      main.indexOf('func composeProductionRuntime('),
+    );
+    const productionComposition = main.slice(
+      main.indexOf('func composeProductionRuntime('),
+      main.indexOf('type legalIdentifierSource'),
+    );
+    expect(localComposition).not.toContain('kmsadapter.');
+    expect(localComposition).not.toContain('objectstorageadapter.NewGCS');
+    expect(productionComposition).toContain('kmsadapter.NewGCPKeyManagement');
+    expect(productionComposition).toContain('objectstorageadapter.NewGCS');
     expect(handler).not.toContain('runtimefoundation.LocalFixture');
     expect(main).toMatch(/localFixture\s+\*runtimefoundation\.LocalFixture/);
     expect(main).toMatch(/syncV2\s+\*httpapi\.SyncV2Runtime/);

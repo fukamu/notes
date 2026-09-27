@@ -3,7 +3,8 @@
 The D1 write-ordering sections below are historical compatibility evidence.
 The executable encrypted-object boundary and PostgreSQL metadata/outbox adapter
 are under `backend/internal`; T17 removed the TypeScript/D1 source and Sites
-tooling. No production object-storage provider is connected by that retirement.
+tooling. Issue #535 connects that boundary to private GCS for the explicit
+production profile; it does not create a bucket or deploy a service.
 
 The Go repository and isolated memory-storage adapter were introduced by
 Issue #430. Issue #464 adds the disconnected account-deletion consumer for the
@@ -11,8 +12,8 @@ PostgreSQL delete outbox. It verifies the exact owner, deletion operation, and
 prior receipt; selects only a bounded due batch; accepts storage `not-found` as
 idempotent success; and requires compare-and-swap confirmation plus a zero
 post-count. The generic Go outbox drain now also rejects zero-row completion or
-reschedule mutations. No production object-storage adapter or credential is
-configured.
+reschedule mutations. The current production adapter uses only short-lived
+Cloud Run service-identity tokens; it accepts no credential-file setting.
 
 Issue #117 adds a provider-neutral, Vault-scoped storage boundary for immutable
 Envelope Encryption ciphertext. It is not connected to the legacy `/api/sync`
@@ -24,8 +25,11 @@ The application service first checks committed metadata by `EncryptedWriteId`.
 A completed retry returns that result without calling object storage or KMS. For
 a new logical revision, D1 reserves a pending write intent containing a random
 256-bit opaque object key before encryption. The ciphertext is written with
-put-if-absent semantics and the D1 adapter then commits immutable metadata with
-a single Vault-scoped revision CAS.
+put-if-absent semantics and the PostgreSQL adapter then commits immutable
+metadata with a single Vault-scoped revision CAS. GCS uses a fixed `objects/`
+prefix and `ifGenerationMatch=0`; a replay reads and compares the existing
+ciphertext, while a differing value is a conflict. Inventory accepts only
+canonical object keys with the adapter's recorded creation timestamp.
 
 If the response or D1 commit is lost after object storage succeeds, the pending
 intent retains the same object key. A retry reads that immutable object and
@@ -52,8 +56,8 @@ An orphan scan compares the scoped private-object listing with committed and
 pending D1 keys. It enqueues only unprotected objects older than a caller-set
 grace period, avoiding races with an active write. Delete workers process due
 outbox entries idempotently and reschedule failures with caller-supplied retry
-timing. Deleting production objects, production scheduling, and a real R2
-adapter remain separate work requiring their own approval. Account-deletion
+timing. Deleting production objects and production scheduling remain separate
+work requiring their own approval. Account-deletion
 ordering continues through its receipt-gated purge service rather than the
 general operations runner.
 
@@ -88,6 +92,6 @@ attempt; a loser never overwrites or removes the winner's row.
 The runner is restricted to the loopback disposable database and an existing
 absolute, symlink-free private directory. Output contains only bounded outcome
 counts. Tests use in-memory or temporary directory storage and isolated
-PostgreSQL data, including two workers released onto the same row. No production
-provider, object, credential, scheduler, deployment, or external resource is
-selected or accessed.
+PostgreSQL data, including two workers released onto the same row. Tests replace
+provider transport and do not access a production object, credential,
+scheduler, deployment, or external resource.
