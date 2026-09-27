@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -15,10 +16,12 @@ import (
 	accessadapter "github.com/fukamu/notes/backend/internal/adapters/access"
 	accountdeletioncredentialadapter "github.com/fukamu/notes/backend/internal/adapters/accountdeletioncredential"
 	contentcryptoadapter "github.com/fukamu/notes/backend/internal/adapters/contentcrypto"
+	identityadapter "github.com/fukamu/notes/backend/internal/adapters/identity"
 	legalhashadapter "github.com/fukamu/notes/backend/internal/adapters/legalhash"
 	localcommerceadapter "github.com/fukamu/notes/backend/internal/adapters/localcommerce"
 	localfixtureadapter "github.com/fukamu/notes/backend/internal/adapters/localfixture"
 	objectstorageadapter "github.com/fukamu/notes/backend/internal/adapters/objectstorage"
+	oidcadapter "github.com/fukamu/notes/backend/internal/adapters/oidc"
 	otpadapter "github.com/fukamu/notes/backend/internal/adapters/otp"
 	postgresadapter "github.com/fukamu/notes/backend/internal/adapters/postgres"
 	privacydeletionadapter "github.com/fukamu/notes/backend/internal/adapters/privacydeletion"
@@ -29,6 +32,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/cryptocontent"
 	"github.com/fukamu/notes/backend/internal/encryptedobject"
 	"github.com/fukamu/notes/backend/internal/entitlement"
+	"github.com/fukamu/notes/backend/internal/featureflag"
 	"github.com/fukamu/notes/backend/internal/httpapi"
 	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/fukamu/notes/backend/internal/legal"
@@ -83,6 +87,10 @@ func run() int {
 		ShutdownTimeout:            configuration.ShutdownTimeout,
 		Logger:                     logger,
 		PrivateRuntime:             runtime.private,
+		SessionAccessRuntime:       runtime.sessionAccess,
+		Readiness:                  runtime.readiness,
+		OidcAuthRuntime:            runtime.oidcAuth,
+		ProductionFeatureRuntime:   runtime.productionFeatures,
 		SyncV2Runtime:              runtime.syncV2,
 		LegalRuntime:               runtime.legal,
 		BillingCancellationRuntime: runtime.billingCancellation,
@@ -100,6 +108,10 @@ func run() int {
 
 type runtimeComposition struct {
 	private             *httpapi.PrivateRuntime
+	sessionAccess       *httpapi.SessionAccessRuntime
+	readiness           httpapi.ReadinessChecker
+	oidcAuth            *httpapi.OidcAuthRuntime
+	productionFeatures  *httpapi.ProductionFeatureRuntime
 	legal               *httpapi.LegalRuntime
 	billingCancellation *httpapi.BillingCancellationRuntime
 	localFixture        *runtimefoundation.LocalFixture
@@ -135,6 +147,9 @@ func composeRuntime(
 ) (runtimeComposition, func(), error) {
 	if err := validateRuntimeConfiguration(configuration); err != nil {
 		return runtimeComposition{}, func() {}, err
+	}
+	if configuration.Production != nil {
+		return composeProductionRuntime(ctx, configuration.Production)
 	}
 	if configuration.PrivateRuntime == nil {
 		return runtimeComposition{}, func() {}, nil
@@ -209,7 +224,7 @@ func composeRuntime(
 		return runtimeComposition{}, func() {}, errors.New("configure legacy sync")
 	}
 	readiness := runtimefoundation.Readiness(schemaReadiness)
-	composition := runtimeComposition{}
+	composition := runtimeComposition{readiness: readiness}
 	if configuration.LocalFixture != nil {
 		fixtureConfig := configuration.LocalFixture
 		fixtureContext := identity.VaultContext{
@@ -255,6 +270,13 @@ func composeRuntime(
 		if scopedSessionErr != nil {
 			closeRuntime()
 			return runtimeComposition{}, func() {}, errors.New("scope local fixture sessions")
+		}
+		admission, admissionErr := runtimefoundation.NewScopedLaunchAdmission(
+			fixtureContext, fixtureConfig.AllowedSubject, gate,
+		)
+		if admissionErr != nil {
+			closeRuntime()
+			return runtimeComposition{}, func() {}, errors.New("scope local fixture launch admission")
 		}
 		objects, objectErr := objectstorageadapter.NewDirectory(fixtureLayout.ObjectDirectory)
 		if objectErr != nil {
@@ -504,7 +526,8 @@ func composeRuntime(
 			}
 			composition.syncV2 = &httpapi.SyncV2Runtime{
 				ExpectedOrigin: fixtureConfig.PublicOrigin.String(), Clock: fixtureClock,
-				Sessions: scopedSessions, Entitlement: scopedEntitlement, Application: leasedSync,
+				Sessions: scopedSessions, Admission: admission,
+				Entitlement: scopedEntitlement, Application: leasedSync,
 			}
 			composition.syncV2Application = leasedSync
 		}
@@ -520,6 +543,7 @@ func composeRuntime(
 			return runtimeComposition{}, func() {}, errors.New("local fixture is not ready")
 		}
 		readiness = aggregate
+		composition.readiness = aggregate
 	}
 	composition.private = &httpapi.PrivateRuntime{
 		Verifier:     verifier,
@@ -531,6 +555,118 @@ func composeRuntime(
 		Clock:        time.Now,
 	}
 	return composition, closeRuntime, nil
+}
+
+type systemOidcClock struct{}
+
+func (systemOidcClock) NowEpochSeconds() int64 { return time.Now().Unix() }
+
+func composeProductionRuntime(
+	ctx context.Context,
+	settings *config.ProductionConfig,
+) (runtimeComposition, func(), error) {
+	if settings == nil || settings.PublicOrigin == nil {
+		return runtimeComposition{}, func() {}, errors.New("production configuration is incomplete")
+	}
+	startupContext, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	pool, err := postgresadapter.OpenPool(
+		startupContext, settings.DatabaseURL, settings.MaximumConnections,
+	)
+	if err != nil {
+		return runtimeComposition{}, func() {}, errors.New("open production database")
+	}
+	closeRuntime := sync.OnceFunc(pool.Close)
+	fail := func(message string) (runtimeComposition, func(), error) {
+		closeRuntime()
+		return runtimeComposition{}, func() {}, errors.New(message)
+	}
+	readiness, err := postgresadapter.NewSchemaReadiness(pool, migrations.LatestVersion)
+	if err != nil {
+		return fail("configure production database readiness")
+	}
+	gate, err := postgresadapter.NewLaunchGateReader(pool)
+	if err != nil {
+		return fail("configure production launch gate")
+	}
+	sessionStore, err := postgresadapter.NewSessionStore(pool)
+	if err != nil {
+		return fail("configure production sessions")
+	}
+	sessionResolver, err := postgresadapter.NewSessionResolver(sessionStore)
+	if err != nil {
+		return fail("configure production sessions")
+	}
+	admission, err := postgresadapter.NewProductionAdmission(pool)
+	if err != nil {
+		return fail("configure production admission")
+	}
+	flagStore, err := postgresadapter.NewFeatureFlagStore(pool)
+	if err != nil {
+		return fail("configure production feature flags")
+	}
+	flags, err := featureflag.NewService(flagStore)
+	if err != nil {
+		return fail("configure production feature flags")
+	}
+	identities, err := postgresadapter.NewIdentityStore(pool)
+	if err != nil {
+		return fail("configure production identities")
+	}
+	transactions, err := postgresadapter.NewOidcTransactionStore(pool)
+	if err != nil {
+		return fail("configure production OIDC transactions")
+	}
+	issuer, issuerErr := identity.ParseOidcIssuer("https://accounts.google.com")
+	legacyIssuer, legacyIssuerErr := identity.ParseOidcIssuer("accounts.google.com")
+	authorizationEndpoint, endpointErr := identity.ParseOidcAuthorizationEndpoint(
+		"https://accounts.google.com/o/oauth2/v2/auth",
+	)
+	if issuerErr != nil || legacyIssuerErr != nil || endpointErr != nil {
+		return fail("configure production OIDC constants")
+	}
+	providerConfiguration := identity.OidcProviderConfiguration{
+		AuthorizationEndpoint: authorizationEndpoint,
+		ClientID:              settings.OidcClientID,
+		AllowedIssuers:        []identity.OidcIssuer{issuer, legacyIssuer},
+		RedirectURIs:          []identity.OidcRedirectURI{settings.OidcRedirectURI},
+	}
+	provider, err := oidcadapter.NewProvider(startupContext, struct {
+		Configuration identity.OidcProviderConfiguration
+		Issuer        identity.OidcIssuer
+		ClientSecret  string
+		HTTPClient    *http.Client
+		Now           func() time.Time
+	}{
+		Configuration: providerConfiguration, Issuer: issuer,
+		ClientSecret: settings.OidcClientSecret,
+		HTTPClient:   &http.Client{Timeout: 10 * time.Second}, Now: time.Now,
+	})
+	if err != nil {
+		return fail("configure production OIDC provider")
+	}
+	clock := systemOidcClock{}
+	authRuntime := &httpapi.OidcAuthRuntime{
+		Configuration: providerConfiguration, RedirectURI: settings.OidcRedirectURI,
+		PublicOrigin: settings.PublicOrigin, Clock: clock, Now: time.Now,
+		Secrets: oidcadapter.NewProductionCryptoSecrets(), PKCE: oidcadapter.PkceS256{},
+		Transactions: transactions, Provider: provider, Identities: identities, Gate: gate,
+		Sessions: sessionResolver, SessionStore: sessionStore,
+		Identifiers: identityadapter.NewProductionSignupIdentifiers(),
+	}
+	accessRuntime := &httpapi.SessionAccessRuntime{
+		Clock:    func() int64 { return time.Now().UnixMilli() },
+		Sessions: sessionResolver, Admission: admission,
+	}
+	return runtimeComposition{
+		readiness:     readiness,
+		oidcAuth:      authRuntime,
+		sessionAccess: accessRuntime,
+		productionFeatures: &httpapi.ProductionFeatureRuntime{
+			ExpectedOrigin: settings.PublicOrigin.String(), Access: accessRuntime, Flags: flags,
+		},
+		disableLegacySync: true,
+	}, closeRuntime, nil
 }
 
 type legalIdentifierSource interface {
@@ -611,6 +747,13 @@ func validateRuntimeConfiguration(configuration config.Config) error {
 		}
 		return nil
 	case config.ApplicationProfileLocalFixture:
+	case config.ApplicationProfileProduction:
+		if configuration.Environment != config.EnvironmentProduction ||
+			configuration.Production == nil || configuration.LocalFixture != nil ||
+			configuration.PrivateRuntime != nil {
+			return errors.New("production application profile is incomplete")
+		}
+		return nil
 	default:
 		return errors.New("unknown application profile")
 	}

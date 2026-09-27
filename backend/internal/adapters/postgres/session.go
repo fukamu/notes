@@ -145,6 +145,92 @@ func (store *SessionStore) CreateSession(
 	})
 }
 
+// CreateOidcSession persists an active session and its exact verified identity
+// in one transaction. The identity must own the same account and vault as the
+// session; callers cannot attach a browser session to a claimed account ID.
+func (store *SessionStore) CreateOidcSession(
+	ctx context.Context,
+	session identity.Session,
+	token identity.SessionToken,
+	identityID identity.IdentityID,
+) error {
+	if store == nil || store.pool == nil || session.Kind != identity.SessionActive ||
+		!identity.ValidSession(session) {
+		return ErrInvalidSessionOperation
+	}
+	if _, err := identity.ParseIdentityID(string(identityID)); err != nil {
+		return ErrInvalidSessionOperation
+	}
+	hash, err := identity.HashSessionToken(token)
+	if err != nil {
+		return ErrInvalidSessionOperation
+	}
+	return store.withSessionTx(ctx, func(transaction pgx.Tx) error {
+		if err := lockSessionIssuanceScope(ctx, transaction, session.AccountID, session.VaultID); err != nil {
+			return err
+		}
+		var ownsScope bool
+		if err := transaction.QueryRow(
+			ctx,
+			`SELECT EXISTS (
+			   SELECT 1 FROM identities identity
+			   JOIN personal_vaults vault ON vault.account_id = identity.account_id
+			    WHERE identity.identity_id = $1
+			      AND identity.account_id = $2 AND vault.vault_id = $3
+			      AND identity.provider = 'google-oidc'
+			 )`,
+			string(identityID), string(session.AccountID), string(session.VaultID),
+		).Scan(&ownsScope); err != nil {
+			return err
+		}
+		if !ownsScope {
+			return ErrSessionOwnerMismatch
+		}
+		_, err := transaction.Exec(
+			ctx,
+			`INSERT INTO sessions(
+			   session_id, account_id, vault_id, token_hash, session_epoch,
+			   issued_at, expires_at, revoked_at, revocation_reason
+			 ) VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL)`,
+			string(session.SessionID), string(session.AccountID), string(session.VaultID),
+			string(hash), int64(session.SessionEpoch), session.IssuedAt, session.ExpiresAt,
+		)
+		if err := classifySessionWriteError(err); err != nil {
+			return err
+		}
+		_, err = transaction.Exec(
+			ctx,
+			`INSERT INTO session_identities(session_id, identity_id) VALUES ($1, $2)`,
+			string(session.SessionID), string(identityID),
+		)
+		return classifySessionWriteError(err)
+	})
+}
+
+func (store *SessionStore) LogoutSession(
+	ctx context.Context,
+	vaultContext identity.VaultContext,
+	token identity.SessionToken,
+	revokedAt int64,
+) error {
+	stored, err := store.FindSessionByToken(ctx, token)
+	if err != nil {
+		return err
+	}
+	if stored == nil || !identity.SessionMatchesContext(vaultContext, stored.Session) {
+		return ErrSessionConcurrentChange
+	}
+	decision := identity.RevokeSession(stored.Session, revokedAt, identity.RevocationLogout)
+	if decision.Kind == identity.RevokeRejected {
+		return ErrInvalidSessionOperation
+	}
+	if decision.Kind == identity.RevokeUnchanged {
+		return nil
+	}
+	_, err = store.RevokeSession(ctx, vaultContext, decision.Session)
+	return err
+}
+
 func (store *SessionStore) RotateSession(
 	ctx context.Context,
 	currentToken identity.SessionToken,

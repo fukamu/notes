@@ -14,6 +14,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/entitlement"
 	"github.com/fukamu/notes/backend/internal/httpapi"
 	"github.com/fukamu/notes/backend/internal/identity"
+	"github.com/fukamu/notes/backend/internal/launchgate"
 	"github.com/fukamu/notes/backend/internal/syncv2"
 )
 
@@ -30,6 +31,22 @@ type syncV2SessionStub struct {
 	session *identity.Session
 	err     error
 	calls   int
+}
+
+type syncV2AdmissionStub struct {
+	decision launchgate.Decision
+	err      error
+	context  identity.VaultContext
+	calls    int
+}
+
+func (stub *syncV2AdmissionStub) AuthorizeVault(
+	_ context.Context,
+	vaultContext identity.VaultContext,
+) (launchgate.Decision, error) {
+	stub.calls++
+	stub.context = vaultContext
+	return stub.decision, stub.err
 }
 
 func (stub *syncV2SessionStub) FindSessionByToken(context.Context, identity.SessionToken) (*identity.Session, error) {
@@ -89,7 +106,7 @@ func (body *syncV2TrackingBody) Read([]byte) (int, error) {
 func (body *syncV2TrackingBody) Close() error { return nil }
 
 func TestSyncV2ContractHandlerAuthenticatesBeforeReadingBody(t *testing.T) {
-	handler, sessions, entitlementStub, application := newSyncV2HTTPTestHandler(t)
+	handler, sessions, _, entitlementStub, application := newSyncV2HTTPTestHandler(t)
 	tracking := &syncV2TrackingBody{}
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/sync", nil)
 	request.Body = tracking
@@ -136,7 +153,7 @@ func TestSyncV2ContractHandlerBoundaryAndFailClosedMappings(t *testing.T) {
 	for _, test := range tests {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			handler, _, access, application := newSyncV2HTTPTestHandler(t)
+			handler, _, _, access, application := newSyncV2HTTPTestHandler(t)
 			if test.configure != nil {
 				test.configure(access, application)
 			}
@@ -158,7 +175,7 @@ func TestSyncV2ContractHandlerBoundaryAndFailClosedMappings(t *testing.T) {
 }
 
 func TestSyncV2ContractHandlerSuccessPassesDecodedOwnerScope(t *testing.T) {
-	handler, _, access, application := newSyncV2HTTPTestHandler(t)
+	handler, _, _, access, application := newSyncV2HTTPTestHandler(t)
 	response := httptest.NewRecorder()
 	body := validSyncV2EmptyRequest()
 	handler.ServeHTTP(response, authenticatedSyncV2Request(body))
@@ -176,7 +193,7 @@ func TestSyncV2ContractHandlerSuccessPassesDecodedOwnerScope(t *testing.T) {
 
 func newSyncV2HTTPTestHandler(
 	t *testing.T,
-) (http.Handler, *syncV2SessionStub, *syncV2EntitlementStub, *syncV2ApplicationStub) {
+) (http.Handler, *syncV2SessionStub, *syncV2AdmissionStub, *syncV2EntitlementStub, *syncV2ApplicationStub) {
 	t.Helper()
 	session := &identity.Session{
 		Kind: identity.SessionActive, SessionID: syncV2TestSessionID,
@@ -198,14 +215,30 @@ func newSyncV2HTTPTestHandler(
 			},
 		},
 	}}
+	admission := &syncV2AdmissionStub{decision: launchgate.Decision{UserAllowed: true, CanAccess: true}}
 	handler, err := httpapi.NewSyncV2ContractHandler(&httpapi.SyncV2Runtime{
 		ExpectedOrigin: syncV2TestOrigin, Clock: func() int64 { return 1_500 },
-		Sessions: sessions, Entitlement: access, Application: application,
+		Sessions: sessions, Admission: admission, Entitlement: access, Application: application,
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return handler, sessions, access, application
+	return handler, sessions, admission, access, application
+}
+
+func TestSyncV2ContractHandlerEnforcesLaunchAdmissionBeforeReadingBody(t *testing.T) {
+	handler, _, admission, entitlementStub, application := newSyncV2HTTPTestHandler(t)
+	admission.decision = launchgate.Decision{}
+	tracking := &syncV2TrackingBody{}
+	request := authenticatedSyncV2Request("")
+	request.Body = tracking
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || tracking.reads != 0 || admission.calls != 1 ||
+		admission.context != syncV2TestContext() || entitlementStub.calls != 0 || application.calls != 0 {
+		t.Fatalf("denied response=%d reads=%d admission=%d entitlement=%d application=%d",
+			response.Code, tracking.reads, admission.calls, entitlementStub.calls, application.calls)
+	}
 }
 
 func authenticatedSyncV2Request(body string) *http.Request {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/fukamu/notes/backend/internal/entitlement"
 	"github.com/fukamu/notes/backend/internal/identity"
+	"github.com/fukamu/notes/backend/internal/launchgate"
 	"github.com/fukamu/notes/backend/internal/syncv2"
 )
 
@@ -21,6 +22,10 @@ type SyncV2Entitlement interface {
 
 type SyncV2Application interface {
 	Synchronize(context.Context, syncv2.SynchronizeInput) (syncv2.ApplicationResult, error)
+}
+
+type VaultAdmission interface {
+	AuthorizeVault(context.Context, identity.VaultContext) (launchgate.Decision, error)
 }
 
 var (
@@ -34,6 +39,7 @@ type SyncV2Runtime struct {
 	ExpectedOrigin string
 	Clock          func() int64
 	Sessions       identity.SessionResolver
+	Admission      VaultAdmission
 	Entitlement    SyncV2Entitlement
 	Application    SyncV2Application
 }
@@ -62,6 +68,15 @@ func syncV2ContractHandler(
 		}
 		vaultContext, handled := authenticateSyncV2Request(response, request, runtime, now)
 		if handled {
+			return
+		}
+		admission, err := runtime.Admission.AuthorizeVault(request.Context(), vaultContext)
+		if err != nil {
+			writeSyncV2Error(response, request, http.StatusServiceUnavailable, "unavailable")
+			return
+		}
+		if !admission.CanAccess {
+			writeSyncV2Error(response, request, http.StatusForbidden, "forbidden")
 			return
 		}
 		mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
@@ -126,7 +141,7 @@ func syncV2ContractHandler(
 
 func syncV2RuntimeComplete(runtime *SyncV2Runtime) bool {
 	if runtime == nil || runtime.Clock == nil || runtime.Sessions == nil ||
-		runtime.Entitlement == nil || runtime.Application == nil {
+		runtime.Admission == nil || runtime.Entitlement == nil || runtime.Application == nil {
 		return false
 	}
 	return identity.EvaluateCSRF(identity.CSRFInput{

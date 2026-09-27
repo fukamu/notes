@@ -144,6 +144,54 @@ func TestProductionControlPlanePersistence(t *testing.T) {
 		assertFeatureFlag(t, ctx, service, featureflag.BillingCheckout, accountID, featureflag.DecisionEnabled)
 		assertFeatureFlag(t, ctx, service, featureflag.BillingCheckout, otherAccount, featureflag.DecisionEnabled)
 	})
+
+	t.Run("OIDC session binding enforces exact launch subject and owner scope", func(t *testing.T) {
+		identityID := integrationIdentityID(t, 471)
+		if _, err := pool.Exec(ctx, `INSERT INTO identities(
+			identity_id, account_id, provider, issuer, subject, created_at
+		) VALUES ($1, $2, 'google-oidc', 'https://accounts.google.com', 'google-subject', 1000)`,
+			string(identityID), string(accountID)); err != nil {
+			t.Fatal(err)
+		}
+		vaultContext := productionVaultContext(t, accountID, vaultID)
+		created := identity.CreateActiveSession(identity.SessionInput{
+			SessionID: vaultContext.SessionID, AccountID: accountID, VaultID: vaultID,
+			SessionEpoch: vaultContext.SessionEpoch, IssuedAt: 1_000, ExpiresAt: 2_000,
+		})
+		token, err := identity.ParseSessionToken(strings.Repeat("T", 42) + "A")
+		if err != nil || !created.Created {
+			t.Fatalf("session fixture = %#v, %v", created, err)
+		}
+		sessions, err := postgresadapter.NewSessionStore(pool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sessions.CreateOidcSession(ctx, created.Session, token, identityID); err != nil {
+			t.Fatalf("CreateOidcSession() error = %v", err)
+		}
+		admission, err := postgresadapter.NewProductionAdmission(pool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		denied, err := admission.AuthorizeVault(ctx, vaultContext)
+		if err != nil || denied.CanAccess {
+			t.Fatalf("unlisted admission = %#v, %v", denied, err)
+		}
+		if _, err := pool.Exec(ctx,
+			"INSERT INTO launch_allowed_users(user_id, created_at) VALUES ('google-subject', 1000)",
+		); err != nil {
+			t.Fatal(err)
+		}
+		allowed, err := admission.AuthorizeVault(ctx, vaultContext)
+		if err != nil || !allowed.CanAccess || !allowed.UserAllowed || allowed.PublicAccessEnabled {
+			t.Fatalf("allowed admission = %#v, %v", allowed, err)
+		}
+		wrong := vaultContext
+		wrong.SessionID = integrationSessionID(t, 372)
+		if decision, err := admission.AuthorizeVault(ctx, wrong); err != nil || decision.CanAccess {
+			t.Fatalf("wrong-session admission = %#v, %v", decision, err)
+		}
+	})
 }
 
 func seedProductionControlPlaneOwner(
