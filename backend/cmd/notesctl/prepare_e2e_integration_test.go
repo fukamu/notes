@@ -83,3 +83,35 @@ func TestPrepareE2ERefusesDatabaseAndFilesystemMutationWhileRuntimeLeaseHeld(t *
 		t.Fatalf("fixture root mutated while lease held: %v, %v", entries, err)
 	}
 }
+
+func TestMigrateDatabaseReportsTargetAndReplaysSafely(t *testing.T) {
+	databaseURL := os.Getenv("NOTES_TEST_DATABASE_URL")
+	if err := postgresadapter.ValidateTestDatabaseURL(databaseURL); err != nil {
+		t.Fatalf("safe NOTES_TEST_DATABASE_URL is required: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	database, err := postgresadapter.OpenSQL(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
+		_ = database.Close()
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	first, err := migrateDatabase(ctx, databaseURL)
+	if err != nil || first.PreviousVersion != 0 || first.TargetVersion < 1 ||
+		first.AppliedVersion != first.TargetVersion || len(first.TargetChecksum) != 71 {
+		t.Fatalf("first migration = %#v, %v", first, err)
+	}
+	second, err := migrateDatabase(ctx, databaseURL)
+	if err != nil || second.PreviousVersion != first.TargetVersion || second != (migrationResult{
+		PreviousVersion: first.TargetVersion, TargetVersion: first.TargetVersion,
+		AppliedVersion: first.TargetVersion, TargetChecksum: first.TargetChecksum,
+	}) {
+		t.Fatalf("replayed migration = %#v, %v", second, err)
+	}
+}

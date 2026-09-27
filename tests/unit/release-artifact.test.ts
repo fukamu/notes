@@ -322,10 +322,22 @@ describe('release image boundary', () => {
       readFile('package.json', 'utf8'),
       readFile('scripts/verify-release-artifact.mts', 'utf8'),
     ]);
-    const runtimeStage = dockerfile.split('FROM scratch')[1];
+    const notesctlStage = dockerfile
+      .split('FROM scratch AS notesctl')[1]
+      ?.split('FROM scratch AS runtime')[0];
+    const runtimeStage = dockerfile.split('FROM scratch AS runtime')[1];
+    expect(notesctlStage).toBeDefined();
+    expect(notesctlStage).toContain('USER 65532:65532');
+    expect(notesctlStage).toContain('ENTRYPOINT ["/notesctl"]');
+    expect(notesctlStage).toContain('/out/notesctl /notesctl');
+    expect(notesctlStage).toContain('/etc/ssl/certs/ca-certificates.crt');
+    expect(notesctlStage).not.toContain('/app/static');
+    expect(notesctlStage).not.toMatch(/\/out\/notes\s+\/notes(?:\s|$)/u);
     expect(runtimeStage).toBeDefined();
     expect(runtimeStage).toContain('USER 65532:65532');
     expect(runtimeStage).toContain('org.opencontainers.image.revision');
+    expect(runtimeStage).toContain('ENTRYPOINT ["/notes"]');
+    expect(runtimeStage).not.toContain('/out/notesctl');
     expect(runtimeStage).not.toMatch(/\b(?:node|npm|npx|node_modules)\b/iu);
     expect(packageSource).toContain('"verify:release"');
     expect(packageSource).toContain('npm run test:e2e &&');

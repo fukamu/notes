@@ -79,7 +79,10 @@ func TestRecoveryDrillCommandDispatchesOnlyRecoveryDependency(t *testing.T) {
 			}
 			return "", false
 		},
-		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string) (migrationResult, error) {
+			t.Fatal("migration must not run")
+			return migrationResult{}, nil
+		},
 		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
 			t.Fatal("quota audit must not run")

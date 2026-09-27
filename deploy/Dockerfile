@@ -12,9 +12,20 @@ WORKDIR /source/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -buildid=" -o /out/notes ./cmd/notes
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -buildid=" -o /out/notes ./cmd/notes && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -buildid=" -o /out/notesctl ./cmd/notesctl
 
-FROM scratch
+FROM scratch AS notesctl
+ARG NOTES_SOURCE_REVISION
+LABEL org.opencontainers.image.source="https://github.com/fukamu/notes" \
+      org.opencontainers.image.revision="${NOTES_SOURCE_REVISION}" \
+      org.opencontainers.image.title="FUKAMU Notes operations"
+COPY --from=go-build --chown=65532:65532 /out/notesctl /notesctl
+COPY --from=go-build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+USER 65532:65532
+ENTRYPOINT ["/notesctl"]
+
+FROM scratch AS runtime
 ARG NOTES_SOURCE_REVISION
 LABEL org.opencontainers.image.source="https://github.com/fukamu/notes" \
       org.opencontainers.image.revision="${NOTES_SOURCE_REVISION}" \

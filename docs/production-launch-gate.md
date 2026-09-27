@@ -76,8 +76,11 @@ verified-identity binding. The production Checkout endpoint authenticates the
 session and gate and evaluates `billing-checkout` on the server; OFF is a
 closed route, while ON still reports that Checkout is not connected. Enabling
 the flag alone therefore cannot contact Stripe or create a charge.
-The migration is applied only by `notesctl migrate`; request handlers never run
-DDL. T05 browser tests use profile-disabled `notesctl prepare-e2e`, which
+The migration is applied only by the guarded production form of `notesctl
+migrate`; it requires an exact TLS database host/name, explicit forward-only
+confirmation, a bounded timeout, the checksum ledger, and session advisory
+locking. Request handlers never run DDL. T05 browser tests use profile-disabled
+`notesctl prepare-e2e`, which
 refuses any URL that is not loopback and the exact `fukamu_notes_go_test`
 database, recreates only its test schema, migrates, and seeds one explicit test
 subject. Issue #509's separately explicit `local-fixture` profile adds
@@ -109,12 +112,21 @@ must supply the release's concrete values without committing secret material:
 - secret references, redacted telemetry, and an isolated restore target;
 - exact migration, smoke-test, cutover and rollback commands.
 
+The guarded `notesctl access provision` command keeps general access and
+`billing-checkout` closed while transactionally adding one separately verified
+Google subject, its Account/Vault/identity, an explicit expiring limited grant,
+and an initial versioned wrapped DEK. Replays with the exact same expiry,
+limits, and KMS version return the existing Notes identifiers without another
+KMS call; differences fail closed. `notesctl access revoke` removes the
+allowlist entry and revokes the grant and active sessions without deleting
+content or keys. Do not substitute an email address or an internal Notes
+account ID for the provider subject.
+
 An approved operator runbook must keep general access closed, migrate a new
-empty PostgreSQL database, add only a separately verified owner subject, and
-prove that an unlisted subject and direct-origin spoof are rejected. Opening
-general access is a later, separate business and production decision. Do not
-substitute an email address or an internal Notes account ID for a provider
-subject.
+empty PostgreSQL database, execute those commands from the separately pinned
+`notesctl` image, and prove that an unlisted subject and direct-origin spoof are
+rejected. Opening general access is a later, separate business and production
+decision.
 
 ## Cutover and rollback contract
 

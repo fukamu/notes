@@ -176,15 +176,77 @@ production approval, the owner must assemble one immutable, reviewable packet:
    Traffic timing cannot preserve eligibility after an earlier incompatible
    migration/write has closed it.
 
-After approval, the future operator sequence is: revalidate the packet and old
+After approval, the operator sequence is: revalidate the packet and old
 unit; keep general access/providers closed; verify backup/restore; classify
 migration/write compatibility; record the last-safe boundary; apply only the
 reviewed forward migration while closing Sites rollback atomically on the first
 incompatible write; run closed-route and owner-denial smoke; begin the bounded
 canary; observe all required signals; then promote or abort. Every deployment,
 migration, provider change, traffic action, stop-writes action, and rollback
-remains an external step requiring its named approval. This repository supplies
-no executable production command.
+remains an external step requiring its named approval.
+
+## Guarded production database and access commands
+
+Build and pin the `notesctl` Docker target separately from the serving
+`runtime` target. Run it with the migration/service identity and secret
+references supplied by the deployment platform; never put a database URL or
+token on a recorded command line. Substitute the reviewed non-secret values:
+
+```sh
+notesctl migrate \
+  --environment=production \
+  --expected-database-host=<exact-host> \
+  --expected-database-name=<exact-name> \
+  --confirm-production-forward
+
+notesctl access provision \
+  --environment=production \
+  --issuer=https://accounts.google.com \
+  --subject=<verified-google-sub> \
+  --granted-at-millis=<approved-unix-ms> \
+  --expires-at-millis=<approved-unix-ms> \
+  --active-cards=<approved-count> \
+  --display-characters-per-card=<approved-count> \
+  --serialized-plaintext-bytes-per-card=<approved-bytes> \
+  --plaintext-bytes-per-vault=<approved-bytes> \
+  --expected-database-host=<exact-host> \
+  --expected-database-name=<exact-name> \
+  --confirm-production-access-mutation \
+  --confirm-kms-encrypt
+```
+
+The migration reports previous/target/applied schema versions and the embedded
+target checksum, holds the Goose PostgreSQL session lock, and performs no reset,
+down migration, or server-start migration. For a new empty database, first
+record that it is empty, enable provider backup, apply the forward migration,
+then create synthetic encrypted data before claiming backup/restore evidence.
+
+Provisioning requires private Launch gate state and `billing-checkout=false`.
+It emits only Notes identifiers and outcome. It uses the operations service
+identity for KMS Encrypt, stores only the wrapped DEK, and creates no Stripe
+objects. Add another allowed user by repeating the command with that user's
+verified Google `sub` and independently approved expiry/limits.
+
+To cancel access without deleting retained data:
+
+```sh
+notesctl access revoke \
+  --environment=production \
+  --issuer=https://accounts.google.com \
+  --subject=<verified-google-sub> \
+  --revoked-at-millis=<unix-ms> \
+  --expected-database-host=<exact-host> \
+  --expected-database-name=<exact-name> \
+  --confirm-production-access-mutation
+```
+
+Revocation removes the allowlist row, revokes the limited grant and active
+sessions, and preserves Account/Vault/ciphertext/wrapped-key state. It is
+effective on the next server request. It cannot retrieve already-downloaded
+offline content from a device; use the normal logout purge on participating
+devices and treat the offline-use window separately. Any target mismatch,
+public Launch gate, enabled checkout, checksum drift, KMS failure, or partial
+stored access state is a stop condition, not permission for ad-hoc SQL.
 
 ## Rollback decision tree
 
