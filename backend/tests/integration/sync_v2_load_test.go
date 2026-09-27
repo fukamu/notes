@@ -392,6 +392,7 @@ func (harness *serverLoadHarness) runScenario(
 		ExpectedOrigin: serverLoadExpectedOrigin,
 		Clock:          func() int64 { return serverLoadSynchronizedAt },
 		Sessions:       harness.sessions,
+		Admission:      allowVaultAdmission{},
 		Entitlement:    serverLoadEntitlement{},
 		Application:    application,
 	}

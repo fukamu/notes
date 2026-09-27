@@ -22,6 +22,12 @@ type migrationChecksum struct {
 	Checksum string
 }
 
+type MigrationTarget struct {
+	Version  int64
+	Path     string
+	Checksum string
+}
+
 type Migrator struct {
 	database  *sql.DB
 	provider  *goose.Provider
@@ -87,6 +93,19 @@ func (migrator *Migrator) CurrentVersion(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return version, nil
+}
+
+func (migrator *Migrator) Target() (MigrationTarget, error) {
+	if migrator == nil || len(migrator.checksums) == 0 {
+		return MigrationTarget{}, errors.New("read migration target")
+	}
+	target := migrator.checksums[0]
+	for _, candidate := range migrator.checksums[1:] {
+		if candidate.Version > target.Version {
+			target = candidate
+		}
+	}
+	return MigrationTarget{Version: target.Version, Path: target.Path, Checksum: target.Checksum}, nil
 }
 
 func collectChecksums(provider *goose.Provider, migrations fs.FS) ([]migrationChecksum, error) {

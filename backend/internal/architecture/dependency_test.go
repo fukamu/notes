@@ -30,6 +30,7 @@ var knownInternalRoots = map[string]struct{}{
 	"cryptocontent":     {},
 	"encryptedobject":   {},
 	"entitlement":       {},
+	"featureflag":       {},
 	"httpapi":           {},
 	"identity":          {},
 	"launchgate":        {},

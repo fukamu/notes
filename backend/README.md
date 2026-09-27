@@ -27,10 +27,17 @@ Email OTP uses an eight-digit/ten-minute single-use core, HMAC-SHA-256 peppered
 digests, non-reversible abuse keys, and compare-and-swap storage contracts.
 Signup reserves IDs idempotently and atomically creates the account, personal
 vault, provider identity, canonical verified-email owner, and hash-only initial
-session in PostgreSQL. No auth HTTP route, mail adapter, production challenge
-store, rate-limit store, terms adapter, or provider configuration uses these
-packages; local signed launch-gate identity and user sessions remain separate
-boundaries.
+session in PostgreSQL. Migration 00017 and the PostgreSQL OIDC transaction
+adapter make state, nonce, and PKCE verifier durable and single-use across
+instances. The production profile mounts exact Google start/callback/logout
+routes, validates discovery/JWKS/issuer/audience/azp/expiry/nonce/PKCE, and
+creates a secure server session only for an existing preprovisioned Google
+identity whose provider subject is launch-allowlisted. Migration 00018 binds
+that verified identity to the session transactionally. Every launch-status,
+session-context, and Sync v2 request re-evaluates that binding and the launch
+gate; removing the allowlist row takes effect on the next server request.
+There is no automatic first-user admission or signup. Email OTP, production
+signup, and mail/rate-limit providers remain disconnected.
 
 T07 Issue #428 adds a disconnected Go envelope-encryption module. It preserves
 the existing AES-256-GCM format and canonical object AAD, keeps DEKs in
@@ -39,8 +46,10 @@ key-management port. The GCP Cloud KMS REST adapter validates the exact
 CryptoKeyVersion, wrapped-key AAD, canonical base64, and CRC32C fields and
 fails with fixed errors. Migration 00004 stores wrapped DEK metadata only and
 allows one write key per Vault. The production server does not compose these
-packages, no persistent nonce adapter is supplied, and no GCP resource,
-credential, request, or billing relationship is created.
+packages. Migration 00017 and its PostgreSQL nonce-reservation adapter provide
+the shared uniqueness boundary required before multiple production instances
+may encrypt content, but no GCP resource, credential, request, or billing
+relationship is created.
 
 T08a Issue #430 adds the disconnected immutable encrypted-object repository.
 Migration 00005 stores only Vault-scoped metadata, durable write intents, and
@@ -220,11 +229,57 @@ test-only: it requires the `test` environment plus the loopback/exact-database
 allowlist, resets only that disposable schema, applies migrations, and inserts
 one opaque allowlisted fixture subject.
 
+## Restricted production identity profile
+
+`NOTES_APPLICATION_PROFILE=production` is accepted only with
+`NOTES_ENVIRONMENT=production` and `NOTES_PRIVATE_AUTH_MODE=google-oidc`. It
+requires `NOTES_DATABASE_URL`, optional bounded
+`NOTES_DATABASE_MAX_CONNECTIONS`, an HTTPS `NOTES_PUBLIC_ORIGIN`, and
+`NOTES_OIDC_CLIENT_ID`/`NOTES_OIDC_CLIENT_SECRET`. Encrypted Sync additionally
+requires a private `NOTES_GCS_BUCKET`, an explicit
+`NOTES_GCP_KMS_CRYPTO_KEY_VERSION`, and the canonical 32-byte base64url
+`NOTES_PRODUCTION_CURSOR_HMAC_KEY`. The exact callback is
+derived as `<public-origin>/auth/google/callback`; it is not accepted from a
+second independently mutable setting. The client secret must be injected at
+runtime and must never be committed or printed. The cursor key has the same
+secret-handling requirement.
+
+This profile composes Google OIDC, PostgreSQL sessions and identity bindings,
+database readiness, Launch gate re-evaluation, and server-side feature-flag
+evaluation. It also composes limited-access entitlement, Sync v2, PostgreSQL
+metadata and shared nonce reservations, private GCS ciphertext, and the
+versioned Cloud KMS envelope adapter. Google API tokens come only from the
+Cloud Run metadata service identity and are cached for less than their stated
+lifetime; no credential file or token setting is accepted. It does not read
+any local signed key, fixture directory, fake identity, or local object/key
+adapter. The scratch image contains the CA bundle required for provider HTTPS,
+but no Node.js runtime. The initial `billing-checkout` flag is OFF. Even if an
+operator enables it, the current production route remains
+fail-closed until a separately reviewed real Checkout composition exists, so
+the flag alone cannot create a payment.
+
+New Vault DEKs are wrapped with the configured full KMS key-version resource.
+Stored metadata retains that exact version. Reads derive the parent key from
+each stored reference, so old wrapped DEKs remain decryptable after the
+configured write version advances, provided the old KMS version and IAM access
+are retained. A KMS, metadata-token, GCS, authentication, or integrity failure
+fails the request; it never falls back to plaintext storage.
+
+Before login, an operator must run the guarded `notesctl access provision`
+command to create the Account/Vault/Google identity, allowlist the verified
+Google subject, grant an expiring limited-access entitlement, and persist an
+initial DEK wrapped by the configured Cloud KMS key version. The command is
+idempotent only for the same issuer/subject, expiry, limits, and key version;
+a different requested state fails closed. An exact replay is detected before
+calling KMS again. No HTTP request auto-provisions or auto-allows a user, and
+the web server never runs migrations.
+
 ### Fail-closed local fixture foundation
 
-Issue #509 adds an application profile with exactly two states:
-`disabled` (the default when unset) and `local-fixture`. Merely setting fixture
-values does not enable it. Production rejects `local-fixture` before reading
+Issue #509 added the `local-fixture` application profile alongside the
+default `disabled` state; Issue #533 adds the distinct production profile.
+Merely setting fixture values does not enable it. Production rejects
+`local-fixture` before reading
 its private-directory or secret values. The enabled profile additionally
 requires the complete `local-signed` private runtime, an explicit loopback bind
 and loopback HTTP origin on the same port, and the exact disposable
@@ -306,9 +361,13 @@ supplies the deterministic fixture token only as a host-only `Secure`,
 `HttpOnly`, `SameSite=Strict` cookie.
 
 No Stripe, GCP KMS, OIDC/mail, remote object, or backup provider is constructed
-or contacted. Billing is read only as the seeded local entitlement and commerce
-source; checkout never charges and cancellation never contacts a provider. No
-login/session issuance or legacy-data migration is enabled. The delete wire is
+or contacted. Migration 00017 stores explicit expiring/revocable limited-access
+grants and server-side feature flags; `billing-checkout` is seeded configured
+and disabled, and unknown flags evaluate disabled. These foundations do not
+mount an HTTP route or grant access by themselves. Billing is read only as the
+seeded local entitlement and commerce source; checkout never charges and
+cancellation never contacts a provider. No login/session issuance or
+legacy-data migration is enabled. The delete wire is
 available only under the explicit disposable policy. Default and production
 composition pass none of the local-fixture Sync v2, session-context, legal,
 cancellation, privacy-request, or deletion runtimes to the HTTP handler, so
@@ -362,9 +421,57 @@ NOTES_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fu
 go -C backend run ./cmd/notesctl migrate --environment=test
 ```
 
-The command refuses non-loopback hosts, any database name other than
+This local/test form refuses non-loopback hosts, any database name other than
 `fukamu_notes_go_test`, production environments, and an environment flag that
 does not match `NOTES_ENVIRONMENT`. It does not print connection values.
+
+## Production migration and restricted access
+
+The production Cloud Run service and operations-job templates, strict
+non-secret renderer, IAM boundary, and provider execution sequence are
+documented in
+[`../docs/cloud-run-production.md`](../docs/cloud-run-production.md). Rendering
+does not create resources or deploy, and the production images remain Go-only.
+
+Build the separate non-root scratch operations image with
+`docker build --target notesctl -f deploy/Dockerfile ...`. It contains only
+`/notesctl` and the system CA bundle; it is not the serving image. The web
+runtime still never applies migrations.
+
+`notesctl migrate --environment=production` additionally requires the exact
+expected database host/name and `--confirm-production-forward`. It accepts only
+TLS-required PostgreSQL URLs, rejects connection-service and host/database
+overrides, uses the embedded checksum ledger and Goose session advisory lock,
+and has a five-minute command timeout. Its redacted JSON reports the previous,
+target, and applied versions plus the target migration SHA-256. It never resets
+a schema or runs a down migration.
+
+`notesctl production status --environment=production` is the read-only release
+preflight. It requires the same exact TLS database host/name, an explicit
+observation timestamp, and `--confirm-production-read-only`. It verifies every
+applied migration checksum before reading one repeatable-read snapshot. Its JSON
+contains only schema identity, fixed controls, aggregate counts, and ordered
+blocker codes—never connection data, subjects, Notes identifiers, key
+references, wrapped keys, object keys, ciphertext, or content. An unmigrated
+database and any unsafe or inconsistent state return non-zero with
+`outcome=blocked`; a safe migrated database is `restricted-empty` until an
+allowed user exists and `restricted-ready` afterward.
+
+`notesctl access provision --environment=production` requires the same exact
+database target, the verified Google issuer and opaque `sub`, explicit
+grant/expiry limits, `--confirm-production-access-mutation`, and
+`--confirm-kms-encrypt`. The operations identity obtains a short-lived token
+only from the Google metadata server. The transaction refuses public Launch
+gate state or enabled `billing-checkout`; it creates no subscription or Stripe
+record. Output contains only outcome and generated Notes identifiers, not the
+provider subject, connection URL, token, key, or ciphertext.
+
+`notesctl access revoke --environment=production` removes the subject from the
+allowlist, revokes the limited grant, and marks active sessions revoked without
+deleting the Account, Vault, ciphertext, or wrapped key. Server access observes
+the change on the next request. Data already stored on an offline device cannot
+be remotely erased; its offline session policy and local logout purge remain a
+separate device boundary.
 
 ## Checks
 

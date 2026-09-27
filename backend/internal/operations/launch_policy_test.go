@@ -59,7 +59,7 @@ func TestPlanEnvironmentActionClassifiesCompleteMatrix(t *testing.T) {
 		},
 		EnvironmentProduction: {
 			ActionFixtureDrill:        blocked(EnvironmentActionFixtureOutsideFixtureEnvironment),
-			ActionRestoreDrill:        blocked(EnvironmentActionIsolatedStagingRestoreRequired),
+			ActionRestoreDrill:        approval,
 			ActionCanaryEntry:         approval,
 			ActionCanaryPromote:       approval,
 			ActionCanaryAbort:         approval,
@@ -176,6 +176,7 @@ func TestEvaluateLaunchGateAcceptsEveryCompleteStagingAction(t *testing.T) {
 func TestEvaluateLaunchGateNeverTurnsProductionReadinessIntoPermission(t *testing.T) {
 	t.Parallel()
 	actions := []LaunchGateAction{
+		LaunchActionRestoreDrill,
 		LaunchActionCanaryEntry,
 		LaunchActionCanaryPromote,
 		LaunchActionCanaryAbort,
@@ -189,8 +190,12 @@ func TestEvaluateLaunchGateNeverTurnsProductionReadinessIntoPermission(t *testin
 			evidence := completeLaunchGateEvidence()
 			evidence.Environment = LaunchGateProduction
 			evidence.Action = action
-			evidence.ChangeApproval = ChangeApprovalProductionTwoPersonApproved
-			evidence.Review = ReviewTwoPersonConfirmed
+			evidence.ChangeApproval = ChangeApprovalProductionOwnerApproved
+			evidence.Review = ReviewOwnerConfirmed
+			if action == LaunchActionRestoreDrill {
+				evidence.Backup = BackupVerified
+				evidence.IsolatedRestore = IsolatedRestoreVerified
+			}
 			if action == LaunchActionCanaryPromote {
 				evidence.Canary = CanaryObserved
 			}
@@ -227,7 +232,7 @@ func TestEvaluateLaunchGateReturnsDeterministicProductionBlockers(t *testing.T) 
 		Reasons: []LaunchGateBlockReason{
 			LaunchGateTargetUnconfirmed,
 			LaunchGateChangeApprovalMissing,
-			LaunchGateTwoPersonReviewRequired,
+			LaunchGateOwnerReviewRequired,
 			LaunchGateBackupEvidenceRequired,
 			LaunchGateRollbackWindowMissing,
 			LaunchGateTelemetryNotReady,
@@ -302,13 +307,13 @@ func TestEvaluateLaunchGateRequiresBackupAndIsolatedRestoreEvidence(t *testing.T
 	production := completeLaunchGateEvidence()
 	production.Environment = LaunchGateProduction
 	production.Action = LaunchActionRestoreDrill
-	production.ChangeApproval = ChangeApprovalProductionTwoPersonApproved
-	production.Review = ReviewTwoPersonConfirmed
+	production.ChangeApproval = ChangeApprovalProductionOwnerApproved
+	production.Review = ReviewOwnerConfirmed
 	production.Backup = BackupVerified
 	production.IsolatedRestore = IsolatedRestoreVerified
 	want = LaunchGatePlan{
-		Kind:    LaunchGateBlocked,
-		Reasons: []LaunchGateBlockReason{LaunchGateIsolatedStagingRestoreRequired},
+		Kind: LaunchGateExplicitApprovalRequired, Environment: LaunchGateProduction,
+		Action: LaunchActionRestoreDrill, Approval: ExplicitProductionOperationApprovalRequired,
 	}
 	if got := EvaluateLaunchGate(production); !reflect.DeepEqual(got, want) {
 		t.Fatalf("production restore EvaluateLaunchGate() = %#v, want %#v", got, want)
@@ -320,8 +325,8 @@ func TestEvaluateLaunchGateAllowsReviewedAbortWithoutRecoveryEvidence(t *testing
 	evidence := completeLaunchGateEvidence()
 	evidence.Environment = LaunchGateProduction
 	evidence.Action = LaunchActionCanaryAbort
-	evidence.ChangeApproval = ChangeApprovalProductionTwoPersonApproved
-	evidence.Review = ReviewTwoPersonConfirmed
+	evidence.ChangeApproval = ChangeApprovalProductionOwnerApproved
+	evidence.Review = ReviewOwnerConfirmed
 	evidence.Backup = BackupMissing
 	evidence.RollbackWindow = RollbackWindow{Kind: RollbackWindowMissing}
 	evidence.Telemetry = TelemetryNotReady
@@ -365,7 +370,8 @@ func TestEvaluateLaunchGateFailsClosedForEveryInvalidEvidenceField(t *testing.T)
 		mutate func(*LaunchGateEvidence)
 	}{
 		{name: "schema zero", mutate: func(value *LaunchGateEvidence) { value.SchemaVersion = 0 }},
-		{name: "schema future", mutate: func(value *LaunchGateEvidence) { value.SchemaVersion = 2 }},
+		{name: "schema legacy", mutate: func(value *LaunchGateEvidence) { value.SchemaVersion = 1 }},
+		{name: "schema future", mutate: func(value *LaunchGateEvidence) { value.SchemaVersion = 3 }},
 		{name: "environment", mutate: func(value *LaunchGateEvidence) { value.Environment = "preview" }},
 		{name: "action", mutate: func(value *LaunchGateEvidence) { value.Action = "deploy" }},
 		{name: "target", mutate: func(value *LaunchGateEvidence) { value.Target = "maybe" }},

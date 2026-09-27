@@ -11,15 +11,17 @@ their separate explicit-approval requirement.
 
 ## Environment boundaries
 
-| Environment | Intended use                             | Allowed by this work                            | Prohibited by this work                                                    |
-| ----------- | ---------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------- |
-| local       | developer machine                        | fixture-only drill and fake adapters            | remote provider calls, real credentials, production data                   |
-| test        | CI and deterministic test process        | fixture-only drill and fake/emulator adapters   | production endpoint, paid verification, real email or billing              |
-| staging     | isolated non-production validation       | gated restore drill, canary, rollback rehearsal | production mutation, key destruction, copying plaintext production content |
-| production  | paid public service after later approval | evidence evaluation only                        | execution without a separately identified explicit approval                |
+| Environment | Intended use                                | Allowed by this work                                | Prohibited by this work                                                          |
+| ----------- | ------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------- |
+| local       | developer machine                           | fixture-only drill and fake adapters                | remote provider calls, real credentials, production data                         |
+| test        | CI and deterministic test process           | fixture-only drill and fake/emulator adapters       | production endpoint, paid verification, real email or billing                    |
+| staging     | optional isolated non-production validation | gated restore drill, canary, rollback rehearsal     | production mutation, key destruction, copying plaintext production content       |
+| production  | restricted live service                     | gated release actions and isolated restore evidence | execution without the repository owner's separately identified explicit approval |
 
-Go `operations.PlanEnvironmentAction` is the authoritative matrix. A restore
-drill must target isolated staging, never production.
+Go `operations.PlanEnvironmentAction` is the authoritative matrix. Production
+does not require a permanent staging environment. A restore drill for a
+production backup must use a temporary access-restricted target that is
+isolated from the live production database, storage, and outbound providers.
 
 Issue #514 adds no production executor. Its exact local/CI runtime profiles and
 named evidence are documented in
@@ -53,7 +55,8 @@ evidence only.
 
 The gate requires a confirmed target, the environment-appropriate change
 approval, an open rollback window, ready telemetry, and resolved operational
-decisions. Production additionally requires two-person review. A migration
+decisions. Production additionally requires the repository owner's recorded
+approval and review; evidence must never invent a second reviewer. A migration
 requires verified backup evidence; destructive migration is blocked by this
 workflow.
 
@@ -65,8 +68,10 @@ identifiers.
 
 ## Restore drill
 
-Run only against an isolated staging target with fake or approved staging
-adapters. The source inventory and restore destination must never be a live
+Run only against a temporary, access-restricted restore target isolated from
+the live production database, storage, and outbound providers. It may be
+created solely for the drill and removed afterward; no permanent staging
+environment is required. The restore destination must never be a live
 production target under this procedure.
 
 1. **Inventory** — freeze the drill manifest; enumerate PostgreSQL metadata,
@@ -74,7 +79,7 @@ production target under this procedure.
    object metadata, wrapped DEK versions, session revocation state, billing
    projection, migration version, capture time, and delete-after time. Reject an
    incomplete inventory and any backup retention window over 30 days.
-2. **Isolated restore** — create or select a disposable, access-restricted staging
+2. **Isolated restore** — create or select a disposable, access-restricted
    target. Restore metadata and immutable ciphertext first, then wrapped-key
    metadata. Keep outbound email, Stripe mutation, and production sync disabled.
 3. **Integrity, crypto, and tenant verification** — authenticate a minimum
@@ -91,7 +96,7 @@ production target under this procedure.
    enabled, and retain only redacted evidence for the approved duration. A blocked
    cleanup is an incident, not success.
 
-The drill validates a point-in-time staging fixture. It does not prove provider
+The drill validates a point-in-time isolated fixture. It does not prove provider
 snapshot consistency, production IAM, quota, latency, or an achievable RTO/RPO.
 
 ## Canary gates
@@ -100,8 +105,9 @@ snapshot consistency, production IAM, quota, latency, or an achievable RTO/RPO.
 
 - Confirm the exact environment, immutable change reference, target, and
   backward-compatible migration state.
-- Confirm two-person review for production, verified backup when schema/data is
-  touched, an open rollback window, and resolved provider/runbook decisions.
+- Confirm the repository owner's explicit production approval and recorded
+  review, verified backup when schema/data is touched, an open rollback window,
+  and resolved provider/runbook decisions.
 - Confirm the telemetry vocabulary from Issue #217 can observe service failure,
   integrity failure, billing lock, and billing-provider failure without content
   or tenant identifiers.
@@ -112,7 +118,8 @@ snapshot consistency, production IAM, quota, latency, or an achievable RTO/RPO.
 
 Compare canary and baseline for auth denials, Sync V2 success/no-change/failure,
 billing locks, PostgreSQL/object-storage/KMS dependency failure, cursor/receipt
-replay, and cross-tenant denial. Use approved staging-derived thresholds only.
+replay, and cross-tenant denial. Use thresholds derived from approved measured
+evidence and business needs.
 No-change sync must not call object storage or KMS. Record whether each signal
 is healthy, failed, or unavailable; an unavailable required signal blocks
 promotion.
@@ -121,9 +128,9 @@ promotion.
 
 Promotion requires an observed—not merely started—canary, every entry condition,
 healthy required signals, and an open rollback window. For production, the pure
-gate still returns an explicit-approval requirement. Promotion must stop if any
-required alert threshold, provider owner, or escalation destination remains a
-Decision Required.
+gate still returns an explicit-approval requirement and never authorizes the
+external action itself. Promotion must stop if any required alert threshold,
+provider owner, or escalation destination remains a Decision Required.
 
 ### Abort
 
@@ -169,15 +176,104 @@ production approval, the owner must assemble one immutable, reviewable packet:
    Traffic timing cannot preserve eligibility after an earlier incompatible
    migration/write has closed it.
 
-After approval, the future operator sequence is: revalidate the packet and old
+After approval, the operator sequence is: revalidate the packet and old
 unit; keep general access/providers closed; verify backup/restore; classify
 migration/write compatibility; record the last-safe boundary; apply only the
 reviewed forward migration while closing Sites rollback atomically on the first
 incompatible write; run closed-route and owner-denial smoke; begin the bounded
 canary; observe all required signals; then promote or abort. Every deployment,
 migration, provider change, traffic action, stop-writes action, and rollback
-remains an external step requiring its named approval. This repository supplies
-no executable production command.
+remains an external step requiring its named approval.
+
+## Guarded production database and access commands
+
+The concrete Cloud Run service/job templates, separate workload identities,
+render validation, provider command shapes, traffic stop, and first-release
+recovery sequence are in
+[`cloud-run-production.md`](cloud-run-production.md). They remain parameterized
+until the owner approves the project, region, PostgreSQL plan, origin, cost
+boundary, and initial Google subject.
+
+Build and pin the `notesctl` Docker target separately from the serving
+`runtime` target. Run it with the migration/service identity and secret
+references supplied by the deployment platform; never put a database URL or
+token on a recorded command line. Substitute the reviewed non-secret values:
+
+```sh
+notesctl production status \
+  --environment=production \
+  --observed-at-millis=<reviewed-unix-ms> \
+  --expected-database-host=<exact-host> \
+  --expected-database-name=<exact-name> \
+  --confirm-production-read-only
+
+notesctl migrate \
+  --environment=production \
+  --expected-database-host=<exact-host> \
+  --expected-database-name=<exact-name> \
+  --confirm-production-forward
+
+notesctl access provision \
+  --environment=production \
+  --issuer=https://accounts.google.com \
+  --subject=<verified-google-sub> \
+  --granted-at-millis=<approved-unix-ms> \
+  --expires-at-millis=<approved-unix-ms> \
+  --active-cards=<approved-count> \
+  --display-characters-per-card=<approved-count> \
+  --serialized-plaintext-bytes-per-card=<approved-bytes> \
+  --plaintext-bytes-per-vault=<approved-bytes> \
+  --expected-database-host=<exact-host> \
+  --expected-database-name=<exact-name> \
+  --confirm-production-access-mutation \
+  --confirm-kms-encrypt
+```
+
+Run `production status` before migration to record the expected
+`schema-mismatch`, after migration to require `restricted-empty`, after
+provisioning to require `restricted-ready`, and again immediately before
+traffic. A blocked result is a stop condition. The aggregate output is safe for
+the release packet, but raw provider command output and connection details are
+not. A revoked last user returns to `restricted-empty` while the retained
+Account, Vault, wrapped keys, and encrypted-object counts remain visible.
+
+The migration reports previous/target/applied schema versions and the embedded
+target checksum, holds the Goose PostgreSQL session lock, and performs no reset,
+down migration, or server-start migration. For a new empty database, first
+record that it is empty, enable provider backup, apply the forward migration,
+then create synthetic encrypted data before claiming backup/restore evidence.
+
+Provisioning requires private Launch gate state and `billing-checkout=false`.
+It emits only Notes identifiers and outcome. It uses the operations service
+identity for KMS Encrypt, stores only the wrapped DEK, and creates no Stripe
+objects. Add another allowed user by repeating the command with that user's
+verified Google `sub` and independently approved expiry/limits.
+
+To cancel access without deleting retained data:
+
+```sh
+notesctl access revoke \
+  --environment=production \
+  --issuer=https://accounts.google.com \
+  --subject=<verified-google-sub> \
+  --revoked-at-millis=<unix-ms> \
+  --expected-database-host=<exact-host> \
+  --expected-database-name=<exact-name> \
+  --confirm-production-access-mutation
+```
+
+Revocation removes the allowlist row, revokes the limited grant and active
+sessions, and preserves Account/Vault/ciphertext/wrapped-key state. It is
+effective on the next server request. It cannot retrieve already-downloaded
+offline content from a device; use the normal logout purge on participating
+devices and treat the offline-use window separately. Any target mismatch,
+public Launch gate, enabled checkout, checksum drift, KMS failure, or partial
+stored access state is a stop condition, not permission for ad-hoc SQL.
+
+Fill the reviewable packet in
+[`production-release-packet.md`](production-release-packet.md) with immutable
+digests and references before any provider mutation. Do not commit a database
+URL, secret value, OAuth token, raw identity, or provider response.
 
 ## Rollback decision tree
 
@@ -226,13 +322,13 @@ obtain the separately required explicit user approval.
 
 ## Decision Required before production
 
-- **RTO: Decision Required** — choose only after a provider-specific staging
-  restore drill measures inventory, restore, verification, and cleanup.
+- **RTO: Decision Required** — choose only after a provider-specific temporary,
+  isolated restore drill measures inventory, restore, verification, and cleanup.
 - **RPO: Decision Required** — choose only after
   PostgreSQL/object-storage/wrapped-key snapshot
   consistency and billing/session projection recovery semantics are known.
 - **SLO: Decision Required** — choose availability and latency objectives plus
-  Issue #217 alert thresholds from measured staging evidence and business needs.
+  Issue #217 alert thresholds from measured evidence and business needs.
 - Production PostgreSQL/object-storage/KMS/backup providers, regions, IAM,
   retention, quota, and restore consistency: Decision Required.
 - Telemetry provider, retention, sampling, dashboard, alert routes, and on-call
@@ -242,10 +338,11 @@ obtain the separately required explicit user approval.
   Required.
 
 Before any production procedure exists, replace provider-neutral placeholders in
-an independently reviewed provider adapter/runbook, conduct an approved staging
-drill, and obtain legal/security/operations review. Issue #514 performs no
-production operation: `main`, hosting, databases, providers, data, deployment,
-traffic, and external resources remain unchanged and approval-pending.
+an independently reviewed provider adapter/runbook, conduct an approved temporary
+isolated restore drill, and obtain the required legal/security/operations review.
+Issue #514 itself performed no production operation: `main`, hosting, databases,
+providers, data, deployment, traffic, and external resources remained unchanged
+and approval-pending at that historical point.
 
 ## Local verification
 

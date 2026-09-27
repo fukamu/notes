@@ -17,6 +17,8 @@ import (
 
 	"github.com/fukamu/notes/backend/internal/access"
 	contentcryptoadapter "github.com/fukamu/notes/backend/internal/adapters/contentcrypto"
+	gcpidentityadapter "github.com/fukamu/notes/backend/internal/adapters/gcpidentity"
+	identityadapter "github.com/fukamu/notes/backend/internal/adapters/identity"
 	kmsadapter "github.com/fukamu/notes/backend/internal/adapters/kms"
 	localfixtureadapter "github.com/fukamu/notes/backend/internal/adapters/localfixture"
 	objectstorageadapter "github.com/fukamu/notes/backend/internal/adapters/objectstorage"
@@ -28,6 +30,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/config"
 	"github.com/fukamu/notes/backend/internal/cryptocontent"
 	"github.com/fukamu/notes/backend/internal/encryptedobject"
+	"github.com/fukamu/notes/backend/internal/entitlement"
 	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/fukamu/notes/backend/internal/localfixture"
 	"github.com/fukamu/notes/backend/internal/operations"
@@ -43,6 +46,17 @@ func main() {
 }
 
 func run(ctx context.Context, arguments []string, stdout io.Writer, stderr io.Writer) int {
+	if len(arguments) > 0 && arguments[0] == "production" {
+		return runProductionStatus(
+			ctx, arguments, stdout, stderr, os.LookupEnv, inspectProductionStatus,
+		)
+	}
+	if len(arguments) > 0 && arguments[0] == "access" {
+		return runProductionAccess(
+			ctx, arguments, stdout, stderr, os.LookupEnv,
+			provisionProductionAccess, revokeProductionAccess,
+		)
+	}
 	return runWithDependencies(
 		ctx,
 		arguments,
@@ -63,7 +77,14 @@ func run(ctx context.Context, arguments []string, stdout io.Writer, stderr io.Wr
 	)
 }
 
-type migrateFunction func(context.Context, string) error
+type migrationResult struct {
+	PreviousVersion int64
+	TargetVersion   int64
+	AppliedVersion  int64
+	TargetChecksum  string
+}
+
+type migrateFunction func(context.Context, string) (migrationResult, error)
 type prepareE2EFunction func(context.Context, string, string) error
 type prepareLocalFixtureFunction func(
 	context.Context,
@@ -126,6 +147,170 @@ type runRecoveryDrillFunction func(
 	string,
 	operations.RecoveryDrillCommand,
 ) (operations.RecoveryDrillResult, error)
+
+type productionAccessRequest struct {
+	Identity    operations.ProductionAccessIdentity
+	GrantedAt   int64
+	ExpiresAt   int64
+	VaultLimits entitlement.PersonalVaultLimits
+}
+
+type provisionProductionAccessFunction func(
+	context.Context,
+	string,
+	string,
+	productionAccessRequest,
+) (operations.ProductionAccessProvisionResult, error)
+
+type revokeProductionAccessFunction func(
+	context.Context,
+	string,
+	operations.ProductionAccessRevokeCommand,
+) (operations.ProductionAccessRevokeResult, error)
+
+type productionStatusFunction func(
+	context.Context,
+	string,
+	int64,
+) (operations.ProductionStatusResult, error)
+
+type productionStatusArguments struct {
+	observedAt       int64
+	expectedHost     string
+	expectedDatabase string
+}
+
+func parseProductionStatusArguments(arguments []string) (productionStatusArguments, error) {
+	if len(arguments) < 2 || arguments[0] != "production" || arguments[1] != "status" {
+		return productionStatusArguments{}, operations.ErrProductionStatus
+	}
+	values := make(map[string]string, 4)
+	confirmed := false
+	for _, argument := range arguments[2:] {
+		if argument == "--confirm-production-read-only" {
+			if confirmed {
+				return productionStatusArguments{}, operations.ErrProductionStatus
+			}
+			confirmed = true
+			continue
+		}
+		name, value, found := strings.Cut(argument, "=")
+		if !found || value == "" ||
+			(name != "--environment" && name != "--observed-at-millis" &&
+				name != "--expected-database-host" && name != "--expected-database-name") {
+			return productionStatusArguments{}, operations.ErrProductionStatus
+		}
+		if _, duplicate := values[name]; duplicate {
+			return productionStatusArguments{}, operations.ErrProductionStatus
+		}
+		values[name] = value
+	}
+	if !confirmed || len(values) != 4 || values["--environment"] != "production" {
+		return productionStatusArguments{}, operations.ErrProductionStatus
+	}
+	observedAt, err := strconv.ParseInt(values["--observed-at-millis"], 10, 64)
+	if err != nil || observedAt < 0 || observedAt > entitlement.MaximumSafeInteger {
+		return productionStatusArguments{}, operations.ErrProductionStatus
+	}
+	parsed := productionStatusArguments{
+		observedAt: observedAt, expectedHost: values["--expected-database-host"],
+		expectedDatabase: values["--expected-database-name"],
+	}
+	if parsed.expectedHost == "" || parsed.expectedDatabase == "" {
+		return productionStatusArguments{}, operations.ErrProductionStatus
+	}
+	return parsed, nil
+}
+
+func runProductionStatus(
+	parent context.Context,
+	arguments []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	lookup func(string) (string, bool),
+	inspect productionStatusFunction,
+) int {
+	parsed, err := parseProductionStatusArguments(arguments)
+	if err != nil || parent == nil || inspect == nil {
+		printUsage(stderr)
+		return 2
+	}
+	databaseConfig, err := config.LoadDatabase(lookup)
+	if err != nil || databaseConfig.Environment != config.EnvironmentProduction {
+		_, _ = fmt.Fprintln(stderr, "production status configuration invalid")
+		return 1
+	}
+	if postgresadapter.ValidateProductionDatabaseTarget(
+		databaseConfig.URL, parsed.expectedHost, parsed.expectedDatabase,
+	) != nil {
+		_, _ = fmt.Fprintln(stderr, "production status target refused")
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+	defer cancel()
+	result, err := inspect(ctx, databaseConfig.URL, parsed.observedAt)
+	if err != nil || result.Facts.ObservedAtMillis != parsed.observedAt ||
+		(result.Outcome != operations.ProductionStatusBlocked &&
+			result.Outcome != operations.ProductionStatusRestrictedEmpty &&
+			result.Outcome != operations.ProductionStatusRestrictedReady) {
+		_, _ = fmt.Fprintln(stderr, "production status inspection failed")
+		return 1
+	}
+	facts := result.Facts
+	output := struct {
+		Command                      string                               `json:"command"`
+		Outcome                      operations.ProductionStatusOutcome   `json:"outcome"`
+		ObservedAtMillis             int64                                `json:"observedAtMillis"`
+		AppliedSchemaVersion         int64                                `json:"appliedSchemaVersion"`
+		TargetSchemaVersion          int64                                `json:"targetSchemaVersion"`
+		TargetSchemaChecksum         string                               `json:"targetSchemaChecksum"`
+		LaunchConfigRows             int64                                `json:"launchConfigRows"`
+		PublicAccessEnabled          bool                                 `json:"publicAccessEnabled"`
+		BillingCheckoutFlagRows      int64                                `json:"billingCheckoutFlagRows"`
+		BillingCheckoutEnabled       bool                                 `json:"billingCheckoutEnabled"`
+		Accounts                     int64                                `json:"accounts"`
+		Vaults                       int64                                `json:"vaults"`
+		GoogleIdentities             int64                                `json:"googleIdentities"`
+		AllowedUsers                 int64                                `json:"allowedUsers"`
+		ActiveLimitedGrants          int64                                `json:"activeLimitedGrants"`
+		ExpiredUnrevokedGrants       int64                                `json:"expiredUnrevokedGrants"`
+		ActiveSessions               int64                                `json:"activeSessions"`
+		WrappedKeyVersions           int64                                `json:"wrappedKeyVersions"`
+		WriteKeys                    int64                                `json:"writeKeys"`
+		EncryptedObjects             int64                                `json:"encryptedObjects"`
+		PendingEncryptedWrites       int64                                `json:"pendingEncryptedWrites"`
+		PendingObjectDeletes         int64                                `json:"pendingObjectDeletes"`
+		NonceReservations            int64                                `json:"nonceReservations"`
+		AccessInconsistencies        int64                                `json:"accessInconsistencies"`
+		CryptographicInconsistencies int64                                `json:"cryptographicInconsistencies"`
+		Blockers                     []operations.ProductionStatusBlocker `json:"blockers"`
+	}{
+		Command: "production-status", Outcome: result.Outcome,
+		ObservedAtMillis: parsed.observedAt, AppliedSchemaVersion: facts.AppliedSchemaVersion,
+		TargetSchemaVersion: facts.TargetSchemaVersion, TargetSchemaChecksum: facts.TargetSchemaChecksum,
+		LaunchConfigRows:        facts.LaunchConfigRows,
+		PublicAccessEnabled:     facts.PublicAccessEnabled,
+		BillingCheckoutFlagRows: facts.BillingCheckoutFlagRows,
+		BillingCheckoutEnabled:  facts.BillingCheckoutEnabled,
+		Accounts:                facts.Accounts, Vaults: facts.Vaults, GoogleIdentities: facts.GoogleIdentities,
+		AllowedUsers: facts.AllowedUsers, ActiveLimitedGrants: facts.ActiveLimitedGrants,
+		ExpiredUnrevokedGrants: facts.ExpiredUnrevokedGrants, ActiveSessions: facts.ActiveSessions,
+		WrappedKeyVersions: facts.WrappedKeyVersions, WriteKeys: facts.WriteKeys,
+		EncryptedObjects: facts.EncryptedObjects, PendingEncryptedWrites: facts.PendingEncryptedWrites,
+		PendingObjectDeletes: facts.PendingObjectDeletes, NonceReservations: facts.NonceReservations,
+		AccessInconsistencies:        facts.AccessInconsistencies,
+		CryptographicInconsistencies: facts.CryptographicInconsistency,
+		Blockers:                     result.Blockers,
+	}
+	if json.NewEncoder(stdout).Encode(output) != nil {
+		_, _ = fmt.Fprintln(stderr, "production status output failed")
+		return 1
+	}
+	if result.Outcome == operations.ProductionStatusBlocked {
+		return 1
+	}
+	return 0
+}
 
 func runWithDependencies(
 	parent context.Context,
@@ -269,28 +454,51 @@ func runWithRecoveryDependency(
 	}
 	prepareE2ERequested := len(arguments) == 3 && arguments[0] == "prepare-e2e" &&
 		arguments[1] == "--environment=test" && strings.HasPrefix(arguments[2], "--allowed-subject=")
-	migrateRequested := len(arguments) == 2 && arguments[0] == "migrate" &&
-		strings.HasPrefix(arguments[1], "--environment=")
+	migration, migrateRequested, migrationErr := parseMigrationArguments(arguments)
 	if !migrateRequested && !prepareE2ERequested {
 		printUsage(stderr)
 		return 2
 	}
-	requestedEnvironment := config.Environment(strings.TrimPrefix(arguments[1], "--environment="))
+	if migrationErr != nil {
+		printUsage(stderr)
+		return 2
+	}
+	requestedEnvironment := migration.environment
+	if prepareE2ERequested {
+		requestedEnvironment = config.EnvironmentTest
+	}
 	databaseConfig, err := config.LoadDatabase(lookup)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "database configuration invalid")
 		return 1
 	}
-	if requestedEnvironment != databaseConfig.Environment ||
-		(requestedEnvironment != config.EnvironmentLocal && requestedEnvironment != config.EnvironmentTest) {
+	if requestedEnvironment != databaseConfig.Environment {
 		_, _ = fmt.Fprintln(stderr, "migration environment refused")
 		return 1
 	}
-	if err := postgresadapter.ValidateTestDatabaseURL(databaseConfig.URL); err != nil {
-		_, _ = fmt.Fprintln(stderr, "migration target refused")
-		return 1
+	if requestedEnvironment == config.EnvironmentProduction {
+		if prepareE2ERequested || !migration.production ||
+			postgresadapter.ValidateProductionDatabaseTarget(
+				databaseConfig.URL, migration.expectedHost, migration.expectedDatabase,
+			) != nil {
+			_, _ = fmt.Fprintln(stderr, "migration target refused")
+			return 1
+		}
+	} else {
+		if requestedEnvironment != config.EnvironmentLocal && requestedEnvironment != config.EnvironmentTest {
+			_, _ = fmt.Fprintln(stderr, "migration environment refused")
+			return 1
+		}
+		if err := postgresadapter.ValidateTestDatabaseURL(databaseConfig.URL); err != nil {
+			_, _ = fmt.Fprintln(stderr, "migration target refused")
+			return 1
+		}
 	}
-	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	timeout := 2 * time.Minute
+	if requestedEnvironment == config.EnvironmentProduction {
+		timeout = 5 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	if prepareE2ERequested {
 		if requestedEnvironment != config.EnvironmentTest {
@@ -327,11 +535,274 @@ func runWithRecoveryDependency(
 		_, _ = fmt.Fprintln(stdout, "e2e database prepared")
 		return 0
 	}
-	if err := migrate(ctx, databaseConfig.URL); err != nil {
+	result, err := migrate(ctx, databaseConfig.URL)
+	if err != nil || result.PreviousVersion < 0 || result.TargetVersion < 1 ||
+		result.AppliedVersion != result.TargetVersion || result.PreviousVersion > result.AppliedVersion ||
+		!strings.HasPrefix(result.TargetChecksum, "sha256:") || len(result.TargetChecksum) != 71 {
 		_, _ = fmt.Fprintln(stderr, "migration failed")
 		return 1
 	}
+	if requestedEnvironment == config.EnvironmentProduction {
+		output := struct {
+			Command         string `json:"command"`
+			Outcome         string `json:"outcome"`
+			PreviousVersion int64  `json:"previousVersion"`
+			TargetVersion   int64  `json:"targetVersion"`
+			AppliedVersion  int64  `json:"appliedVersion"`
+			TargetChecksum  string `json:"targetChecksum"`
+		}{
+			Command: "migrate", Outcome: "complete", PreviousVersion: result.PreviousVersion,
+			TargetVersion: result.TargetVersion, AppliedVersion: result.AppliedVersion,
+			TargetChecksum: result.TargetChecksum,
+		}
+		if err := json.NewEncoder(stdout).Encode(output); err != nil {
+			_, _ = fmt.Fprintln(stderr, "migration output failed")
+			return 1
+		}
+		return 0
+	}
 	_, _ = fmt.Fprintln(stdout, "migration complete")
+	return 0
+}
+
+type migrationArguments struct {
+	environment      config.Environment
+	production       bool
+	expectedHost     string
+	expectedDatabase string
+}
+
+func parseMigrationArguments(arguments []string) (migrationArguments, bool, error) {
+	if len(arguments) < 1 || arguments[0] != "migrate" {
+		return migrationArguments{}, false, nil
+	}
+	values := make(map[string]string, 3)
+	confirmedProduction := false
+	for _, argument := range arguments[1:] {
+		if argument == "--confirm-production-forward" {
+			if confirmedProduction {
+				return migrationArguments{}, true, errors.New("duplicate production confirmation")
+			}
+			confirmedProduction = true
+			continue
+		}
+		name, value, found := strings.Cut(argument, "=")
+		if !found || value == "" ||
+			(name != "--environment" && name != "--expected-database-host" && name != "--expected-database-name") {
+			return migrationArguments{}, true, errors.New("invalid migration argument")
+		}
+		if _, duplicate := values[name]; duplicate {
+			return migrationArguments{}, true, errors.New("duplicate migration argument")
+		}
+		values[name] = value
+	}
+	environment := config.Environment(values["--environment"])
+	if environment != config.EnvironmentLocal && environment != config.EnvironmentTest &&
+		environment != config.EnvironmentProduction {
+		return migrationArguments{}, true, errors.New("invalid migration environment")
+	}
+	if environment == config.EnvironmentProduction {
+		if !confirmedProduction || len(values) != 3 {
+			return migrationArguments{}, true, errors.New("production migration confirmation required")
+		}
+		return migrationArguments{
+			environment: environment, production: true,
+			expectedHost: values["--expected-database-host"], expectedDatabase: values["--expected-database-name"],
+		}, true, nil
+	}
+	if confirmedProduction || len(values) != 1 {
+		return migrationArguments{}, true, errors.New("invalid non-production migration confirmation")
+	}
+	return migrationArguments{environment: environment}, true, nil
+}
+
+type productionAccessArguments struct {
+	kind             string
+	identity         operations.ProductionAccessIdentity
+	grantedAt        int64
+	expiresAt        int64
+	revokedAt        int64
+	vaultLimits      entitlement.PersonalVaultLimits
+	expectedHost     string
+	expectedDatabase string
+}
+
+func parseProductionAccessArguments(arguments []string) (productionAccessArguments, error) {
+	if len(arguments) < 3 || arguments[0] != "access" ||
+		(arguments[1] != "provision" && arguments[1] != "revoke") {
+		return productionAccessArguments{}, operations.ErrProductionAccess
+	}
+	values := make(map[string]string, 11)
+	confirmedMutation := false
+	confirmedKMS := false
+	for _, argument := range arguments[2:] {
+		switch argument {
+		case "--confirm-production-access-mutation":
+			if confirmedMutation {
+				return productionAccessArguments{}, operations.ErrProductionAccess
+			}
+			confirmedMutation = true
+			continue
+		case "--confirm-kms-encrypt":
+			if confirmedKMS {
+				return productionAccessArguments{}, operations.ErrProductionAccess
+			}
+			confirmedKMS = true
+			continue
+		}
+		name, value, found := strings.Cut(argument, "=")
+		if !found || value == "" {
+			return productionAccessArguments{}, operations.ErrProductionAccess
+		}
+		if _, duplicate := values[name]; duplicate {
+			return productionAccessArguments{}, operations.ErrProductionAccess
+		}
+		values[name] = value
+	}
+	if values["--environment"] != string(config.EnvironmentProduction) || !confirmedMutation {
+		return productionAccessArguments{}, operations.ErrProductionAccess
+	}
+	issuer, issuerErr := identity.ParseOidcIssuer(values["--issuer"])
+	subject, subjectErr := identity.ParseOidcSubject(values["--subject"])
+	accessIdentity := operations.ProductionAccessIdentity{Issuer: issuer, Subject: subject}
+	if issuerErr != nil || subjectErr != nil || !operations.ValidProductionAccessIdentity(accessIdentity) {
+		return productionAccessArguments{}, operations.ErrProductionAccess
+	}
+	parsed := productionAccessArguments{
+		kind: arguments[1], identity: accessIdentity,
+		expectedHost:     values["--expected-database-host"],
+		expectedDatabase: values["--expected-database-name"],
+	}
+	if parsed.expectedHost == "" || parsed.expectedDatabase == "" {
+		return productionAccessArguments{}, operations.ErrProductionAccess
+	}
+	if arguments[1] == "revoke" {
+		if confirmedKMS || len(values) != 6 {
+			return productionAccessArguments{}, operations.ErrProductionAccess
+		}
+		revokedAt, err := strconv.ParseInt(values["--revoked-at-millis"], 10, 64)
+		if err != nil {
+			return productionAccessArguments{}, operations.ErrProductionAccess
+		}
+		parsed.revokedAt = revokedAt
+		command := operations.ProductionAccessRevokeCommand{
+			Identity: accessIdentity, RevokedAtMilli: revokedAt, SessionRevokedAtSeconds: revokedAt / 1_000,
+		}
+		if operations.ValidateProductionAccessRevokeCommand(command) != nil {
+			return productionAccessArguments{}, operations.ErrProductionAccess
+		}
+		return parsed, nil
+	}
+	if !confirmedKMS || len(values) != 11 {
+		return productionAccessArguments{}, operations.ErrProductionAccess
+	}
+	var err error
+	if parsed.grantedAt, err = strconv.ParseInt(values["--granted-at-millis"], 10, 64); err != nil {
+		return productionAccessArguments{}, operations.ErrProductionAccess
+	}
+	if parsed.expiresAt, err = strconv.ParseInt(values["--expires-at-millis"], 10, 64); err != nil {
+		return productionAccessArguments{}, operations.ErrProductionAccess
+	}
+	if parsed.vaultLimits.ActiveCards, err = strconv.ParseInt(values["--active-cards"], 10, 64); err != nil {
+		return productionAccessArguments{}, operations.ErrProductionAccess
+	}
+	if parsed.vaultLimits.DisplayCharactersPerCard, err = strconv.ParseInt(values["--display-characters-per-card"], 10, 64); err != nil {
+		return productionAccessArguments{}, operations.ErrProductionAccess
+	}
+	if parsed.vaultLimits.SerializedPlaintextBytesPerCard, err = strconv.ParseInt(values["--serialized-plaintext-bytes-per-card"], 10, 64); err != nil {
+		return productionAccessArguments{}, operations.ErrProductionAccess
+	}
+	if parsed.vaultLimits.PlaintextBytesPerVault, err = strconv.ParseInt(values["--plaintext-bytes-per-vault"], 10, 64); err != nil {
+		return productionAccessArguments{}, operations.ErrProductionAccess
+	}
+	if parsed.grantedAt < 0 || parsed.expiresAt <= parsed.grantedAt ||
+		parsed.expiresAt > entitlement.MaximumSafeInteger || !entitlement.ValidPersonalVaultLimits(parsed.vaultLimits) {
+		return productionAccessArguments{}, operations.ErrProductionAccess
+	}
+	return parsed, nil
+}
+
+func runProductionAccess(
+	parent context.Context,
+	arguments []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	lookup func(string) (string, bool),
+	provision provisionProductionAccessFunction,
+	revoke revokeProductionAccessFunction,
+) int {
+	parsed, err := parseProductionAccessArguments(arguments)
+	if err != nil || parent == nil || provision == nil || revoke == nil {
+		printUsage(stderr)
+		return 2
+	}
+	databaseConfig, err := config.LoadDatabase(lookup)
+	if err != nil || databaseConfig.Environment != config.EnvironmentProduction {
+		_, _ = fmt.Fprintln(stderr, "production access configuration invalid")
+		return 1
+	}
+	if postgresadapter.ValidateProductionDatabaseTarget(
+		databaseConfig.URL, parsed.expectedHost, parsed.expectedDatabase,
+	) != nil {
+		_, _ = fmt.Fprintln(stderr, "production access target refused")
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	defer cancel()
+	if parsed.kind == "provision" {
+		keyVersion, ok := lookup("NOTES_GCP_KMS_CRYPTO_KEY_VERSION")
+		if !ok || keyVersion == "" || strings.ContainsAny(keyVersion, "\r\n\x00") {
+			_, _ = fmt.Fprintln(stderr, "production access KMS configuration invalid")
+			return 1
+		}
+		result, err := provision(ctx, databaseConfig.URL, keyVersion, productionAccessRequest{
+			Identity: parsed.identity, GrantedAt: parsed.grantedAt,
+			ExpiresAt: parsed.expiresAt, VaultLimits: parsed.vaultLimits,
+		})
+		if err != nil || (result.Kind != operations.ProductionAccessCreated &&
+			result.Kind != operations.ProductionAccessReplayed) {
+			_, _ = fmt.Fprintln(stderr, "production access provisioning failed")
+			return 1
+		}
+		output := struct {
+			Command    string `json:"command"`
+			Outcome    string `json:"outcome"`
+			IdentityID string `json:"identityId"`
+			AccountID  string `json:"accountId"`
+			VaultID    string `json:"vaultId"`
+		}{
+			Command: "access-provision", Outcome: string(result.Kind),
+			IdentityID: string(result.IdentityID), AccountID: string(result.AccountID), VaultID: string(result.VaultID),
+		}
+		if json.NewEncoder(stdout).Encode(output) != nil {
+			_, _ = fmt.Fprintln(stderr, "production access output failed")
+			return 1
+		}
+		return 0
+	}
+	result, err := revoke(ctx, databaseConfig.URL, operations.ProductionAccessRevokeCommand{
+		Identity: parsed.identity, RevokedAtMilli: parsed.revokedAt,
+		SessionRevokedAtSeconds: parsed.revokedAt / 1_000,
+	})
+	if err != nil || (result.Kind != operations.ProductionAccessRevoked &&
+		result.Kind != operations.ProductionAccessAlreadyRevoked) || result.SessionsRevoked < 0 {
+		_, _ = fmt.Fprintln(stderr, "production access revocation failed")
+		return 1
+	}
+	output := struct {
+		Command         string `json:"command"`
+		Outcome         string `json:"outcome"`
+		AccountID       string `json:"accountId"`
+		VaultID         string `json:"vaultId"`
+		SessionsRevoked int64  `json:"sessionsRevoked"`
+	}{
+		Command: "access-revoke", Outcome: string(result.Kind), AccountID: string(result.AccountID),
+		VaultID: string(result.VaultID), SessionsRevoked: result.SessionsRevoked,
+	}
+	if json.NewEncoder(stdout).Encode(output) != nil {
+		_, _ = fmt.Fprintln(stderr, "production access output failed")
+		return 1
+	}
 	return 0
 }
 
@@ -1611,7 +2082,8 @@ func runRecoveryDrill(
 }
 
 func printUsage(output io.Writer) {
-	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read] | notesctl dek rotate --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --operation-id=<uuidv7> --requested-at-millis=<unix-ms> --generated-at-millis=<unix-ms> --completed-at-millis=<unix-ms> --confirm-kms-key-generation [--confirm-production-kms-mutation] | notesctl dek reencrypt --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --target-version=<version> --limit=1..100 --performed-at-millis=<unix-ms> --object-root=<absolute-secure-directory> --nonce-root=<absolute-secure-directory> --confirm-local-object-writes --confirm-kms-unwrapping | notesctl objects orphan-scan --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --scan-started-at-millis=<unix-ms> --grace-period-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-scan --confirm-delete-enqueue | notesctl objects delete-outbox --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --attempted-at-millis=<unix-ms> --retry-delay-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-deletes --confirm-delete-outbox-mutation | notesctl recovery drill --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --drilled-at-millis=<unix-ms> --backup-root=<absolute-private-directory> --key-root=<absolute-private-directory> --confirm-local-backup-read --confirm-local-fixture-key-read")
+	_, _ = fmt.Fprintln(output, "usage: notesctl production status --environment=production --observed-at-millis=<unix-ms> --expected-database-host=<host> --expected-database-name=<name> --confirm-production-read-only")
+	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl migrate --environment=production --expected-database-host=<host> --expected-database-name=<name> --confirm-production-forward | notesctl access provision --environment=production --issuer=<google-issuer> --subject=<google-sub> --granted-at-millis=<unix-ms> --expires-at-millis=<unix-ms> --active-cards=<count> --display-characters-per-card=<count> --serialized-plaintext-bytes-per-card=<bytes> --plaintext-bytes-per-vault=<bytes> --expected-database-host=<host> --expected-database-name=<name> --confirm-production-access-mutation --confirm-kms-encrypt | notesctl access revoke --environment=production --issuer=<google-issuer> --subject=<google-sub> --revoked-at-millis=<unix-ms> --expected-database-host=<host> --expected-database-name=<name> --confirm-production-access-mutation | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read] | notesctl dek rotate --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --operation-id=<uuidv7> --requested-at-millis=<unix-ms> --generated-at-millis=<unix-ms> --completed-at-millis=<unix-ms> --confirm-kms-key-generation [--confirm-production-kms-mutation] | notesctl dek reencrypt --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --target-version=<version> --limit=1..100 --performed-at-millis=<unix-ms> --object-root=<absolute-secure-directory> --nonce-root=<absolute-secure-directory> --confirm-local-object-writes --confirm-kms-unwrapping | notesctl objects orphan-scan --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --scan-started-at-millis=<unix-ms> --grace-period-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-scan --confirm-delete-enqueue | notesctl objects delete-outbox --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --attempted-at-millis=<unix-ms> --retry-delay-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-deletes --confirm-delete-outbox-mutation | notesctl recovery drill --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --drilled-at-millis=<unix-ms> --backup-root=<absolute-private-directory> --key-root=<absolute-private-directory> --confirm-local-backup-read --confirm-local-fixture-key-read")
 }
 
 func prepareE2EDatabase(
@@ -1736,17 +2208,199 @@ func prepareLocalFixtureE2EDatabase(
 	return store.Seed(ctx)
 }
 
-func migrateDatabase(ctx context.Context, databaseURL string) error {
+func migrateDatabase(ctx context.Context, databaseURL string) (migrationResult, error) {
 	database, err := postgresadapter.OpenSQL(ctx, databaseURL)
 	if err != nil {
-		return err
+		return migrationResult{}, err
 	}
 	defer database.Close()
 	migrator, err := postgresadapter.NewMigrator(database, migrations.Files)
 	if err != nil {
-		return err
+		return migrationResult{}, err
 	}
-	return migrator.Up(ctx)
+	previous, err := migrator.CurrentVersion(ctx)
+	if err != nil {
+		return migrationResult{}, err
+	}
+	target, err := migrator.Target()
+	if err != nil {
+		return migrationResult{}, err
+	}
+	if err := migrator.Up(ctx); err != nil {
+		return migrationResult{}, err
+	}
+	applied, err := migrator.CurrentVersion(ctx)
+	if err != nil {
+		return migrationResult{}, err
+	}
+	return migrationResult{
+		PreviousVersion: previous, TargetVersion: target.Version,
+		AppliedVersion: applied, TargetChecksum: target.Checksum,
+	}, nil
+}
+
+func inspectProductionStatus(
+	ctx context.Context,
+	databaseURL string,
+	observedAtMillis int64,
+) (operations.ProductionStatusResult, error) {
+	database, err := postgresadapter.OpenSQL(ctx, databaseURL)
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	defer database.Close()
+	migrator, err := postgresadapter.NewMigrator(database, migrations.Files)
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	target, err := migrator.Target()
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	facts := operations.ProductionStatusFacts{
+		ObservedAtMillis: observedAtMillis, TargetSchemaVersion: target.Version,
+		TargetSchemaChecksum: target.Checksum,
+	}
+	var versionTableExists bool
+	if err := database.QueryRowContext(
+		ctx, "SELECT to_regclass('notes_goose_versions') IS NOT NULL",
+	).Scan(&versionTableExists); err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	if !versionTableExists {
+		return operations.EvaluateProductionStatus(facts)
+	}
+	facts.AppliedSchemaVersion, err = migrator.CurrentVersion(ctx)
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	if facts.AppliedSchemaVersion != facts.TargetSchemaVersion {
+		return operations.EvaluateProductionStatus(facts)
+	}
+	pool, err := postgresadapter.OpenPool(ctx, databaseURL, 2)
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	defer pool.Close()
+	store, err := postgresadapter.NewProductionStatusStore(pool)
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	databaseFacts, err := store.Read(ctx, observedAtMillis)
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	facts.LaunchConfigRows = databaseFacts.LaunchConfigRows
+	facts.PublicAccessEnabled = databaseFacts.PublicAccessEnabled
+	facts.BillingCheckoutFlagRows = databaseFacts.BillingCheckoutFlagRows
+	facts.BillingCheckoutEnabled = databaseFacts.BillingCheckoutEnabled
+	facts.Accounts = databaseFacts.Accounts
+	facts.Vaults = databaseFacts.Vaults
+	facts.GoogleIdentities = databaseFacts.GoogleIdentities
+	facts.AllowedUsers = databaseFacts.AllowedUsers
+	facts.ActiveLimitedGrants = databaseFacts.ActiveLimitedGrants
+	facts.ExpiredUnrevokedGrants = databaseFacts.ExpiredUnrevokedGrants
+	facts.ActiveSessions = databaseFacts.ActiveSessions
+	facts.WrappedKeyVersions = databaseFacts.WrappedKeyVersions
+	facts.WriteKeys = databaseFacts.WriteKeys
+	facts.EncryptedObjects = databaseFacts.EncryptedObjects
+	facts.PendingEncryptedWrites = databaseFacts.PendingEncryptedWrites
+	facts.PendingObjectDeletes = databaseFacts.PendingObjectDeletes
+	facts.NonceReservations = databaseFacts.NonceReservations
+	facts.AccessInconsistencies = databaseFacts.AccessInconsistencies
+	facts.CryptographicInconsistency = databaseFacts.CryptographicInconsistency
+	return operations.EvaluateProductionStatus(facts)
+}
+
+func provisionProductionAccess(
+	ctx context.Context,
+	databaseURL string,
+	keyVersion string,
+	request productionAccessRequest,
+) (operations.ProductionAccessProvisionResult, error) {
+	pool, err := postgresadapter.OpenPool(ctx, databaseURL, 2)
+	if err != nil {
+		return operations.ProductionAccessProvisionResult{}, err
+	}
+	defer pool.Close()
+	store, err := postgresadapter.NewProductionAccessStore(pool)
+	if err != nil {
+		return operations.ProductionAccessProvisionResult{}, err
+	}
+	existing, err := store.FindProvisioned(
+		ctx, request.Identity, request.ExpiresAt, request.VaultLimits, keyVersion,
+	)
+	if err != nil {
+		return operations.ProductionAccessProvisionResult{}, err
+	}
+	if existing != nil {
+		return *existing, nil
+	}
+	identifiers := identityadapter.NewProductionSignupIdentifiers()
+	rawAccountID, accountErr := identifiers.CreateAccountID(ctx)
+	rawVaultID, vaultErr := identifiers.CreateVaultID(ctx)
+	rawIdentityID, identityErr := identifiers.CreateIdentityID(ctx)
+	accountID, parseAccountErr := identity.ParseAccountID(rawAccountID)
+	vaultID, parseVaultErr := identity.ParseVaultID(rawVaultID)
+	identityID, parseIdentityErr := identity.ParseIdentityID(rawIdentityID)
+	if accountErr != nil || vaultErr != nil || identityErr != nil ||
+		parseAccountErr != nil || parseVaultErr != nil || parseIdentityErr != nil {
+		return operations.ProductionAccessProvisionResult{}, operations.ErrProductionAccess
+	}
+	gcpClient := &http.Client{Timeout: 15 * time.Second}
+	tokens, err := gcpidentityadapter.NewServiceIdentityAccessTokenSource(gcpClient)
+	if err != nil {
+		return operations.ProductionAccessProvisionResult{}, err
+	}
+	transport, err := kmsadapter.NewRESTTransport(tokens, gcpClient)
+	if err != nil {
+		return operations.ProductionAccessProvisionResult{}, err
+	}
+	keys, err := kmsadapter.NewGCPKeyManagement(
+		keyVersion, transport, kmsadapter.SecureEntropy{}, kmsadapter.SystemClock{},
+	)
+	if err != nil {
+		return operations.ProductionAccessProvisionResult{}, err
+	}
+	version, _ := cryptocontent.ParseDEKVersion(1)
+	metadata, rawKey, err := keys.GenerateDataKey(ctx, vaultID, version)
+	if err != nil {
+		return operations.ProductionAccessProvisionResult{}, err
+	}
+	if rawKey == nil {
+		return operations.ProductionAccessProvisionResult{}, operations.ErrProductionAccess
+	}
+	rawKey.Destroy()
+	command := operations.ProductionAccessProvisionCommand{
+		Identity: request.Identity, IdentityID: identityID, AccountID: accountID,
+		VaultID: vaultID, CreatedAt: request.GrantedAt,
+		Grant: entitlement.LimitedAccessGrant{
+			AccountID: accountID, VaultID: vaultID, GrantedAt: request.GrantedAt,
+			ExpiresAt: request.ExpiresAt, VaultLimits: request.VaultLimits,
+		},
+		WriteKey: metadata,
+	}
+	if operations.ValidateProductionAccessProvisionCommand(command) != nil {
+		return operations.ProductionAccessProvisionResult{}, operations.ErrProductionAccess
+	}
+	return store.Provision(ctx, command)
+}
+
+func revokeProductionAccess(
+	ctx context.Context,
+	databaseURL string,
+	command operations.ProductionAccessRevokeCommand,
+) (operations.ProductionAccessRevokeResult, error) {
+	pool, err := postgresadapter.OpenPool(ctx, databaseURL, 2)
+	if err != nil {
+		return operations.ProductionAccessRevokeResult{}, err
+	}
+	defer pool.Close()
+	store, err := postgresadapter.NewProductionAccessStore(pool)
+	if err != nil {
+		return operations.ProductionAccessRevokeResult{}, err
+	}
+	return store.Revoke(ctx, command)
 }
 
 func listQuotaReconciliationCandidates(

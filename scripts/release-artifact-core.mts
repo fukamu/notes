@@ -402,6 +402,10 @@ export function validateRuntimePaths(
       candidate !== 'notes' &&
       candidate !== 'app' &&
       candidate !== 'app/static' &&
+      candidate !== 'etc' &&
+      candidate !== 'etc/ssl' &&
+      candidate !== 'etc/ssl/certs' &&
+      candidate !== 'etc/ssl/certs/ca-certificates.crt' &&
       !candidate.startsWith('app/static/')
     ) {
       throw new TypeError('release image contains unexpected runtime content');
@@ -424,6 +428,7 @@ export function validateRuntimePaths(
     'app/static/index.html',
     'app/static/sw.js',
     'app/static/manifest.webmanifest',
+    'etc/ssl/certs/ca-certificates.crt',
   ]) {
     if (!paths.has(required)) {
       throw new TypeError('release image is missing required runtime content');

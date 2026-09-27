@@ -484,7 +484,8 @@ func runV12Concurrency(
 	barrier := newV12BarrierApplication(harness.application, users)
 	runtime := &httpapi.SyncV2Runtime{
 		ExpectedOrigin: serverLoadExpectedOrigin, Clock: func() int64 { return serverLoadSynchronizedAt },
-		Sessions: harness.sessions, Entitlement: serverLoadEntitlement{}, Application: barrier,
+		Sessions: harness.sessions, Admission: allowVaultAdmission{},
+		Entitlement: serverLoadEntitlement{}, Application: barrier,
 	}
 	handler, err := httpapi.NewSyncV2ContractHandler(runtime, harness.logger)
 	if err != nil {

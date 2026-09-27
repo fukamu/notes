@@ -67,6 +67,12 @@ func TestPostgresFoundation(t *testing.T) {
 	if err != nil || version != migrations.LatestVersion {
 		t.Fatalf("version = %d, error = %v", version, err)
 	}
+	target, err := migrator.Target()
+	if err != nil || target.Version != migrations.LatestVersion ||
+		target.Path != "00018_production_session_identity.sql" ||
+		!strings.HasPrefix(target.Checksum, "sha256:") || len(target.Checksum) != 71 {
+		t.Fatalf("migration target = %#v, error = %v", target, err)
+	}
 
 	assertCoreTables(t, ctx, pool)
 	assertConstraints(t, ctx, pool)
@@ -285,6 +291,11 @@ func assertCoreTables(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 		"schema_migrations",
 		"launch_config",
 		"launch_allowed_users",
+		"oidc_login_transactions",
+		"content_nonce_reservations",
+		"limited_access_grants",
+		"feature_flags",
+		"feature_flag_accounts",
 		"notes_goose_versions",
 		"notes_goose_checksums",
 	} {

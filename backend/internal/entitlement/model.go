@@ -64,6 +64,9 @@ const (
 	DenialLeaseScopeMismatch     DenialReason = "lease-scope-mismatch"
 	DenialOnlineRequired         DenialReason = "online-required"
 	DenialIdentifierConflict     DenialReason = "identifier-conflict"
+	DenialLimitedAccessRequired  DenialReason = "limited-access-required"
+	DenialLimitedAccessExpired   DenialReason = "limited-access-expired"
+	DenialLimitedAccessRevoked   DenialReason = "limited-access-revoked"
 )
 
 type Basis string
@@ -72,6 +75,7 @@ const (
 	BasisTrial    Basis = "trial"
 	BasisPaid     Basis = "paid"
 	BasisRecovery Basis = "recovery"
+	BasisLimited  Basis = "limited"
 )
 
 type DecisionKind string

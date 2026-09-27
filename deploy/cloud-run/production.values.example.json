@@ -1,0 +1,33 @@
+{
+  "projectId": "fukamu-notes-example",
+  "projectNumber": "123456789012",
+  "region": "asia-southeast1",
+  "serviceName": "notes",
+  "operationsJobName": "notes-operations",
+  "runtimeServiceAccount": "notes-runtime@fukamu-notes-example.iam.gserviceaccount.com",
+  "operationsServiceAccount": "notes-operations@fukamu-notes-example.iam.gserviceaccount.com",
+  "runtimeImageDigest": "asia-southeast1-docker.pkg.dev/fukamu-notes-example/notes/runtime@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "operationsImageDigest": "asia-southeast1-docker.pkg.dev/fukamu-notes-example/notes/notesctl@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "publicOrigin": "https://notes-123456789012.asia-southeast1.run.app",
+  "oidcClientId": "123456789012-example.apps.googleusercontent.com",
+  "gcsBucket": "fukamu-notes-example-private",
+  "kmsKeyVersion": "projects/fukamu-notes-example/locations/asia-southeast1/keyRings/notes/cryptoKeys/content/cryptoKeyVersions/1",
+  "secrets": {
+    "runtimeDatabaseUrl": {
+      "name": "notes-runtime-database-url",
+      "version": "1"
+    },
+    "operationsDatabaseUrl": {
+      "name": "notes-operations-database-url",
+      "version": "1"
+    },
+    "oidcClientSecret": {
+      "name": "notes-oidc-client-secret",
+      "version": "1"
+    },
+    "cursorHmacKey": {
+      "name": "notes-cursor-hmac-key",
+      "version": "1"
+    }
+  }
+}

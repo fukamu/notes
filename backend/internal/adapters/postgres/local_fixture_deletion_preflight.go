@@ -87,10 +87,11 @@ var expectedLocalFixtureTables = []string{
 	"account_deletion_continuations", "account_deletion_operations", "account_deletion_step_receipts",
 	"accounts", "billing_checkout_intents", "billing_provider_event_receipts",
 	"billing_reconciliation_checkpoints", "billing_subscriptions", "card_mutations", "cards",
-	"conflicts", "contract_evidence", "entitlement_offline_leases", "entitlement_projections",
-	"identities", "launch_allowed_users", "launch_config", "notes_goose_checksums",
+	"conflicts", "content_nonce_reservations", "contract_evidence", "entitlement_offline_leases",
+	"entitlement_projections", "feature_flag_accounts", "feature_flags", "identities",
+	"launch_allowed_users", "launch_config", "limited_access_grants", "notes_goose_checksums",
 	"notes_goose_versions", "personal_vaults", "privacy_requests", "schema_migrations", "sessions",
-	"signup_admission_reservations", "sync_state", "terms_consent_evidence",
+	"oidc_login_transactions", "session_identities", "signup_admission_reservations", "sync_state", "terms_consent_evidence",
 	"vault_dek_rotation_operations", "vault_dek_versions", "vault_encrypted_objects",
 	"vault_encrypted_write_intents", "vault_object_delete_outbox", "vault_quota_finalization_assertions",
 	"vault_quota_reservations", "vault_quota_usage", "vault_reencryption_jobs", "vault_sync_v2_cards",
@@ -144,13 +145,21 @@ func inspectDeletionDatabaseEnvelope(
 	); err != nil || launchCount != 1 || allowedCount != 1 || legacyCount != 0 || syncCount != 1 {
 		return ErrLocalFixtureConflict
 	}
-	var launchRows, allowedRows, syncRows int64
+	var launchRows, allowedRows, syncRows, oidcRows, featureFlagRows int64
 	if err := tx.QueryRow(ctx, `SELECT
 		(SELECT COUNT(*) FROM launch_config),
 		(SELECT COUNT(*) FROM launch_allowed_users),
-		(SELECT COUNT(*) FROM sync_state)
-	`).Scan(&launchRows, &allowedRows, &syncRows); err != nil ||
-		launchRows != 1 || allowedRows != 1 || syncRows != 1 {
+		(SELECT COUNT(*) FROM sync_state),
+		(SELECT COUNT(*) FROM oidc_login_transactions),
+		(SELECT COUNT(*) FROM feature_flags
+		 WHERE flag_name = 'billing-checkout' AND NOT globally_enabled AND updated_at = 0)
+	`).Scan(&launchRows, &allowedRows, &syncRows, &oidcRows, &featureFlagRows); err != nil ||
+		launchRows != 1 || allowedRows != 1 || syncRows != 1 || oidcRows != 0 || featureFlagRows != 1 {
+		return ErrLocalFixtureConflict
+	}
+	var allFeatureFlags int64
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM feature_flags`).Scan(&allFeatureFlags); err != nil ||
+		allFeatureFlags != 1 {
 		return ErrLocalFixtureConflict
 	}
 	return nil
@@ -172,8 +181,11 @@ func inspectDeletionForeignInventory(
 		{`SELECT COUNT(*) FROM identities WHERE account_id <> $1`, []any{accountID}},
 		{`SELECT COUNT(*) FROM sessions WHERE account_id <> $1 OR vault_id <> $2`, []any{accountID, vaultID}},
 		{`SELECT COUNT(*) FROM verified_email_owners WHERE account_id <> $1`, []any{accountID}},
+		{`SELECT COUNT(*) FROM limited_access_grants WHERE account_id <> $1 OR vault_id <> $2`, []any{accountID, vaultID}},
+		{`SELECT COUNT(*) FROM feature_flag_accounts WHERE account_id <> $1`, []any{accountID}},
 		{`SELECT COUNT(*) FROM signup_admission_reservations WHERE account_id <> $1 OR vault_id <> $2`, []any{accountID, vaultID}},
 		{`SELECT COUNT(*) FROM vault_dek_versions WHERE vault_id <> $1`, []any{vaultID}},
+		{`SELECT COUNT(*) FROM content_nonce_reservations WHERE vault_id <> $1`, []any{vaultID}},
 		{`SELECT COUNT(*) FROM vault_encrypted_objects WHERE vault_id <> $1`, []any{vaultID}},
 		{`SELECT COUNT(*) FROM vault_encrypted_write_intents WHERE vault_id <> $1`, []any{vaultID}},
 		{`SELECT COUNT(*) FROM vault_object_delete_outbox WHERE vault_id <> $1`, []any{vaultID}},

@@ -75,6 +75,9 @@ func termsConsentRoute(options HandlerOptions) http.HandlerFunc {
 
 func checkoutRoute(options HandlerOptions) http.HandlerFunc {
 	if options.LegalRuntime == nil {
+		if options.ProductionFeatureRuntime != nil {
+			return productionCheckoutByFeature(options.ProductionFeatureRuntime)
+		}
 		return disconnectedProtectedAPI(
 			options.PrivateRuntime,
 			options.EnableDisconnectedFixtures,

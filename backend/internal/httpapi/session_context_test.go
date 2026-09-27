@@ -11,6 +11,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/entitlement"
 	"github.com/fukamu/notes/backend/internal/httpapi"
 	"github.com/fukamu/notes/backend/internal/identity"
+	"github.com/fukamu/notes/backend/internal/launchgate"
 	"github.com/fukamu/notes/backend/internal/syncv2"
 )
 
@@ -147,6 +148,73 @@ func TestSessionContextAuthenticatesBeforeRejectingBodiesAndFailsClosed(t *testi
 	}
 }
 
+func TestSessionContextEnforcesLaunchAdmission(t *testing.T) {
+	t.Parallel()
+	staticDirectory := t.TempDir()
+	writeStaticFixture(t, staticDirectory)
+	runtime := muxSyncV2Runtime()
+	runtime.Admission.(*syncV2AdmissionStub).decision = launchgate.Decision{}
+	handler, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory: staticDirectory, BodyLimit: 4_000_000,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), SyncV2Runtime: runtime,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/session-context", nil)
+	request.Header.Set("Cookie", identity.SessionCookieName+"="+syncV2TestToken)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden ||
+		strings.TrimSpace(response.Body.String()) != `{"error":"forbidden"}` {
+		t.Fatalf("denied session context = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestSessionBackedLaunchStatusDistinguishesAnonymousAllowedAndRevokedAdmission(t *testing.T) {
+	t.Parallel()
+	staticDirectory := t.TempDir()
+	writeStaticFixture(t, staticDirectory)
+	session := &identity.Session{
+		Kind: identity.SessionActive, SessionID: syncV2TestSessionID,
+		AccountID: syncV2TestAccountID, VaultID: syncV2TestVaultID,
+		SessionEpoch: 1, IssuedAt: 1_000, ExpiresAt: 2_000,
+	}
+	sessions := &syncV2SessionStub{session: session}
+	admission := &syncV2AdmissionStub{decision: launchgate.Decision{UserAllowed: true, CanAccess: true}}
+	handler, err := httpapi.NewHandler(httpapi.HandlerOptions{
+		StaticDirectory: staticDirectory, BodyLimit: 4_000_000,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		SessionAccessRuntime: &httpapi.SessionAccessRuntime{
+			Clock: func() int64 { return 1_500 }, Sessions: sessions, Admission: admission,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	anonymous := httptest.NewRecorder()
+	handler.ServeHTTP(anonymous, httptest.NewRequest(http.MethodGet, "/api/launch-status", nil))
+	if anonymous.Code != http.StatusOK || !strings.Contains(anonymous.Body.String(), `"authenticated":false`) ||
+		!strings.Contains(anonymous.Body.String(), `"canAccess":false`) {
+		t.Fatalf("anonymous launch status = %d %s", anonymous.Code, anonymous.Body.String())
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/launch-status", nil)
+	request.Header.Set("Cookie", identity.SessionCookieName+"="+syncV2TestToken)
+	allowed := httptest.NewRecorder()
+	handler.ServeHTTP(allowed, request)
+	if allowed.Code != http.StatusOK || !strings.Contains(allowed.Body.String(), `"authenticated":true`) ||
+		!strings.Contains(allowed.Body.String(), `"canAccess":true`) {
+		t.Fatalf("allowed launch status = %d %s", allowed.Code, allowed.Body.String())
+	}
+	admission.decision = launchgate.Decision{}
+	revoked := httptest.NewRecorder()
+	handler.ServeHTTP(revoked, request)
+	if revoked.Code != http.StatusOK || !strings.Contains(revoked.Body.String(), `"authenticated":true`) ||
+		!strings.Contains(revoked.Body.String(), `"canAccess":false`) {
+		t.Fatalf("revoked launch status = %d %s", revoked.Code, revoked.Body.String())
+	}
+}
+
 func TestLocalSyncV2MuxAppliesConfiguredBodyLimitAfterAuthentication(t *testing.T) {
 	t.Parallel()
 	staticDirectory := t.TempDir()
@@ -217,6 +285,8 @@ func muxSyncV2Runtime() *httpapi.SyncV2Runtime {
 	}}
 	return &httpapi.SyncV2Runtime{
 		ExpectedOrigin: syncV2TestOrigin, Clock: func() int64 { return 1_500 },
-		Sessions: &syncV2SessionStub{session: session}, Entitlement: access, Application: application,
+		Sessions:    &syncV2SessionStub{session: session},
+		Admission:   &syncV2AdmissionStub{decision: launchgate.Decision{UserAllowed: true, CanAccess: true}},
+		Entitlement: access, Application: application,
 	}
 }

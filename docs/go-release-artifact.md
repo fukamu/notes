@@ -33,16 +33,26 @@ an immutable registry digest as the deployable identity.
 The checked image must satisfy all of these conditions:
 
 - the final stage is `scratch`, containing only the statically linked Go
-  `/notes` binary and built `/app/static` frontend;
+  `/notes` binary, built `/app/static` frontend, and the exact system CA bundle
+  required for OIDC/GCS/KMS HTTPS;
 - runtime identity is exactly `65532:65532`, entrypoint is exactly `/notes`,
   and baked configuration is the reviewed non-secret production-disabled
   default;
 - OCI source, title, and full Git revision match the inspected build;
-- every saved runtime-layer entry is a regular file or directory under
-  `/notes` or `/app/static`; links, unsafe paths, Node/npm, `node_modules`, old
-  server/database/API source, TypeScript, and SQL are rejected;
+- every saved runtime-layer entry is a regular file or directory under the
+  exact `/notes`, `/app/static`, or `/etc/ssl/certs/ca-certificates.crt`
+  allowlist; links, unsafe paths, Node/npm, `node_modules`, old server/database/
+  API source, TypeScript, and SQL are rejected;
 - the required shell, service worker, web manifest, JavaScript, Go binary, and
   complete frontend tree receive size and SHA-256 evidence.
+
+The same Dockerfile also has an explicit `notesctl` target for the migration
+and restricted-user operations job. That target is a separate non-root scratch
+image containing only `/notesctl` and the CA bundle. It is never copied into
+the serving runtime, and the default release-artifact verification continues
+to inspect only the final `runtime` target. A release pipeline must pin and
+record the operations-image digest separately before executing a reviewed
+production command.
 
 The repository-level `verify:legacy-retirement` gate separately prevents the
 old TypeScript API/server/database roots, their configs and scripts, and their

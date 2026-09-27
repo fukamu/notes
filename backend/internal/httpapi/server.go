@@ -16,6 +16,10 @@ type ServerOptions struct {
 	ShutdownTimeout            time.Duration
 	Logger                     *slog.Logger
 	PrivateRuntime             *PrivateRuntime
+	SessionAccessRuntime       *SessionAccessRuntime
+	Readiness                  ReadinessChecker
+	OidcAuthRuntime            *OidcAuthRuntime
+	ProductionFeatureRuntime   *ProductionFeatureRuntime
 	SyncV2Runtime              *SyncV2Runtime
 	LegalRuntime               *LegalRuntime
 	BillingCancellationRuntime *BillingCancellationRuntime
@@ -31,6 +35,10 @@ func Run(ctx context.Context, options ServerOptions) error {
 		BodyLimit:                  options.BodyLimit,
 		Logger:                     options.Logger,
 		PrivateRuntime:             options.PrivateRuntime,
+		SessionAccessRuntime:       options.SessionAccessRuntime,
+		Readiness:                  options.Readiness,
+		OidcAuthRuntime:            options.OidcAuthRuntime,
+		ProductionFeatureRuntime:   options.ProductionFeatureRuntime,
 		SyncV2Runtime:              options.SyncV2Runtime,
 		LegalRuntime:               options.LegalRuntime,
 		BillingCancellationRuntime: options.BillingCancellationRuntime,
