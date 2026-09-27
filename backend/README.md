@@ -235,24 +235,41 @@ one opaque allowlisted fixture subject.
 `NOTES_ENVIRONMENT=production` and `NOTES_PRIVATE_AUTH_MODE=google-oidc`. It
 requires `NOTES_DATABASE_URL`, optional bounded
 `NOTES_DATABASE_MAX_CONNECTIONS`, an HTTPS `NOTES_PUBLIC_ORIGIN`, and
-`NOTES_OIDC_CLIENT_ID`/`NOTES_OIDC_CLIENT_SECRET`. The exact callback is
+`NOTES_OIDC_CLIENT_ID`/`NOTES_OIDC_CLIENT_SECRET`. Encrypted Sync additionally
+requires a private `NOTES_GCS_BUCKET`, an explicit
+`NOTES_GCP_KMS_CRYPTO_KEY_VERSION`, and the canonical 32-byte base64url
+`NOTES_PRODUCTION_CURSOR_HMAC_KEY`. The exact callback is
 derived as `<public-origin>/auth/google/callback`; it is not accepted from a
 second independently mutable setting. The client secret must be injected at
-runtime and must never be committed or printed.
+runtime and must never be committed or printed. The cursor key has the same
+secret-handling requirement.
 
 This profile composes Google OIDC, PostgreSQL sessions and identity bindings,
 database readiness, Launch gate re-evaluation, and server-side feature-flag
-evaluation. It does not read any local signed key, fixture directory, fake
-identity, or local object/key adapter. The initial `billing-checkout` flag is
-OFF. Even if an operator enables it, the current production route remains
+evaluation. It also composes limited-access entitlement, Sync v2, PostgreSQL
+metadata and shared nonce reservations, private GCS ciphertext, and the
+versioned Cloud KMS envelope adapter. Google API tokens come only from the
+Cloud Run metadata service identity and are cached for less than their stated
+lifetime; no credential file or token setting is accepted. It does not read
+any local signed key, fixture directory, fake identity, or local object/key
+adapter. The scratch image contains the CA bundle required for provider HTTPS,
+but no Node.js runtime. The initial `billing-checkout` flag is OFF. Even if an
+operator enables it, the current production route remains
 fail-closed until a separately reviewed real Checkout composition exists, so
 the flag alone cannot create a payment.
+
+New Vault DEKs are wrapped with the configured full KMS key-version resource.
+Stored metadata retains that exact version. Reads derive the parent key from
+each stored reference, so old wrapped DEKs remain decryptable after the
+configured write version advances, provided the old KMS version and IAM access
+are retained. A KMS, metadata-token, GCS, authentication, or integrity failure
+fails the request; it never falls back to plaintext storage.
 
 Before login, an operator must create the Account/Vault/Google identity,
 allowlist the verified Google subject, and grant an expiring limited-access
 entitlement through the reviewed provisioning command delivered with the
-production storage/KMS composition. No HTTP request auto-provisions or
-auto-allows a user.
+following production-operations slice. No HTTP request auto-provisions or
+auto-allows a user, and the web server never runs migrations.
 
 ### Fail-closed local fixture foundation
 

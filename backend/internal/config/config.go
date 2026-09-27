@@ -70,6 +70,9 @@ type ProductionConfig struct {
 	OidcClientID       identity.OidcClientID
 	OidcClientSecret   string
 	OidcRedirectURI    identity.OidcRedirectURI
+	GCSBucket          string
+	GCPKMSKeyVersion   string
+	CursorHMACKey      [32]byte
 }
 
 type LocalFixtureConfig struct {
@@ -131,6 +134,9 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		"NOTES_LEGACY_OWNER_SUBJECT",
 		"NOTES_OIDC_CLIENT_ID",
 		"NOTES_OIDC_CLIENT_SECRET",
+		"NOTES_GCS_BUCKET",
+		"NOTES_GCP_KMS_CRYPTO_KEY_VERSION",
+		"NOTES_PRODUCTION_CURSOR_HMAC_KEY",
 	} {
 		if value, ok := lookup(key); ok {
 			values[key] = value
@@ -379,11 +385,11 @@ func parseLocalFixture(
 	if err != nil {
 		return nil, invalid("NOTES_LOCAL_FIXTURE_SESSION_TOKEN", "must be a canonical session token")
 	}
-	cursorKey, err := parseFixtureSecret(values, "NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY")
+	cursorKey, err := parseBase64Secret(values, "NOTES_LOCAL_FIXTURE_CURSOR_HMAC_KEY")
 	if err != nil {
 		return nil, err
 	}
-	deletionKey, err := parseFixtureSecret(values, "NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY")
+	deletionKey, err := parseBase64Secret(values, "NOTES_LOCAL_FIXTURE_DELETION_HMAC_KEY")
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +432,7 @@ func parseLocalFixture(
 	}, nil
 }
 
-func parseFixtureSecret(values map[string]string, key string) ([32]byte, error) {
+func parseBase64Secret(values map[string]string, key string) ([32]byte, error) {
 	value, err := required(values, key)
 	if err != nil {
 		return [32]byte{}, err
@@ -628,9 +634,28 @@ func parseProduction(
 	if err != nil {
 		return nil, invalid("NOTES_PUBLIC_ORIGIN", "cannot form the OIDC callback URI")
 	}
+	bucket, err := required(values, "NOTES_GCS_BUCKET")
+	if err != nil {
+		return nil, err
+	}
+	if len(bucket) < 3 || len(bucket) > 63 || strings.ContainsAny(bucket, "\r\n\x00/") {
+		return nil, invalid("NOTES_GCS_BUCKET", "must be a bounded bucket name")
+	}
+	keyVersion, err := required(values, "NOTES_GCP_KMS_CRYPTO_KEY_VERSION")
+	if err != nil {
+		return nil, err
+	}
+	if len(keyVersion) > 2_048 || strings.ContainsAny(keyVersion, "\r\n\x00") {
+		return nil, invalid("NOTES_GCP_KMS_CRYPTO_KEY_VERSION", "must be a bounded key-version resource")
+	}
+	cursorKey, err := parseBase64Secret(values, "NOTES_PRODUCTION_CURSOR_HMAC_KEY")
+	if err != nil {
+		return nil, err
+	}
 	return &ProductionConfig{
 		DatabaseURL: databaseURL, MaximumConnections: int32(maximumConnections), PublicOrigin: origin,
 		OidcClientID: clientID, OidcClientSecret: clientSecret, OidcRedirectURI: redirectURI,
+		GCSBucket: bucket, GCPKMSKeyVersion: keyVersion, CursorHMACKey: cursorKey,
 	}, nil
 }
 

@@ -103,8 +103,10 @@ must supply the release's concrete values without committing secret material:
   backups, retention, capacity and recurring cost;
 - the Google OAuth client, exact callback URL, and initial verified provider
   subject mapping;
-- secrets and key references, redacted telemetry, and an isolated rehearsal
-  environment;
+- a private GCS bucket, full enabled Cloud KMS crypto-key-version resource,
+  runtime service identity with object access plus KMS encrypt/decrypt only,
+  and a Secret Manager reference for the cursor HMAC key;
+- secret references, redacted telemetry, and an isolated restore target;
 - exact migration, smoke-test, cutover and rollback commands.
 
 An approved operator runbook must keep general access closed, migrate a new

@@ -57,6 +57,10 @@ function validRuntimePaths(): string[] {
     'app/static/sw.js',
     'app/static/manifest.webmanifest',
     'app/static/assets/index-a1b2c3.js',
+    'etc/',
+    'etc/ssl/',
+    'etc/ssl/certs/',
+    'etc/ssl/certs/ca-certificates.crt',
   ];
 }
 
@@ -375,6 +379,13 @@ describe('release image boundary', () => {
 
   it('allows regular runtime content and denies links or legacy server artifacts', () => {
     expect(validateRuntimePaths(validRuntimePaths())).toContain('notes');
+    expect(() =>
+      validateRuntimePaths(
+        validRuntimePaths().filter(
+          (value) => value !== 'etc/ssl/certs/ca-certificates.crt',
+        ),
+      ),
+    ).toThrow('missing required runtime content');
     expect(() => validateLayerTypes(['lrwxrwxrwx link -> target'])).toThrow(
       'non-regular',
     );

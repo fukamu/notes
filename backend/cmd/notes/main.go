@@ -16,7 +16,9 @@ import (
 	accessadapter "github.com/fukamu/notes/backend/internal/adapters/access"
 	accountdeletioncredentialadapter "github.com/fukamu/notes/backend/internal/adapters/accountdeletioncredential"
 	contentcryptoadapter "github.com/fukamu/notes/backend/internal/adapters/contentcrypto"
+	gcpidentityadapter "github.com/fukamu/notes/backend/internal/adapters/gcpidentity"
 	identityadapter "github.com/fukamu/notes/backend/internal/adapters/identity"
+	kmsadapter "github.com/fukamu/notes/backend/internal/adapters/kms"
 	legalhashadapter "github.com/fukamu/notes/backend/internal/adapters/legalhash"
 	localcommerceadapter "github.com/fukamu/notes/backend/internal/adapters/localcommerce"
 	localfixtureadapter "github.com/fukamu/notes/backend/internal/adapters/localfixture"
@@ -645,6 +647,73 @@ func composeProductionRuntime(
 	if err != nil {
 		return fail("configure production OIDC provider")
 	}
+	gcpClient := &http.Client{Timeout: 15 * time.Second}
+	gcpTokens, err := gcpidentityadapter.NewServiceIdentityAccessTokenSource(gcpClient)
+	if err != nil {
+		return fail("configure production service identity")
+	}
+	kmsTransport, err := kmsadapter.NewRESTTransport(gcpTokens, gcpClient)
+	if err != nil {
+		return fail("configure production KMS transport")
+	}
+	keys, err := kmsadapter.NewGCPKeyManagement(
+		settings.GCPKMSKeyVersion, kmsTransport, kmsadapter.SecureEntropy{}, kmsadapter.SystemClock{},
+	)
+	if err != nil {
+		return fail("configure production KMS key version")
+	}
+	objects, err := objectstorageadapter.NewGCS(settings.GCSBucket, gcpTokens, gcpClient)
+	if err != nil {
+		return fail("configure production private object storage")
+	}
+	nonces, err := postgresadapter.NewNonceReservationStore(pool)
+	if err != nil {
+		return fail("configure production nonce reservations")
+	}
+	keyrings, err := postgresadapter.NewVaultDEKStore(pool)
+	if err != nil {
+		return fail("configure production Vault keyrings")
+	}
+	encryption, err := cryptocontent.NewService(
+		keys, contentcryptoadapter.NewSecureRandomNonceGenerator(), nonces, contentcryptoadapter.AES256GCM{},
+	)
+	if err != nil {
+		return fail("configure production envelope encryption")
+	}
+	journals, err := postgresadapter.NewSyncV2JournalDirectory(pool)
+	if err != nil {
+		return fail("configure production Sync journal")
+	}
+	metadata, err := postgresadapter.NewSyncV2MetadataDirectory(pool)
+	if err != nil {
+		return fail("configure production encrypted metadata")
+	}
+	quotas, err := postgresadapter.NewQuotaLedgerDirectory(pool)
+	if err != nil {
+		return fail("configure production quota")
+	}
+	limitedAccess, err := postgresadapter.NewLimitedAccessStore(pool)
+	if err != nil {
+		return fail("configure production limited access")
+	}
+	accessEntitlement, err := entitlement.NewLimitedAccessService(limitedAccess)
+	if err != nil {
+		return fail("configure production limited access")
+	}
+	cursors, err := syncv2.NewCursorAuthenticator(settings.CursorHMACKey[:])
+	if err != nil {
+		return fail("configure production Sync cursor")
+	}
+	contents, err := syncv2.NewEncryptedContentDirectory(
+		metadata, objects, objectstorageadapter.NewRandomObjectKeyGenerator(), encryption, keyrings,
+	)
+	if err != nil {
+		return fail("configure production encrypted content")
+	}
+	syncApplication, err := syncv2.NewApplication(journals, contents, cursors, quotas, 60_000)
+	if err != nil {
+		return fail("configure production Sync application")
+	}
 	clock := systemOidcClock{}
 	authRuntime := &httpapi.OidcAuthRuntime{
 		Configuration: providerConfiguration, RedirectURI: settings.OidcRedirectURI,
@@ -662,6 +731,14 @@ func composeProductionRuntime(
 		readiness:     readiness,
 		oidcAuth:      authRuntime,
 		sessionAccess: accessRuntime,
+		syncV2: &httpapi.SyncV2Runtime{
+			ExpectedOrigin: settings.PublicOrigin.String(),
+			Clock:          func() int64 { return time.Now().UnixMilli() },
+			Sessions:       sessionResolver,
+			Admission:      admission,
+			Entitlement:    accessEntitlement,
+			Application:    syncApplication,
+		},
 		productionFeatures: &httpapi.ProductionFeatureRuntime{
 			ExpectedOrigin: settings.PublicOrigin.String(), Access: accessRuntime, Flags: flags,
 		},
