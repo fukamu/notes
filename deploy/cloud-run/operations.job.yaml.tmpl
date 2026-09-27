@@ -1,0 +1,42 @@
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: @@OPERATIONS_JOB_NAME@@
+  namespace: "@@PROJECT_NUMBER@@"
+  labels:
+    cloud.googleapis.com/location: @@REGION@@
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      parallelism: 1
+      taskCount: 1
+      template:
+        spec:
+          maxRetries: 0
+          timeoutSeconds: 600
+          serviceAccountName: @@OPERATIONS_SERVICE_ACCOUNT@@
+          containers:
+            - name: notesctl
+              image: @@OPERATIONS_IMAGE_DIGEST@@
+              command:
+                - /notesctl
+              args:
+                - production
+                - status
+              env:
+                - name: NOTES_ENVIRONMENT
+                  value: production
+                - name: NOTES_DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: @@OPERATIONS_DATABASE_SECRET_NAME@@
+                      key: "@@OPERATIONS_DATABASE_SECRET_VERSION@@"
+                - name: NOTES_GCP_KMS_CRYPTO_KEY_VERSION
+                  value: @@KMS_KEY_VERSION@@
+              resources:
+                limits:
+                  cpu: 1000m
+                  memory: 512Mi

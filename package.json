@@ -53,6 +53,7 @@
     "check:card-payment-security": "node --experimental-strip-types scripts/verify-card-payment-security.mjs",
     "check:launch-compliance": "node --experimental-strip-types scripts/verify-launch-compliance.mjs",
     "check:production-launch": "node --experimental-strip-types scripts/verify-launch-compliance.mjs --production-release",
+    "check:cloud-run-production": "node --experimental-strip-types scripts/render-cloud-run-production.mts --values deploy/cloud-run/production.values.example.json --check",
     "verify:migration-closure": "node --experimental-strip-types scripts/verify-migration-closure.mts",
     "verify:migration-v12-evidence": "node --experimental-strip-types scripts/verify-migration-v12-evidence.mts",
     "verify:legacy-retirement": "node --experimental-strip-types scripts/verify-legacy-retirement.mts",

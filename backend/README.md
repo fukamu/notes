@@ -427,6 +427,12 @@ does not match `NOTES_ENVIRONMENT`. It does not print connection values.
 
 ## Production migration and restricted access
 
+The production Cloud Run service and operations-job templates, strict
+non-secret renderer, IAM boundary, and provider execution sequence are
+documented in
+[`../docs/cloud-run-production.md`](../docs/cloud-run-production.md). Rendering
+does not create resources or deploy, and the production images remain Go-only.
+
 Build the separate non-root scratch operations image with
 `docker build --target notesctl -f deploy/Dockerfile ...`. It contains only
 `/notesctl` and the system CA bundle; it is not the serving image. The web

@@ -187,6 +187,13 @@ remains an external step requiring its named approval.
 
 ## Guarded production database and access commands
 
+The concrete Cloud Run service/job templates, separate workload identities,
+render validation, provider command shapes, traffic stop, and first-release
+recovery sequence are in
+[`cloud-run-production.md`](cloud-run-production.md). They remain parameterized
+until the owner approves the project, region, PostgreSQL plan, origin, cost
+boundary, and initial Google subject.
+
 Build and pin the `notesctl` Docker target separately from the serving
 `runtime` target. Run it with the migration/service identity and secret
 references supplied by the deployment platform; never put a database URL or
