@@ -2,7 +2,7 @@ package operations
 
 const (
 	maximumOperationalTimestamp int64 = 9_007_199_254_740_991
-	LaunchGateEvidenceVersion         = 1
+	LaunchGateEvidenceVersion         = 2
 )
 
 type OperationEnvironment string
@@ -48,7 +48,6 @@ type EnvironmentActionBlockReason string
 const (
 	EnvironmentActionFixtureOutsideFixtureEnvironment           EnvironmentActionBlockReason = "fixture-action-outside-fixture-environment"
 	EnvironmentActionNonFixtureInFixtureEnvironment             EnvironmentActionBlockReason = "non-fixture-action-in-fixture-environment"
-	EnvironmentActionIsolatedStagingRestoreRequired             EnvironmentActionBlockReason = "isolated-staging-restore-required"
 	EnvironmentActionDestructiveOutsideLaunchWorkflow           EnvironmentActionBlockReason = "destructive-action-outside-launch-workflow"
 	EnvironmentActionProviderConfigurationOutsideLaunchWorkflow EnvironmentActionBlockReason = "provider-configuration-outside-launch-workflow"
 	EnvironmentActionInvalidEnvironment                         EnvironmentActionBlockReason = "invalid-operation-environment"
@@ -85,7 +84,10 @@ func PlanEnvironmentAction(input EnvironmentActionInput) EnvironmentActionPlan {
 			return EnvironmentActionPlan{Kind: EnvironmentActionLaunchGateRequired}
 		}
 		if input.Environment == EnvironmentProduction {
-			return blockedEnvironmentAction(EnvironmentActionIsolatedStagingRestoreRequired)
+			return EnvironmentActionPlan{
+				Kind:     EnvironmentActionLaunchGateAndExplicitApprovalRequired,
+				Approval: ExplicitProductionOperationApprovalRequired,
+			}
 		}
 		return blockedEnvironmentAction(EnvironmentActionNonFixtureInFixtureEnvironment)
 	case ActionDataDelete, ActionKeyDestruction:
@@ -171,16 +173,16 @@ const (
 type ChangeApproval string
 
 const (
-	ChangeApprovalMissing                     ChangeApproval = "missing"
-	ChangeApprovalStagingApproved             ChangeApproval = "staging-approved"
-	ChangeApprovalProductionTwoPersonApproved ChangeApproval = "production-two-person-approved"
+	ChangeApprovalMissing                 ChangeApproval = "missing"
+	ChangeApprovalStagingApproved         ChangeApproval = "staging-approved"
+	ChangeApprovalProductionOwnerApproved ChangeApproval = "production-owner-approved"
 )
 
 type OperationReview string
 
 const (
-	ReviewSingleOperator     OperationReview = "single-operator"
-	ReviewTwoPersonConfirmed OperationReview = "two-person-confirmed"
+	ReviewSingleOperator OperationReview = "single-operator"
+	ReviewOwnerConfirmed OperationReview = "owner-confirmed"
 )
 
 type BackupEvidence string
@@ -263,9 +265,8 @@ type LaunchGateBlockReason string
 const (
 	LaunchGateInvalidEvidence                     LaunchGateBlockReason = "invalid-launch-gate-evidence"
 	LaunchGateTargetUnconfirmed                   LaunchGateBlockReason = "target-unconfirmed"
-	LaunchGateIsolatedStagingRestoreRequired      LaunchGateBlockReason = "isolated-staging-restore-required"
 	LaunchGateChangeApprovalMissing               LaunchGateBlockReason = "change-approval-missing"
-	LaunchGateTwoPersonReviewRequired             LaunchGateBlockReason = "two-person-review-required"
+	LaunchGateOwnerReviewRequired                 LaunchGateBlockReason = "owner-review-required"
 	LaunchGateBackupEvidenceRequired              LaunchGateBlockReason = "backup-evidence-required"
 	LaunchGateRollbackWindowMissing               LaunchGateBlockReason = "rollback-window-missing"
 	LaunchGateRollbackWindowClosed                LaunchGateBlockReason = "rollback-window-closed"
@@ -307,15 +308,12 @@ func EvaluateLaunchGate(evidence LaunchGateEvidence) LaunchGatePlan {
 	if evidence.Target != TargetConfirmed {
 		reasons = append(reasons, LaunchGateTargetUnconfirmed)
 	}
-	if evidence.Environment == LaunchGateProduction && evidence.Action == LaunchActionRestoreDrill {
-		reasons = append(reasons, LaunchGateIsolatedStagingRestoreRequired)
-	}
 	if (evidence.Environment == LaunchGateStaging && evidence.ChangeApproval != ChangeApprovalStagingApproved) ||
-		(evidence.Environment == LaunchGateProduction && evidence.ChangeApproval != ChangeApprovalProductionTwoPersonApproved) {
+		(evidence.Environment == LaunchGateProduction && evidence.ChangeApproval != ChangeApprovalProductionOwnerApproved) {
 		reasons = append(reasons, LaunchGateChangeApprovalMissing)
 	}
-	if evidence.Environment == LaunchGateProduction && evidence.Review != ReviewTwoPersonConfirmed {
-		reasons = append(reasons, LaunchGateTwoPersonReviewRequired)
+	if evidence.Environment == LaunchGateProduction && evidence.Review != ReviewOwnerConfirmed {
+		reasons = append(reasons, LaunchGateOwnerReviewRequired)
 	}
 
 	backupRequired := !isAbort && (evidence.Action == LaunchActionRestoreDrill ||
@@ -424,7 +422,7 @@ func validTargetConfirmation(value TargetConfirmation) bool {
 
 func validChangeApproval(value ChangeApproval) bool {
 	switch value {
-	case ChangeApprovalMissing, ChangeApprovalStagingApproved, ChangeApprovalProductionTwoPersonApproved:
+	case ChangeApprovalMissing, ChangeApprovalStagingApproved, ChangeApprovalProductionOwnerApproved:
 		return true
 	default:
 		return false
@@ -432,7 +430,7 @@ func validChangeApproval(value ChangeApproval) bool {
 }
 
 func validOperationReview(value OperationReview) bool {
-	return value == ReviewSingleOperator || value == ReviewTwoPersonConfirmed
+	return value == ReviewSingleOperator || value == ReviewOwnerConfirmed
 }
 
 func validBackupEvidence(value BackupEvidence) bool {
