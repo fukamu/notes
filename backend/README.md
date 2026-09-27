@@ -27,10 +27,11 @@ Email OTP uses an eight-digit/ten-minute single-use core, HMAC-SHA-256 peppered
 digests, non-reversible abuse keys, and compare-and-swap storage contracts.
 Signup reserves IDs idempotently and atomically creates the account, personal
 vault, provider identity, canonical verified-email owner, and hash-only initial
-session in PostgreSQL. No auth HTTP route, mail adapter, production challenge
-store, rate-limit store, terms adapter, or provider configuration uses these
-packages; local signed launch-gate identity and user sessions remain separate
-boundaries.
+session in PostgreSQL. Migration 00017 and the PostgreSQL OIDC transaction
+adapter make state, nonce, and PKCE verifier durable and single-use across
+instances. No auth HTTP route, mail adapter, rate-limit store, terms adapter,
+or production provider composition uses these packages yet; local signed
+launch-gate identity and user sessions remain separate boundaries.
 
 T07 Issue #428 adds a disconnected Go envelope-encryption module. It preserves
 the existing AES-256-GCM format and canonical object AAD, keeps DEKs in
@@ -39,8 +40,10 @@ key-management port. The GCP Cloud KMS REST adapter validates the exact
 CryptoKeyVersion, wrapped-key AAD, canonical base64, and CRC32C fields and
 fails with fixed errors. Migration 00004 stores wrapped DEK metadata only and
 allows one write key per Vault. The production server does not compose these
-packages, no persistent nonce adapter is supplied, and no GCP resource,
-credential, request, or billing relationship is created.
+packages. Migration 00017 and its PostgreSQL nonce-reservation adapter provide
+the shared uniqueness boundary required before multiple production instances
+may encrypt content, but no GCP resource, credential, request, or billing
+relationship is created.
 
 T08a Issue #430 adds the disconnected immutable encrypted-object repository.
 Migration 00005 stores only Vault-scoped metadata, durable write intents, and
@@ -306,9 +309,13 @@ supplies the deterministic fixture token only as a host-only `Secure`,
 `HttpOnly`, `SameSite=Strict` cookie.
 
 No Stripe, GCP KMS, OIDC/mail, remote object, or backup provider is constructed
-or contacted. Billing is read only as the seeded local entitlement and commerce
-source; checkout never charges and cancellation never contacts a provider. No
-login/session issuance or legacy-data migration is enabled. The delete wire is
+or contacted. Migration 00017 stores explicit expiring/revocable limited-access
+grants and server-side feature flags; `billing-checkout` is seeded configured
+and disabled, and unknown flags evaluate disabled. These foundations do not
+mount an HTTP route or grant access by themselves. Billing is read only as the
+seeded local entitlement and commerce source; checkout never charges and
+cancellation never contacts a provider. No login/session issuance or
+legacy-data migration is enabled. The delete wire is
 available only under the explicit disposable policy. Default and production
 composition pass none of the local-fixture Sync v2, session-context, legal,
 cancellation, privacy-request, or deletion runtimes to the HTTP handler, so
