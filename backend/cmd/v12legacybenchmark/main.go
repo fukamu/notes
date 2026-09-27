@@ -97,13 +97,16 @@ func postgresStoreWitness(ctx context.Context) (string, error) {
 	var schemaOID uint32
 	var migrationVersion int64
 	if err := pool.QueryRow(ctx, `
-		SELECT database.oid, namespace.oid, COALESCE(MAX(migration.version_id), 0)
+		SELECT database.oid, namespace.oid, migration.version_id
 		  FROM pg_database database
 		 CROSS JOIN pg_namespace namespace
-		  LEFT JOIN goose_db_version migration ON true
+		 CROSS JOIN (
+		       SELECT COALESCE(MAX(version_id), 0) AS version_id
+		         FROM notes_goose_versions
+		        WHERE is_applied
+		 ) migration
 		 WHERE database.datname = current_database()
-		   AND namespace.nspname = 'public'
-		 GROUP BY database.oid, namespace.oid`).Scan(&databaseOID, &schemaOID, &migrationVersion); err != nil ||
+		   AND namespace.nspname = 'public'`).Scan(&databaseOID, &schemaOID, &migrationVersion); err != nil ||
 		migrationVersion != int64(migrations.LatestVersion) {
 		return "", errors.New("read local store witness")
 	}
