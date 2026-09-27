@@ -486,8 +486,11 @@ class BrowserNetworkCapture {
   private sessionStatus = 0;
   private referenceInitialRecorded = false;
   private goInitialComplete = false;
+  private readonly target: V12Target;
 
-  constructor(private readonly target: V12Target) {}
+  constructor(target: V12Target) {
+    this.target = target;
+  }
 
   attach(page: Page): void {
     page.on('response', (response) => {
