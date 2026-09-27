@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const maximumSyncV2TransactionAttempts = 3
+const maximumSyncV2TransactionAttempts = 16
 
 var (
 	ErrInvalidSyncV2Operation = errors.New("invalid Sync v2 journal operation")
@@ -82,6 +82,9 @@ func (directory *SyncV2JournalDirectory) Open(
 			return result, nil
 		}
 		if !isRetryableTransactionError(err) || ctx.Err() != nil {
+			return syncv2.OpenResult{}, err
+		}
+		if err := waitForSerializableRetry(ctx, attempt); err != nil {
 			return syncv2.OpenResult{}, err
 		}
 	}
@@ -156,6 +159,9 @@ func (repository *SyncV2JournalRepository) Commit(
 			return syncv2.CommitResult{Kind: syncv2.CommitRejected, Reason: syncv2.ReasonCASConflict}, nil
 		}
 		if !isRetryableTransactionError(err) || ctx.Err() != nil {
+			return syncv2.CommitResult{}, err
+		}
+		if err := waitForSerializableRetry(ctx, attempt); err != nil {
 			return syncv2.CommitResult{}, err
 		}
 	}

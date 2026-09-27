@@ -3,11 +3,14 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+const maximumSerializableRetryDelay = 64 * time.Millisecond
 
 var ErrConcurrentChange = errors.New("expected row was not changed")
 
@@ -32,4 +35,19 @@ func WithSerializableTx(
 		return err
 	}
 	return transaction.Commit(ctx)
+}
+
+func waitForSerializableRetry(ctx context.Context, attempt int) error {
+	delay := time.Millisecond << min(attempt, 6)
+	if delay > maximumSerializableRetryDelay {
+		delay = maximumSerializableRetryDelay
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
