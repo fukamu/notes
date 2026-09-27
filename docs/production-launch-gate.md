@@ -122,6 +122,14 @@ allowlist entry and revokes the grant and active sessions without deleting
 content or keys. Do not substitute an email address or an internal Notes
 account ID for the provider subject.
 
+The read-only `notesctl production status` preflight verifies the exact TLS
+database target, migration checksum ledger, default-closed Launch gate,
+`billing-checkout=false`, active allowlist/grant correspondence, session
+identity bindings, one write key per retained Vault, and encrypted metadata to
+key-version references. It reports aggregate counts and fixed blocker codes
+only. `restricted-empty` is safe for migration/deployment work but does not
+prove that a user can log in; the final release requires `restricted-ready`.
+
 An approved operator runbook must keep general access closed, migrate a new
 empty PostgreSQL database, execute those commands from the separately pinned
 `notesctl` image, and prove that an unlisted subject and direct-origin spoof are
