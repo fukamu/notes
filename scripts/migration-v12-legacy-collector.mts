@@ -1427,7 +1427,7 @@ function rounded(value: number): number {
 export function fixtureSeedSQL(scale: number): string {
   if (![100, 1_000, 10_000].includes(scale))
     throw new Error('unsupported fixture scale');
-  const statements = ['BEGIN;'];
+  const statements: string[] = [];
   for (let offset = 0; offset < scale; offset += 100) {
     const cards: string[] = [];
     const mutations: string[] = [];
@@ -1453,7 +1453,6 @@ export function fixtureSeedSQL(scale: number): string {
   }
   statements.push(
     `UPDATE sync_state SET next_display_id=${scale + 1} WHERE singleton=1;`,
-    'COMMIT;',
   );
   return `${statements.join('\n')}\n`;
 }
