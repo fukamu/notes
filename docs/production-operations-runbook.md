@@ -193,6 +193,13 @@ references supplied by the deployment platform; never put a database URL or
 token on a recorded command line. Substitute the reviewed non-secret values:
 
 ```sh
+notesctl production status \
+  --environment=production \
+  --observed-at-millis=<reviewed-unix-ms> \
+  --expected-database-host=<exact-host> \
+  --expected-database-name=<exact-name> \
+  --confirm-production-read-only
+
 notesctl migrate \
   --environment=production \
   --expected-database-host=<exact-host> \
@@ -214,6 +221,14 @@ notesctl access provision \
   --confirm-production-access-mutation \
   --confirm-kms-encrypt
 ```
+
+Run `production status` before migration to record the expected
+`schema-mismatch`, after migration to require `restricted-empty`, after
+provisioning to require `restricted-ready`, and again immediately before
+traffic. A blocked result is a stop condition. The aggregate output is safe for
+the release packet, but raw provider command output and connection details are
+not. A revoked last user returns to `restricted-empty` while the retained
+Account, Vault, wrapped keys, and encrypted-object counts remain visible.
 
 The migration reports previous/target/applied schema versions and the embedded
 target checksum, holds the Goose PostgreSQL session lock, and performs no reset,
@@ -247,6 +262,11 @@ offline content from a device; use the normal logout purge on participating
 devices and treat the offline-use window separately. Any target mismatch,
 public Launch gate, enabled checkout, checksum drift, KMS failure, or partial
 stored access state is a stop condition, not permission for ad-hoc SQL.
+
+Fill the reviewable packet in
+[`production-release-packet.md`](production-release-packet.md) with immutable
+digests and references before any provider mutation. Do not commit a database
+URL, secret value, OAuth token, raw identity, or provider response.
 
 ## Rollback decision tree
 

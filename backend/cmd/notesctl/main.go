@@ -46,6 +46,11 @@ func main() {
 }
 
 func run(ctx context.Context, arguments []string, stdout io.Writer, stderr io.Writer) int {
+	if len(arguments) > 0 && arguments[0] == "production" {
+		return runProductionStatus(
+			ctx, arguments, stdout, stderr, os.LookupEnv, inspectProductionStatus,
+		)
+	}
 	if len(arguments) > 0 && arguments[0] == "access" {
 		return runProductionAccess(
 			ctx, arguments, stdout, stderr, os.LookupEnv,
@@ -162,6 +167,150 @@ type revokeProductionAccessFunction func(
 	string,
 	operations.ProductionAccessRevokeCommand,
 ) (operations.ProductionAccessRevokeResult, error)
+
+type productionStatusFunction func(
+	context.Context,
+	string,
+	int64,
+) (operations.ProductionStatusResult, error)
+
+type productionStatusArguments struct {
+	observedAt       int64
+	expectedHost     string
+	expectedDatabase string
+}
+
+func parseProductionStatusArguments(arguments []string) (productionStatusArguments, error) {
+	if len(arguments) < 2 || arguments[0] != "production" || arguments[1] != "status" {
+		return productionStatusArguments{}, operations.ErrProductionStatus
+	}
+	values := make(map[string]string, 4)
+	confirmed := false
+	for _, argument := range arguments[2:] {
+		if argument == "--confirm-production-read-only" {
+			if confirmed {
+				return productionStatusArguments{}, operations.ErrProductionStatus
+			}
+			confirmed = true
+			continue
+		}
+		name, value, found := strings.Cut(argument, "=")
+		if !found || value == "" ||
+			(name != "--environment" && name != "--observed-at-millis" &&
+				name != "--expected-database-host" && name != "--expected-database-name") {
+			return productionStatusArguments{}, operations.ErrProductionStatus
+		}
+		if _, duplicate := values[name]; duplicate {
+			return productionStatusArguments{}, operations.ErrProductionStatus
+		}
+		values[name] = value
+	}
+	if !confirmed || len(values) != 4 || values["--environment"] != "production" {
+		return productionStatusArguments{}, operations.ErrProductionStatus
+	}
+	observedAt, err := strconv.ParseInt(values["--observed-at-millis"], 10, 64)
+	if err != nil || observedAt < 0 || observedAt > entitlement.MaximumSafeInteger {
+		return productionStatusArguments{}, operations.ErrProductionStatus
+	}
+	parsed := productionStatusArguments{
+		observedAt: observedAt, expectedHost: values["--expected-database-host"],
+		expectedDatabase: values["--expected-database-name"],
+	}
+	if parsed.expectedHost == "" || parsed.expectedDatabase == "" {
+		return productionStatusArguments{}, operations.ErrProductionStatus
+	}
+	return parsed, nil
+}
+
+func runProductionStatus(
+	parent context.Context,
+	arguments []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	lookup func(string) (string, bool),
+	inspect productionStatusFunction,
+) int {
+	parsed, err := parseProductionStatusArguments(arguments)
+	if err != nil || parent == nil || inspect == nil {
+		printUsage(stderr)
+		return 2
+	}
+	databaseConfig, err := config.LoadDatabase(lookup)
+	if err != nil || databaseConfig.Environment != config.EnvironmentProduction {
+		_, _ = fmt.Fprintln(stderr, "production status configuration invalid")
+		return 1
+	}
+	if postgresadapter.ValidateProductionDatabaseTarget(
+		databaseConfig.URL, parsed.expectedHost, parsed.expectedDatabase,
+	) != nil {
+		_, _ = fmt.Fprintln(stderr, "production status target refused")
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+	defer cancel()
+	result, err := inspect(ctx, databaseConfig.URL, parsed.observedAt)
+	if err != nil || result.Facts.ObservedAtMillis != parsed.observedAt ||
+		(result.Outcome != operations.ProductionStatusBlocked &&
+			result.Outcome != operations.ProductionStatusRestrictedEmpty &&
+			result.Outcome != operations.ProductionStatusRestrictedReady) {
+		_, _ = fmt.Fprintln(stderr, "production status inspection failed")
+		return 1
+	}
+	facts := result.Facts
+	output := struct {
+		Command                      string                               `json:"command"`
+		Outcome                      operations.ProductionStatusOutcome   `json:"outcome"`
+		ObservedAtMillis             int64                                `json:"observedAtMillis"`
+		AppliedSchemaVersion         int64                                `json:"appliedSchemaVersion"`
+		TargetSchemaVersion          int64                                `json:"targetSchemaVersion"`
+		TargetSchemaChecksum         string                               `json:"targetSchemaChecksum"`
+		LaunchConfigRows             int64                                `json:"launchConfigRows"`
+		PublicAccessEnabled          bool                                 `json:"publicAccessEnabled"`
+		BillingCheckoutFlagRows      int64                                `json:"billingCheckoutFlagRows"`
+		BillingCheckoutEnabled       bool                                 `json:"billingCheckoutEnabled"`
+		Accounts                     int64                                `json:"accounts"`
+		Vaults                       int64                                `json:"vaults"`
+		GoogleIdentities             int64                                `json:"googleIdentities"`
+		AllowedUsers                 int64                                `json:"allowedUsers"`
+		ActiveLimitedGrants          int64                                `json:"activeLimitedGrants"`
+		ExpiredUnrevokedGrants       int64                                `json:"expiredUnrevokedGrants"`
+		ActiveSessions               int64                                `json:"activeSessions"`
+		WrappedKeyVersions           int64                                `json:"wrappedKeyVersions"`
+		WriteKeys                    int64                                `json:"writeKeys"`
+		EncryptedObjects             int64                                `json:"encryptedObjects"`
+		PendingEncryptedWrites       int64                                `json:"pendingEncryptedWrites"`
+		PendingObjectDeletes         int64                                `json:"pendingObjectDeletes"`
+		NonceReservations            int64                                `json:"nonceReservations"`
+		AccessInconsistencies        int64                                `json:"accessInconsistencies"`
+		CryptographicInconsistencies int64                                `json:"cryptographicInconsistencies"`
+		Blockers                     []operations.ProductionStatusBlocker `json:"blockers"`
+	}{
+		Command: "production-status", Outcome: result.Outcome,
+		ObservedAtMillis: parsed.observedAt, AppliedSchemaVersion: facts.AppliedSchemaVersion,
+		TargetSchemaVersion: facts.TargetSchemaVersion, TargetSchemaChecksum: facts.TargetSchemaChecksum,
+		LaunchConfigRows:        facts.LaunchConfigRows,
+		PublicAccessEnabled:     facts.PublicAccessEnabled,
+		BillingCheckoutFlagRows: facts.BillingCheckoutFlagRows,
+		BillingCheckoutEnabled:  facts.BillingCheckoutEnabled,
+		Accounts:                facts.Accounts, Vaults: facts.Vaults, GoogleIdentities: facts.GoogleIdentities,
+		AllowedUsers: facts.AllowedUsers, ActiveLimitedGrants: facts.ActiveLimitedGrants,
+		ExpiredUnrevokedGrants: facts.ExpiredUnrevokedGrants, ActiveSessions: facts.ActiveSessions,
+		WrappedKeyVersions: facts.WrappedKeyVersions, WriteKeys: facts.WriteKeys,
+		EncryptedObjects: facts.EncryptedObjects, PendingEncryptedWrites: facts.PendingEncryptedWrites,
+		PendingObjectDeletes: facts.PendingObjectDeletes, NonceReservations: facts.NonceReservations,
+		AccessInconsistencies:        facts.AccessInconsistencies,
+		CryptographicInconsistencies: facts.CryptographicInconsistency,
+		Blockers:                     result.Blockers,
+	}
+	if json.NewEncoder(stdout).Encode(output) != nil {
+		_, _ = fmt.Fprintln(stderr, "production status output failed")
+		return 1
+	}
+	if result.Outcome == operations.ProductionStatusBlocked {
+		return 1
+	}
+	return 0
+}
 
 func runWithDependencies(
 	parent context.Context,
@@ -1933,6 +2082,7 @@ func runRecoveryDrill(
 }
 
 func printUsage(output io.Writer) {
+	_, _ = fmt.Fprintln(output, "usage: notesctl production status --environment=production --observed-at-millis=<unix-ms> --expected-database-host=<host> --expected-database-name=<name> --confirm-production-read-only")
 	_, _ = fmt.Fprintln(output, "usage: notesctl config check | notesctl migrate --environment=local|test | notesctl migrate --environment=production --expected-database-host=<host> --expected-database-name=<name> --confirm-production-forward | notesctl access provision --environment=production --issuer=<google-issuer> --subject=<google-sub> --granted-at-millis=<unix-ms> --expires-at-millis=<unix-ms> --active-cards=<count> --display-characters-per-card=<count> --serialized-plaintext-bytes-per-card=<bytes> --plaintext-bytes-per-vault=<bytes> --expected-database-host=<host> --expected-database-name=<name> --confirm-production-access-mutation --confirm-kms-encrypt | notesctl access revoke --environment=production --issuer=<google-issuer> --subject=<google-sub> --revoked-at-millis=<unix-ms> --expected-database-host=<host> --expected-database-name=<name> --confirm-production-access-mutation | notesctl prepare-e2e --environment=test --allowed-subject=<subject> | notesctl quota reconcile-list --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --as-of-millis=<unix-ms> --limit=1..100 [--confirm-production-read-only] | notesctl quota reconcile-commit --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --reservation-id=<uuidv7> --finalized-at-millis=<unix-ms> --confirm-durable-sync-receipt [--confirm-production-mutation] | notesctl account-deletion inspect --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --observed-at-millis=<unix-ms> [--confirm-production-read-only] | notesctl billing reconcile --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --snapshot-id=<stable-id> --observed-at-millis=<unix-ms> --recorded-at-millis=<unix-ms> [--confirm-production-provider-read] | notesctl dek rotate --environment=local|test|production --account-id=<uuidv7> --vault-id=<uuidv7> --operation-id=<uuidv7> --requested-at-millis=<unix-ms> --generated-at-millis=<unix-ms> --completed-at-millis=<unix-ms> --confirm-kms-key-generation [--confirm-production-kms-mutation] | notesctl dek reencrypt --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --target-version=<version> --limit=1..100 --performed-at-millis=<unix-ms> --object-root=<absolute-secure-directory> --nonce-root=<absolute-secure-directory> --confirm-local-object-writes --confirm-kms-unwrapping | notesctl objects orphan-scan --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --scan-started-at-millis=<unix-ms> --grace-period-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-scan --confirm-delete-enqueue | notesctl objects delete-outbox --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --attempted-at-millis=<unix-ms> --retry-delay-millis=<duration-ms> --limit=1..100 --object-root=<absolute-secure-directory> --confirm-local-object-deletes --confirm-delete-outbox-mutation | notesctl recovery drill --environment=local|test --account-id=<uuidv7> --vault-id=<uuidv7> --drilled-at-millis=<unix-ms> --backup-root=<absolute-private-directory> --key-root=<absolute-private-directory> --confirm-local-backup-read --confirm-local-fixture-key-read")
 }
 
@@ -2087,6 +2237,79 @@ func migrateDatabase(ctx context.Context, databaseURL string) (migrationResult, 
 		PreviousVersion: previous, TargetVersion: target.Version,
 		AppliedVersion: applied, TargetChecksum: target.Checksum,
 	}, nil
+}
+
+func inspectProductionStatus(
+	ctx context.Context,
+	databaseURL string,
+	observedAtMillis int64,
+) (operations.ProductionStatusResult, error) {
+	database, err := postgresadapter.OpenSQL(ctx, databaseURL)
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	defer database.Close()
+	migrator, err := postgresadapter.NewMigrator(database, migrations.Files)
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	target, err := migrator.Target()
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	facts := operations.ProductionStatusFacts{
+		ObservedAtMillis: observedAtMillis, TargetSchemaVersion: target.Version,
+		TargetSchemaChecksum: target.Checksum,
+	}
+	var versionTableExists bool
+	if err := database.QueryRowContext(
+		ctx, "SELECT to_regclass('notes_goose_versions') IS NOT NULL",
+	).Scan(&versionTableExists); err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	if !versionTableExists {
+		return operations.EvaluateProductionStatus(facts)
+	}
+	facts.AppliedSchemaVersion, err = migrator.CurrentVersion(ctx)
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	if facts.AppliedSchemaVersion != facts.TargetSchemaVersion {
+		return operations.EvaluateProductionStatus(facts)
+	}
+	pool, err := postgresadapter.OpenPool(ctx, databaseURL, 2)
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	defer pool.Close()
+	store, err := postgresadapter.NewProductionStatusStore(pool)
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	databaseFacts, err := store.Read(ctx, observedAtMillis)
+	if err != nil {
+		return operations.ProductionStatusResult{}, err
+	}
+	facts.LaunchConfigRows = databaseFacts.LaunchConfigRows
+	facts.PublicAccessEnabled = databaseFacts.PublicAccessEnabled
+	facts.BillingCheckoutFlagRows = databaseFacts.BillingCheckoutFlagRows
+	facts.BillingCheckoutEnabled = databaseFacts.BillingCheckoutEnabled
+	facts.Accounts = databaseFacts.Accounts
+	facts.Vaults = databaseFacts.Vaults
+	facts.GoogleIdentities = databaseFacts.GoogleIdentities
+	facts.AllowedUsers = databaseFacts.AllowedUsers
+	facts.ActiveLimitedGrants = databaseFacts.ActiveLimitedGrants
+	facts.ExpiredUnrevokedGrants = databaseFacts.ExpiredUnrevokedGrants
+	facts.ActiveSessions = databaseFacts.ActiveSessions
+	facts.WrappedKeyVersions = databaseFacts.WrappedKeyVersions
+	facts.WriteKeys = databaseFacts.WriteKeys
+	facts.EncryptedObjects = databaseFacts.EncryptedObjects
+	facts.PendingEncryptedWrites = databaseFacts.PendingEncryptedWrites
+	facts.PendingObjectDeletes = databaseFacts.PendingObjectDeletes
+	facts.NonceReservations = databaseFacts.NonceReservations
+	facts.AccessInconsistencies = databaseFacts.AccessInconsistencies
+	facts.CryptographicInconsistency = databaseFacts.CryptographicInconsistency
+	return operations.EvaluateProductionStatus(facts)
 }
 
 func provisionProductionAccess(

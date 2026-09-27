@@ -440,6 +440,17 @@ and has a five-minute command timeout. Its redacted JSON reports the previous,
 target, and applied versions plus the target migration SHA-256. It never resets
 a schema or runs a down migration.
 
+`notesctl production status --environment=production` is the read-only release
+preflight. It requires the same exact TLS database host/name, an explicit
+observation timestamp, and `--confirm-production-read-only`. It verifies every
+applied migration checksum before reading one repeatable-read snapshot. Its JSON
+contains only schema identity, fixed controls, aggregate counts, and ordered
+blocker codes—never connection data, subjects, Notes identifiers, key
+references, wrapped keys, object keys, ciphertext, or content. An unmigrated
+database and any unsafe or inconsistent state return non-zero with
+`outcome=blocked`; a safe migrated database is `restricted-empty` until an
+allowed user exists and `restricted-ready` afterward.
+
 `notesctl access provision --environment=production` requires the same exact
 database target, the verified Google issuer and opaque `sub`, explicit
 grant/expiry limits, `--confirm-production-access-mutation`, and
