@@ -97,7 +97,7 @@ describe('Go migration closure evidence', () => {
     const performanceComparison = closure.verifications.find(
       ({ id }) => id === 'V12',
     );
-    expect(performanceComparison).toMatchObject({ status: 'in-progress' });
+    expect(performanceComparison).toMatchObject({ status: 'complete' });
     expect(performanceComparison?.note).toContain('100/1,000/10,000-card');
     expect(closure.verifications.find(({ id }) => id === 'V11')).toMatchObject({
       status: 'complete',
@@ -385,8 +385,17 @@ describe('Go migration closure evidence', () => {
     expect(Reflect.get(scripts, 'benchmark:migration')).toBe(
       'node --experimental-strip-types scripts/benchmark-migration.mts',
     );
+    expect(Reflect.get(scripts, 'benchmark:migration:v12')).toBe(
+      'node --experimental-strip-types scripts/benchmark-migration-v12.mts',
+    );
+    expect(Reflect.get(scripts, 'verify:migration-v12-evidence')).toBe(
+      'node --experimental-strip-types scripts/verify-migration-v12-evidence.mts',
+    );
     expect(Reflect.get(scripts, 'verify')).toContain(
       'npm run contracts:check && npm run verify:migration-closure',
+    );
+    expect(Reflect.get(scripts, 'verify')).not.toContain(
+      'verify:migration-v12-evidence',
     );
   });
 
