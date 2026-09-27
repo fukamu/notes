@@ -46,6 +46,15 @@ func sessionContext(runtime *SyncV2Runtime, accountDeletionAvailable bool) http.
 			writeSyncV2Error(response, request, http.StatusUnauthorized, "authentication-required")
 			return
 		}
+		admission, err := runtime.Admission.AuthorizeVault(request.Context(), resolved.Context)
+		if err != nil {
+			writeSyncV2Error(response, request, http.StatusServiceUnavailable, "unavailable")
+			return
+		}
+		if !admission.CanAccess {
+			writeSyncV2Error(response, request, http.StatusForbidden, "forbidden")
+			return
+		}
 		if request.ContentLength != 0 || len(request.TransferEncoding) != 0 {
 			writeSyncV2Error(response, request, http.StatusBadRequest, "invalid-request")
 			return

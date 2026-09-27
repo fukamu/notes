@@ -21,15 +21,19 @@ invalid signatures, clock violations, and assertions lasting more than ten
 minutes. The private signing key exists only in the test runner; the server
 receives only the public key.
 
-`local-signed` is rejected in production. Migration 00017 and the PostgreSQL
-OIDC transaction adapter provide durable, atomic single-use state/nonce/PKCE
-transactions for the production provider composition. They do not yet mount a
-login route or configure provider credentials. The former Sites
+`local-signed` is rejected in production. The explicit production profile uses
+Google OIDC discovery and JWKS verification with exact issuer, client
+ID/audience/authorized-party, expiry, nonce, redirect URI, and PKCE checks.
+Migration 00017 and the PostgreSQL OIDC transaction adapter make state, nonce,
+and verifier durable and single-use. Exact `/auth/google/start`,
+`/auth/google/callback`, and POST `/auth/logout` routes are mounted only when
+that complete production composition is configured. The callback never
+provisions an account or promotes the first visitor: an operator must
+preprovision the Google issuer/subject and allowlist the stable provider
+subject. The former Sites
 `oai-authenticated-user-id` header is also rejected, including when a caller
-supplies it together with a valid local assertion. A production assertion
-format, trusted proxy, issuer/audience, login entry URL, domain, and subject
-mapping remain explicit approval items in
-[`go-migration-decisions.md`](go-migration-decisions.md).
+supplies it together with a valid local assertion. A browser-supplied user ID
+is not an authentication input.
 
 `/api/launch-status` returns only booleans for the current request. It never
 returns a subject or another user's allowlist state. Legacy sync additionally
@@ -43,6 +47,13 @@ database row, or a database error fails closed. An authenticated but unlisted
 user receives `403` from protected APIs and the limited-release UI. No value
 from query parameters, JSON fields, browser storage, or public build
 configuration is an authorization input.
+
+In production, migration 00018 transactionally binds each session to the exact
+verified Google identity. `/api/launch-status`, `/api/session-context`, and
+`/api/v2/sync` resolve the opaque secure Cookie, verify the session
+Account/Vault/epoch, re-read that binding and allowlist, and fail before reading
+a mutation body when admission is absent or revoked. Direct access to the
+origin does not bypass this server-side decision.
 
 After a successful server decision, the current browser tab stores only an
 admitted boolean in `sessionStorage` so an authorized local-first user can
@@ -60,6 +71,11 @@ shared Vault/DEK nonce reservations, expiring/revocable limited-access grants,
 and server-side feature flags. `billing-checkout` is seeded OFF; unknown flags
 also evaluate OFF. A flag never replaces the launch gate, Vault ownership, or
 entitlement checks. The migration contains no synthetic Stripe subscription.
+Migration `00018_production_session_identity.sql` adds only the session-to-
+verified-identity binding. The production Checkout endpoint authenticates the
+session and gate and evaluates `billing-checkout` on the server; OFF is a
+closed route, while ON still reports that Checkout is not connected. Enabling
+the flag alone therefore cannot contact Stripe or create a charge.
 The migration is applied only by `notesctl migrate`; request handlers never run
 DDL. T05 browser tests use profile-disabled `notesctl prepare-e2e`, which
 refuses any URL that is not loopback and the exact `fukamu_notes_go_test`
@@ -77,15 +93,16 @@ identifiers remain investigation evidence in
 deployable fallback. This repository change copied or deleted no external D1
 data and performed no Sites operation.
 
-## Operations requiring separate approval
+## Deployment inputs
 
-Before a production rehearsal, reviewers must approve all of the following:
+The repository-side composition is not itself a deployed service. An operator
+must supply the release's concrete values without committing secret material:
 
 - hosting provider, region, service limits, public URL, TLS and rollback route;
 - PostgreSQL provider, region, connectivity, runtime/migration identities,
   backups, retention, capacity and recurring cost;
-- the production signed-identity provider, trusted ingress, issuer/audience,
-  opaque owner mapping, sign-in URL and revocation behavior;
+- the Google OAuth client, exact callback URL, and initial verified provider
+  subject mapping;
 - secrets and key references, redacted telemetry, and an isolated rehearsal
   environment;
 - exact migration, smoke-test, cutover and rollback commands.

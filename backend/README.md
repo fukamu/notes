@@ -29,9 +29,15 @@ Signup reserves IDs idempotently and atomically creates the account, personal
 vault, provider identity, canonical verified-email owner, and hash-only initial
 session in PostgreSQL. Migration 00017 and the PostgreSQL OIDC transaction
 adapter make state, nonce, and PKCE verifier durable and single-use across
-instances. No auth HTTP route, mail adapter, rate-limit store, terms adapter,
-or production provider composition uses these packages yet; local signed
-launch-gate identity and user sessions remain separate boundaries.
+instances. The production profile mounts exact Google start/callback/logout
+routes, validates discovery/JWKS/issuer/audience/azp/expiry/nonce/PKCE, and
+creates a secure server session only for an existing preprovisioned Google
+identity whose provider subject is launch-allowlisted. Migration 00018 binds
+that verified identity to the session transactionally. Every launch-status,
+session-context, and Sync v2 request re-evaluates that binding and the launch
+gate; removing the allowlist row takes effect on the next server request.
+There is no automatic first-user admission or signup. Email OTP, production
+signup, and mail/rate-limit providers remain disconnected.
 
 T07 Issue #428 adds a disconnected Go envelope-encryption module. It preserves
 the existing AES-256-GCM format and canonical object AAD, keeps DEKs in
@@ -223,11 +229,37 @@ test-only: it requires the `test` environment plus the loopback/exact-database
 allowlist, resets only that disposable schema, applies migrations, and inserts
 one opaque allowlisted fixture subject.
 
+## Restricted production identity profile
+
+`NOTES_APPLICATION_PROFILE=production` is accepted only with
+`NOTES_ENVIRONMENT=production` and `NOTES_PRIVATE_AUTH_MODE=google-oidc`. It
+requires `NOTES_DATABASE_URL`, optional bounded
+`NOTES_DATABASE_MAX_CONNECTIONS`, an HTTPS `NOTES_PUBLIC_ORIGIN`, and
+`NOTES_OIDC_CLIENT_ID`/`NOTES_OIDC_CLIENT_SECRET`. The exact callback is
+derived as `<public-origin>/auth/google/callback`; it is not accepted from a
+second independently mutable setting. The client secret must be injected at
+runtime and must never be committed or printed.
+
+This profile composes Google OIDC, PostgreSQL sessions and identity bindings,
+database readiness, Launch gate re-evaluation, and server-side feature-flag
+evaluation. It does not read any local signed key, fixture directory, fake
+identity, or local object/key adapter. The initial `billing-checkout` flag is
+OFF. Even if an operator enables it, the current production route remains
+fail-closed until a separately reviewed real Checkout composition exists, so
+the flag alone cannot create a payment.
+
+Before login, an operator must create the Account/Vault/Google identity,
+allowlist the verified Google subject, and grant an expiring limited-access
+entitlement through the reviewed provisioning command delivered with the
+production storage/KMS composition. No HTTP request auto-provisions or
+auto-allows a user.
+
 ### Fail-closed local fixture foundation
 
-Issue #509 adds an application profile with exactly two states:
-`disabled` (the default when unset) and `local-fixture`. Merely setting fixture
-values does not enable it. Production rejects `local-fixture` before reading
+Issue #509 added the `local-fixture` application profile alongside the
+default `disabled` state; Issue #533 adds the distinct production profile.
+Merely setting fixture values does not enable it. Production rejects
+`local-fixture` before reading
 its private-directory or secret values. The enabled profile additionally
 requires the complete `local-signed` private runtime, an explicit loopback bind
 and loopback HTTP origin on the same port, and the exact disposable

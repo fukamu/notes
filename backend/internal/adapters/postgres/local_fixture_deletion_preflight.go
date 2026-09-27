@@ -91,7 +91,7 @@ var expectedLocalFixtureTables = []string{
 	"entitlement_projections", "feature_flag_accounts", "feature_flags", "identities",
 	"launch_allowed_users", "launch_config", "limited_access_grants", "notes_goose_checksums",
 	"notes_goose_versions", "personal_vaults", "privacy_requests", "schema_migrations", "sessions",
-	"oidc_login_transactions", "signup_admission_reservations", "sync_state", "terms_consent_evidence",
+	"oidc_login_transactions", "session_identities", "signup_admission_reservations", "sync_state", "terms_consent_evidence",
 	"vault_dek_rotation_operations", "vault_dek_versions", "vault_encrypted_objects",
 	"vault_encrypted_write_intents", "vault_object_delete_outbox", "vault_quota_finalization_assertions",
 	"vault_quota_reservations", "vault_quota_usage", "vault_reencryption_jobs", "vault_sync_v2_cards",

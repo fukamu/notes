@@ -16,6 +16,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/access"
 	"github.com/fukamu/notes/backend/internal/accountdeletion"
 	accessadapter "github.com/fukamu/notes/backend/internal/adapters/access"
+	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/fukamu/notes/backend/internal/launchgate"
 	"github.com/fukamu/notes/backend/internal/privacyrequest"
 	"github.com/fukamu/notes/backend/internal/synclegacy"
@@ -26,6 +27,10 @@ type HandlerOptions struct {
 	BodyLimit                  int64
 	Logger                     *slog.Logger
 	PrivateRuntime             *PrivateRuntime
+	SessionAccessRuntime       *SessionAccessRuntime
+	Readiness                  ReadinessChecker
+	OidcAuthRuntime            *OidcAuthRuntime
+	ProductionFeatureRuntime   *ProductionFeatureRuntime
 	SyncV2Runtime              *SyncV2Runtime
 	LegalRuntime               *LegalRuntime
 	BillingCancellationRuntime *BillingCancellationRuntime
@@ -57,6 +62,12 @@ type PrivateRuntime struct {
 	Clock        func() time.Time
 }
 
+type SessionAccessRuntime struct {
+	Clock     func() int64
+	Sessions  identity.SessionResolver
+	Admission VaultAdmission
+}
+
 type statusResponseWriter struct {
 	http.ResponseWriter
 	status int
@@ -81,6 +92,13 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 	if options.SyncV2Runtime != nil && !syncV2RuntimeComplete(options.SyncV2Runtime) {
 		return nil, errors.New("Sync v2 runtime is incomplete")
 	}
+	if options.OidcAuthRuntime != nil && !oidcAuthRuntimeComplete(options.OidcAuthRuntime) {
+		return nil, errors.New("OIDC auth runtime is incomplete")
+	}
+	if options.ProductionFeatureRuntime != nil &&
+		!productionFeatureRuntimeComplete(options.ProductionFeatureRuntime) {
+		return nil, errors.New("production feature runtime is incomplete")
+	}
 	if options.AccountDeletionRuntime != nil && !accountDeletionRuntimeComplete(options.AccountDeletionRuntime) {
 		return nil, errors.New("account deletion runtime is incomplete")
 	}
@@ -94,11 +112,30 @@ func NewHandler(options HandlerOptions) (http.Handler, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", exact("/healthz", processHealth))
-	mux.HandleFunc("/readyz", exact("/readyz", readiness(options.PrivateRuntime)))
+	readinessChecker := options.Readiness
+	if readinessChecker == nil && options.PrivateRuntime != nil {
+		readinessChecker = options.PrivateRuntime.Readiness
+	}
+	mux.HandleFunc("/readyz", exact("/readyz", readiness(readinessChecker)))
+	launchStatusHandler := launchStatus(options.PrivateRuntime)
+	if options.SessionAccessRuntime != nil {
+		launchStatusHandler = sessionLaunchStatus(options.SessionAccessRuntime)
+	}
 	mux.HandleFunc(
 		"/api/launch-status",
-		exact("/api/launch-status", launchStatus(options.PrivateRuntime)),
+		exact("/api/launch-status", launchStatusHandler),
 	)
+	oidcStartHandler := http.HandlerFunc(closedAPI)
+	oidcCallbackHandler := http.HandlerFunc(closedAPI)
+	oidcLogoutHandler := http.HandlerFunc(closedAPI)
+	if options.OidcAuthRuntime != nil {
+		oidcStartHandler = oidcStart(options.OidcAuthRuntime)
+		oidcCallbackHandler = oidcCallback(options.OidcAuthRuntime)
+		oidcLogoutHandler = oidcLogout(options.OidcAuthRuntime)
+	}
+	mux.HandleFunc("/auth/google/start", exact("/auth/google/start", oidcStartHandler))
+	mux.HandleFunc("/auth/google/callback", exact("/auth/google/callback", oidcCallbackHandler))
+	mux.HandleFunc("/auth/logout", exact("/auth/logout", oidcLogoutHandler))
 	legacyHandler := legacySync(options.PrivateRuntime, options.BodyLimit)
 	if options.DisableLegacySync {
 		legacyHandler = closedAPI
@@ -196,12 +233,12 @@ func processHealth(response http.ResponseWriter, request *http.Request) {
 	writeJSON(response, request, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func readiness(runtime *PrivateRuntime) http.HandlerFunc {
+func readiness(checker ReadinessChecker) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		if !allowRead(response, request) {
 			return
 		}
-		if !privateRuntimeComplete(runtime) {
+		if checker == nil {
 			writeJSON(
 				response,
 				request,
@@ -212,7 +249,7 @@ func readiness(runtime *PrivateRuntime) http.HandlerFunc {
 		}
 		ctx, cancel := context.WithTimeout(request.Context(), time.Second)
 		defer cancel()
-		if err := runtime.Readiness.Check(ctx); err != nil {
+		if err := checker.Check(ctx); err != nil {
 			writeJSON(
 				response,
 				request,
@@ -222,6 +259,51 @@ func readiness(runtime *PrivateRuntime) http.HandlerFunc {
 			return
 		}
 		writeJSON(response, request, http.StatusOK, map[string]string{"status": "ready"})
+	}
+}
+
+func sessionLaunchStatus(runtime *SessionAccessRuntime) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		setLaunchPrivateHeaders(response)
+		if !allowRead(response, request) {
+			return
+		}
+		if runtime == nil || runtime.Clock == nil || runtime.Sessions == nil || runtime.Admission == nil {
+			writeLaunchUnavailable(response, request)
+			return
+		}
+		now := runtime.Clock()
+		if now < 0 || now > identity.MaximumSafeInteger {
+			writeLaunchUnavailable(response, request)
+			return
+		}
+		resolved, err := identity.DeriveVaultContext(request.Context(), identity.SessionRequestMetadata{
+			Method: request.Method, CookieHeaders: request.Header.Values("Cookie"), Now: now,
+		}, runtime.Sessions)
+		if err != nil {
+			writeLaunchUnavailable(response, request)
+			return
+		}
+		if resolved.Kind != identity.ResolutionAuthenticated {
+			writeJSON(response, request, http.StatusOK, map[string]bool{
+				"publicAccessEnabled": false,
+				"userAllowed":         false,
+				"canAccess":           false,
+				"authenticated":       false,
+			})
+			return
+		}
+		decision, err := runtime.Admission.AuthorizeVault(request.Context(), resolved.Context)
+		if err != nil {
+			writeLaunchUnavailable(response, request)
+			return
+		}
+		writeJSON(response, request, http.StatusOK, map[string]bool{
+			"publicAccessEnabled": decision.PublicAccessEnabled,
+			"userAllowed":         decision.UserAllowed,
+			"canAccess":           decision.CanAccess,
+			"authenticated":       true,
+		})
 	}
 }
 
@@ -486,7 +568,7 @@ func limitBody(limit int64, next http.Handler) http.Handler {
 
 func authorizesBeforeBody(path string) bool {
 	switch path {
-	case "/api/sync", "/api/v2/sync", "/api/session-context", "/api/billing/checkout", "/api/account/terms-consent", "/api/billing/cancel", "/api/account/deletion", "/api/account/deletion/status", "/api/account/privacy-requests", "/api/account/privacy-requests/status":
+	case "/auth/logout", "/api/sync", "/api/v2/sync", "/api/session-context", "/api/billing/checkout", "/api/account/terms-consent", "/api/billing/cancel", "/api/account/deletion", "/api/account/deletion/status", "/api/account/privacy-requests", "/api/account/privacy-requests/status":
 		return true
 	default:
 		return false

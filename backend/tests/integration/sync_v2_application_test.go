@@ -89,7 +89,8 @@ func TestSyncV2HTTPApplicationPostgresCrashResumeEncryptionNoChangeAndCursorIsol
 	now := int64(3_000)
 	handler, err := httpapi.NewSyncV2ContractHandler(&httpapi.SyncV2Runtime{
 		ExpectedOrigin: "https://notes.example", Clock: func() int64 { return now },
-		Sessions: sessionResolver, Entitlement: entitlementService, Application: application,
+		Sessions: sessionResolver, Admission: allowVaultAdmission{},
+		Entitlement: entitlementService, Application: application,
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)

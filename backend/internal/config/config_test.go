@@ -55,6 +55,64 @@ func validLocalFixtureValues(t *testing.T) map[string]string {
 	return values
 }
 
+func validProductionValues(t *testing.T) map[string]string {
+	t.Helper()
+	values := validValues(t)
+	values["NOTES_ENVIRONMENT"] = "production"
+	values["NOTES_HTTP_ADDR"] = "0.0.0.0:8080"
+	values["NOTES_APPLICATION_PROFILE"] = "production"
+	values["NOTES_PRIVATE_AUTH_MODE"] = "google-oidc"
+	values["NOTES_DATABASE_URL"] = "postgres://notes:secret@db.example/notes?sslmode=require"
+	values["NOTES_DATABASE_MAX_CONNECTIONS"] = "5"
+	values["NOTES_PUBLIC_ORIGIN"] = "https://notes.example"
+	values["NOTES_OIDC_CLIENT_ID"] = "notes.apps.googleusercontent.com"
+	values["NOTES_OIDC_CLIENT_SECRET"] = "test-client-secret"
+	return values
+}
+
+func TestParseAcceptsStrictProductionConfiguration(t *testing.T) {
+	t.Parallel()
+	got, err := config.Parse(validProductionValues(t))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	production := got.Production
+	if got.ApplicationProfile != config.ApplicationProfileProduction || production == nil ||
+		got.PrivateRuntime != nil || got.LocalFixture != nil {
+		t.Fatalf("production profile = %#v", got)
+	}
+	if production.MaximumConnections != 5 || production.PublicOrigin.String() != "https://notes.example" ||
+		string(production.OidcRedirectURI) != "https://notes.example/auth/google/callback" ||
+		string(production.OidcClientID) != "notes.apps.googleusercontent.com" {
+		t.Fatalf("production configuration = %#v", production)
+	}
+}
+
+func TestParseRejectsIncompleteOrUnsafeProductionConfiguration(t *testing.T) {
+	t.Parallel()
+	base := validProductionValues(t)
+	tests := []struct{ name, key, value string }{
+		{name: "wrong environment", key: "NOTES_ENVIRONMENT", value: "test"},
+		{name: "wrong auth", key: "NOTES_PRIVATE_AUTH_MODE", value: "disabled"},
+		{name: "insecure origin", key: "NOTES_PUBLIC_ORIGIN", value: "http://notes.example"},
+		{name: "invalid client", key: "NOTES_OIDC_CLIENT_ID", value: "client\nsecret"},
+		{name: "multiline secret", key: "NOTES_OIDC_CLIENT_SECRET", value: "sensitive\nsecret"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			values := maps.Clone(base)
+			values[test.key] = test.value
+			if _, err := config.Parse(values); err == nil {
+				t.Fatal("Parse() accepted unsafe production configuration")
+			} else if strings.Contains(err.Error(), "sensitive") {
+				t.Fatalf("error disclosed secret input: %v", err)
+			}
+		})
+	}
+}
+
 func TestParseAcceptsExplicitSafeConfiguration(t *testing.T) {
 	t.Parallel()
 	values := validValues(t)

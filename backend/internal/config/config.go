@@ -42,6 +42,7 @@ type Config struct {
 	ApplicationProfile ApplicationProfile
 	PrivateRuntime     *PrivateRuntimeConfig
 	LocalFixture       *LocalFixtureConfig
+	Production         *ProductionConfig
 }
 
 type ApplicationProfile string
@@ -49,6 +50,7 @@ type ApplicationProfile string
 const (
 	ApplicationProfileDisabled     ApplicationProfile = "disabled"
 	ApplicationProfileLocalFixture ApplicationProfile = "local-fixture"
+	ApplicationProfileProduction   ApplicationProfile = "production"
 )
 
 type PrivateRuntimeConfig struct {
@@ -59,6 +61,15 @@ type PrivateRuntimeConfig struct {
 	Audience           string
 	PublicKey          ed25519.PublicKey
 	LegacyOwner        access.Subject
+}
+
+type ProductionConfig struct {
+	DatabaseURL        string
+	MaximumConnections int32
+	PublicOrigin       *url.URL
+	OidcClientID       identity.OidcClientID
+	OidcClientSecret   string
+	OidcRedirectURI    identity.OidcRedirectURI
 }
 
 type LocalFixtureConfig struct {
@@ -118,6 +129,8 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		"NOTES_LOCAL_AUTH_AUDIENCE",
 		"NOTES_LOCAL_AUTH_PUBLIC_KEY",
 		"NOTES_LEGACY_OWNER_SUBJECT",
+		"NOTES_OIDC_CLIENT_ID",
+		"NOTES_OIDC_CLIENT_SECRET",
 	} {
 		if value, ok := lookup(key); ok {
 			values[key] = value
@@ -227,7 +240,11 @@ func Parse(values map[string]string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	privateRuntime, err := parsePrivateRuntime(values, environment)
+	privateRuntime, err := parsePrivateRuntime(values, environment, applicationProfile)
+	if err != nil {
+		return Config{}, err
+	}
+	production, err := parseProduction(values, environment, applicationProfile)
 	if err != nil {
 		return Config{}, err
 	}
@@ -253,6 +270,7 @@ func Parse(values map[string]string) (Config, error) {
 		ApplicationProfile: applicationProfile,
 		PrivateRuntime:     privateRuntime,
 		LocalFixture:       localFixture,
+		Production:         production,
 	}, nil
 }
 
@@ -264,8 +282,14 @@ func parseApplicationProfile(
 	if value == "" || value == string(ApplicationProfileDisabled) {
 		return ApplicationProfileDisabled, nil
 	}
+	if value == string(ApplicationProfileProduction) {
+		if environment != EnvironmentProduction {
+			return "", invalid("NOTES_APPLICATION_PROFILE", "production requires the production environment")
+		}
+		return ApplicationProfileProduction, nil
+	}
 	if value != string(ApplicationProfileLocalFixture) {
-		return "", invalid("NOTES_APPLICATION_PROFILE", "must be disabled or local-fixture")
+		return "", invalid("NOTES_APPLICATION_PROFILE", "must be disabled, local-fixture, or production")
 	}
 	if environment == EnvironmentProduction {
 		return "", invalid("NOTES_APPLICATION_PROFILE", "local-fixture is unavailable in production")
@@ -281,7 +305,7 @@ func parseLocalFixture(
 	staticDirectory string,
 	privateRuntime *PrivateRuntimeConfig,
 ) (*LocalFixtureConfig, error) {
-	if profile == ApplicationProfileDisabled {
+	if profile != ApplicationProfileLocalFixture {
 		return nil, nil
 	}
 	if environment != EnvironmentLocal && environment != EnvironmentTest {
@@ -468,13 +492,23 @@ func pathContains(parent string, child string) bool {
 func parsePrivateRuntime(
 	values map[string]string,
 	environment Environment,
+	profile ApplicationProfile,
 ) (*PrivateRuntimeConfig, error) {
 	mode := values["NOTES_PRIVATE_AUTH_MODE"]
 	if mode == "" || mode == "disabled" {
+		if profile == ApplicationProfileProduction {
+			return nil, invalid("NOTES_PRIVATE_AUTH_MODE", "production requires google-oidc")
+		}
+		return nil, nil
+	}
+	if mode == "google-oidc" {
+		if environment != EnvironmentProduction || profile != ApplicationProfileProduction {
+			return nil, invalid("NOTES_PRIVATE_AUTH_MODE", "google-oidc requires the production profile")
+		}
 		return nil, nil
 	}
 	if mode != "local-signed" {
-		return nil, invalid("NOTES_PRIVATE_AUTH_MODE", "must be disabled or local-signed")
+		return nil, invalid("NOTES_PRIVATE_AUTH_MODE", "must be disabled, local-signed, or google-oidc")
 	}
 	if environment == EnvironmentProduction {
 		return nil, invalid("NOTES_PRIVATE_AUTH_MODE", "local-signed is unavailable in production")
@@ -542,6 +576,61 @@ func parsePrivateRuntime(
 		Audience:           audience,
 		PublicKey:          append(ed25519.PublicKey(nil), publicKey...),
 		LegacyOwner:        owner,
+	}, nil
+}
+
+func parseProduction(
+	values map[string]string,
+	environment Environment,
+	profile ApplicationProfile,
+) (*ProductionConfig, error) {
+	if profile != ApplicationProfileProduction {
+		return nil, nil
+	}
+	if environment != EnvironmentProduction || values["NOTES_PRIVATE_AUTH_MODE"] != "google-oidc" {
+		return nil, invalid("NOTES_APPLICATION_PROFILE", "production requires production and google-oidc")
+	}
+	databaseURL, err := required(values, "NOTES_DATABASE_URL")
+	if err != nil {
+		return nil, err
+	}
+	if strings.ContainsAny(databaseURL, "\r\n\x00") {
+		return nil, invalid("NOTES_DATABASE_URL", "contains invalid control characters")
+	}
+	maximumConnections, err := optionalPositiveInt(values, "NOTES_DATABASE_MAX_CONNECTIONS", 4, 32)
+	if err != nil {
+		return nil, err
+	}
+	originValue, err := required(values, "NOTES_PUBLIC_ORIGIN")
+	if err != nil {
+		return nil, err
+	}
+	origin, err := parsePublicOrigin(originValue, environment)
+	if err != nil {
+		return nil, err
+	}
+	clientIDValue, err := required(values, "NOTES_OIDC_CLIENT_ID")
+	if err != nil {
+		return nil, err
+	}
+	clientID, err := identity.ParseOidcClientID(clientIDValue)
+	if err != nil {
+		return nil, invalid("NOTES_OIDC_CLIENT_ID", "must be a bounded OIDC client identifier")
+	}
+	clientSecret, err := required(values, "NOTES_OIDC_CLIENT_SECRET")
+	if err != nil {
+		return nil, err
+	}
+	if len(clientSecret) > 4_096 || strings.ContainsAny(clientSecret, "\r\n\x00") {
+		return nil, invalid("NOTES_OIDC_CLIENT_SECRET", "must be a bounded single-line secret")
+	}
+	redirectURI, err := identity.ParseOidcRedirectURI(origin.String() + "/auth/google/callback")
+	if err != nil {
+		return nil, invalid("NOTES_PUBLIC_ORIGIN", "cannot form the OIDC callback URI")
+	}
+	return &ProductionConfig{
+		DatabaseURL: databaseURL, MaximumConnections: int32(maximumConnections), PublicOrigin: origin,
+		OidcClientID: clientID, OidcClientSecret: clientSecret, OidcRedirectURI: redirectURI,
 	}, nil
 }
 
