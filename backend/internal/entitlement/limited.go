@@ -24,6 +24,10 @@ func ValidLimitedAccessGrant(grant LimitedAccessGrant) bool {
 		validPersonalVaultLimits(grant.VaultLimits)
 }
 
+func ValidPersonalVaultLimits(limits PersonalVaultLimits) bool {
+	return validPersonalVaultLimits(limits)
+}
+
 func AuthorizeLimitedAccess(
 	grant *LimitedAccessGrant,
 	vaultContext identity.VaultContext,

@@ -265,11 +265,14 @@ configured write version advances, provided the old KMS version and IAM access
 are retained. A KMS, metadata-token, GCS, authentication, or integrity failure
 fails the request; it never falls back to plaintext storage.
 
-Before login, an operator must create the Account/Vault/Google identity,
-allowlist the verified Google subject, and grant an expiring limited-access
-entitlement through the reviewed provisioning command delivered with the
-following production-operations slice. No HTTP request auto-provisions or
-auto-allows a user, and the web server never runs migrations.
+Before login, an operator must run the guarded `notesctl access provision`
+command to create the Account/Vault/Google identity, allowlist the verified
+Google subject, grant an expiring limited-access entitlement, and persist an
+initial DEK wrapped by the configured Cloud KMS key version. The command is
+idempotent only for the same issuer/subject, expiry, limits, and key version;
+a different requested state fails closed. An exact replay is detected before
+calling KMS again. No HTTP request auto-provisions or auto-allows a user, and
+the web server never runs migrations.
 
 ### Fail-closed local fixture foundation
 
@@ -418,9 +421,40 @@ NOTES_DATABASE_URL='postgres://notes_test:notes_test_password@127.0.0.1:55432/fu
 go -C backend run ./cmd/notesctl migrate --environment=test
 ```
 
-The command refuses non-loopback hosts, any database name other than
+This local/test form refuses non-loopback hosts, any database name other than
 `fukamu_notes_go_test`, production environments, and an environment flag that
 does not match `NOTES_ENVIRONMENT`. It does not print connection values.
+
+## Production migration and restricted access
+
+Build the separate non-root scratch operations image with
+`docker build --target notesctl -f deploy/Dockerfile ...`. It contains only
+`/notesctl` and the system CA bundle; it is not the serving image. The web
+runtime still never applies migrations.
+
+`notesctl migrate --environment=production` additionally requires the exact
+expected database host/name and `--confirm-production-forward`. It accepts only
+TLS-required PostgreSQL URLs, rejects connection-service and host/database
+overrides, uses the embedded checksum ledger and Goose session advisory lock,
+and has a five-minute command timeout. Its redacted JSON reports the previous,
+target, and applied versions plus the target migration SHA-256. It never resets
+a schema or runs a down migration.
+
+`notesctl access provision --environment=production` requires the same exact
+database target, the verified Google issuer and opaque `sub`, explicit
+grant/expiry limits, `--confirm-production-access-mutation`, and
+`--confirm-kms-encrypt`. The operations identity obtains a short-lived token
+only from the Google metadata server. The transaction refuses public Launch
+gate state or enabled `billing-checkout`; it creates no subscription or Stripe
+record. Output contains only outcome and generated Notes identifiers, not the
+provider subject, connection URL, token, key, or ciphertext.
+
+`notesctl access revoke --environment=production` removes the subject from the
+allowlist, revokes the limited grant, and marks active sessions revoked without
+deleting the Account, Vault, ciphertext, or wrapped key. Server access observes
+the change on the next request. Data already stored on an offline device cannot
+be remotely erased; its offline session policy and local logout purge remain a
+separate device boundary.
 
 ## Checks
 

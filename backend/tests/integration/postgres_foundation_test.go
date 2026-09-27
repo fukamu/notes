@@ -67,6 +67,12 @@ func TestPostgresFoundation(t *testing.T) {
 	if err != nil || version != migrations.LatestVersion {
 		t.Fatalf("version = %d, error = %v", version, err)
 	}
+	target, err := migrator.Target()
+	if err != nil || target.Version != migrations.LatestVersion ||
+		target.Path != "00018_production_session_identity.sql" ||
+		!strings.HasPrefix(target.Checksum, "sha256:") || len(target.Checksum) != 71 {
+		t.Fatalf("migration target = %#v, error = %v", target, err)
+	}
 
 	assertCoreTables(t, ctx, pool)
 	assertConstraints(t, ctx, pool)

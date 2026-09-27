@@ -46,6 +46,14 @@ The checked image must satisfy all of these conditions:
 - the required shell, service worker, web manifest, JavaScript, Go binary, and
   complete frontend tree receive size and SHA-256 evidence.
 
+The same Dockerfile also has an explicit `notesctl` target for the migration
+and restricted-user operations job. That target is a separate non-root scratch
+image containing only `/notesctl` and the CA bundle. It is never copied into
+the serving runtime, and the default release-artifact verification continues
+to inspect only the final `runtime` target. A release pipeline must pin and
+record the operations-image digest separately before executing a reviewed
+production command.
+
 The repository-level `verify:legacy-retirement` gate separately prevents the
 old TypeScript API/server/database roots, their configs and scripts, and their
 package/lockfile dependencies from returning. TypeScript remains only for the

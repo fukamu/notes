@@ -16,6 +16,7 @@ import (
 	"github.com/fukamu/notes/backend/internal/accountdeletion"
 	"github.com/fukamu/notes/backend/internal/config"
 	"github.com/fukamu/notes/backend/internal/encryptedobject"
+	"github.com/fukamu/notes/backend/internal/identity"
 	"github.com/fukamu/notes/backend/internal/operations"
 	"github.com/fukamu/notes/backend/internal/quota"
 	"github.com/fukamu/notes/backend/internal/stripebilling"
@@ -48,12 +49,15 @@ func TestRunMigratesOnlyTheExplicitAllowlistedEnvironment(t *testing.T) {
 		&stdout,
 		&stderr,
 		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
-		func(_ context.Context, databaseURL string) error {
+		func(_ context.Context, databaseURL string) (migrationResult, error) {
 			called = true
 			if !strings.Contains(databaseURL, "secret") {
 				t.Fatal("migration did not receive the configured URL")
 			}
-			return nil
+			return migrationResult{
+				PreviousVersion: 17, TargetVersion: 18, AppliedVersion: 18,
+				TargetChecksum: "sha256:" + strings.Repeat("a", 64),
+			}, nil
 		},
 		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
@@ -79,6 +83,168 @@ func TestRunMigratesOnlyTheExplicitAllowlistedEnvironment(t *testing.T) {
 	}
 }
 
+func TestRunMigratesProductionOnlyWithExactConfirmedTarget(t *testing.T) {
+	t.Parallel()
+	values := map[string]string{
+		"NOTES_ENVIRONMENT":  "production",
+		"NOTES_DATABASE_URL": "postgres://notes:secret@db.example/notes?sslmode=require",
+	}
+	called := false
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithDependencies(
+		context.Background(),
+		[]string{
+			"migrate", "--environment=production", "--expected-database-host=db.example",
+			"--expected-database-name=notes", "--confirm-production-forward",
+		},
+		&stdout, &stderr,
+		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+		func(_ context.Context, databaseURL string) (migrationResult, error) {
+			called = true
+			if !strings.Contains(databaseURL, "secret") {
+				t.Fatal("migration did not receive the configured URL")
+			}
+			return migrationResult{
+				PreviousVersion: 17, TargetVersion: 18, AppliedVersion: 18,
+				TargetChecksum: "sha256:" + strings.Repeat("b", 64),
+			}, nil
+		},
+		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
+		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
+			t.Fatal("quota audit must not run")
+			return operations.QuotaAuditResult{}, nil
+		},
+		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
+			t.Fatal("quota commit must not run")
+			return operations.QuotaCommitResult{}, nil
+		},
+		func(context.Context, string, operations.AccountDeletionAuditQuery) (operations.AccountDeletionAuditResult, error) {
+			t.Fatal("account deletion audit must not run")
+			return operations.AccountDeletionAuditResult{}, nil
+		},
+		billingReconciliationMustNotRun(t), dekRotationMustNotRun(t), dekReencryptionMustNotRun(t),
+		orphanScanMustNotRun(t), deleteOutboxMustNotRun(t),
+	)
+	if code != 0 || !called || stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), `"previousVersion":17`) ||
+		!strings.Contains(stdout.String(), `"targetVersion":18`) ||
+		!strings.Contains(stdout.String(), `"targetChecksum":"sha256:`) ||
+		strings.Contains(stdout.String(), "secret") {
+		t.Fatalf("code = %d, called = %t, stdout = %q, stderr = %q", code, called, stdout.String(), stderr.String())
+	}
+}
+
+func TestProductionMigrationArgumentsRequireTargetAndConfirmation(t *testing.T) {
+	t.Parallel()
+	invalid := [][]string{
+		{"migrate", "--environment=production"},
+		{"migrate", "--environment=production", "--expected-database-host=db.example", "--expected-database-name=notes"},
+		{"migrate", "--environment=test", "--confirm-production-forward"},
+	}
+	for _, arguments := range invalid {
+		if _, requested, err := parseMigrationArguments(arguments); !requested || err == nil {
+			t.Fatalf("arguments accepted: %#v", arguments)
+		}
+	}
+}
+
+func TestRunProductionAccessProvisionAndRevoke(t *testing.T) {
+	t.Parallel()
+	values := map[string]string{
+		"NOTES_ENVIRONMENT":                "production",
+		"NOTES_DATABASE_URL":               "postgres://notes:secret@db.example/notes?sslmode=require",
+		"NOTES_GCP_KMS_CRYPTO_KEY_VERSION": "projects/fukamu-notes/locations/asia-southeast1/keyRings/notes/cryptoKeys/content/cryptoKeyVersions/1",
+	}
+	lookup := func(key string) (string, bool) { value, ok := values[key]; return value, ok }
+	accountID, _ := identity.ParseAccountID("01991f20-61d2-7000-8000-000000000921")
+	vaultID, _ := identity.ParseVaultID("01991f20-61d2-7000-8000-000000000922")
+	identityID, _ := identity.ParseIdentityID("01991f20-61d2-7000-8000-000000000923")
+	provisionArguments := []string{
+		"access", "provision", "--environment=production", "--issuer=https://accounts.google.com",
+		"--subject=1000000000000000921", "--granted-at-millis=1000", "--expires-at-millis=2000",
+		"--active-cards=10000", "--display-characters-per-card=1000",
+		"--serialized-plaintext-bytes-per-card=8192", "--plaintext-bytes-per-vault=134217728",
+		"--expected-database-host=db.example", "--expected-database-name=notes",
+		"--confirm-production-access-mutation", "--confirm-kms-encrypt",
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runProductionAccess(
+		context.Background(), provisionArguments, &stdout, &stderr, lookup,
+		func(_ context.Context, databaseURL string, keyVersion string, request productionAccessRequest) (operations.ProductionAccessProvisionResult, error) {
+			if !strings.Contains(databaseURL, "secret") || !strings.HasSuffix(keyVersion, "/1") ||
+				request.GrantedAt != 1_000 || request.ExpiresAt != 2_000 || request.VaultLimits.ActiveCards != 10_000 {
+				t.Fatal("validated provisioning inputs changed")
+			}
+			return operations.ProductionAccessProvisionResult{
+				Kind: operations.ProductionAccessCreated, IdentityID: identityID,
+				AccountID: accountID, VaultID: vaultID,
+			}, nil
+		},
+		func(context.Context, string, operations.ProductionAccessRevokeCommand) (operations.ProductionAccessRevokeResult, error) {
+			t.Fatal("revoke must not run")
+			return operations.ProductionAccessRevokeResult{}, nil
+		},
+	)
+	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), `"outcome":"created"`) ||
+		strings.Contains(stdout.String(), "1000000000000000921") || strings.Contains(stdout.String(), "secret") {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	revokeArguments := []string{
+		"access", "revoke", "--environment=production", "--issuer=https://accounts.google.com",
+		"--subject=1000000000000000921", "--revoked-at-millis=3000",
+		"--expected-database-host=db.example", "--expected-database-name=notes",
+		"--confirm-production-access-mutation",
+	}
+	code = runProductionAccess(
+		context.Background(), revokeArguments, &stdout, &stderr, lookup,
+		func(context.Context, string, string, productionAccessRequest) (operations.ProductionAccessProvisionResult, error) {
+			t.Fatal("provision must not run")
+			return operations.ProductionAccessProvisionResult{}, nil
+		},
+		func(_ context.Context, databaseURL string, command operations.ProductionAccessRevokeCommand) (operations.ProductionAccessRevokeResult, error) {
+			if !strings.Contains(databaseURL, "secret") || command.RevokedAtMilli != 3_000 ||
+				command.SessionRevokedAtSeconds != 3 {
+				t.Fatal("validated revocation inputs changed")
+			}
+			return operations.ProductionAccessRevokeResult{
+				Kind: operations.ProductionAccessRevoked, AccountID: accountID,
+				VaultID: vaultID, SessionsRevoked: 2,
+			}, nil
+		},
+	)
+	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), `"sessionsRevoked":2`) ||
+		strings.Contains(stdout.String(), "1000000000000000921") || strings.Contains(stdout.String(), "secret") {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestProductionAccessArgumentsFailClosed(t *testing.T) {
+	t.Parallel()
+	valid := []string{
+		"access", "provision", "--environment=production", "--issuer=https://accounts.google.com",
+		"--subject=1000000000000000921", "--granted-at-millis=1000", "--expires-at-millis=2000",
+		"--active-cards=10000", "--display-characters-per-card=1000",
+		"--serialized-plaintext-bytes-per-card=8192", "--plaintext-bytes-per-vault=134217728",
+		"--expected-database-host=db.example", "--expected-database-name=notes",
+		"--confirm-production-access-mutation", "--confirm-kms-encrypt",
+	}
+	for _, remove := range []string{"--confirm-production-access-mutation", "--confirm-kms-encrypt", "--expected-database-name=notes"} {
+		candidate := make([]string, 0, len(valid)-1)
+		for _, argument := range valid {
+			if argument != remove {
+				candidate = append(candidate, argument)
+			}
+		}
+		if _, err := parseProductionAccessArguments(candidate); err == nil {
+			t.Fatalf("missing %q accepted", remove)
+		}
+	}
+}
+
 func TestRunRefusesMigrationEnvironmentMismatchWithoutDisclosingURL(t *testing.T) {
 	t.Parallel()
 	values := map[string]string{
@@ -93,7 +259,10 @@ func TestRunRefusesMigrationEnvironmentMismatchWithoutDisclosingURL(t *testing.T
 		&stdout,
 		&stderr,
 		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
-		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string) (migrationResult, error) {
+			t.Fatal("migration must not run")
+			return migrationResult{}, nil
+		},
 		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
 			t.Fatal("quota audit must not run")
@@ -136,7 +305,10 @@ func TestRunPreparesOnlyTheAllowlistedE2EDatabase(t *testing.T) {
 		&stdout,
 		&stderr,
 		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
-		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string) (migrationResult, error) {
+			t.Fatal("migration must not run")
+			return migrationResult{}, nil
+		},
 		func(_ context.Context, databaseURL string, subject string) error {
 			called = true
 			if !strings.Contains(databaseURL, "secret") || subject != "fukamu-notes-e2e-user" {
@@ -206,7 +378,10 @@ func TestRunSelectsTypedLocalFixturePreparationOnlyForExplicitProfile(t *testing
 		&stdout,
 		&stderr,
 		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
-		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string) (migrationResult, error) {
+			t.Fatal("migration must not run")
+			return migrationResult{}, nil
+		},
 		func(context.Context, string, string) error { t.Fatal("legacy preparation must not run"); return nil },
 		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
 			t.Fatal("quota audit must not run")
@@ -477,7 +652,10 @@ func runQuotaAuditForTest(
 	code := runWithDependencies(
 		ctx, arguments, &stdout, &stderr,
 		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
-		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string) (migrationResult, error) {
+			t.Fatal("migration must not run")
+			return migrationResult{}, nil
+		},
 		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 		list,
 		func(context.Context, string, operations.QuotaCommitCommand) (operations.QuotaCommitResult, error) {
@@ -679,7 +857,10 @@ func runQuotaCommitForTest(
 	code := runWithDependencies(
 		ctx, arguments, &stdout, &stderr,
 		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
-		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string) (migrationResult, error) {
+			t.Fatal("migration must not run")
+			return migrationResult{}, nil
+		},
 		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
 			t.Fatal("quota audit must not run")
@@ -899,7 +1080,10 @@ func runAccountDeletionAuditForTest(
 	code := runWithDependencies(
 		ctx, arguments, &stdout, &stderr,
 		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
-		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string) (migrationResult, error) {
+			t.Fatal("migration must not run")
+			return migrationResult{}, nil
+		},
 		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
 			t.Fatal("quota audit must not run")
@@ -1165,7 +1349,10 @@ func runBillingReconciliationForTest(
 	code := runWithDependencies(
 		ctx, arguments, &stdout, &stderr,
 		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
-		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string) (migrationResult, error) {
+			t.Fatal("migration must not run")
+			return migrationResult{}, nil
+		},
 		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
 			t.Fatal("quota audit must not run")
@@ -1438,7 +1625,10 @@ func runDEKRotationForTest(
 	code := runWithDependencies(
 		ctx, arguments, &stdout, &stderr,
 		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
-		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string) (migrationResult, error) {
+			t.Fatal("migration must not run")
+			return migrationResult{}, nil
+		},
 		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
 			t.Fatal("quota audit must not run")
@@ -1664,7 +1854,10 @@ func runDEKReencryptionForTest(
 	code := runWithDependencies(
 		ctx, arguments, &stdout, &stderr,
 		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
-		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string) (migrationResult, error) {
+			t.Fatal("migration must not run")
+			return migrationResult{}, nil
+		},
 		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
 			t.Fatal("quota audit must not run")
@@ -1960,7 +2153,10 @@ func runOrphanScanForTest(
 	code := runWithDependencies(
 		ctx, arguments, &stdout, &stderr,
 		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
-		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string) (migrationResult, error) {
+			t.Fatal("migration must not run")
+			return migrationResult{}, nil
+		},
 		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
 			t.Fatal("quota audit must not run")
@@ -2215,7 +2411,10 @@ func runDeleteOutboxForTest(
 	code := runWithDependencies(
 		ctx, arguments, &stdout, &stderr,
 		func(key string) (string, bool) { value, ok := values[key]; return value, ok },
-		func(context.Context, string) error { t.Fatal("migration must not run"); return nil },
+		func(context.Context, string) (migrationResult, error) {
+			t.Fatal("migration must not run")
+			return migrationResult{}, nil
+		},
 		func(context.Context, string, string) error { t.Fatal("e2e preparation must not run"); return nil },
 		func(context.Context, string, operations.QuotaCandidateQuery) (operations.QuotaAuditResult, error) {
 			t.Fatal("quota audit must not run")
